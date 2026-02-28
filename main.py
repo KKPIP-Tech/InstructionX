@@ -3,20 +3,34 @@ import sys
 # ===================================================================
 # PySide 相关 
 from PySide6.QtWidgets import (
-    QApplication, QMessageBox
+    QApplication, QMessageBox, QStyleFactory
 )
+from PySide6.QtGui import (
+    QPalette, QColor
+)
+from PySide6.QtCore import Qt
 
+# ===================================================================
+# ui
 from ui.main_window import InstructionXMainWindow
+
+# ===================================================================
+# 自定义工具
+from utils import set_light_theme
+
 
 def main():
     # 创建应用实例
     application = QApplication(sys.argv)
     
     # 设置应用名称
-    application.setApplicationName("InstructionX")
+    application.setApplicationName("InstructionX - CE")
     application.setOrganizationName("LumenThread")
     
-    # 创建并显示主窗口  # 新增代码
+    # 设置浅色主题
+    set_light_theme(application)
+    
+    # 创建并显示主窗口
     main_window = InstructionXMainWindow()
     main_window.show()
     

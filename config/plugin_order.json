@@ -1,0 +1,11 @@
+{
+    "official_plugins": [
+        "文本\n格式化",
+        "代码\n格式化",
+        "图片\n压缩"
+    ],
+    "thirdparty_plugins": [
+        "颜色转换",
+        "单位\n转换"
+    ]
+}
