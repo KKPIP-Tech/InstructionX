@@ -1,26 +1,18 @@
-import os
-import pathlib
-from typing import Optional, Dict, Any, List, cast
-import time
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, 
-    QFrame, QTabWidget, QTreeView,
-    QScrollArea, QSizePolicy,
-    QLineEdit, QDial, QLabel, QPushButton, QSpinBox, QDoubleSpinBox,
-    QButtonGroup, QRadioButton, QTextEdit, QProgressBar, QListWidget,
-    QStyle, QToolButton, QApplication, QLayout
+    QTabWidget, QScrollArea,
+    QStyle, QToolButton, QLayout
 )
 from PySide6.QtCore import (
-    Signal, Qt, Slot, QModelIndex, QSize, QMimeData, QPoint
+    Signal, Qt, QSize
 )
 
-from PySide6.QtGui import QIcon, QPalette, QColor, QDrag, QPixmap
+from PySide6.QtGui import QIcon
 
 class SkillButton(QToolButton):
     """
     MS Office 风格的技能按钮
     图标在上，文字在下
-    支持拖拽重新排序
     """
     
     def __init__(self, icon: QIcon, name: str, description: str, parent=None):
@@ -28,7 +20,6 @@ class SkillButton(QToolButton):
         self.skill_name = name
         self.skill_description = description
         self._is_active = False  # 是否激活
-        self._is_dragging = False  # 是否正在拖拽
         
         # 设置按钮属性
         self.setIcon(icon)
@@ -40,9 +31,6 @@ class SkillButton(QToolButton):
         
         # 启用自动提升效果（悬停时突出显示）
         self.setAutoRaise(True)
-        
-        # 拖拽相关属性
-        self._drag_start_position = QPoint()
         
         # 应用样式
         self._apply_style()
@@ -129,102 +117,12 @@ class SkillButton(QToolButton):
                     border: 1px solid #99CCFF;
                 }
             """)
-    
-    def mousePressEvent(self, event):
-        """处理鼠标按下事件"""
-        if event.button() == Qt.MouseButton.LeftButton:
-            self._drag_start_position = event.position().toPoint()
-            self._has_moved = False  # 标记鼠标是否移动过
-            self._click_blocked = False  # 标记点击是否被阻止
-        super().mousePressEvent(event)
-    
-    def mouseReleaseEvent(self, event):
-        """处理鼠标释放事件"""
-        # 如果鼠标移动过，说明是拖拽操作，阻止点击事件
-        if getattr(self, '_has_moved', False):
-            self._click_blocked = True
-        super().mouseReleaseEvent(event)
-    
-    def mouseMoveEvent(self, event):
-        """处理鼠标移动事件"""
-        if not (event.buttons() & Qt.MouseButton.LeftButton):
-            return
-        
-        # 计算移动距离
-        drag_distance = (event.position().toPoint() - self._drag_start_position).manhattanLength()
-        
-        # 只有移动距离超过阈值才开始拖拽
-        if drag_distance > QApplication.startDragDistance():
-            self._has_moved = True
-            self._click_blocked = True
-            self._start_drag()
-    
-    def _start_drag(self):
-        """开始拖拽操作"""
-        self._is_dragging = True
-        print(f"\n[DEBUG] _start_drag: 开始拖拽按钮 '{self.skill_name}', 当前_is_active={self._is_active}")
-        
-        # 查找父级 SkillsPanel
-        parent_panel = self.parent()
-        while parent_panel and not isinstance(parent_panel, SkillsPanel):
-            parent_panel = parent_panel.parent()
-        
-        # 记录拖拽前的状态
-        if parent_panel:
-            active_btn = parent_panel._active_button
-            print(f"[DEBUG] _start_drag: 拖拽前被激活的按钮 = {active_btn.skill_name if active_btn else None}")
-        
-        # === 核心修复 ===
-        if parent_panel:
-            # 遍历所有按钮，强制清除样式
-            for layout in [parent_panel.official_layout, parent_panel.thirdparty_layout]:
-                for i in range(layout.count()):
-                    item = layout.itemAt(i)
-                    if item:
-                        widget = item.widget()
-                        if isinstance(widget, SkillButton):
-                            if widget._is_active:
-                                print(f"[DEBUG] _start_drag: 清除按钮 '{widget.skill_name}' 的高亮")
-                            widget._is_active = False
-                            widget._apply_style()
-                            widget.update()
-        
-        # 处理当前拖拽按钮
-        self._is_active = False
-        self._apply_style()
-        self.update()
-        self.repaint()
-        
-        if parent_panel:
-            parent_panel._active_button = None
-            print(f"[DEBUG] _start_drag: 设置 _active_button = None")
-        
-        # 强制刷新界面
-        QApplication.processEvents()
-        
-        # 创建拖拽数据
-        drag = QDrag(self)
-        mime_data = QMimeData()
-        mime_data.setText(self.skill_name)
-        drag.setMimeData(mime_data)
-        
-        # 创建拖拽时的预览图像
-        pixmap = self.grab()
-        drag.setPixmap(pixmap)
-        drag.setHotSpot(pixmap.rect().center())
-        
-        # 执行拖拽
-        drop_action = drag.exec(Qt.DropAction.MoveAction)
-        
-        self._is_dragging = False
-        print(f"[DEBUG] _start_drag: 拖拽结束")
 
 
 class SkillsPanel(QWidget):
     """
     Skills Panel - 类似 MS Office 工具栏的技能面板
     支持横向滚动，包含官方技能和第三方技能两个标签页
-    支持拖拽重新排序
     """
     
     # 信号： 
@@ -234,9 +132,6 @@ class SkillsPanel(QWidget):
         super().__init__(parent=parent)
         self.plugin_manager = None
         self._active_button = None  # 当前激活的按钮
-        self._drag_source_button = None  # 拖拽源按钮
-        self._drag_source_was_active = False  # 拖拽源按钮的激活状态
-        self.setAcceptDrops(True)  # 启用拖拽接收
         self._init_ui()
     
     def set_plugin_manager(self, plugin_manager):
@@ -382,12 +277,6 @@ class SkillsPanel(QWidget):
         """处理技能按钮点击事件"""
         print(f"\n[DEBUG] _on_skill_clicked: 点击按钮 '{button.skill_name}'")
         
-        # 如果点击被阻止（拖拽操作），不处理
-        if hasattr(button, '_click_blocked') and button._click_blocked:
-            button._click_blocked = False  # 重置标志
-            print("[DEBUG] _on_skill_clicked: 点击被阻止，直接返回")
-            return
-        
         # 打印当前状态
         current_active = self._active_button
         print(f"[DEBUG] _on_skill_clicked: 当前 _active_button = {current_active.skill_name if current_active else None}")
@@ -424,6 +313,9 @@ class SkillsPanel(QWidget):
             # 清空现有按钮
             self._clear_layout(self.official_layout)
             self._clear_layout(self.thirdparty_layout)
+            
+            # 清除激活状态（重要：因为旧按钮已被删除）
+            self._active_button = None
             
             # 加载官方技能
             official_plugins = self.plugin_manager.get_official_plugins()
@@ -476,174 +368,3 @@ class SkillsPanel(QWidget):
         if self.plugin_manager:
             self.plugin_manager.reload_plugins()
             self.load_skills_from_manager()
-    
-    def dragEnterEvent(self, event):
-        """处理拖拽进入事件"""
-        if event.mimeData().hasText():
-            event.acceptProposedAction()
-        else:
-            event.ignore()
-    
-    def dragMoveEvent(self, event):
-        """处理拖拽移动事件"""
-        if event.mimeData().hasText():
-            event.acceptProposedAction()
-        else:
-            event.ignore()
-    
-    def dropEvent(self, event):
-        """处理拖拽放置事件"""
-        print("\n[DEBUG] dropEvent: 收到放置事件")
-        
-        mime_data = event.mimeData()
-        if not mime_data.hasText():
-            event.ignore()
-            print("[DEBUG] dropEvent: 没有文本数据，忽略")
-            self._clear_all_active_states()
-            return
-        
-        # 获取拖拽的插件名称
-        plugin_name = mime_data.text()
-        print(f"[DEBUG] dropEvent: 拖拽的插件名称 = {plugin_name}")
-        
-        # 查找源按钮
-        source_button = None
-        for i in range(self.official_layout.count()):
-            item = self.official_layout.itemAt(i)
-            if item:
-                widget = item.widget()
-                if isinstance(widget, SkillButton) and widget.skill_name == plugin_name:
-                    source_button = widget
-                    break
-        
-        if source_button is None:
-            for i in range(self.thirdparty_layout.count()):
-                item = self.thirdparty_layout.itemAt(i)
-                if item:
-                    widget = item.widget()
-                    if isinstance(widget, SkillButton) and widget.skill_name == plugin_name:
-                        source_button = widget
-                        break
-        
-        if source_button is None:
-            event.ignore()
-            print("[DEBUG] dropEvent: 未找到源按钮，忽略")
-            return
-        
-        # 清除所有按钮的激活状态（拖拽时和拖拽后都不显示高亮）
-        print("[DEBUG] dropEvent: 调用 _clear_all_active_states")
-        self._clear_all_active_states()
-        
-        # 确定目标布局（官方或第三方）
-        target_layout = None
-        is_official = False
-        
-        # 检查放置位置是在哪个标签页
-        pos = event.position().toPoint()
-        official_widget = self.official_layout.parentWidget()
-        thirdparty_widget = self.thirdparty_layout.parentWidget()
-        
-        if official_widget.rect().contains(official_widget.mapFrom(self, pos)):
-            target_layout = self.official_layout
-            is_official = True
-        elif thirdparty_widget.rect().contains(thirdparty_widget.mapFrom(self, pos)):
-            target_layout = self.thirdparty_layout
-            is_official = False
-        else:
-            event.ignore()
-            print("[DEBUG] dropEvent: 放置位置无效，忽略")
-            return
-        
-        # 确定插入位置
-        insert_index = -1
-        for i in range(target_layout.count()):
-            item = target_layout.itemAt(i)
-            if item:
-                widget = item.widget()
-                if isinstance(widget, SkillButton):
-                    widget_pos = widget.mapTo(self, widget.rect().center())
-                    if pos.x() < widget_pos.x():
-                        insert_index = i
-                        break
-        
-        # 如果源和目标布局不同，或者需要在同一个布局中移动
-        if source_button.parent() != target_layout.parent():
-            # 跨标签页移动（不支持）
-            event.ignore()
-            print("[DEBUG] dropEvent: 不支持跨标签页移动，忽略")
-            return
-        
-        # 重新排序
-        source_parent = cast(QWidget, source_button.parent())
-        source_layout = source_parent.layout()
-        
-        if source_parent and source_layout:
-            assert source_layout is not None  # Type assertion for Pylance
-            source_index = -1
-            for i in range(source_layout.count()):
-                item = source_layout.itemAt(i)
-                if item and item.widget() == source_button:
-                    source_index = i
-                    break
-            
-            if source_index == -1:
-                event.ignore()
-                return
-            
-            # 移除源按钮
-            source_layout.removeWidget(source_button)
-            
-            # 插入到目标位置
-            if insert_index == -1:
-                # 添加到末尾
-                target_layout.addWidget(source_button)
-            else:
-                # 插入到指定位置
-                target_layout.insertWidget(insert_index, source_button)
-        else:
-            event.ignore()
-            return
-        
-        event.acceptProposedAction()
-        
-        # 保存新的顺序
-        self._save_plugin_order()
-        print("[DEBUG] dropEvent: 拖拽完成")
-    
-    def _save_plugin_order(self):
-        """保存插件顺序到配置文件"""
-        if self.plugin_manager is None:
-            return
-        
-        try:
-            # 获取官方插件顺序
-            official_names = []
-            for i in range(self.official_layout.count()):
-                item = self.official_layout.itemAt(i)
-                if item:
-                    widget = item.widget()
-                    if isinstance(widget, SkillButton):
-                        # 获取对应的插件对象
-                        plugin = self.plugin_manager.get_plugin_by_name(widget.skill_name)
-                        if plugin:
-                            official_names.append(plugin.plugin_name)
-            
-            # 获取第三方插件顺序
-            thirdparty_names = []
-            for i in range(self.thirdparty_layout.count()):
-                item = self.thirdparty_layout.itemAt(i)
-                if item:
-                    widget = item.widget()
-                    if isinstance(widget, SkillButton):
-                        # 获取对应的插件对象
-                        plugin = self.plugin_manager.get_plugin_by_name(widget.skill_name)
-                        if plugin:
-                            thirdparty_names.append(plugin.plugin_name)
-            
-            # 保存到配置文件
-            self.plugin_manager.save_plugin_order(official_names, thirdparty_names)
-            
-            print(f"Plugin order saved: Official={official_names}, Thirdparty={thirdparty_names}")
-            
-        except Exception as e:
-            print(f"Error saving plugin order: {e}")

@@ -25,6 +25,7 @@ from PySide6.QtCore import (
 # ===================================================================
 # 自定义工具
 from ui.skills_panel.panel import SkillsPanel
+from ui.plugin_order_dialog import PluginOrderDialog
 from core.plugin.manager import PluginManager
 
 
@@ -57,6 +58,12 @@ class InstructionXMainWindow(QMainWindow):
         # -------------------------------------------------
         # 编辑
         menu_edit = self.menuBar().addMenu("编辑")
+        
+        # 插件排序
+        menu_edit_plugin_order_action = QAction("插件排序", self)
+        menu_edit_plugin_order_action.setShortcut("Ctrl+P")
+        menu_edit_plugin_order_action.triggered.connect(self._open_plugin_order_dialog)
+        menu_edit.addAction(menu_edit_plugin_order_action)
         
         # -------------------------------------------------
         # 用户中心
@@ -135,9 +142,10 @@ class InstructionXMainWindow(QMainWindow):
         """
         处理技能按钮点击事件
         在工作区显示插件的 widget
+        注意：不清除按钮的高亮状态，让用户知道当前正在使用哪个插件
         """
-        # 清空工作区
-        self._clear_work_area()
+        # 清空工作区（不清除按钮高亮）
+        self._clear_work_area_keep_highlight()
         
         # 获取插件的 widget 并显示在工作区
         plugin_widget = plugin.get_widget(parent=self.work_area)
@@ -164,3 +172,31 @@ class InstructionXMainWindow(QMainWindow):
         
         # 清空工作区时，取消所有插件按钮的高亮状态
         self.skills_panel.clear_active_state()
+    
+    def _clear_work_area_keep_highlight(self):
+        """
+        清空工作区，但保留按钮的高亮状态
+        用于切换插件时保持当前激活按钮的高亮
+        """
+        while self.work_layout.count():
+            item: Optional[QLayoutItem] = self.work_layout.takeAt(0)
+            if item:
+                widget = item.widget()
+                if widget:
+                    widget.deleteLater()
+            # 清理 item 对象
+            if item:
+                del item
+        
+        # 注意：这里不调用 clear_active_state()，保留按钮的高亮状态
+    
+    def _open_plugin_order_dialog(self):
+        """
+        打开插件排序对话框
+        在用户保存排序后，重新加载 skills panel 以显示新的顺序
+        """
+        dialog = PluginOrderDialog(self.plugin_manager, self)
+        
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            # 用户点击了保存，重新加载 skills panel
+            self.skills_panel.load_skills_from_manager()
