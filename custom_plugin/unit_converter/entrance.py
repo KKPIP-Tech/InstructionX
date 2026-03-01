@@ -4,7 +4,6 @@
 """
 
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel, QPushButton, QGroupBox, QComboBox, QLineEdit, QMessageBox
-from PySide6.QtGui import QIcon
 from PySide6.QtCore import Qt
 from core.plugin.plugin_interface import IPlugin
 from .service import Service
@@ -16,18 +15,6 @@ class UnitConverterPlugin(IPlugin):
     @property
     def plugin_name(self) -> str:
         return "单位\n转换"
-    
-    @property
-    def skill_icon(self) -> QIcon:
-        # 使用系统标准图标
-        from PySide6.QtWidgets import QApplication
-        return QApplication.style().standardIcon(
-            QApplication.style().StandardPixmap.SP_BrowserReload
-        )
-    
-    @property
-    def skill_description(self) -> str:
-        return "转换各种单位"
     
     def get_widget(self, parent=None, data_provider=None) -> QWidget:
         # 创建服务实例

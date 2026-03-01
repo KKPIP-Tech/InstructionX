@@ -4,7 +4,6 @@
 """
 
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel, QPushButton, QGroupBox, QLineEdit
-from PySide6.QtGui import QIcon
 from PySide6.QtCore import Qt
 from core.plugin.plugin_interface import IPlugin
 from .service import Service
@@ -16,18 +15,6 @@ class TextFormattingPlugin(IPlugin):
     @property
     def plugin_name(self) -> str:
         return "文本\n格式化"
-    
-    @property
-    def skill_icon(self) -> QIcon:
-        # 使用系统标准图标
-        from PySide6.QtWidgets import QApplication
-        return QApplication.style().standardIcon(
-            QApplication.style().StandardPixmap.SP_FileIcon
-        )
-    
-    @property
-    def skill_description(self) -> str:
-        return "提供文本格式化工具"
     
     def get_widget(self, parent=None, data_provider=None) -> QWidget:
         # 创建服务实例

@@ -2,17 +2,19 @@
 
 ## 设计理念
 
-插件系统遵循**关注点分离（Separation of Concerns）**的设计原则，将插件的 UI 界面与业务逻辑完全解耦，以提高代码的可维护性、可测试性和可复用性。
+插件系统遵循**关注点分离（Separation of Concerns）**的设计原则，将插件的 UI 界面、业务逻辑与插件元数据完全解耦，以提高代码的可维护性、可测试性和可复用性。
 
 ## 核心设计原则
 
 1. **单一职责原则（SRP）**
    - `entrance.py` 只负责 UI 界面构建和用户交互
    - `service.py` 只负责业务逻辑实现
+   - `information.py` 只负责插件元数据和配置信息
 
 2. **低耦合高内聚**
    - UI 层不包含任何业务逻辑代码
    - 业务逻辑层不依赖任何 UI 组件
+   - 元数据层与实现层分离
 
 3. **可测试性**
    - 业务逻辑可以独立进行单元测试
@@ -21,6 +23,12 @@
 4. **可复用性**
    - Service 类可以在不同场景下复用
    - 业务逻辑可以脱离 UI 独立使用
+   - 插件信息可以被 MCP 和其他系统读取
+
+5. **可扩展性**
+   - 支持多种图标类型
+   - 支持丰富的插件元数据
+   - 便于系统集成和自动化管理
 
 ## 插件架构设计
 
@@ -30,13 +38,27 @@
 插件目录结构
 ├── __init__.py              # Python 包标识文件
 ├── entrance.py              # UI 界面入口
-└── service.py               # 业务逻辑入口
+├── service.py               # 业务逻辑入口
+└── information.py          # 插件元数据和配置
 ```
 
 ### 模块关系
 
 ```
 ┌─────────────────────────────────────────┐
+│       information.py (元数据层)         │
+│  ┌──────────────────────────────────┐   │
+│  │ - 插件版本信息                    │  │
+│  │ - 开发者信息                      │  │
+│  │ - 插件描述                        │  │
+│  │ - 图标配置                        │  │
+│  │ - API 接口定义                    │  │
+│  └──────────────────────────────────┘  │
+└─────────────────────────────────────────┘
+         ▲                     ▲
+         │ 供读取              │ 供读取
+         │                     │
+┌────────┴─────────────────────┴────────┐
 │           entrance.py (UI层)            │
 │  ┌──────────────────────────────────┐   │
 │  │ - UI 组件创建和布局                │  │
@@ -66,12 +88,14 @@ InstructionX/
 │   └── text_formatting/          # 文本格式化插件示例
 │       ├── __init__.py          # Python 包标识
 │       ├── entrance.py          # UI 界面入口
-│       └── service.py           # 业务逻辑入口
+│       ├── service.py           # 业务逻辑入口
+│       └── information.py       # 插件元数据
 └── custom_plugin/                 # 第三方插件目录
     └── color_converter/          # 颜色转换插件示例
         ├── __init__.py          # Python 包标识
         ├── entrance.py          # UI 界面入口
-        └── service.py           # 业务逻辑入口
+        ├── service.py           # 业务逻辑入口
+        └── information.py       # 插件元数据
 ```
 
 ### 文件职责
@@ -164,6 +188,304 @@ class PluginName(IPlugin):
         return widget
 ```
 
+#### 4. `information.py` - 插件元数据
+- **职责**：提供插件的完整元数据信息
+- **特点**：
+  - 实现 `IPluginInfo` 接口
+  - 包含版本、开发者信息
+  - 定义图标配置
+  - 描述插件功能和 API
+  - 可被 MCP 系统读取
+  - **类名自动查找**：系统会自动查找实现了 `IPluginInfo` 接口的类，类名可以使用任意命名
+
+**重要说明：插件信息类的命名规则**
+
+系统会自动扫描 `information.py` 文件中所有实现了 `IPluginInfo` 接口的类，因此类名可以自由命名。推荐的命名规范是：
+
+```python
+# 推荐命名：{插件名}PluginInfo
+class TextFormattingPluginInfo(IPluginInfo):  # 文本格式化插件
+    ...
+
+class CodeFormatterPluginInfo(IPluginInfo):  # 代码格式化插件
+    ...
+
+class ColorConverterPluginInfo(IPluginInfo):  # 颜色转换插件
+    ...
+
+class ImageCompressorPluginInfo(IPluginInfo):  # 图片压缩插件
+    ...
+
+class UnitConverterPluginInfo(IPluginInfo):  # 单位转换插件
+    ...
+```
+
+**自动查找机制说明：**
+
+插件系统使用以下逻辑查找插件信息类：
+1. 动态加载 `information.py` 模块
+2. 遍历模块中所有的类定义
+3. 查找实现了 `IPluginInfo` 接口且不是 `IPluginInfo` 本身的类
+4. 如果找到，就使用该类作为插件信息源
+
+因此，您可以使用任何类名，只要它实现了 `IPluginInfo` 接口即可。系统会自动识别正确的类。
+
+```python
+"""
+插件名称 - 插件元数据
+"""
+
+from core.plugin.plugin_info_interface import IPluginInfo
+from core.plugin.plugin_version import PluginVersion
+from core.plugin.plugin_icon import PluginIcon
+from typing import Dict, Any, Optional
+
+class PluginNamePluginInfo(IPluginInfo):
+    """插件元数据类"""
+    
+    @property
+    def version(self) -> PluginVersion:
+        """插件版本"""
+        return PluginVersion.from_string("release.1.0.0")
+    
+    @property
+    def developer(self) -> str:
+        """开发者名称"""
+        return "开发者名称"
+    
+    @property
+    def developer_email(self) -> str:
+        """开发者邮箱"""
+        return "developer@example.com"
+    
+    @property
+    def developer_website(self) -> str:
+        """开发者网站"""
+        return "https://example.com"
+    
+    @property
+    def is_free(self) -> bool:
+        """是否免费"""
+        return True
+    
+    @property
+    def description(self) -> str:
+        """插件详细描述"""
+        return """
+        插件功能描述
+        """
+    
+    @property
+    def service_api(self) -> Dict[str, Any]:
+        """Service API 定义"""
+        return {
+            "method_name": {
+                "description": "方法描述",
+                "parameters": {
+                    "param": {
+                        "type": "str",
+                        "description": "参数描述",
+                        "required": True
+                    }
+                },
+                "returns": {
+                    "type": "str",
+                    "description": "返回值描述"
+                }
+            }
+        }
+    
+    @property
+    def skill_icon(self) -> PluginIcon:
+        """插件图标配置"""
+        return PluginIcon.builtin("SP_FileIcon")
+    
+    @property
+    def skill_description(self) -> str:
+        """插件简短描述"""
+        return "插件功能简介"
+    
+    @property
+    def tags(self) -> Optional[list[str]]:
+        """插件标签"""
+        return ["tag1", "tag2", "tag3"]
+    
+    @property
+    def dependencies(self) -> Optional[Dict[str, str]]:
+        """依赖项"""
+        return None
+```
+
+## 插件元数据详解
+
+### 必需属性
+
+#### 1. `version` - 版本号
+使用 `PluginVersion` 类定义版本号，格式为 `type.major.minor.patch`：
+- `type`: 版本类型（`release`, `beta`, `alpha`, `dev`）
+- `major`: 主版本号
+- `minor`: 次版本号
+- `patch`: 补丁号
+
+```python
+PluginVersion.from_string("release.1.0.0")
+```
+
+#### 2. `developer` - 开发者名称
+插件开发者的名称或团队名称。
+
+```python
+def developer(self) -> str:
+    return "KKPIP-Tech"
+```
+
+#### 3. `developer_email` - 开发者邮箱
+用于联系的邮箱地址。
+
+```python
+def developer_email(self) -> str:
+    return "support@example.com"
+```
+
+#### 4. `developer_website` - 开发者网站
+开发者的官方网站或项目地址。
+
+```python
+def developer_website(self) -> str:
+    return "https://github.com/KKPIP-Tech/InstructionX"
+```
+
+#### 5. `is_free` - 是否免费
+标识插件是否为免费软件。
+
+```python
+def is_free(self) -> bool:
+    return True  # 或 False
+```
+
+#### 6. `description` - 详细描述
+插件的详细功能描述，用于文档和 MCP 系统。可以使用多行字符串。
+
+```python
+def description(self) -> str:
+    return """
+    文本格式化插件提供常用的文本处理工具，包括：
+    - 文本大小写转换（大写、小写）
+    - 支持批量文本处理
+    
+    该插件适用于需要快速格式化文本的场景，
+    如数据处理、内容编辑等。
+    """
+```
+
+#### 7. `service_api` - API 接口定义
+定义 Service 类中所有公开方法的接口规范，供 MCP 系统或其他自动化工具使用。
+
+```python
+def service_api(self) -> Dict[str, Any]:
+    return {
+        "to_uppercase": {
+            "description": "将文本转换为大写",
+            "parameters": {
+                "text": {
+                    "type": "str",
+                    "description": "输入文本",
+                    "required": True
+                }
+            },
+            "returns": {
+                "type": "str",
+                "description": "大写后的文本"
+            }
+        }
+    }
+```
+
+#### 8. `skill_icon` - 图标配置
+使用 `PluginIcon` 类配置插件图标。支持多种图标类型。
+
+##### 图标类型
+
+1. **系统内置图标（BUILTIN）**
+```python
+from core.plugin.plugin_icon import PluginIcon
+
+def skill_icon(self) -> PluginIcon:
+    return PluginIcon.builtin("SP_FileIcon")
+```
+
+常用系统图标：
+- `SP_FileIcon` - 文件图标
+- `SP_DialogApplyButton` - 应用按钮
+- `SP_DialogSaveButton` - 保存按钮
+- `SP_MediaPlay` - 播放图标
+- `SP_ArrowForward` - 前进箭头
+- `SP_BrowserReload` - 刷新图标
+- `SP_DialogOpenButton` - 打开按钮
+- `SP_DialogResetButton` - 重置按钮
+
+2. **文件图标（FILE）**
+```python
+def skill_icon(self) -> PluginIcon:
+    return PluginIcon.from_file("icons/icon.png")
+```
+图标文件应放在插件目录下的 `icons/` 子目录中。
+
+3. **Qt 资源图标（RESOURCE）**
+```python
+def skill_icon(self) -> PluginIcon:
+    return PluginIcon.from_resource(":/icons/icon.png")
+```
+
+4. **Base64 编码图标（BASE64）**
+```python
+def skill_icon(self) -> PluginIcon:
+    return PluginIcon.from_base64("iVBORw0KGgoAAAANS...")
+```
+
+5. **无图标（NONE）**
+```python
+def skill_icon(self) -> PluginIcon:
+    return PluginIcon.none()
+```
+
+#### 9. `skill_description` - 简短描述
+插件功能的简短描述，用于 UI 工具提示。
+
+```python
+def skill_description(self) -> str:
+    return "提供文本格式化工具"
+```
+
+#### 10. `tags` - 标签
+用于插件分类和搜索的标签列表。
+
+```python
+def tags(self) -> Optional[list[str]]:
+    return ["text", "formatting", "utility"]
+```
+
+#### 11. `dependencies` - 依赖项
+插件的外部依赖，格式为 `{包名: 版本要求}`。
+
+```python
+def dependencies(self) -> Optional[Dict[str, str]]:
+    return {
+        "Pillow": ">=9.0.0",
+        "numpy": ">=1.20.0"
+    }
+```
+
+### 可选属性
+
+#### `name` - 插件显示名称
+默认返回插件类名（去掉 `PluginInfo` 后缀）。可以覆盖以自定义显示名称。
+
+```python
+def name(self) -> str:
+    return "我的插件"
+```
+
 ## 完整示例
 
 ### 示例 1：文本格式化插件
@@ -202,6 +524,101 @@ class Service:
         return text.lower()
 ```
 
+#### `information.py`
+```python
+"""
+文本格式化插件元数据
+"""
+
+from core.plugin.plugin_info_interface import IPluginInfo
+from core.plugin.plugin_version import PluginVersion
+from core.plugin.plugin_icon import PluginIcon
+from typing import Dict, Any, Optional
+
+class TextFormattingPluginInfo(IPluginInfo):
+    """文本格式化插件元数据"""
+    
+    @property
+    def version(self) -> PluginVersion:
+        return PluginVersion.from_string("release.1.0.0")
+    
+    @property
+    def developer(self) -> str:
+        return "KKPIP-Tech"
+    
+    @property
+    def developer_email(self) -> str:
+        return "support@example.com"
+    
+    @property
+    def developer_website(self) -> str:
+        return "https://github.com/KKPIP-Tech/InstructionX"
+    
+    @property
+    def is_free(self) -> bool:
+        return True
+    
+    @property
+    def description(self) -> str:
+        return """
+        文本格式化插件提供常用的文本处理工具，包括：
+        - 文本大小写转换（大写、小写）
+        - 支持批量文本处理
+        
+        该插件适用于需要快速格式化文本的场景，
+        如数据处理、内容编辑等。
+        """
+    
+    @property
+    def service_api(self) -> Dict[str, Any]:
+        return {
+            "to_uppercase": {
+                "description": "将文本转换为大写",
+                "parameters": {
+                    "text": {
+                        "type": "str",
+                        "description": "输入文本",
+                        "required": True
+                    }
+                },
+                "returns": {
+                    "type": "str",
+                    "description": "大写后的文本"
+                }
+            },
+            "to_lowercase": {
+                "description": "将文本转换为小写",
+                "parameters": {
+                    "text": {
+                        "type": "str",
+                        "description": "输入文本",
+                        "required": True
+                    }
+                },
+                "returns": {
+                    "type": "str",
+                    "description": "小写后的文本"
+                }
+            }
+        }
+    
+    @property
+    def skill_icon(self) -> PluginIcon:
+        return PluginIcon.builtin("SP_MediaPlay")
+    
+    @property
+    def skill_description(self) -> str:
+        return "提供文本格式化工具"
+    
+    @property
+    def tags(self) -> Optional[list[str]]:
+        return ["text", "formatting", "utility"]
+    
+    @property
+    def dependencies(self) -> Optional[Dict[str, str]]:
+        return None
+```
+
 #### `entrance.py`
 ```python
 """
@@ -213,11 +630,9 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QLabel, 
     QPushButton, QGroupBox, QLineEdit
 )
-from PySide6.QtGui import QIcon
 from PySide6.QtCore import Qt
 from core.plugin.plugin_interface import IPlugin
 from .service import Service
-
 
 class TextFormattingPlugin(IPlugin):
     """文本格式化插件"""
@@ -225,17 +640,6 @@ class TextFormattingPlugin(IPlugin):
     @property
     def plugin_name(self) -> str:
         return "文本\n格式化"
-    
-    @property
-    def skill_icon(self) -> QIcon:
-        from PySide6.QtWidgets import QApplication
-        return QApplication.style().standardIcon(
-            QApplication.style().StandardPixmap.SP_FileIcon
-        )
-    
-    @property
-    def skill_description(self) -> str:
-        return "提供文本格式化工具"
     
     def get_widget(self, parent=None, data_provider=None) -> QWidget:
         # 创建服务实例
@@ -333,6 +737,86 @@ class Service:
             return "无效的 HEX 格式"
 ```
 
+#### `information.py`
+```python
+"""
+颜色转换插件元数据
+"""
+
+from core.plugin.plugin_info_interface import IPluginInfo
+from core.plugin.plugin_version import PluginVersion
+from core.plugin.plugin_icon import PluginIcon
+from typing import Dict, Any, Optional
+
+class ColorConverterPluginInfo(IPluginInfo):
+    """颜色转换插件元数据"""
+    
+    @property
+    def version(self) -> PluginVersion:
+        return PluginVersion.from_string("release.1.0.0")
+    
+    @property
+    def developer(self) -> str:
+        return "KKPIP-Tech"
+    
+    @property
+    def developer_email(self) -> str:
+        return "support@example.com"
+    
+    @property
+    def developer_website(self) -> str:
+        return "https://github.com/KKPIP-Tech/InstructionX"
+    
+    @property
+    def is_free(self) -> bool:
+        return True
+    
+    @property
+    def description(self) -> str:
+        return """
+        颜色转换插件提供颜色格式转换工具，包括：
+        - HEX 颜色转 RGB 格式
+        
+        该插件适用于需要在不同颜色格式之间转换的场景，
+        如设计工作、开发调试、颜色管理等。
+        """
+    
+    @property
+    def service_api(self) -> Dict[str, Any]:
+        return {
+            "hex_to_rgb": {
+                "description": "将 HEX 颜色格式转换为 RGB 格式",
+                "parameters": {
+                    "hex_str": {
+                        "type": "str",
+                        "description": "HEX 颜色字符串（如 #FF5733 或 FF5733）",
+                        "required": True
+                    }
+                },
+                "returns": {
+                    "type": "str",
+                    "description": "RGB 格式字符串（如 rgb(255, 87, 51)），如果格式无效则返回错误信息"
+                }
+            }
+        }
+    
+    @property
+    def skill_icon(self) -> PluginIcon:
+        return PluginIcon.builtin("SP_ArrowForward")
+    
+    @property
+    def skill_description(self) -> str:
+        return "提供颜色转换工具"
+    
+    @property
+    def tags(self) -> Optional[list[str]]:
+        return ["color", "conversion", "utility"]
+    
+    @property
+    def dependencies(self) -> Optional[Dict[str, str]]:
+        return None
+```
+
 #### `entrance.py`
 ```python
 """
@@ -348,17 +832,12 @@ from PySide6.QtCore import Qt
 from core.plugin.plugin_interface import IPlugin
 from .service import Service
 
-
 class ColorConverterPlugin(IPlugin):
     """颜色转换插件"""
     
     @property
     def plugin_name(self) -> str:
         return "颜色转换"
-    
-    @property
-    def skill_description(self) -> str:
-        return "HEX/RGB 颜色格式转换"
     
     def get_widget(self, parent=None, data_provider=None) -> QWidget:
         # 创建服务实例
@@ -405,30 +884,77 @@ class ColorConverterPlugin(IPlugin):
 ## 设计优势
 
 ### 1. 关注点分离
-- UI 代码和业务逻辑代码完全分离
+- UI 代码、业务逻辑和元数据完全分离
 - 每个文件职责明确，易于理解
 
 ### 2. 可维护性
-- 修改 UI 时不需要触碰业务逻辑
+- 修改 UI 时不需要触碰业务逻辑或元数据
 - 修改业务逻辑时不需要改动 UI 代码
+- 修改元数据时不需要改动实现代码
 - 降低代码维护成本
 
 ### 3. 可测试性
 - Service 类的方法可以独立进行单元测试
 - 不需要启动 UI 框架即可测试业务逻辑
+- 元数据可以独立验证
 - 提高测试覆盖率
 
 ### 4. 可复用性
 - Service 类可以在其他插件中复用
 - 业务逻辑可以脱离 UI 独立使用
+- 元数据可以被 MCP 系统读取
 - 提高代码复用率
 
 ### 5. 可扩展性
 - 新功能只需在 Service 类中添加方法
 - UI 可以轻松调用新方法
 - 支持功能的无缝扩展
+- 支持多种图标类型
+- 支持丰富的元数据
+
+### 6. 系统集成
+- 元数据可以被 MCP 系统自动读取
+- 支持插件自动发现和加载
+- 支持插件版本管理
+- 支持依赖关系管理
 
 ## 最佳实践
+
+### information.py 设计规范
+
+1. **版本管理**
+   - 遵循语义化版本规范
+   - 使用正确的版本类型（release/beta/alpha/dev）
+   - 在有重大更改时更新主版本号
+
+2. **开发者信息**
+   - 提供真实的联系方式
+   - 保持邮箱和网站信息的有效性
+   - 便于用户反馈问题
+
+3. **描述信息**
+   - 使用清晰易懂的语言
+   - 列出所有主要功能
+   - 说明适用场景
+   - 使用格式化（项目符号、代码块等）提高可读性
+
+4. **API 定义**
+   - 列出所有公开方法
+   - 提供详细的参数说明
+   - 明确返回值类型和含义
+   - 标注必需参数和可选参数
+
+5. **图标选择**
+   - 选择与功能相关的图标
+   - 优先使用系统内置图标
+   - 确保图标在不同主题下可见
+   - 避免使用过于相似的图标
+
+6. **标签设置**
+   - 使用小写字母
+   - 使用英文标签
+   - 选择准确的分类标签
+   - 避免使用过多标签（3-5个为宜）
 
 ### Service 类设计规范
 
@@ -478,22 +1004,39 @@ class ColorConverterPlugin(IPlugin):
 
 ## 常见问题
 
-### Q1: 为什么要分离 entrance.py 和 service.py？
+### Q1: 为什么要分离 entrance.py、service.py 和 information.py？
 
-A: 这种分离设计带来以下好处：
-- UI 和逻辑解耦，提高代码质量
+A: 这种三分离设计带来以下好处：
+- UI、逻辑和元数据完全解耦
 - 便于单独测试业务逻辑
 - 业务逻辑可以在其他场景复用
-- 降低维护成本
+- 元数据可以被 MCP 等系统自动读取
+- 降低维护成本，提高可维护性
 
-### Q2: Service 类可以是静态方法吗？
+### Q2: information.py 中的信息会被哪些系统使用？
+
+A: information.py 中的信息会被以下系统使用：
+- **主程序**：显示插件图标、描述、开发者信息
+- **MCP 系统**：读取 service_api 定义，自动生成调用接口
+- **插件管理器**：管理插件版本、依赖关系
+- **用户界面**：显示插件图标、工具提示等
+
+### Q3: 如何选择合适的系统图标？
+
+A: 选择系统图标的建议：
+- 根据插件功能选择相关图标
+- 参考常见图标的使用惯例
+- 测试不同主题下的显示效果
+- 优先选择语义明确的图标
+
+### Q4: Service 类可以是静态方法吗？
 
 A: 可以，但建议使用实例方法，因为：
 - 实例方法更灵活，便于未来扩展
 - 可以添加实例变量存储状态
 - 更符合面向对象设计原则
 
-### Q3: 一个插件可以有多个 Service 类吗？
+### Q5: 一个插件可以有多个 Service 类吗？
 
 A: 可以。如果插件功能复杂，可以按功能模块划分多个 Service 类：
 ```python
@@ -504,7 +1047,35 @@ format_service = FormatService()
 convert_service = ConvertService()
 ```
 
-### Q4: Service 类可以调用数据库或网络接口吗？
+### Q6: 如何在 service_api 中定义可选参数？
+
+A: 使用 `default` 字段指定默认值：
+```python
+{
+    "compress_image": {
+        "description": "压缩图片",
+        "parameters": {
+            "file_path": {
+                "type": "str",
+                "description": "图片文件路径",
+                "required": True
+            },
+            "quality": {
+                "type": "int",
+                "description": "压缩质量 (1-100)",
+                "required": False,
+                "default": 85
+            }
+        },
+        "returns": {
+            "type": "bool",
+            "description": "是否成功"
+        }
+    }
+}
+```
+
+### Q7: Service 类可以调用数据库或网络接口吗？
 
 A: 可以。Service 类是处理业务逻辑的地方，完全可以：
 - 访问数据库
@@ -512,7 +1083,7 @@ A: 可以。Service 类是处理业务逻辑的地方，完全可以：
 - 处理文件 I/O
 - 执行任何必要的业务操作
 
-### Q5: 如何处理 Service 类中的异常？
+### Q8: 如何处理 Service 类中的异常？
 
 A: 推荐做法：
 ```python
@@ -529,37 +1100,106 @@ class Service:
             return "操作失败，请重试"
 ```
 
+### Q9: 图标加载失败会发生什么？
+
+A: 如果图标加载失败，系统会自动回退到默认的 `SP_FileIcon` 图标，确保插件始终有图标显示。
+
+### Q10: 如何更新插件版本？
+
+A: 按照 semver 规则更新版本号：
+- **主版本号（major）**：不兼容的 API 修改
+- **次版本号（minor）**：向下兼容的功能性新增
+- **修订号（patch）**：向下兼容的问题修正
+
+例如：
+```python
+# 新增功能
+PluginVersion.from_string("release.1.1.0")
+
+# 修复 bug
+PluginVersion.from_string("release.1.0.1")
+
+# 重大更改
+PluginVersion.from_string("release.2.0.0")
+```
+
 ## 迁移指南
 
-如果您有旧版本的插件（只有一个 entrance.py 文件），可以按照以下步骤迁移：
+如果您有旧版本的插件（只有 entrance.py 和 service.py），可以按照以下步骤添加 information.py：
 
-### 步骤 1：创建 service.py
+### 步骤 1：创建 information.py
 ```python
-# 将 business logic 从 entrance.py 提取到 service.py
-class Service:
-    def method_name(self, param):
-        # 业务逻辑代码
-        pass
+"""
+插件名称 - 插件元数据
+"""
+
+from core.plugin.plugin_info_interface import IPluginInfo
+from core.plugin.plugin_version import PluginVersion
+from core.plugin.plugin_icon import PluginIcon
+from typing import Dict, Any, Optional
+
+class PluginNamePluginInfo(IPluginInfo):
+    """插件元数据类"""
+    
+    @property
+    def version(self) -> PluginVersion:
+        return PluginVersion.from_string("release.1.0.0")
+    
+    @property
+    def developer(self) -> str:
+        return "您的名称"
+    
+    @property
+    def developer_email(self) -> str:
+        return "your.email@example.com"
+    
+    @property
+    def developer_website(self) -> str:
+        return "https://your-website.com"
+    
+    @property
+    def is_free(self) -> bool:
+        return True
+    
+    @property
+    def description(self) -> str:
+        return """
+        插件功能描述
+        """
+    
+    @property
+    def service_api(self) -> Dict[str, Any]:
+        return {
+            # 根据 service.py 中的方法定义 API
+        }
+    
+    @property
+    def skill_icon(self) -> PluginIcon:
+        return PluginIcon.builtin("SP_FileIcon")
+    
+    @property
+    def skill_description(self) -> str:
+        return "插件功能简介"
+    
+    @property
+    def tags(self) -> Optional[list[str]]:
+        return ["tag1", "tag2"]
+    
+    @property
+    def dependencies(self) -> Optional[Dict[str, str]]:
+        return None
 ```
 
-### 步骤 2：重构 entrance.py
-```python
-from .service import Service
+### 步骤 2：定义 service_api
+根据 service.py 中的方法，逐一在 service_api 中定义接口规范。
 
-class Plugin(IPlugin):
-    def get_widget(self, parent=None, data_provider=None):
-        service = Service()
-        
-        # UI 代码
-        button.clicked.connect(
-            lambda: output.setText(service.method_name(input.text()))
-        )
-```
+### 步骤 3：选择图标
+根据插件功能选择合适的图标。
 
-### 步骤 3：测试
-- 运行程序验证功能正常
-- 测试各种边界情况
-- 确保没有引入新问题
+### 步骤 4：测试
+- 运行程序验证图标显示正常
+- 验证插件信息正确显示
+- 测试 MCP 系统能否正确读取元数据
 
 ## 技术支持
 
@@ -567,3 +1207,4 @@ class Plugin(IPlugin):
 - 查看示例插件代码
 - 阅读相关文档
 - 提交 Issue 到项目仓库
+- 参考插件开发指南

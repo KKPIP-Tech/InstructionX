@@ -16,10 +16,6 @@ class ColorConverterPlugin(IPlugin):
     def plugin_name(self) -> str:
         return "颜色转换"
     
-    @property
-    def skill_description(self) -> str:
-        return "HEX/RGB 颜色格式转换"
-    
     def get_widget(self, parent=None, data_provider=None) -> QWidget:
         # 创建服务实例
         service = Service()

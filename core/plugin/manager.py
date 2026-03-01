@@ -9,6 +9,7 @@ from abc import ABC, abstractmethod
 
 from .plugin_interface import IPlugin
 from .config_manager import PluginConfigManager
+from .plugin_identity import PluginIdentity
 
 
 class PluginManager:
@@ -20,7 +21,8 @@ class PluginManager:
     def __init__(self) -> None:
         self._official_plugins: List[IPlugin] = []
         self._thirdparty_plugins: List[IPlugin] = []
-        self._plugin_registry: Dict[str, IPlugin] = {}
+        self._plugin_registry: Dict[str, IPlugin] = {}  # plugin_id -> plugin
+        self._plugin_name_to_id: Dict[str, str] = {}    # plugin_name -> plugin_id
         
         # 插件目录配置
         self.official_plugin_dir = Path(__file__).parent.parent.parent / "plugin"
@@ -53,7 +55,6 @@ class PluginManager:
                 plugin = self._load_plugin_from_directory(plugin_path)
                 if plugin:
                     self._official_plugins.append(plugin)
-                    self._plugin_registry[plugin.plugin_name] = plugin
         
         return self._official_plugins
     
@@ -76,7 +77,6 @@ class PluginManager:
                 plugin = self._load_plugin_from_directory(plugin_path)
                 if plugin:
                     self._thirdparty_plugins.append(plugin)
-                    self._plugin_registry[plugin.plugin_name] = plugin
         
         return self._thirdparty_plugins
     
@@ -141,6 +141,17 @@ class PluginManager:
             
             # 实例化插件
             plugin_instance = plugin_class()
+            
+            # 生成或加载 UUID
+            identity = PluginIdentity(plugin_dir)
+            plugin_id = identity.load_or_create_id()
+            plugin_instance._plugin_id = plugin_id
+            
+            # 存储映射关系
+            plugin_instance._plugin_name = plugin_instance.plugin_name
+            self._plugin_registry[plugin_id] = plugin_instance
+            self._plugin_name_to_id[plugin_instance.plugin_name] = plugin_id
+            
             return plugin_instance
             
         except Exception as e:
@@ -178,7 +189,32 @@ class PluginManager:
         self._official_plugins.clear()
         self._thirdparty_plugins.clear()
         self._plugin_registry.clear()
+        self._plugin_name_to_id.clear()
         self.load_plugins()
+    
+    def get_plugin_by_id(self, plugin_id: str) -> Optional[IPlugin]:
+        """
+        根据 UUID 获取插件
+        
+        Args:
+            plugin_id: 插件的 UUID
+            
+        Returns:
+            插件实例，如果不存在则返回 None
+        """
+        return self._plugin_registry.get(plugin_id)
+    
+    def get_plugin_id_by_name(self, plugin_name: str) -> Optional[str]:
+        """
+        根据插件名称获取 UUID
+        
+        Args:
+            plugin_name: 插件名称
+            
+        Returns:
+            UUID 字符串，如果不存在则返回 None
+        """
+        return self._plugin_name_to_id.get(plugin_name)
     
     def register_plugin(self, plugin: IPlugin, is_official: bool = False):
         """
@@ -212,11 +248,11 @@ class PluginManager:
         """应用自定义插件顺序（从配置文件加载）"""
         config = self.config_manager.load_plugin_order()
         
-        # 对官方插件排序
+        # 对官方插件排序（使用 UUID）
         if config["official_plugins"]:
             ordered_plugins = []
-            for plugin_name in config["official_plugins"]:
-                plugin = self._plugin_registry.get(plugin_name)
+            for plugin_id in config["official_plugins"]:
+                plugin = self._plugin_registry.get(plugin_id)
                 if plugin and plugin in self._official_plugins:
                     ordered_plugins.append(plugin)
             
@@ -227,11 +263,11 @@ class PluginManager:
             
             self._official_plugins = ordered_plugins
         
-        # 对第三方插件排序
+        # 对第三方插件排序（使用 UUID）
         if config["thirdparty_plugins"]:
             ordered_plugins = []
-            for plugin_name in config["thirdparty_plugins"]:
-                plugin = self._plugin_registry.get(plugin_name)
+            for plugin_id in config["thirdparty_plugins"]:
+                plugin = self._plugin_registry.get(plugin_id)
                 if plugin and plugin in self._thirdparty_plugins:
                     ordered_plugins.append(plugin)
             
@@ -242,23 +278,23 @@ class PluginManager:
             
             self._thirdparty_plugins = ordered_plugins
     
-    def save_plugin_order(self, official_plugin_names: List[str], thirdparty_plugin_names: List[str]) -> bool:
+    def save_plugin_order(self, official_plugin_ids: List[str], thirdparty_plugin_ids: List[str]) -> bool:
         """
         保存插件顺序到配置文件
         
         Args:
-            official_plugin_names: 官方插件名称列表
-            thirdparty_plugin_names: 第三方插件名称列表
+            official_plugin_ids: 官方插件 UUID 列表
+            thirdparty_plugin_ids: 第三方插件 UUID 列表
             
         Returns:
             保存是否成功
         """
-        return self.config_manager.save_plugin_order(official_plugin_names, thirdparty_plugin_names)
+        return self.config_manager.save_plugin_order(official_plugin_ids, thirdparty_plugin_ids)
     
-    def get_official_plugin_names(self) -> List[str]:
-        """获取所有官方插件名称（按当前顺序）"""
-        return [plugin.plugin_name for plugin in self._official_plugins]
+    def get_official_plugin_ids(self) -> List[str]:
+        """获取所有官方插件 UUID（按当前顺序）"""
+        return [plugin.plugin_id for plugin in self._official_plugins if plugin.plugin_id]
     
-    def get_thirdparty_plugin_names(self) -> List[str]:
-        """获取所有第三方插件名称（按当前顺序）"""
-        return [plugin.plugin_name for plugin in self._thirdparty_plugins]
+    def get_thirdparty_plugin_ids(self) -> List[str]:
+        """获取所有第三方插件 UUID（按当前顺序）"""
+        return [plugin.plugin_id for plugin in self._thirdparty_plugins if plugin.plugin_id]

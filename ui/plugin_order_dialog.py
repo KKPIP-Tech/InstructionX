@@ -243,32 +243,30 @@ class PluginOrderDialog(QDialog):
         # 更新官方插件列表的图标
         for i in range(self.official_list.count()):
             item = self.official_list.item(i)
-            plugin_name = item.data(Qt.ItemDataRole.UserRole)
-            # 查找对应的插件
-            for plugin in self.plugin_manager.get_official_plugins():
-                if plugin.plugin_name == plugin_name:
-                    icon = getattr(plugin, 'skill_icon', None)
-                    if icon is None:
-                        style = self.style()
-                        icon = style.standardIcon(QStyle.StandardPixmap.SP_FileIcon)
-                    combined_icon = self._create_icon_with_number(icon, i + 1)
-                    item.setIcon(combined_icon)
-                    break
+            plugin_id = item.data(Qt.ItemDataRole.UserRole)
+            # 通过 UUID 查找对应的插件
+            plugin = self.plugin_manager.get_plugin_by_id(plugin_id)
+            if plugin:
+                icon = getattr(plugin, 'skill_icon', None)
+                if icon is None or icon.isNull():
+                    style = self.style()
+                    icon = style.standardIcon(QStyle.StandardPixmap.SP_FileIcon)
+                combined_icon = self._create_icon_with_number(icon, i + 1)
+                item.setIcon(combined_icon)
         
         # 更新第三方插件列表的图标
         for i in range(self.thirdparty_list.count()):
             item = self.thirdparty_list.item(i)
-            plugin_name = item.data(Qt.ItemDataRole.UserRole)
-            # 查找对应的插件
-            for plugin in self.plugin_manager.get_thirdparty_plugins():
-                if plugin.plugin_name == plugin_name:
-                    icon = getattr(plugin, 'skill_icon', None)
-                    if icon is None:
-                        style = self.style()
-                        icon = style.standardIcon(QStyle.StandardPixmap.SP_FileIcon)
-                    combined_icon = self._create_icon_with_number(icon, i + 1)
-                    item.setIcon(combined_icon)
-                    break
+            plugin_id = item.data(Qt.ItemDataRole.UserRole)
+            # 通过 UUID 查找对应的插件
+            plugin = self.plugin_manager.get_plugin_by_id(plugin_id)
+            if plugin:
+                icon = getattr(plugin, 'skill_icon', None)
+                if icon is None or icon.isNull():
+                    style = self.style()
+                    icon = style.standardIcon(QStyle.StandardPixmap.SP_FileIcon)
+                combined_icon = self._create_icon_with_number(icon, i + 1)
+                item.setIcon(combined_icon)
     
     def _load_plugins(self):
         """加载插件到列表"""
@@ -290,7 +288,7 @@ class PluginOrderDialog(QDialog):
         for index, plugin in enumerate(official_plugins, start=1):
             # 获取插件图标
             icon = getattr(plugin, 'skill_icon', None)
-            if icon is None:
+            if icon is None or icon.isNull():
                 # 使用默认图标
                 style = self.style()
                 icon = style.standardIcon(QStyle.StandardPixmap.SP_FileIcon)
@@ -300,7 +298,7 @@ class PluginOrderDialog(QDialog):
             
             # 只显示插件名称，序号在图标中
             item = QListWidgetItem(combined_icon, plugin.plugin_name)
-            item.setData(Qt.ItemDataRole.UserRole, plugin.plugin_name)
+            item.setData(Qt.ItemDataRole.UserRole, plugin.plugin_id)  # 使用 UUID
             self.official_list.addItem(item)
         
         # 加载第三方插件
@@ -308,7 +306,7 @@ class PluginOrderDialog(QDialog):
         for index, plugin in enumerate(thirdparty_plugins, start=1):
             # 获取插件图标
             icon = getattr(plugin, 'skill_icon', None)
-            if icon is None:
+            if icon is None or icon.isNull():
                 # 使用默认图标
                 style = self.style()
                 icon = style.standardIcon(QStyle.StandardPixmap.SP_FileIcon)
@@ -318,7 +316,7 @@ class PluginOrderDialog(QDialog):
             
             # 只显示插件名称，序号在图标中
             item = QListWidgetItem(combined_icon, plugin.plugin_name)
-            item.setData(Qt.ItemDataRole.UserRole, plugin.plugin_name)
+            item.setData(Qt.ItemDataRole.UserRole, plugin.plugin_id)  # 使用 UUID
             self.thirdparty_list.addItem(item)
     
     def _get_ordered_plugin_names(self, list_widget: QListWidget) -> List[str]:

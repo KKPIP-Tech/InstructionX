@@ -250,7 +250,7 @@ class SkillsPanel(QWidget):
         # 获取插件图标和描述
         try:
             icon = getattr(plugin, 'skill_icon', None)
-            if icon is None:
+            if icon is None or (isinstance(icon, QIcon) and icon.isNull()):
                 # 使用默认图标
                 style = self.style()
                 icon = style.standardIcon(QStyle.StandardPixmap.SP_FileIcon)
