@@ -1,0 +1,25 @@
+{
+  "plugins": {
+    "video-editor-001": {
+      "type": "VideoEditor",
+      "active": true,
+      "private": {
+        "project_name": "My Awesome Project",
+        "resolution": "1920x1080"
+      },
+      "public": {
+        "video_duration": 180,
+        "frame_rate": 60
+      }
+    },
+    "exporter-001": {
+      "type": "Exporter",
+      "active": false,
+      "private": {},
+      "public": {}
+    }
+  },
+  "active_instances": {
+    "VideoEditor": "video-editor-001"
+  }
+}
