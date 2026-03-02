@@ -1,25 +1,47 @@
 {
   "plugins": {
-    "video-editor-001": {
-      "type": "VideoEditor",
+    "78c6fabc-1d85-4683-89e8-b2909b523c49": {
+      "type": "TaskManager",
       "active": true,
       "private": {
-        "project_name": "My Awesome Project",
-        "resolution": "1920x1080"
+        "tasks": [
+          {
+            "id": "task_20260302124537673531",
+            "title": "123",
+            "description": "",
+            "priority": "low",
+            "status": "pending",
+            "created_at": "2026-03-02T12:45:37.673596",
+            "updated_at": "2026-03-02T12:45:37.673602"
+          },
+          {
+            "id": "task_20260302124612657035",
+            "title": "1222",
+            "description": "",
+            "priority": "low",
+            "status": "pending",
+            "created_at": "2026-03-02T12:46:12.657088",
+            "updated_at": "2026-03-02T12:46:12.657092"
+          }
+        ]
       },
       "public": {
-        "video_duration": 180,
-        "frame_rate": 60
+        "statistics": {
+          "total": 2,
+          "pending": 2,
+          "in_progress": 0,
+          "completed": 0,
+          "cancelled": 0
+        },
+        "last_event": {
+          "type": "task_added",
+          "task_id": "task_20260302124612657035",
+          "timestamp": "2026-03-02T12:46:12.663025"
+        }
       }
-    },
-    "exporter-001": {
-      "type": "Exporter",
-      "active": false,
-      "private": {},
-      "public": {}
     }
   },
   "active_instances": {
-    "VideoEditor": "video-editor-001"
+    "TaskManager": "78c6fabc-1d85-4683-89e8-b2909b523c49"
   }
 }

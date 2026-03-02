@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt
 from core.plugin.plugin_interface import IPlugin
+from core.data.data_provider import DataProvider, DataProviderError
 from .service import TaskService
 
 
@@ -21,19 +22,37 @@ class TaskManagerPlugin(IPlugin):
         return "任务\n管理器"
     
     def get_widget(self, parent=None, data_provider=None) -> QWidget:
+        # 使用单例的 DataProvider
+        dp = DataProvider()
+        
         # 确保 plugin_id 存在
         if not self.plugin_id:
-            self.plugin_id = "task-manager-default"
+            self._plugin_id = "task-manager-default"
+        
+        # 获取实际的 plugin_id（此时保证不为 None）
+        actual_plugin_id = self.plugin_id
+        if actual_plugin_id is None:
+            # 理论上不应该到这里，但作为最后的保障
+            actual_plugin_id = "task-manager-default"
+            self._plugin_id = actual_plugin_id
+        
+        # 尝试注册插件（如果不存在）
+        try:
+            dp.register_plugin(actual_plugin_id, "TaskManager")
+            dp.set_active_instance(actual_plugin_id)
+        except DataProviderError:
+            # 插件已存在，忽略
+            pass
         
         # 创建服务实例
-        service = TaskService(self.plugin_id)
+        service = TaskService(actual_plugin_id)
         
-        # 注册插件（如果还没注册）
+        # 如果外部传入了 data_provider，也尝试使用它注册（保持向后兼容）
         if data_provider:
             try:
-                data_provider.register_plugin(self.plugin_id, "TaskManager")
-                data_provider.set_active_instance(self.plugin_id)
-            except:
+                data_provider.register_plugin(actual_plugin_id, "TaskManager")
+                data_provider.set_active_instance(actual_plugin_id)
+            except DataProviderError:
                 pass
         
         widget = QWidget(parent)
@@ -224,8 +243,14 @@ class TaskManagerPlugin(IPlugin):
             if item:
                 item.setData(Qt.ItemDataRole.UserRole, task["id"])
     
-    def _refresh_tasks(self, service):
+    def _refresh_tasks(self, service=None):
         """刷新任务列表"""
+        # 如果没有传入 service，则重新创建
+        if service is None:
+            if not self.plugin_id:
+                return
+            service = TaskService(self.plugin_id)
+        
         tasks = service.get_tasks()
         self.task_list.clear()
         
@@ -235,8 +260,14 @@ class TaskManagerPlugin(IPlugin):
             if item:
                 item.setData(Qt.ItemDataRole.UserRole, task["id"])
     
-    def _update_stats(self, service):
+    def _update_stats(self, service=None):
         """更新统计信息"""
+        # 如果没有传入 service，则重新创建
+        if service is None:
+            if not self.plugin_id:
+                return
+            service = TaskService(self.plugin_id)
+        
         stats = service.get_statistics()
         text = f"总计: {stats['total']} | 待办: {stats['pending']} | 进行中: {stats['in_progress']} | 已完成: {stats['completed']}"
         self.stats_label.setText(text)
