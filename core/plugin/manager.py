@@ -241,10 +241,10 @@ class PluginManager:
     def get_plugin_id_by_name(self, plugin_name: str) -> Optional[str]:
         """
         根据插件名称获取 UUID
-        
+
         Args:
             plugin_name: 插件名称
-            
+
         Returns:
             UUID 字符串，如果不存在则返回 None
         """
@@ -347,12 +347,13 @@ class PluginManager:
             # 尝试导入 information.py
             info_file = plugin_dir / "information.py"
             if not info_file.exists():
-                return
-            
+                                return
+
             # 尝试导入 service.py
             service_file = plugin_dir / "service.py"
             if not service_file.exists():
-                return
+                                return
+
             
             # 动态导入模块
             module_name = plugin_dir.name
@@ -452,8 +453,7 @@ class PluginManager:
         
         # 存储到注册表
         self._api_registry[plugin_id] = plugin_api
-        print(f"✅ 插件 {plugin_id} 的 API 已注册 ({len(plugin_api.api_methods)} 个方法)")
-    
+            
     def unregister_plugin_api(self, plugin_id: str) -> None:
         """
         注销插件的 API 方法
@@ -463,8 +463,7 @@ class PluginManager:
         """
         if plugin_id in self._api_registry:
             del self._api_registry[plugin_id]
-            print(f"✅ 插件 {plugin_id} 的 API 已注销")
-    
+                
     def get_plugin_api(self, plugin_id: str) -> Optional[Dict[str, Any]]:
         """
         获取插件的 API 信息
