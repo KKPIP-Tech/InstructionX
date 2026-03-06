@@ -25,7 +25,8 @@ from PySide6.QtCore import (
 # ===================================================================
 # 自定义工具
 from ui.skills_panel.panel import SkillsPanel
-from ui.plugin_order_dialog import PluginOrderDialog
+from ui.dialog.plugin_order_dialog import PluginOrderDialog
+from ui.work_area.work_area import WorkArea
 from core.plugin.manager import PluginManager
 
 
@@ -118,22 +119,11 @@ class InstructionXMainWindow(QMainWindow):
         main_layout.addWidget(separator)
         
         # 创建工作区（可伸缩）
-        self.work_area = QWidget()
-        self.work_layout = QVBoxLayout(self.work_area)
-        self.work_layout.setContentsMargins(0, 0, 0, 0)
-        
-        # 初始显示的占位标签
-        self.work_placeholder = QLabel("点击上方技能按钮，在此处显示插件功能")
-        self.work_placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.work_placeholder.setStyleSheet("""
-            QLabel {
-                color: #999999;
-                font-size: 14px;
-            }
-        """)
-        self.work_layout.addWidget(self.work_placeholder)
-        
-        main_layout.addWidget(self.work_area, stretch=1)  # 工作区可伸缩
+        self.work_area = WorkArea(central_widget)
+        main_layout.addWidget(self.work_area.get_widget(), stretch=1)
+
+        # 设置清除高亮的回调
+        self.work_area.set_clear_highlight_callback(self.skills_panel.clear_active_state)
         
         # 连接技能点击信号
         self.skills_panel.skill_clicked.connect(self._on_skill_clicked)
@@ -145,51 +135,19 @@ class InstructionXMainWindow(QMainWindow):
         注意：不清除按钮的高亮状态，让用户知道当前正在使用哪个插件
         """
         # 清空工作区（不清除按钮高亮）
-        self._clear_work_area_keep_highlight()
-        
+        self.work_area.clear_keep_highlight()
+
         # 获取插件的 widget 并显示在工作区
-        plugin_widget = plugin.get_widget(parent=self.work_area)
+        plugin_widget = plugin.get_widget(parent=self.work_area.get_widget())
         if plugin_widget:
-            self.work_layout.addWidget(plugin_widget)
+            self.work_area.add_widget(plugin_widget)
         else:
             # 如果插件 widget 创建失败，显示错误信息
             error_label = QLabel(f"无法加载插件：{plugin.plugin_name}")
             error_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
             error_label.setStyleSheet("color: red;")
-            self.work_layout.addWidget(error_label)
-    
-    def _clear_work_area(self):
-        """清空工作区"""
-        while self.work_layout.count():
-            item: Optional[QLayoutItem] = self.work_layout.takeAt(0)
-            if item:
-                widget = item.widget()
-                if widget:
-                    widget.deleteLater()
-            # 清理 item 对象
-            if item:
-                del item
-        
-        # 清空工作区时，取消所有插件按钮的高亮状态
-        self.skills_panel.clear_active_state()
-    
-    def _clear_work_area_keep_highlight(self):
-        """
-        清空工作区，但保留按钮的高亮状态
-        用于切换插件时保持当前激活按钮的高亮
-        """
-        while self.work_layout.count():
-            item: Optional[QLayoutItem] = self.work_layout.takeAt(0)
-            if item:
-                widget = item.widget()
-                if widget:
-                    widget.deleteLater()
-            # 清理 item 对象
-            if item:
-                del item
-        
-        # 注意：这里不调用 clear_active_state()，保留按钮的高亮状态
-    
+            self.work_area.add_widget(error_label)
+
     def _open_plugin_order_dialog(self):
         """
         打开插件排序对话框
