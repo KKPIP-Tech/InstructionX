@@ -5,7 +5,7 @@
 from core.plugin.plugin_info_interface import IPluginInfo
 from core.plugin.plugin_version import PluginVersion
 from core.plugin.plugin_icon import PluginIcon
-from typing import Dict, Any
+from typing import Dict, Any, List
 
 class StringToolsPluginInfo(IPluginInfo):
     """字符串工具插件元数据"""
@@ -178,7 +178,7 @@ class StringToolsPluginInfo(IPluginInfo):
         return "提供字符串处理工具"
     
     @property
-    def tags(self) -> list[str]:
+    def tags(self) -> List[str]:
         """插件标签"""
         return ["text", "string", "formatting", "utility"]
     
