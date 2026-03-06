@@ -58,6 +58,10 @@ dandu# Skills Panel 实现总结
 ### 新增文件
 ```
 ui/skills_panel/panel.py           # SkillsPanel UI 实现
+ui/dialog/__init__.py              # 对话框模块
+ui/dialog/plugin_order_dialog.py   # 插件排序对话框
+ui/work_area/__init__.py            # 工作区模块
+ui/work_area/work_area.py           # 工作区管理类
 plugin/official/text_formatting/__init__.py  # 官方插件示例
 custom_plugin/color_converter/__init__.py   # 第三方插件示例
 docs/SKILLS_PANEL_GUIDE.md        # 使用指南
@@ -68,7 +72,7 @@ docs/SKILLS_PANEL_SUMMARY.md      # 实现总结
 ```
 core/plugin/manager.py            # 增强插件管理器
 core/plugin/plugin_interface.py    # 增强插件接口
-ui/main_window.py                 # 集成 SkillsPanel
+ui/main_window.py                 # 集成 SkillsPanel 和 WorkArea
 ```
 
 ### 新增目录

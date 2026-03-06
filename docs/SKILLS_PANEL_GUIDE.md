@@ -30,7 +30,15 @@ InstructionX/
 │       ├── plugin_interface.py    # 插件接口定义
 │       └── manager.py              # 插件管理器
 ├── ui/
+│   ├── main_window.py            # 主窗口
+│   ├── dialog/                   # 对话框模块
+│   │   ├── __init__.py
+│   │   └── plugin_order_dialog.py # 插件排序对话框
+│   ├── work_area/                # 工作区模块
+│   │   ├── __init__.py
+│   │   └── work_area.py         # 工作区管理类
 │   └── skills_panel/
+│       ├── __init__.py
 │       └── panel.py               # SkillsPanel UI 实现
 ├── plugin/                        # 官方插件目录
 │   ├── text_formatting/          # 文本格式化插件
