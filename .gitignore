@@ -210,3 +210,5 @@ __marimo__/
 .vscode
 
 .config/
+.claude/
+./data/assets/plugins/
