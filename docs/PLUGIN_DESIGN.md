@@ -169,7 +169,7 @@ class PluginName(IPlugin):
     def plugin_name(self) -> str:
         return "插件名称"
     
-    def get_widget(self, parent=None, data_provider=None) -> QWidget:
+    def _create_widget(self, parent=None, data_provider=None) -> QWidget:
         # 创建服务实例
         service = Service()
         
@@ -641,7 +641,7 @@ class TextFormattingPlugin(IPlugin):
     def plugin_name(self) -> str:
         return "文本\n格式化"
     
-    def get_widget(self, parent=None, data_provider=None) -> QWidget:
+    def _create_widget(self, parent=None, data_provider=None) -> QWidget:
         # 创建服务实例
         service = Service()
         
@@ -839,7 +839,7 @@ class ColorConverterPlugin(IPlugin):
     def plugin_name(self) -> str:
         return "颜色转换"
     
-    def get_widget(self, parent=None, data_provider=None) -> QWidget:
+    def _create_widget(self, parent=None, data_provider=None) -> QWidget:
         # 创建服务实例
         service = Service()
         
@@ -983,7 +983,7 @@ class ColorConverterPlugin(IPlugin):
 ### entrance.py 设计规范
 
 1. **服务实例化**
-   - 在 `get_widget()` 方法开始时创建 Service 实例
+   - 在 _create_widget() 方法开始时创建 Service 实例
    - 不要在类级别实例化
 
 2. **UI 构建**

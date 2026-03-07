@@ -16,7 +16,7 @@ class CodeFormatterPlugin(IPlugin):
     def plugin_name(self) -> str:
         return "代码\n格式化"
     
-    def get_widget(self, parent=None, data_provider=None) -> QWidget:
+    def _create_widget(self, parent=None, data_provider=None) -> QWidget:
         # 创建服务实例
         service = Service()
         

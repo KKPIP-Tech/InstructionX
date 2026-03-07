@@ -30,7 +30,7 @@ dandu# Skills Panel 实现总结
 
 ### 3. 插件接口增强
 - ✅ `plugin_name` 属性（必需）
-- ✅ `get_widget()` 方法（必需）
+- ✅ _create_widget() 方法（必需）
 - ✅ `skill_icon` 属性（可选）
 - ✅ `skill_description` 属性（可选）
 - ✅ `skill_tooltip` 属性（可选）

@@ -25,7 +25,7 @@ class ApiDemoPlugin(IPlugin):
     def plugin_name(self) -> str:
         return "API 调用\n演示"
 
-    def get_widget(self, parent=None, data_provider=None) -> QWidget:
+    def _create_widget(self, parent=None, data_provider=None) -> QWidget:
         widget = QWidget(parent)
         layout = QVBoxLayout(widget)
 

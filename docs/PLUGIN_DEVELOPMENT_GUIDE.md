@@ -164,7 +164,7 @@ class Service:
 ```python
 # plugin/my_plugin/entrance.py
 class MyPlugin(IPlugin):
-    def get_widget(self, parent=None, data_provider=None):
+    def _create_widget(self, parent=None, data_provider=None):
         plugin_id = self.plugin_id or "my-plugin-default"
 
         # 创建服务实例
@@ -358,7 +358,7 @@ class TextFormattingPlugin(IPlugin):
     def plugin_name(self):
         return "文本\n格式化"
 
-    def get_widget(self, parent=None, data_provider=None):
+    def _create_widget(self, parent=None, data_provider=None):
         plugin_id = self.plugin_id or "text-formatting-default"
         service = Service(plugin_id)
 
@@ -377,6 +377,20 @@ class TextFormattingPlugin(IPlugin):
 
         return widget
 ```
+
+### 5.4 UI 持久化机制
+
+从系统层面支持插件 UI 状态持久化。当用户切换插件再切换回来时，插件的 UI 状态会自动保持，无需开发者额外编写代码。
+
+**实现原理：**
+- `IPlugin` 基类中会自动缓存插件创建的 Widget 实例
+- 切换插件时，Widget 会被隐藏但不会被销毁
+- 再次切换回来时，会自动复用缓存的 Widget
+
+**开发者注意事项：**
+- 无需修改任何代码即可享受此功能
+- `_create_widget` 方法只会在首次创建 Widget 时调用，后续切换会直接返回缓存的实例
+- 如果需要在 Widget 创建时执行特定逻辑，可以重写 `get_widget` 方法（需调用父类方法）
 
 ---
 

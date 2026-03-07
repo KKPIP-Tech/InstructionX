@@ -20,7 +20,7 @@ class TaskReporterPlugin(IPlugin):
     def plugin_name(self) -> str:
         return "任务\n报告"
 
-    def get_widget(self, parent=None, data_provider=None) -> QWidget:
+    def _create_widget(self, parent=None, data_provider=None) -> QWidget:
         # 确保 plugin_id 存在
         plugin_id = self.plugin_id if self.plugin_id else "task-reporter-default"
 

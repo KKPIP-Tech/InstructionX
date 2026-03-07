@@ -101,7 +101,7 @@ class YourPlugin(IPlugin):
         """返回技能的简短描述"""
         return "插件功能的简短描述"
     
-    def get_widget(self, parent=None, data_provider=None) -> QWidget:
+    def _create_widget(self, parent=None, data_provider=None) -> QWidget:
         """
         获取插件的主 widget
         
@@ -184,7 +184,7 @@ class IPlugin(ABC):
         pass
     
     @abstractmethod
-    def get_widget(self, parent=None, data_provider=None) -> QWidget:
+    def _create_widget(self, parent=None, data_provider=None) -> QWidget:
         """获取插件控件（必须实现）"""
         pass
     
@@ -324,7 +324,7 @@ def _apply_style(self):
 ### 技能按钮点击无反应
 
 1. 检查信号连接是否正确
-2. 确认 `get_widget()` 方法返回有效的 QWidget
+2. 确认 _create_widget() 方法返回有效的 QWidget
 3. 查看控制台是否有错误信息
 
 ## 扩展功能建议

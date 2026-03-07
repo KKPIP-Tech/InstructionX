@@ -307,7 +307,7 @@ class TextFormattingPlugin(IPlugin):
     def plugin_name(self) -> str:
         return "文本格式化"
     
-    def get_widget(self, parent=None, data_provider=None):
+    def _create_widget(self, parent=None, data_provider=None):
         # 注意：API 由 PluginManager 自动注册，无需手动注册
         widget = QWidget(parent)
         layout = QVBoxLayout(widget)

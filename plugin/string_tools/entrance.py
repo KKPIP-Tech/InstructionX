@@ -19,7 +19,7 @@ class StringToolsPlugin(IPlugin):
     def plugin_name(self) -> str:
         return "字符串\n工具"
 
-    def get_widget(self, parent=None, data_provider=None) -> QWidget:
+    def _create_widget(self, parent=None, data_provider=None) -> QWidget:
         # 创建服务实例
         service = Service()
 

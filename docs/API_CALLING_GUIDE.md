@@ -172,7 +172,7 @@ API_DESCRIPTIONS = {
 from core.plugin.plugin_interface import IPlugin
 
 class TaskManagerPlugin(IPlugin):
-    def get_widget(self, parent=None, data_provider=None):
+    def _create_widget(self, parent=None, data_provider=None):
         # 确保 plugin_id 存在
         plugin_id = self.plugin_id if self.plugin_id else "task-manager-default"
         

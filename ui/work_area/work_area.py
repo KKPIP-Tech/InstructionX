@@ -72,13 +72,17 @@ class WorkArea:
         """
         清空工作区，但保留按钮的高亮状态
         用于切换插件时保持当前激活按钮的高亮
+        注意：这里不再调用 deleteLater()，而是保留 Widget 实例以便缓存复用
         """
         while self.work_layout.count():
             item: Optional[QLayoutItem] = self.work_layout.takeAt(0)
             if item:
                 widget = item.widget()
                 if widget:
-                    widget.deleteLater()
+                    # 隐藏 widget，避免 Qt 状态问题
+                    widget.hide()
+                # 不再调用 deleteLater()，保留 widget 实例以便缓存复用
+                # widget 会被 IPlugin 基类缓存，下次切换回来时直接使用
             if item:
                 del item
 
@@ -90,6 +94,8 @@ class WorkArea:
             widget: 要添加的 QWidget
         """
         self.work_layout.addWidget(widget)
+        # 确保 widget 可见
+        widget.show()
 
     def show_placeholder(self):
         """显示占位标签"""

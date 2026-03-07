@@ -21,7 +21,7 @@ class TaskManagerPlugin(IPlugin):
     def plugin_name(self) -> str:
         return "任务\n管理器"
     
-    def get_widget(self, parent=None, data_provider=None) -> QWidget:
+    def _create_widget(self, parent=None, data_provider=None) -> QWidget:
         # 使用单例的 DataProvider
         dp = DataProvider()
         

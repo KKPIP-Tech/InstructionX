@@ -18,36 +18,68 @@ class IPlugin(ABC):
     """
     插件抽象基类
     """
-    
+
     def __init__(self):
         """初始化插件"""
         self._plugin_id: Optional[str] = None
         self._plugin_name: Optional[str] = None
-    
+        self._cached_widget: Optional[QWidget] = None
+        self._cached_parent: Optional[QWidget] = None
+
     @property
     @abstractmethod
     def plugin_name(self) -> str:
         """
         插件名称
-        
+
         Returns:
             插件名称字符串
         """
         pass
-    
+
     @abstractmethod
-    def get_widget(self, parent=None, data_provider=None) -> QWidget:
+    def _create_widget(self, parent=None, data_provider=None) -> QWidget:
         """
-        获取插件控件
-        
+        创建插件控件的内部方法
+
         Args:
             parent: 父控件
             data_provider: 主程序提供的数据对象（DataProvider）
-            
+
         Returns:
             插件的 QWidget 控件
         """
         pass
+
+    def get_widget(self, parent=None, data_provider=None) -> QWidget:
+        """
+        获取插件控件（带缓存）
+
+        首次调用时创建 Widget 并缓存，后续调用返回缓存的实例
+        如果传入了不同的 parent，会重新设置 Widget 的 parent
+
+        Args:
+            parent: 父控件
+            data_provider: 主程序提供的数据对象（DataProvider）
+
+        Returns:
+            插件的 QWidget 控件
+        """
+        # 如果有缓存的 widget 且 parent 相同，直接返回
+        if self._cached_widget is not None and self._cached_parent is parent:
+            return self._cached_widget
+
+        # 如果有缓存的 widget 但 parent 不同，更新 parent
+        if self._cached_widget is not None:
+            self._cached_widget.setParent(parent)
+            self._cached_parent = parent
+            return self._cached_widget
+
+        # 创建新的 widget
+        widget = self._create_widget(parent, data_provider)
+        self._cached_widget = widget
+        self._cached_parent = parent
+        return widget
     
     @property
     def skill_icon(self) -> Optional[QIcon]:
