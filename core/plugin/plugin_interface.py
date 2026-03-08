@@ -214,12 +214,22 @@ class IPlugin(ABC):
     def plugin_id(self) -> Optional[str]:
         """
         返回插件的唯一标识符 (UUID)
-        
+
         Returns:
             UUID 字符串，如果未设置则返回 None
         """
         return self._plugin_id
-    
+
+    def on_plugin_loaded(self) -> None:
+        """
+        插件加载完成回调
+
+        在插件被加载且 plugin_id 已设置后调用。
+        可用于注册定时任务工厂等需要在插件加载时执行的初始化操作。
+        注意：此时插件的 UI 尚未创建，不要在此方法中创建 QWidget。
+        """
+        pass
+
     @property
     def plugin_info(self) -> Optional['IPluginInfo']:
         """

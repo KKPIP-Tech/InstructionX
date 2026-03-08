@@ -177,7 +177,10 @@ class PluginManager:
             identity = PluginIdentity(plugin_dir)
             plugin_id = identity.load_or_create_id()
             plugin_instance._plugin_id = plugin_id
-            
+
+            # 调用插件加载完成回调
+            plugin_instance.on_plugin_loaded()
+
             # 存储映射关系
             plugin_instance._plugin_name = plugin_instance.plugin_name
             self._plugin_registry[plugin_id] = plugin_instance

@@ -48,6 +48,12 @@
           "timestamp": "2026-03-06T14:32:44.825393"
         }
       }
+    },
+    "background_task_demo": {
+      "type": "official",
+      "active": false,
+      "private": {},
+      "public": {}
     }
   },
   "active_instances": {

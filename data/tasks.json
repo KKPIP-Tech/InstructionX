@@ -1,0 +1,20 @@
+{
+  "tasks": {},
+  "scheduled_tasks": {
+    "3a00e483-4c36-4c7b-aa6c-885ea0846584": {
+      "task_id": "3a00e483-4c36-4c7b-aa6c-885ea0846584",
+      "plugin_id": "804c7f0b-53bc-4443-8869-6b27bea887d1",
+      "name": "测试任务",
+      "interval": 5,
+      "enabled": true,
+      "args": [
+        "测试任务_定时",
+        1
+      ],
+      "kwargs": {},
+      "last_run": "2026-03-08T21:54:30.875879",
+      "next_run": "2026-03-08T21:54:35.875935",
+      "created_at": "2026-03-08T20:52:30.391173"
+    }
+  }
+}
