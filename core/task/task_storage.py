@@ -409,6 +409,7 @@ class TaskStorage:
             self._cache = data
             self.save_data()
             return True
+        print(f"[TaskStorage] Task not found")
         return False
 
     def update_long_running_task(self, task: LongRunningTask) -> None:
