@@ -13,9 +13,16 @@ class Service:
     def __init__(self, plugin_id: str = None, data_provider=None):
         self.plugin_id = plugin_id
         self.data_provider = data_provider or DataProvider()
-        self._server_task_id = None
-        self._request_count = 0
-        self._is_running = False
+
+        # 从 DataProvider 恢复状态
+        if plugin_id:
+            self._server_task_id = self.load_data("server_task_id")
+            self._request_count = self.load_data("request_count", 0)
+            self._is_running = self.load_data("is_running", False)
+        else:
+            self._server_task_id = None
+            self._request_count = 0
+            self._is_running = False
 
     def get_status(self) -> dict:
         """获取服务器状态"""

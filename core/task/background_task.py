@@ -88,6 +88,12 @@ class BackgroundTaskManager:
         # 线程安全锁
         self._task_lock = threading.RLock()
 
+        # 停止事件（用于优雅关闭检查线程）
+        self._stop_event = threading.Event()
+
+        # 关闭标志（防止关闭后提交新任务）
+        self._is_shutdown = False
+
         # 启动调度器
         self._scheduler.start()
 
@@ -168,6 +174,8 @@ class BackgroundTaskManager:
         self._storage.save_task(task)
 
         with self._task_lock:
+            if self._is_shutdown:
+                return None
             self._running_tasks[task.task_id] = task
             future = self._executor.submit(self._execute_async_task, task)
             self._futures[task.task_id] = future
@@ -376,7 +384,7 @@ class BackgroundTaskManager:
 
     def _check_scheduled_tasks(self) -> None:
         """检查并执行到期的定时任务"""
-        while True:
+        while not self._stop_event.is_set():
             try:
                 with self._task_lock:
                     tasks_to_run = []
@@ -398,10 +406,14 @@ class BackgroundTaskManager:
             except Exception as e:
                 print(f"Error checking scheduled tasks: {e}")
 
-            threading.Event().wait(1.0)
+            # 等待 1 秒或直到停止事件被设置
+            self._stop_event.wait(1.0)
 
     def _execute_scheduled_task(self, task: ScheduledTask) -> None:
         """执行定时任务"""
+        if self._is_shutdown:
+            return
+
         if task.func is None:
             print(f"Warning: Scheduled task {task.task_id} has no func, skipping")
             return
@@ -411,12 +423,18 @@ class BackgroundTaskManager:
 
         self._storage.update_scheduled_task(task)
 
-        self._executor.submit(
-            self._scheduler_callback.execute_scheduled_task,
-            task,
-            task.func,
-            task.callback
-        )
+        try:
+            self._executor.submit(
+                self._scheduler_callback.execute_scheduled_task,
+                task,
+                task.func,
+                task.callback
+            )
+        except RuntimeError as e:
+            if "shutdown" in str(e).lower():
+                pass  # 忽略关闭后的提交错误
+            else:
+                raise
 
     # ==================== 长期任务 ====================
 
@@ -468,6 +486,8 @@ class BackgroundTaskManager:
         self._storage.save_long_running_task(task)
 
         with self._task_lock:
+            if self._is_shutdown:
+                return None
             self._running_long_running_tasks[task.task_id] = task
             future = self._executor.submit(self._execute_long_running_task, task)
             self._futures[task.task_id] = future
@@ -480,7 +500,8 @@ class BackgroundTaskManager:
         func: Callable,
         callback: Optional[Callable] = None,
         stop_callback: Optional[Callable] = None,
-        status_callback: Optional[Callable] = None
+        status_callback: Optional[Callable] = None,
+        restore_callback: Optional[Callable] = None
     ) -> None:
         """
         注册长期任务工厂函数
@@ -494,12 +515,14 @@ class BackgroundTaskManager:
             callback: 可选的回调函数
             stop_callback: 可选的停止回调
             status_callback: 可选的状态更新回调
+            restore_callback: 可选的恢复回调，任务恢复时调用
         """
         self._long_running_task_factories[plugin_id] = {
             "func": func,
             "callback": callback,
             "stop_callback": stop_callback,
-            "status_callback": status_callback
+            "status_callback": status_callback,
+            "restore_callback": restore_callback
         }
 
         # 尝试恢复该插件的长期任务
@@ -515,6 +538,7 @@ class BackgroundTaskManager:
         callback = factory.get("callback")
         stop_callback = factory.get("stop_callback")
         status_callback = factory.get("status_callback")
+        restore_callback = factory.get("restore_callback")  # 新增：恢复回调
 
         stored_tasks = self._storage.get_long_running_tasks_by_plugin(plugin_id)
         restored_count = 0
@@ -522,6 +546,18 @@ class BackgroundTaskManager:
         for stored_task in stored_tasks:
             # 如果任务已经有 func，跳过
             if stored_task.func is not None:
+                continue
+
+            # 只恢复 enabled=True 的任务
+            if not stored_task.enabled:
+                # 如果任务被禁用，删除存储中的任务记录
+                self._storage.delete_long_running_task(stored_task.task_id)
+                continue
+
+            # 检查任务状态，不恢复已完成/失败的任务
+            if stored_task.current_status in ("completed", "failed", "stopped"):
+                # 删除已完成的任务记录
+                self._storage.delete_long_running_task(stored_task.task_id)
                 continue
 
             # 检查任务是否已经在运行
@@ -535,20 +571,30 @@ class BackgroundTaskManager:
             stored_task.status_callback = status_callback
 
             with self._task_lock:
+                if self._is_shutdown:
+                    break
                 self._running_long_running_tasks[stored_task.task_id] = stored_task
                 future = self._executor.submit(self._execute_long_running_task, stored_task)
                 self._futures[stored_task.task_id] = future
+
+            # 调用恢复回调
+            if restore_callback:
+                try:
+                    restore_callback(stored_task.task_id, stored_task)
+                except Exception as e:
+                    print(f"Error calling restore_callback: {e}")
 
             restored_count += 1
 
         return restored_count
 
-    def stop_long_running_task(self, task_id: str) -> bool:
+    def stop_long_running_task(self, task_id: str, delete_from_storage: bool = True) -> bool:
         """
         停止长期任务
 
         Args:
             task_id: 任务 ID
+            delete_from_storage: 是否从存储中删除任务（默认True，用户主动停止时删除）
 
         Returns:
             是否成功停止
@@ -570,9 +616,14 @@ class BackgroundTaskManager:
             if future and not future.done():
                 future.cancel()
 
-            # 更新任务状态
-            task.last_stopped_at = datetime.now()
-            self._storage.save_long_running_task(task)
+            # 从存储中删除任务（用户主动停止）
+            if delete_from_storage:
+                self._storage.delete_long_running_task(task_id)
+            else:
+                # 仅更新任务状态
+                task.last_stopped_at = datetime.now()
+                task.enabled = False
+                self._storage.save_long_running_task(task)
 
             # 从运行中移除
             self._running_long_running_tasks.pop(task_id, None)
@@ -600,6 +651,9 @@ class BackgroundTaskManager:
 
                 if task.callback:
                     task.callback(task.task_id, TaskStatus.COMPLETED, result, None)
+
+                # 任务完成后删除存储中的记录
+                self._storage.delete_long_running_task(task.task_id)
                 break
 
             except Exception as e:
@@ -626,12 +680,16 @@ class BackgroundTaskManager:
 
                     # 重新提交任务
                     with self._task_lock:
+                        if self._is_shutdown:
+                            break
                         if task.task_id in self._running_long_running_tasks:
                             future = self._executor.submit(self._execute_long_running_task, task)
                             self._futures[task.task_id] = future
                     break
                 else:
                     self._storage.save_long_running_task(task)
+                    # 任务失败且不自动重启时，删除存储中的记录
+                    self._storage.delete_long_running_task(task.task_id)
                     break
 
     def update_long_running_task_status(self, task_id: str, status: str) -> bool:
@@ -744,6 +802,9 @@ class BackgroundTaskManager:
         """关闭任务管理器"""
         import time
 
+        # 设置关闭标志，防止新任务提交
+        self._is_shutdown = True
+
         # 停止所有长期任务
         with self._task_lock:
             # 首先尝试优雅停止
@@ -762,9 +823,15 @@ class BackgroundTaskManager:
                 if future:
                     future.cancel()
 
+                # 删除存储中的任务记录
+                self._storage.delete_long_running_task(task_id)
+
             # 清理
             self._running_long_running_tasks.clear()
             self._futures.clear()
+
+        # 停止定时任务检查线程
+        self._stop_event.set()
 
         self._scheduler.stop()
 
@@ -772,7 +839,7 @@ class BackgroundTaskManager:
         self._executor.shutdown(wait=False, cancel_futures=True)
 
         # 等待一小段时间让线程退出
-        time.sleep(0.1)
+        time.sleep(0.5)
 
         BackgroundTaskManager._instance = None
 

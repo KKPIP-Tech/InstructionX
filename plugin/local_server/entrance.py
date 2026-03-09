@@ -115,8 +115,21 @@ class LocalServerPlugin(IPlugin):
             plugin_id=self.plugin_id,
             func=self._create_server_func(),
             stop_callback=self._create_stop_callback(),
-            status_callback=self._create_status_callback()
+            status_callback=self._create_status_callback(),
+            restore_callback=self._on_task_restored
         )
+
+    def _on_task_restored(self, task_id: str, task):
+        """任务恢复回调"""
+        # 恢复任务时，更新 Service 状态
+        self._service._server_task_id = task_id
+        self._service._is_running = True
+        self._service.save_data("server_task_id", task_id)
+        self._service.set_running(True)
+
+        # 如果UI已创建，更新UI状态
+        if hasattr(self, 'start_btn'):
+            self._restore_ui_state()
 
     def _create_server_func(self):
         """创建服务器函数"""
@@ -261,12 +274,18 @@ class LocalServerPlugin(IPlugin):
         # 连接信号
         self.status_changed.connect(self._on_status_changed)
 
+        # 根据恢复的状态更新UI
+        self._restore_ui_state()
+
         return widget
 
     def _start_server(self):
         """启动服务器"""
         self._port = self.port_input.value()
         self._stop_event.clear()
+
+        # 保存端口
+        self._service.save_data("port", self._port)
 
         # 注册长期任务
         self._service.set_running(True)
@@ -280,6 +299,7 @@ class LocalServerPlugin(IPlugin):
         )
 
         self._service._server_task_id = task_id
+        self._service.save_data("server_task_id", task_id)
 
         # 更新UI
         self.start_btn.setEnabled(False)
@@ -294,6 +314,9 @@ class LocalServerPlugin(IPlugin):
         """停止服务器"""
         if self._service._server_task_id:
             self._task_manager.stop_long_running_task(self._service._server_task_id)
+            # 清除任务ID
+            self._service._server_task_id = None
+            self._service.save_data("server_task_id", None)
 
         self._service.set_running(False)
 
@@ -314,6 +337,36 @@ class LocalServerPlugin(IPlugin):
                 count = self._service._request_count
                 self.request_count_label.setText(f"请求数: {count}")
                 self._log(f"收到请求 (总计: {count})")
+
+    def _restore_ui_state(self):
+        """根据恢复的状态更新UI"""
+        if not self._service:
+            return
+
+        # 获取恢复的状态
+        is_running = self._service._is_running
+        task_id = self._service._server_task_id
+        request_count = self._service._request_count
+
+        if is_running:
+            # 更新按钮状态
+            self.start_btn.setEnabled(False)
+            self.port_input.setEnabled(False)
+            self.stop_btn.setEnabled(True)
+
+            # 更新状态显示
+            self.status_label.setText("状态: 运行中")
+            self.status_label.setStyleSheet("font-weight: bold; color: green;")
+
+            # 获取端口（如果有）
+            port = self._service.load_data("port", 8080)
+            self.port_input.setValue(port)
+            self.url_label.setText(f"URL: http://127.0.0.1:{port}")
+
+            # 更新请求计数
+            self.request_count_label.setText(f"请求数: {request_count}")
+
+            self._log(f"服务器已恢复运行 (请求数: {request_count})")
 
     def _log(self, message: str):
         """添加日志"""
