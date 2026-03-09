@@ -54,9 +54,21 @@
       "active": false,
       "private": {},
       "public": {}
+    },
+    "e7846bbc-0c05-48b4-8086-d8afef69d9d9": {
+      "type": "LocalServer",
+      "active": true,
+      "private": {
+        "is_running": false,
+        "request_count": 5,
+        "port": 8080,
+        "server_task_id": null
+      },
+      "public": {}
     }
   },
   "active_instances": {
-    "TaskManager": "78c6fabc-1d85-4683-89e8-b2909b523c49"
+    "TaskManager": "78c6fabc-1d85-4683-89e8-b2909b523c49",
+    "LocalServer": "e7846bbc-0c05-48b4-8086-d8afef69d9d9"
   }
 }

@@ -1,7 +1,7 @@
 import sys
 
 # ===================================================================
-# PySide 相关 
+# PySide 相关
 from PySide6.QtWidgets import (
     QApplication, QMessageBox, QStyleFactory
 )
@@ -17,6 +17,10 @@ from ui.main_window import InstructionXMainWindow
 # ===================================================================
 # 自定义工具
 from utils import set_light_theme
+
+# ===================================================================
+# 后台任务
+from core.task import BackgroundTaskManager
 
 
 def main():
@@ -39,9 +43,13 @@ def main():
     
     # 运行应用
     result = application.exec()
-    
+
     application.closeAllWindows()
-    
+
+    # 关闭后台任务管理器
+    if BackgroundTaskManager._instance is not None:
+        BackgroundTaskManager._instance.shutdown()
+
     sys.exit(result)
 
 if __name__ == "__main__":
