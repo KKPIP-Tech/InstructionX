@@ -12,7 +12,7 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Callable, Any
 
 from .task_model import (
-    BackgroundTask, ScheduledTask, TaskType, TaskStatus
+    BackgroundTask, ScheduledTask, LongRunningTask, TaskType, TaskStatus
 )
 from .task_storage import TaskStorage
 from .scheduler import TaskScheduler, SchedulerCallback
@@ -72,10 +72,14 @@ class BackgroundTaskManager:
         # 运行时任务存储（不持久化 func 和 callback）
         self._running_tasks: Dict[str, BackgroundTask] = {}
         self._running_scheduled_tasks: Dict[str, ScheduledTask] = {}
+        self._running_long_running_tasks: Dict[str, LongRunningTask] = {}
         self._futures: Dict[str, Future] = {}  # task_id -> Future
 
         # 定时任务工厂注册表 {plugin_id: {"func": callable, "callback": callable}}
         self._scheduled_task_factories: Dict[str, Dict[str, Callable]] = {}
+
+        # 长期任务工厂注册表 {plugin_id: {"func": callable, "callback": callable, "stop_callback": callable, "status_callback": callable}}
+        self._long_running_task_factories: Dict[str, Dict[str, Callable]] = {}
 
         # 调度器
         self._scheduler = TaskScheduler()
@@ -414,6 +418,264 @@ class BackgroundTaskManager:
             task.callback
         )
 
+    # ==================== 长期任务 ====================
+
+    def register_long_running_task(
+        self,
+        plugin_id: str,
+        name: str,
+        func: Callable,
+        callback: Optional[Callable] = None,
+        stop_callback: Optional[Callable] = None,
+        status_callback: Optional[Callable] = None,
+        auto_restart: bool = True,
+        args: tuple = (),
+        kwargs: dict = None
+    ) -> str:
+        """
+        注册长期任务
+
+        长期任务会持续运行直到被显式停止，支持优雅停止和自动重启。
+
+        Args:
+            plugin_id: 插件 UUID
+            name: 任务名称
+            func: 任务执行函数（阻塞函数，会持续运行）
+            callback: 可选的完成回调
+            stop_callback: 可选的停止回调，用于优雅停止
+            status_callback: 可选的状态更新回调
+            auto_restart: 失败后是否自动重启，默认 True
+            args: 函数位置参数
+            kwargs: 函数关键字参数
+
+        Returns:
+            任务 ID
+        """
+        if kwargs is None:
+            kwargs = {}
+        task = LongRunningTask(
+            plugin_id=plugin_id,
+            name=name,
+            func=func,
+            callback=callback,
+            stop_callback=stop_callback,
+            status_callback=status_callback,
+            auto_restart=auto_restart,
+            args=args,
+            kwargs=kwargs
+        )
+
+        self._storage.save_long_running_task(task)
+
+        with self._task_lock:
+            self._running_long_running_tasks[task.task_id] = task
+            future = self._executor.submit(self._execute_long_running_task, task)
+            self._futures[task.task_id] = future
+
+        return task.task_id
+
+    def register_long_running_task_factory(
+        self,
+        plugin_id: str,
+        func: Callable,
+        callback: Optional[Callable] = None,
+        stop_callback: Optional[Callable] = None,
+        status_callback: Optional[Callable] = None
+    ) -> None:
+        """
+        注册长期任务工厂函数
+
+        用于在应用启动时恢复长期任务。
+        插件应该在 on_plugin_loaded 中调用此方法注册工厂。
+
+        Args:
+            plugin_id: 插件 UUID
+            func: 任务执行函数
+            callback: 可选的回调函数
+            stop_callback: 可选的停止回调
+            status_callback: 可选的状态更新回调
+        """
+        self._long_running_task_factories[plugin_id] = {
+            "func": func,
+            "callback": callback,
+            "stop_callback": stop_callback,
+            "status_callback": status_callback
+        }
+
+        # 尝试恢复该插件的长期任务
+        self.restore_long_running_tasks(plugin_id)
+
+    def restore_long_running_tasks(self, plugin_id: str) -> int:
+        """恢复指定插件的长期任务"""
+        factory = self._long_running_task_factories.get(plugin_id)
+        if not factory:
+            return 0
+
+        func = factory.get("func")
+        callback = factory.get("callback")
+        stop_callback = factory.get("stop_callback")
+        status_callback = factory.get("status_callback")
+
+        stored_tasks = self._storage.get_long_running_tasks_by_plugin(plugin_id)
+        restored_count = 0
+
+        for stored_task in stored_tasks:
+            # 如果任务已经有 func，跳过
+            if stored_task.func is not None:
+                continue
+
+            # 检查任务是否已经在运行
+            if stored_task.task_id in self._running_long_running_tasks:
+                continue
+
+            # 恢复 func 和回调
+            stored_task.func = func
+            stored_task.callback = callback
+            stored_task.stop_callback = stop_callback
+            stored_task.status_callback = status_callback
+
+            with self._task_lock:
+                self._running_long_running_tasks[stored_task.task_id] = stored_task
+                future = self._executor.submit(self._execute_long_running_task, stored_task)
+                self._futures[stored_task.task_id] = future
+
+            restored_count += 1
+
+        return restored_count
+
+    def stop_long_running_task(self, task_id: str) -> bool:
+        """
+        停止长期任务
+
+        Args:
+            task_id: 任务 ID
+
+        Returns:
+            是否成功停止
+        """
+        with self._task_lock:
+            task = self._running_long_running_tasks.get(task_id)
+            if not task:
+                return False
+
+            # 调用停止回调
+            if task.stop_callback:
+                try:
+                    task.stop_callback()
+                except Exception as e:
+                    print(f"Error calling stop_callback for task {task_id}: {e}")
+
+            # 取消 future
+            future = self._futures.get(task_id)
+            if future and not future.done():
+                future.cancel()
+
+            # 更新任务状态
+            task.last_stopped_at = datetime.now()
+            self._storage.save_long_running_task(task)
+
+            # 从运行中移除
+            self._running_long_running_tasks.pop(task_id, None)
+            self._futures.pop(task_id, None)
+
+            return True
+
+    def _execute_long_running_task(self, task: LongRunningTask) -> None:
+        """执行长期任务"""
+        task.last_started_at = datetime.now()
+        task.error = None
+        task.current_status = "running"
+        self._storage.save_long_running_task(task)
+
+        while True:
+            try:
+                if task.args or task.kwargs:
+                    result = task.func(*task.args, **task.kwargs)
+                else:
+                    task.func()
+
+                # 如果函数返回了（正常情况下不会），任务完成
+                task.current_status = "completed"
+                self._storage.save_long_running_task(task)
+
+                if task.callback:
+                    task.callback(task.task_id, TaskStatus.COMPLETED, result, None)
+                break
+
+            except Exception as e:
+                task.error = str(e)
+                task.current_status = "failed"
+
+                if task.callback:
+                    task.callback(task.task_id, TaskStatus.FAILED, None, str(e))
+
+                if task.auto_restart:
+                    # 自动重启
+                    task.restart_count += 1
+                    task.current_status = "restarting"
+                    self._storage.save_long_running_task(task)
+
+                    # 等待一段时间后重启
+                    import time
+                    time.sleep(5)  # 5秒后重试
+
+                    # 检查是否被取消
+                    future = self._futures.get(task.task_id)
+                    if future and future.cancelled():
+                        break
+
+                    # 重新提交任务
+                    with self._task_lock:
+                        if task.task_id in self._running_long_running_tasks:
+                            future = self._executor.submit(self._execute_long_running_task, task)
+                            self._futures[task.task_id] = future
+                    break
+                else:
+                    self._storage.save_long_running_task(task)
+                    break
+
+    def update_long_running_task_status(self, task_id: str, status: str) -> bool:
+        """
+        更新长期任务的状态
+
+        Args:
+            task_id: 任务 ID
+            status: 状态描述
+
+        Returns:
+            是否成功更新
+        """
+        with self._task_lock:
+            task = self._running_long_running_tasks.get(task_id)
+            if not task:
+                return False
+
+            task.current_status = status
+            self._storage.save_long_running_task(task)
+
+            # 调用状态回调
+            if task.status_callback:
+                try:
+                    task.status_callback(task_id, status)
+                except Exception as e:
+                    print(f"Error calling status_callback for task {task_id}: {e}")
+
+            return True
+
+    def get_long_running_tasks(self, plugin_id: Optional[str] = None) -> List[LongRunningTask]:
+        """
+        获取长期任务列表
+
+        Args:
+            plugin_id: 可选的插件 ID
+
+        Returns:
+            长期任务列表
+        """
+        if plugin_id:
+            return self._storage.get_long_running_tasks_by_plugin(plugin_id)
+        return self._storage.get_all_long_running_tasks()
+
     # ==================== 任务查询 ====================
 
     def get_task(self, task_id: str) -> Optional[BackgroundTask]:
@@ -425,11 +687,11 @@ class BackgroundTaskManager:
         return self._storage.get_task(task_id)
 
     def get_tasks_by_plugin(self, plugin_id: str) -> List[BackgroundTask]:
-        """获取指定插件的所有任务"""
+        """获取指定插件的所有任务（不包括长期任务）"""
         return self._storage.get_tasks_by_plugin(plugin_id)
 
     def get_all_tasks(self) -> List[BackgroundTask]:
-        """获取所有任务"""
+        """获取所有任务（不包括长期任务）"""
         with self._task_lock:
             running_tasks = list(self._running_tasks.values())
 
@@ -480,8 +742,38 @@ class BackgroundTaskManager:
 
     def shutdown(self) -> None:
         """关闭任务管理器"""
+        import time
+
+        # 停止所有长期任务
+        with self._task_lock:
+            # 首先尝试优雅停止
+            for task_id in list(self._running_long_running_tasks.keys()):
+                task = self._running_long_running_tasks.get(task_id)
+                if task:
+                    # 调用停止回调
+                    if task.stop_callback:
+                        try:
+                            task.stop_callback()
+                        except Exception as e:
+                            print(f"Error calling stop_callback for task {task_id}: {e}")
+
+                # 取消 future
+                future = self._futures.get(task_id)
+                if future:
+                    future.cancel()
+
+            # 清理
+            self._running_long_running_tasks.clear()
+            self._futures.clear()
+
         self._scheduler.stop()
-        self._executor.shutdown(wait=True)
+
+        # 关闭线程池，不等待任务完成
+        self._executor.shutdown(wait=False, cancel_futures=True)
+
+        # 等待一小段时间让线程退出
+        time.sleep(0.1)
+
         BackgroundTaskManager._instance = None
 
     def __del__(self):

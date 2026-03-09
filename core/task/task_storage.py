@@ -10,7 +10,7 @@ import threading
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 
-from .task_model import BackgroundTask, ScheduledTask
+from .task_model import BackgroundTask, ScheduledTask, LongRunningTask
 
 
 class TaskStorage:
@@ -69,7 +69,8 @@ class TaskStorage:
         if not self.tasks_file.exists():
             default_data = {
                 "tasks": {},
-                "scheduled_tasks": {}
+                "scheduled_tasks": {},
+                "long_running_tasks": {}
             }
             self._write_to_disk(default_data)
 
@@ -329,6 +330,95 @@ class TaskStorage:
             task: 定时任务对象
         """
         self.save_scheduled_task(task)
+
+    # ==================== 长期任务操作 ====================
+
+    def save_long_running_task(self, task: LongRunningTask) -> None:
+        """
+        保存长期任务
+
+        Args:
+            task: 长期任务对象
+        """
+        data = self.load_data()
+        if "long_running_tasks" not in data:
+            data["long_running_tasks"] = {}
+        data["long_running_tasks"][task.task_id] = task.to_dict()
+        self._cache = data
+        self.save_data()
+
+    def get_long_running_task(self, task_id: str) -> Optional[LongRunningTask]:
+        """
+        获取指定长期任务
+
+        Args:
+            task_id: 任务 ID
+
+        Returns:
+            长期任务对象，如果不存在则返回 None
+        """
+        data = self.load_data()
+        task_data = data.get("long_running_tasks", {}).get(task_id)
+        if task_data:
+            return LongRunningTask.from_dict(task_data)
+        return None
+
+    def get_all_long_running_tasks(self) -> List[LongRunningTask]:
+        """
+        获取所有长期任务
+
+        Returns:
+            长期任务列表
+        """
+        data = self.load_data()
+        tasks = []
+        for task_data in data.get("long_running_tasks", {}).values():
+            tasks.append(LongRunningTask.from_dict(task_data))
+        return tasks
+
+    def get_long_running_tasks_by_plugin(self, plugin_id: str) -> List[LongRunningTask]:
+        """
+        获取指定插件的长期任务
+
+        Args:
+            plugin_id: 插件 ID
+
+        Returns:
+            长期任务列表
+        """
+        data = self.load_data()
+        tasks = []
+        for task_data in data.get("long_running_tasks", {}).values():
+            if task_data.get("plugin_id") == plugin_id:
+                tasks.append(LongRunningTask.from_dict(task_data))
+        return tasks
+
+    def delete_long_running_task(self, task_id: str) -> bool:
+        """
+        删除长期任务
+
+        Args:
+            task_id: 任务 ID
+
+        Returns:
+            是否成功删除
+        """
+        data = self.load_data()
+        if task_id in data.get("long_running_tasks", {}):
+            del data["long_running_tasks"][task_id]
+            self._cache = data
+            self.save_data()
+            return True
+        return False
+
+    def update_long_running_task(self, task: LongRunningTask) -> None:
+        """
+        更新长期任务
+
+        Args:
+            task: 长期任务对象
+        """
+        self.save_long_running_task(task)
 
     def clear_cache(self) -> None:
         """清除缓存"""

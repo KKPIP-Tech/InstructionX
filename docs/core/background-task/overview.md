@@ -16,6 +16,7 @@
 - 同步任务执行
 - 异步任务调度
 - 定时任务管理
+- 长期任务管理
 - 任务状态持久化
 
 ---
@@ -30,6 +31,7 @@ class TaskType(Enum):
     SYNC = "sync"        # 同步任务
     ASYNC = "async"      # 异步任务
     SCHEDULED = "scheduled"  # 定时任务
+    LONG_RUNNING = "long_running"  # 长期任务
 ```
 
 ### 2.2 同步任务 (SYNC)
@@ -75,6 +77,35 @@ class TaskType(Enum):
   )
   ```
 
+### 2.5 长期任务 (LONG_RUNNING)
+
+- **特点**: 持续运行直到被显式停止，支持优雅停止和自动重启
+- **适用场景**: Web 服务器、长期驻留服务、持续监听任务等
+- **示例**:
+  ```python
+  import threading
+
+  stop_flag = threading.Event()
+
+  def my_service():
+      """长期运行的服务"""
+      while not stop_flag.is_set():
+          # 处理请求
+          time.sleep(1)
+
+  def on_stop():
+      """停止回调，用于优雅关闭"""
+      stop_flag.set()
+
+  task_id = manager.register_long_running_task(
+      plugin_id="my-plugin",
+      name="Web服务",
+      func=my_service,
+      stop_callback=on_stop,  # 优雅停止回调
+      auto_restart=True       # 失败后自动重启
+  )
+  ```
+
 ---
 
 ## 3. 任务状态
@@ -115,7 +146,9 @@ graph TB
         Pool["线程池<br/>ThreadPoolExecutor<br/>max_workers=4"]
         RunningTasks["运行中的任务<br/>_running_tasks"]
         ScheduledTasks["定时任务<br/>_running_scheduled_tasks"]
-        Factories["任务工厂<br/>_scheduled_task_factories"]
+        LongRunningTasks["长期任务<br/>_running_long_running_tasks"]
+        ScheduledFactories["定时任务工厂<br/>_scheduled_task_factories"]
+        LongRunningFactories["长期任务工厂<br/>_long_running_task_factories"]
     end
 
     subgraph Storage["存储层"]
@@ -128,6 +161,7 @@ graph TB
 
     Pool -->|执行任务| RunningTasks
     Pool -->|执行任务| ScheduledTasks
+    Pool -->|执行任务| LongRunningTasks
     Register -->|注册| BTM
     BTM -->|持久化| JSON
     BTM -->|恢复| JSON
@@ -174,28 +208,66 @@ class ScheduledTask:
     callback: Optional[Callable]  # 回调函数
 ```
 
+### 5.3 LongRunningTask
+
+```python
+class LongRunningTask:
+    """长期任务"""
+    task_id: str              # 任务唯一 ID
+    plugin_id: str            # 插件 ID
+    name: str                 # 任务名称
+    enabled: bool             # 是否启用
+    auto_restart: bool        # 失败后是否自动重启
+
+    # 运行时属性（不参与序列化）
+    func: Optional[Callable]          # 执行函数
+    callback: Optional[Callable]       # 完成回调
+    stop_callback: Optional[Callable]  # 停止回调（用于优雅关闭）
+    status_callback: Optional[Callable]  # 状态更新回调
+    args: tuple                # 函数参数
+    kwargs: dict              # 关键字参数
+
+    # 状态
+    current_status: str       # 当前状态描述
+    error: Optional[str]      # 错误信息
+
+    # 时间戳
+    created_at: datetime      # 创建时间
+    last_started_at: Optional[datetime]  # 上次启动时间
+    last_stopped_at: Optional[datetime]  # 上次停止时间
+    restart_count: int       # 重启次数
+```
+
 ---
 
 ## 6. 任务工厂机制
 
 ### 6.1 问题背景
 
-定时任务需要持久化存储（保存到 `tasks.json`），但函数和回调无法序列化。
+定时任务和长期任务需要持久化存储（保存到 `tasks.json`），但函数和回调无法序列化。
 
 ### 6.2 解决方案
 
 使用**任务工厂**机制：
 
 ```python
-# 1. 插件加载时注册工厂
+# 1. 定时任务工厂 - 插件加载时注册
 manager.register_scheduled_task_factory(
     plugin_id,
     func=periodic_task_func,
     callback=periodic_callback
 )
 
-# 2. 应用重启时恢复任务
-# BackgroundTaskManager 会在启动时自动恢复
+# 2. 长期任务工厂 - 插件加载时注册
+manager.register_long_running_task_factory(
+    plugin_id,
+    func=long_running_service,
+    stop_callback=cleanup_function,  # 优雅停止回调
+    status_callback=status_updater    # 状态更新回调
+)
+
+# 3. 应用重启时恢复任务
+# BackgroundTaskManager 会在工厂注册后自动恢复
 ```
 
 ### 6.3 恢复流程
@@ -204,11 +276,11 @@ manager.register_scheduled_task_factory(
 flowchart TD
     A[应用启动] --> B[BTM 初始化]
     B --> C[加载 tasks.json]
-    C --> D[插件调用 register_scheduled_task_factory]
+    C --> D[插件调用 register_*_task_factory]
     D --> E{查找工厂}
-    E -->|找到| F[恢复 func 和 callback]
+    E -->|找到| F[恢复 func 和 callbacks]
     E -->|未找到| G[func=None]
-    F --> H[启动定时任务]
+    F --> H[启动任务]
     G --> H
 ```
 
@@ -287,6 +359,20 @@ task_id = manager.register_async_task(
             "enabled": true,
             "last_run": "2026-01-01T10:00:00",
             "next_run": "2026-01-01T11:00:00"
+        }
+    },
+    "long_running_tasks": {
+        "long-running-uuid-1": {
+            "task_id": "long-running-uuid-1",
+            "plugin_id": "plugin-uuid",
+            "name": "Web服务",
+            "enabled": true,
+            "auto_restart": true,
+            "current_status": "running",
+            "error": null,
+            "created_at": "2026-01-01T10:00:00",
+            "last_started_at": "2026-01-01T10:00:05",
+            "restart_count": 0
         }
     }
 }

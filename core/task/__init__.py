@@ -5,7 +5,7 @@ BackgroundTask 模块
 """
 
 from .background_task import BackgroundTaskManager
-from .task_model import TaskType, TaskStatus, BackgroundTask, ScheduledTask
+from .task_model import TaskType, TaskStatus, BackgroundTask, ScheduledTask, LongRunningTask
 
 __all__ = [
     "BackgroundTaskManager",
@@ -13,4 +13,5 @@ __all__ = [
     "TaskStatus",
     "BackgroundTask",
     "ScheduledTask",
+    "LongRunningTask",
 ]
