@@ -4,7 +4,7 @@
 提供本地HTTP服务器功能，可用于测试Webhook、API等场景。
 """
 
-from core.data.data_provider import DataProvider, DataNamespace
+from core.data.data_provider import DataProvider, DataProviderError, DataNamespace
 
 
 class Service:
@@ -75,9 +75,13 @@ class Service:
 
     def load_data(self, key: str, default=None):
         """加载数据"""
-        return self.data_provider.get_plugin_data(
-            self.plugin_id,
-            key,
-            DataNamespace.PRIVATE,
-            default
-        )
+        try:
+            return self.data_provider.get_plugin_data(
+                self.plugin_id,
+                key,
+                DataNamespace.PRIVATE,
+                default
+            )
+        except DataProviderError:
+            # 插件尚未注册（首次安装），使用默认值
+            return default
