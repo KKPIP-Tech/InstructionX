@@ -65,6 +65,12 @@ class InstructionXMainWindow(QMainWindow):
         menu_edit_plugin_order_action.setShortcut("Ctrl+P")
         menu_edit_plugin_order_action.triggered.connect(self._open_plugin_order_dialog)
         menu_edit.addAction(menu_edit_plugin_order_action)
+
+        # LLM 设置
+        menu_edit_llm_settings_action = QAction("LLM 设置", self)
+        menu_edit_llm_settings_action.setShortcut("Ctrl+L")
+        menu_edit_llm_settings_action.triggered.connect(self._open_llm_settings_dialog)
+        menu_edit.addAction(menu_edit_llm_settings_action)
         
         # -------------------------------------------------
         # 用户中心
@@ -158,3 +164,16 @@ class InstructionXMainWindow(QMainWindow):
         if dialog.exec() == QDialog.DialogCode.Accepted:
             # 用户点击了保存，重新加载 skills panel
             self.skills_panel.load_skills_from_manager()
+
+    def _open_llm_settings_dialog(self):
+        """
+        打开 LLM 设置对话框
+        """
+        from ui.dialog.llm_settings_dialog import LLMSettingsDialog
+
+        dialog = LLMSettingsDialog(self)
+
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            # 用户点击了保存，重新加载 LLM Provider
+            from core.llm.llm_provider import get_llm_provider
+            get_llm_provider().reload_config()

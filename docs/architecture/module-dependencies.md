@@ -22,6 +22,7 @@ graph TB
         PM[core/plugin/manager.py<br/>PluginManager 单例]
         DP[core/data/data_provider.py<br/>DataProvider 单例]
         BTM[core/task/background_task.py<br/>BackgroundTaskManager 单例]
+        LLM[core/llm/llm_provider.py<br/>LLMProvider 单例]
         IPlugin[core/plugin/plugin_interface.py<br/>IPlugin]
     end
 
@@ -111,13 +112,14 @@ self._scheduled_task_factories: Dict    # 定时任务工厂
 
 ### 3.1 单例列表
 
-项目中有 **3 个核心单例**：
+项目中有 **4 个核心单例**：
 
 | 类名 | 文件 | 用途 |
 |------|------|------|
 | **PluginManager** | `core/plugin/manager.py` | 插件管理 |
 | **DataProvider** | `core/data/data_provider.py` | 数据管理 |
 | **BackgroundTaskManager** | `core/task/background_task.py` | 任务调度 |
+| **LLMProvider** | `core/llm/llm_provider.py` | 大语言模型管理 |
 
 ### 3.2 单例实现模式
 
@@ -145,9 +147,10 @@ class PluginManager:
 
 ```python
 # 无需传入参数，直接获取实例
-manager = PluginManager()      # 返回全局唯一实例
-provider = DataProvider()     # 返回全局唯一实例
-task_mgr = BackgroundTaskManager()  # 返回全局唯一实例
+manager = PluginManager()           # 返回全局唯一实例
+provider = DataProvider()          # 返回全局唯一实例
+task_mgr = BackgroundTaskManager() # 返回全局唯一实例
+llm = get_llm_provider()            # 返回全局唯一实例
 ```
 
 ---
@@ -257,6 +260,7 @@ graph TD
     MW --> SP[SkillsPanel]
     MW --> WA[WorkArea]
     MW --> PM[PluginManager<br/>单例]
+    MW --> LLM[LLMProvider<br/>单例]
 
     PM --> DP[DataProvider<br/>单例]
     PM --> BTM[BackgroundTaskManager<br/>单例]
@@ -267,6 +271,7 @@ graph TD
     PM -.->|插件加载| PL[插件层]
     DP -.->|数据存储| PL
     BTM -.->|任务调度| PL
+    LLM -.->|LLM 调用| PL
 
     PL --> IPlugin[IPlugin 接口]
 ```
@@ -284,6 +289,7 @@ graph TD
 - [系统架构概述](overview.md)
 - [插件系统概述](../core/plugin-system/overview.md)
 - [DataProvider 概述](../core/data-provider/overview.md)
+- [LLM Provider 概述](../core/llm-provider/overview.md)
 
 ---
 
