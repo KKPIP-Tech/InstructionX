@@ -20,9 +20,13 @@ from core.llm.exceptions import (
 from core.llm.provider_interface import Message, ModelInfo
 from core.data.data_provider import DataProvider, DataNamespace
 
+from utils.logging_tools import LoggerManager, get_name
+
 
 class LLMChatService:
     """LLM Chat 服务类"""
+
+    _logger = LoggerManager()
 
     def __init__(self, plugin_id: str, data_provider: Optional[DataProvider] = None):
         self.plugin_id = plugin_id
@@ -42,7 +46,7 @@ class LLMChatService:
             providers = self.llm_provider.get_enabled_providers("chat")
             return list(providers.keys())
         except Exception as e:
-            print(f"获取 Provider 列表失败: {e}")
+            self._logger.error(get_name(), f'获取 Provider 列表失败: {e}')
             return []
 
     def get_all_providers(self) -> Dict[str, Any]:
@@ -50,7 +54,7 @@ class LLMChatService:
         try:
             return self.llm_provider.get_all_providers()
         except Exception as e:
-            print(f"获取所有 Provider 失败: {e}")
+            self._logger.error(get_name(), f'获取所有 Provider 失败: {e}')
             return {}
 
     def get_models(self, provider: str) -> List[ModelInfo]:
@@ -67,7 +71,7 @@ class LLMChatService:
                 return provider_instance.get_models()
             return []
         except Exception as e:
-            print(f"获取模型列表失败: {e}")
+            self._logger.error(get_name(), f'获取模型列表失败: {e}')
             return []
 
     def get_provider_config(self, provider: str) -> Optional[Dict[str, Any]]:
@@ -78,7 +82,7 @@ class LLMChatService:
                 return config.to_dict()
             return None
         except Exception as e:
-            print(f"获取 Provider 配置失败: {e}")
+            self._logger.error(get_name(), f'获取 Provider 配置失败: {e}')
             return None
 
     def validate_provider(self, provider: str) -> Dict[str, Any]:
@@ -88,14 +92,14 @@ class LLMChatService:
         Returns:
             Dict with 'valid' (bool), 'message' (str), 'supports_vision' (bool)
         """
-        print(f"[LLM Chat Validate] Validating provider: {provider}")
+        self._logger.debug(get_name(), f"Validating provider: {provider}")
 
         try:
             provider_instance = self.llm_provider.get_provider(provider)
-            print(f"[LLM Chat Validate] Provider instance: {provider_instance}")
+            self._logger.debug(get_name(), f"Provider instance: {provider_instance}")
 
             if not provider_instance:
-                print(f"[LLM Chat Validate] Provider instance not found!")
+                self._logger.debug(get_name(), "Provider instance not found!")
                 return {
                     "valid": False,
                     "message": f"Provider '{provider}' 不存在",
@@ -103,9 +107,9 @@ class LLMChatService:
                 }
 
             # 检查配置
-            print(f"[LLM Chat Validate] API Key: {provider_instance.api_key}")
-            print(f"[LLM Chat Validate] Base URL: {provider_instance.base_url}")
-            print(f"[LLM Chat Validate] validate_config result: {provider_instance.validate_config()}")
+            self._logger.debug(get_name(), f"API Key: {provider_instance.api_key}")
+            self._logger.debug(get_name(), f"Base URL: {provider_instance.base_url}")
+            self._logger.debug(get_name(), f"validate_config result: {provider_instance.validate_config()}")
 
             if not provider_instance.validate_config():
                 return {
@@ -158,23 +162,23 @@ class LLMChatService:
             Dict with 'success' (bool), 'response' (str), 'error' (str), 'model' (str)
         """
         # ========== DEBUG 信息 ==========
-        print(f"[LLM Chat DEBUG] Provider: {provider}")
-        print(f"[LLM Chat DEBUG] Model: {model}")
-        print(f"[LLM Chat DEBUG] Temperature: {temperature}")
-        print(f"[LLM Chat DEBUG] Max Tokens: {max_tokens}")
+        self._logger.debug(get_name(), f"Provider: {provider}")
+        self._logger.debug(get_name(), f"Model: {model}")
+        self._logger.debug(get_name(), f"Temperature: {temperature}")
+        self._logger.debug(get_name(), f"Max Tokens: {max_tokens}")
 
         # 输出 Provider 详细信息
         try:
             provider_instance = self.llm_provider.get_provider(provider)
             if provider_instance:
-                print(f"[LLM Chat DEBUG] Provider instance: {type(provider_instance)}")
-                print(f"[LLM Chat DEBUG] API Key: {'已设置' if provider_instance.api_key else '未设置'}")
-                print(f"[LLM Chat DEBUG] Base URL: {provider_instance.base_url}")
-                print(f"[LLM Chat DEBUG] Chat Model: {provider_instance.chat_model}")
+                self._logger.debug(get_name(), f"Provider instance: {type(provider_instance)}")
+                self._logger.debug(get_name(), f"API Key: {'已设置' if provider_instance.api_key else '未设置'}")
+                self._logger.debug(get_name(), f"Base URL: {provider_instance.base_url}")
+                self._logger.debug(get_name(), f"Chat Model: {provider_instance.chat_model}")
             else:
-                print(f"[LLM Chat DEBUG] Provider instance not found!")
+                self._logger.debug(get_name(), "Provider instance not found!")
         except Exception as e:
-            print(f"[LLM Chat DEBUG] Error getting provider: {e}")
+            self._logger.debug(get_name(), f"Error getting provider: {e}")
 
         try:
             # 构建消息列表
@@ -240,7 +244,7 @@ class LLMChatService:
                 error_msg += f" (Provider: {e.provider})"
             if str(e):
                 error_msg += f" - {str(e)}"
-            print(f"[LLM Chat DEBUG] ConnectionError: {e}, provider: {getattr(e, 'provider', None)}")
+            self._logger.debug(get_name(), f"ConnectionError: {e}, provider: {getattr(e, 'provider', None)}")
             return {
                 "success": False,
                 "error": error_msg,
@@ -288,8 +292,8 @@ class LLMChatService:
             Dict with 'chunk' (str), 'done' (bool), 'error' (str)
         """
         # ========== DEBUG 信息 ==========
-        print(f"[LLM Chat DEBUG Stream] Provider: {provider}")
-        print(f"[LLM Chat DEBUG Stream] Model: {model}")
+        self._logger.debug(get_name(), f"Provider: {provider}")
+        self._logger.debug(get_name(), f"Model: {model}")
 
         try:
             # 构建消息列表
@@ -315,7 +319,7 @@ class LLMChatService:
             messages.append(current_message)
 
             # 流式请求
-            print(f"[LLM Chat Stream] Starting stream request...")
+            self._logger.debug(get_name(), "Starting stream request...")
             responses = self.llm_provider.stream_chat(
                 messages=messages,
                 provider=provider,
@@ -324,12 +328,12 @@ class LLMChatService:
                 max_tokens=max_tokens,
             )
 
-            print(f"[LLM Chat Stream] Got response iterator, iterating...")
+            self._logger.debug(get_name(), "Got response iterator, iterating...")
             full_response = ""
             for response in responses:
                 content = response.content or ""  # 处理 None 的情况
                 full_response += content
-                print(f"[LLM Chat Stream] Chunk received: {len(content)} chars")
+                self._logger.debug(get_name(), f"Chunk received: {len(content)} chars")
                 yield {
                     "chunk": content,
                     "done": False,
@@ -364,15 +368,15 @@ class LLMChatService:
                 "error_type": "timeout",
             }
         except ConnectionError as e:
-            print(f"[LLM Chat DEBUG Stream] ConnectionError: {e}, provider: {getattr(e, 'provider', None)}")
+            self._logger.debug(get_name(), f"ConnectionError: {e}, provider: {getattr(e, 'provider', None)}")
 
             # 尝试获取更多调试信息
             try:
                 provider_instance = self.llm_provider.get_provider(provider)
                 if provider_instance:
-                    print(f"[LLM Chat DEBUG Stream] Full URL: {provider_instance.base_url}/chat/completions")
+                    self._logger.debug(get_name(), f"Full URL: {provider_instance.base_url}/chat/completions")
             except Exception as ex:
-                print(f"[LLM Chat DEBUG Stream] Error getting URL: {ex}")
+                self._logger.debug(get_name(), f"Error getting URL: {ex}")
 
             yield {
                 "chunk": "",
@@ -382,8 +386,8 @@ class LLMChatService:
             }
         except Exception as e:
             import traceback
-            print(f"[LLM Chat DEBUG Stream] Exception: {e}")
-            print(f"[LLM Chat DEBUG Stream] Traceback: {traceback.format_exc()}")
+            self._logger.debug(get_name(), f"Exception: {e}")
+            self._logger.debug(get_name(), f"Traceback: {traceback.format_exc()}")
             yield {
                 "chunk": "",
                 "done": True,
@@ -409,7 +413,7 @@ class LLMChatService:
             with open(path, "rb") as f:
                 return base64.b64encode(f.read()).decode()
         except Exception as e:
-            print(f"读取图片失败: {e}")
+            self._logger.error(get_name(), f'读取图片失败: {e}')
             return None
 
     # ========== 数据持久化 ==========

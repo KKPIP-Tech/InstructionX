@@ -4,10 +4,14 @@
 from PySide6.QtWidgets import QFileDialog, QMessageBox
 import os
 
+from utils.logging_tools import LoggerManager, get_name
+
 
 class Service:
     """图片压缩服务"""
-    
+
+    _logger = LoggerManager()
+
     def compress_image(self, file_path: str, quality: int = 85) -> bool:
         """
         压缩图片
@@ -32,7 +36,7 @@ class Service:
             
             return True
         except Exception as e:
-            print(f"Error compressing image: {e}")
+            self._logger.error(get_name(), f'Error compressing image: {e}')
             return False
     
     def get_image_info(self, file_path: str) -> dict:
@@ -58,5 +62,5 @@ class Service:
                 'file_size_str': f"{file_size_mb:.2f} MB"
             }
         except Exception as e:
-            print(f"Error getting image info: {e}")
+            self._logger.error(get_name(), f'Error getting image info: {e}')
             return {}

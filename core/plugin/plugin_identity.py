@@ -9,6 +9,8 @@ from pathlib import Path
 from datetime import datetime
 from typing import Optional
 
+from utils.logging_tools import LoggerManager, get_name
+
 
 class PluginIdentity:
     """
@@ -27,6 +29,7 @@ class PluginIdentity:
         self.info_file = plugin_dir / ".plugin_info.json"
         self._plugin_id: Optional[str] = None
         self._registered_at: Optional[datetime] = None
+        self._logger = LoggerManager()
     
     def load_or_create_id(self) -> str:
         """
@@ -61,7 +64,7 @@ class PluginIdentity:
                 if registered_at:
                     self._registered_at = datetime.fromisoformat(registered_at)
         except (json.JSONDecodeError, ValueError, IOError) as e:
-            print(f"Warning: Failed to load plugin info from {self.info_file}: {e}")
+            self._logger.warning(get_name(), f'Failed to load plugin info from {self.info_file}: {e}')
             self._plugin_id = None
             self._registered_at = None
     
@@ -75,7 +78,7 @@ class PluginIdentity:
             with open(self.info_file, 'w', encoding='utf-8') as f:
                 json.dump(data, f, indent=4, ensure_ascii=False)
         except IOError as e:
-            print(f"Error: Failed to save plugin info to {self.info_file}: {e}")
+            self._logger.error(get_name(), f'Failed to save plugin info to {self.info_file}: {e}')
     
     @property
     def plugin_id(self) -> Optional[str]:

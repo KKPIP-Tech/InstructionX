@@ -11,6 +11,8 @@ from .plugin_interface import IPlugin
 from .config_manager import PluginConfigManager
 from .plugin_identity import PluginIdentity
 
+from utils.logging_tools import LoggerManager, get_name
+
 
 class PluginAPI:
     """插件 API 信息"""
@@ -61,6 +63,9 @@ class PluginManager:
         
         # 配置管理器
         self.config_manager = PluginConfigManager()
+
+        # 日志管理器
+        self._logger = LoggerManager()
     
     def load_plugins(self):
         """加载所有插件（官方和第三方）"""
@@ -126,7 +131,7 @@ class PluginManager:
             entrance_file = plugin_dir / "entrance.py"
             
             if not entrance_file.exists():
-                print(f"Warning: No entrance.py found in {plugin_dir}")
+                self._logger.warning(get_name(), f'No entrance.py found in {plugin_dir}')
                 return None
             
             # 确保插件目录有 __init__.py 文件，使其成为包
@@ -143,7 +148,7 @@ class PluginManager:
             module_name = f"{plugin_dir.name}.entrance"
             spec = importlib.util.spec_from_file_location(module_name, entrance_file)
             if spec is None or spec.loader is None:
-                print(f"Warning: Could not load spec for {entrance_file}")
+                self._logger.warning(get_name(), f'Could not load spec for {entrance_file}')
                 return None
             
             # 设置包上下文
@@ -167,7 +172,7 @@ class PluginManager:
                     break
             
             if plugin_class is None:
-                print(f"Warning: No IPlugin subclass found in {entrance_file}")
+                self._logger.warning(get_name(), f'No IPlugin subclass found in {entrance_file}')
                 return None
             
             # 实例化插件
@@ -192,9 +197,7 @@ class PluginManager:
             return plugin_instance
             
         except Exception as e:
-            print(f"Error loading plugin from {plugin_dir}: {e}")
-            import traceback
-            traceback.print_exc()
+            self._logger.error(get_name(), f'Error loading plugin from {plugin_dir}: {e}')
             return None
     
     def get_official_plugins(self) -> List[IPlugin]:
@@ -376,7 +379,7 @@ class PluginManager:
                 info_module = importlib.import_module(f"{module_name}.information")
                 service_module = importlib.import_module(f"{module_name}.service")
             except Exception as e:
-                print(f"  跳过 API 注册 ({plugin_dir.name}): {e}")
+                self._logger.warning(get_name(), f'Skipping API registration ({plugin_dir.name}): {e}')
                 return
             
             # 获取 PluginInfo 实例
@@ -419,7 +422,7 @@ class PluginManager:
             self.register_plugin_api(plugin_id, service_instance, api_descriptions)
             
         except Exception as e:
-            print(f"  API 自动注册失败: {e}")
+            self._logger.error(get_name(), f'API auto registration failed: {e}')
     
     def register_plugin_api(self, 
                           plugin_id: str,

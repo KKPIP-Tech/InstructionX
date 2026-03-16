@@ -9,6 +9,8 @@ from PySide6.QtCore import (
 
 from PySide6.QtGui import QIcon
 
+from utils.logging_tools import LoggerManager, get_name
+
 class SkillButton(QToolButton):
     """
     MS Office 风格的技能按钮
@@ -132,6 +134,7 @@ class SkillsPanel(QWidget):
         super().__init__(parent=parent)
         self.plugin_manager = None
         self._active_button = None  # 当前激活的按钮
+        self._logger = LoggerManager()
         self._init_ui()
 
     def set_plugin_manager(self, plugin_manager):
@@ -258,7 +261,7 @@ class SkillsPanel(QWidget):
             name = plugin.plugin_name
             description = getattr(plugin, 'skill_description', name)
         except Exception as e:
-            print(f"Error getting plugin info: {e}")
+            self._logger.error(get_name(), f'Error getting plugin info: {e}')
             return
 
         # 创建技能按钮
@@ -275,22 +278,22 @@ class SkillsPanel(QWidget):
 
     def _on_skill_clicked(self, button, plugin):
         """处理技能按钮点击事件"""
-        print(f"\n[DEBUG] _on_skill_clicked: 点击按钮 '{button.skill_name}'")
+        self._logger.debug(get_name(), f"_on_skill_clicked: 点击按钮 '{button.skill_name}'")
 
         # 打印当前状态
         current_active = self._active_button
-        print(f"[DEBUG] _on_skill_clicked: 当前 _active_button = {current_active.skill_name if current_active else None}")
+        self._logger.debug(get_name(), f"_on_skill_clicked: 当前 _active_button = {current_active.skill_name if current_active else None}")
 
         # 清除之前的激活状态
         if self._active_button and self._active_button != button:
-            print(f"[DEBUG] _on_skill_clicked: 清除之前激活按钮 '{self._active_button.skill_name}'")
+            self._logger.debug(get_name(), f"_on_skill_clicked: 清除之前激活按钮 '{self._active_button.skill_name}'")
             self._active_button.set_active(False)
 
         # 设置新按钮为激活状态
         if button and isinstance(button, SkillButton):
             button.set_active(True)
             self._active_button = button
-            print(f"[DEBUG] _on_skill_clicked: 设置新激活按钮 '{button.skill_name}'")
+            self._logger.debug(get_name(), f"_on_skill_clicked: 设置新激活按钮 '{button.skill_name}'")
 
         self.skill_clicked.emit(plugin)
 
@@ -318,7 +321,7 @@ class SkillsPanel(QWidget):
                 self.add_skill_button(plugin, is_official=False)
 
         except Exception as e:
-            print(f"Error loading skills from manager: {e}")
+            self._logger.error(get_name(), f'Error loading skills from manager: {e}')
 
     def _clear_layout(self, layout):
         """清空布局中的所有控件"""
@@ -329,7 +332,7 @@ class SkillsPanel(QWidget):
 
     def _clear_all_active_states(self):
         """清除所有按钮的激活状态"""
-        print("[DEBUG] _clear_all_active_states: 开始清除所有高亮")
+        self._logger.debug(get_name(), "_clear_all_active_states: 开始清除所有高亮")
 
         active_count = 0
         for layout in [self.official_layout, self.thirdparty_layout]:
@@ -340,10 +343,10 @@ class SkillsPanel(QWidget):
                     if isinstance(widget, SkillButton):
                         if widget._is_active:
                             active_count += 1
-                            print(f"[DEBUG] _clear_all_active_states: 清除按钮 '{widget.skill_name}' 高亮")
+                            self._logger.debug(get_name(), f"_clear_all_active_states: 清除按钮 '{widget.skill_name}' 高亮")
                         widget.set_active(False)
 
-        print(f"[DEBUG] _clear_all_active_states: 完成，共清除 {active_count} 个按钮, _active_button 设置为 None")
+        self._logger.debug(get_name(), f"_clear_all_active_states: 完成，共清除 {active_count} 个按钮, _active_button 设置为 None")
         self._active_button = None
 
     def clear_active_state(self):

@@ -17,6 +17,7 @@ from ui.main_window import InstructionXMainWindow
 # ===================================================================
 # 自定义工具
 from utils import set_light_theme
+from utils.logging_tools import LoggerManager, get_name
 
 # ===================================================================
 # 后台任务
@@ -33,7 +34,11 @@ def main():
     
     # 设置浅色主题
     set_light_theme(application)
-    
+
+    # 初始化日志管理器
+    logger = LoggerManager()
+    logger.info(get_name(), '程序启动')
+
     # 创建并显示主窗口
     main_window = InstructionXMainWindow()
     main_window.show()

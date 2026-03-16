@@ -16,6 +16,8 @@ from PySide6.QtGui import QTextCursor, QColor, QTextCharFormat
 from core.plugin.plugin_interface import IPlugin
 from core.data.data_provider import DataProvider, DataProviderError
 
+from utils.logging_tools import LoggerManager, get_name
+
 
 # 延迟导入 service，避免插件加载时的循环依赖问题
 def _get_service(plugin_id, data_provider):
@@ -82,6 +84,8 @@ class ChatWorker(QThread):
 
 class LLMChatPlugin(IPlugin):
     """LLM Chat 插件"""
+
+    _logger = LoggerManager()
 
     @property
     def plugin_name(self) -> str:
@@ -306,12 +310,12 @@ class LLMChatPlugin(IPlugin):
         if not provider or provider == "无可用 Provider":
             return
 
-        print(f"[LLM Chat Refresh Models] Refreshing for provider: {provider}")
+        self._logger.debug(get_name(), f"Refreshing for provider: {provider}")
 
         self.model_combo.clear()
         models = self.service.get_models(provider)
 
-        print(f"[LLM Chat Refresh Models] Got {len(models)} models")
+        self._logger.debug(get_name(), f"Got {len(models)} models")
 
         if not models:
             self.model_combo.addItem("无可用模型")
@@ -322,7 +326,7 @@ class LLMChatPlugin(IPlugin):
         if not chat_models:
             chat_models = models  # 降级：显示所有模型
 
-        print(f"[LLM Chat Refresh Models] Chat models: {[m.id for m in chat_models[:5]]}")
+        self._logger.debug(get_name(), f"Chat models: {[m.id for m in chat_models[:5]]}")
 
         for model in chat_models:
             self.model_combo.addItem(model.id, model)
@@ -409,8 +413,8 @@ class LLMChatPlugin(IPlugin):
             QMessageBox.warning(None, "警告", "请选择有效的 Provider")
             return
 
-        print(f"[LLM Chat UI] Selected Provider: {provider}")
-        print(f"[LLM Chat UI] Selected Model: {self.model_combo.currentText()}")
+        self._logger.debug(get_name(), f"Selected Provider: {provider}")
+        self._logger.debug(get_name(), f"Selected Model: {self.model_combo.currentText()}")
 
         # 验证 Provider 配置
         validation = self.service.validate_provider(provider)

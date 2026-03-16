@@ -10,6 +10,8 @@ from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication, QStyle, QStyleFactory
 from PySide6.QtCore import QByteArray
 
+from utils.logging_tools import LoggerManager, get_name
+
 
 class IconType(Enum):
     """图标类型枚举"""
@@ -45,6 +47,7 @@ class PluginIcon:
         """
         self.icon_type = icon_type
         self.value = value
+        self._logger = LoggerManager()
     
     def load_icon(self, plugin_dir: Optional[Path] = None) -> Optional[QIcon]:
         """
@@ -110,7 +113,7 @@ class PluginIcon:
             return None
             
         except Exception as e:
-            print(f"Error loading icon: {e}")
+            self._logger.error(get_name(), f'Error loading icon: {e}')
             return None
     
     @classmethod

@@ -17,6 +17,8 @@ from .task_model import (
 from .task_storage import TaskStorage
 from .scheduler import TaskScheduler, SchedulerCallback
 
+from utils.logging_tools import LoggerManager, get_name
+
 
 class BackgroundTaskManager:
     """
@@ -65,6 +67,9 @@ class BackgroundTaskManager:
 
         # 存储层
         self._storage = TaskStorage()
+
+        # 日志管理器
+        self._logger = LoggerManager()
 
         # 线程池（用于异步任务执行）
         self._executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="BackgroundTask")
@@ -239,7 +244,7 @@ class BackgroundTaskManager:
                 task.error
             )
         except Exception as e:
-            print(f"Error executing callback for task {task.task_id}: {e}")
+            self._logger.error(get_name(), f'Error executing callback for task {task.task_id}: {e}')
 
     # ==================== 定时任务 ====================
 
@@ -404,7 +409,7 @@ class BackgroundTaskManager:
                         self._execute_scheduled_task(task)
 
             except Exception as e:
-                print(f"Error checking scheduled tasks: {e}")
+                self._logger.error(get_name(), f'Error checking scheduled tasks: {e}')
 
             # 等待 1 秒或直到停止事件被设置
             self._stop_event.wait(1.0)
@@ -415,7 +420,7 @@ class BackgroundTaskManager:
             return
 
         if task.func is None:
-            print(f"Warning: Scheduled task {task.task_id} has no func, skipping")
+            self._logger.warning(get_name(), f'Scheduled task {task.task_id} has no func, skipping')
             return
 
         task.last_run = datetime.now()
@@ -582,7 +587,7 @@ class BackgroundTaskManager:
                 try:
                     restore_callback(stored_task.task_id, stored_task)
                 except Exception as e:
-                    print(f"Error calling restore_callback: {e}")
+                    self._logger.error(get_name(), f'Error calling restore_callback: {e}')
 
             restored_count += 1
 
@@ -609,7 +614,7 @@ class BackgroundTaskManager:
                 try:
                     task.stop_callback()
                 except Exception as e:
-                    print(f"Error calling stop_callback for task {task_id}: {e}")
+                    self._logger.error(get_name(), f'Error calling stop_callback for task {task_id}: {e}')
 
             # 取消 future
             future = self._futures.get(task_id)
@@ -716,7 +721,7 @@ class BackgroundTaskManager:
                 try:
                     task.status_callback(task_id, status)
                 except Exception as e:
-                    print(f"Error calling status_callback for task {task_id}: {e}")
+                    self._logger.error(get_name(), f'Error calling status_callback for task {task_id}: {e}')
 
             return True
 
@@ -816,7 +821,7 @@ class BackgroundTaskManager:
                         try:
                             task.stop_callback()
                         except Exception as e:
-                            print(f"Error calling stop_callback for task {task_id}: {e}")
+                            self._logger.error(get_name(), f'Error calling stop_callback for task {task_id}: {e}')
 
                 # 取消 future
                 future = self._futures.get(task_id)

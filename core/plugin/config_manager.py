@@ -6,6 +6,8 @@ import json
 from pathlib import Path
 from typing import Dict, List, Optional
 
+from utils.logging_tools import LoggerManager, get_name
+
 
 class PluginConfigManager:
     """插件配置管理器"""
@@ -26,6 +28,9 @@ class PluginConfigManager:
         
         # 确保配置目录存在
         self.config_dir.mkdir(parents=True, exist_ok=True)
+
+        # 日志管理器
+        self._logger = LoggerManager()
     
     def load_plugin_order(self) -> Dict[str, List[str]]:
         """
@@ -61,7 +66,7 @@ class PluginConfigManager:
             return data
         
         except Exception as e:
-            print(f"Error loading plugin order config: {e}")
+            self._logger.error(get_name(), f'Error loading plugin order config: {e}')
             return {
                 "official_plugins": [],
                 "thirdparty_plugins": []
@@ -90,7 +95,7 @@ class PluginConfigManager:
             return True
         
         except Exception as e:
-            print(f"Error saving plugin order config: {e}")
+            self._logger.error(get_name(), f'Error saving plugin order config: {e}')
             return False
     
     def update_official_order(self, plugin_names: List[str]) -> bool:

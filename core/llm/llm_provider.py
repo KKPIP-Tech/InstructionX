@@ -12,6 +12,8 @@ from .exceptions import ConfigurationError
 if TYPE_CHECKING:
     from .provider_interface import ChatResponse
 
+from utils.logging_tools import LoggerManager, get_name
+
 
 class LLMProvider:
     """
@@ -40,6 +42,7 @@ class LLMProvider:
         self._config = LLMConfig()
         self._providers: Dict[str, ILLM] = {}
         self._models_cache: Dict[str, List[ModelInfo]] = {}  # 模型缓存
+        self._logger = LoggerManager()
         self._init_providers()
         self._fetch_all_models()  # 启动时自动拉取模型
 
@@ -51,7 +54,7 @@ class LLMProvider:
             try:
                 self._create_provider(name, config_data.to_dict())
             except Exception as e:
-                print(f"Failed to initialize provider {name}: {e}")
+                self._logger.error(get_name(), f'Failed to initialize provider {name}: {e}')
 
     def _fetch_all_models(self) -> None:
         """启动时自动拉取所有 Provider 的模型（强制从 API 拉取）"""
@@ -60,9 +63,9 @@ class LLMProvider:
                 # 强制从 API 拉取，拉取失败则自动从缓存加载
                 models = provider.refresh_models(force=True)
                 self._models_cache[name] = models
-                print(f"Loaded {len(models)} models for {name}")
+                self._logger.info(get_name(), f'Loaded {len(models)} models for {name}')
             except Exception as e:
-                print(f"Failed to fetch models for {name}: {e}")
+                self._logger.error(get_name(), f'Failed to fetch models for {name}: {e}')
                 self._models_cache[name] = []
 
     def refresh_provider_models(self, provider_name: str, force: bool = False) -> List[ModelInfo]:
@@ -85,7 +88,7 @@ class LLMProvider:
             self._models_cache[provider_name] = models
             return models
         except Exception as e:
-            print(f"Failed to refresh models for {provider_name}: {e}")
+            self._logger.error(get_name(), f'Failed to refresh models for {provider_name}: {e}')
             return []
 
     def refresh_all_models(self, force: bool = False) -> Dict[str, List[ModelInfo]]:

@@ -7,9 +7,13 @@ from datetime import datetime
 from typing import Dict, List, Any, Optional
 from core.data.data_provider import DataProvider, DataProviderError, DataNamespace
 
+from utils.logging_tools import LoggerManager, get_name
+
 
 class ReporterService:
     """报告生成服务"""
+
+    _logger = LoggerManager()
 
     def __init__(self, plugin_id: str):
         """
@@ -58,7 +62,7 @@ class ReporterService:
         # 自动获取活跃的 TaskManager 实例
         resolved_id = self._resolve_task_manager_id(task_manager_id)
         if not resolved_id:
-            print("订阅失败: 未找到活跃的 TaskManager 实例")
+            self._logger.warning(get_name(), 'Subscribe failed: No active TaskManager instance found')
             return False
 
         try:
@@ -80,7 +84,7 @@ class ReporterService:
 
             return True
         except DataProviderError as e:
-            print(f"订阅失败: {e}")
+            self._logger.warning(get_name(), f'Subscribe failed: {e}')
             return False
 
     def unsubscribe_from_task_manager(self, task_manager_id: Optional[str] = None):
@@ -130,7 +134,7 @@ class ReporterService:
             )
         except DataProviderError as e:
             # 插件未注册，记录错误但不中断程序
-            print(f"警告: 无法保存事件日志 - {e}")
+            self._logger.warning(get_name(), f'Cannot save event log: {e}')
 
     def get_statistics_report(self, task_manager_id: Optional[str] = None) -> Dict[str, Any]:
         """

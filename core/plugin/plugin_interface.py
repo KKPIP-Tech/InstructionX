@@ -13,11 +13,15 @@ from PySide6.QtCore import QObject
 if TYPE_CHECKING:
     from .plugin_info_interface import IPluginInfo
 
+from utils.logging_tools import LoggerManager, get_name
+
 
 class IPlugin(ABC):
     """
     插件抽象基类
     """
+
+    _logger = LoggerManager()
 
     def __init__(self):
         """初始化插件"""
@@ -140,9 +144,7 @@ class IPlugin(ABC):
                         return icon
             
         except (ImportError, AttributeError, Exception) as e:
-            print(f"Warning: Failed to load icon from information.py: {e}")
-            import traceback
-            traceback.print_exc()
+            self._logger.warning(get_name(), f'Failed to load icon from information.py: {e}')
         
         # 返回默认图标
         app = QApplication.instance()
@@ -195,7 +197,7 @@ class IPlugin(ABC):
                             return plugin_info_class().skill_description
             
         except (ImportError, AttributeError, Exception) as e:
-            print(f"Warning: Failed to load description from information.py: {e}")
+            self._logger.warning(get_name(), f'Failed to load description from information.py: {e}')
         
         # 返回默认描述
         return self.plugin_name
@@ -274,6 +276,6 @@ class IPlugin(ABC):
                             return plugin_info_class()
             
         except (ImportError, AttributeError, Exception) as e:
-            print(f"Warning: Failed to load plugin info from information.py: {e}")
+            self._logger.warning(get_name(), f'Failed to load plugin info from information.py: {e}')
         
         return None

@@ -12,6 +12,8 @@ from typing import Dict, List, Optional, Any
 
 from .task_model import BackgroundTask, ScheduledTask, LongRunningTask
 
+from utils.logging_tools import LoggerManager, get_name
+
 
 class TaskStorage:
     """
@@ -54,6 +56,9 @@ class TaskStorage:
         # 线程安全锁
         self._file_lock = threading.RLock()
 
+        # 日志管理器
+        self._logger = LoggerManager()
+
         # 内存缓存
         self._cache: Optional[Dict[str, Any]] = None
         self._cache_dirty = True
@@ -86,10 +91,10 @@ class TaskStorage:
                 with open(self.tasks_file, 'r', encoding='utf-8') as f:
                     return json.load(f)
             except json.JSONDecodeError as e:
-                print(f"Warning: JSON 解析失败, 返回默认数据: {e}")
+                self._logger.warning(get_name(), f'JSON 解析失败, 返回默认数据: {e}')
                 return {"tasks": {}, "scheduled_tasks": {}}
             except Exception as e:
-                print(f"Warning: 读取任务数据失败: {e}")
+                self._logger.warning(get_name(), f'读取任务数据失败: {e}')
                 return {"tasks": {}, "scheduled_tasks": {}}
 
     def _write_to_disk(self, data: Dict[str, Any]) -> None:
@@ -110,7 +115,7 @@ class TaskStorage:
                 os.replace(temp_file, self.tasks_file)
 
             except Exception as e:
-                print(f"Error: 写入任务数据失败: {e}")
+                self._logger.error(get_name(), f'写入任务数据失败: {e}')
                 # 尝试删除临时文件
                 if temp_file.exists():
                     temp_file.unlink()
@@ -409,7 +414,7 @@ class TaskStorage:
             self._cache = data
             self.save_data()
             return True
-        print(f"[TaskStorage] Task not found")
+        self._logger.debug(get_name(), f'Task not found: {task_id}')
         return False
 
     def update_long_running_task(self, task: LongRunningTask) -> None:

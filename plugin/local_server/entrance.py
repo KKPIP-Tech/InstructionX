@@ -21,6 +21,8 @@ from core.plugin.plugin_interface import IPlugin
 from core.task import BackgroundTaskManager
 from .service import Service
 
+from utils.logging_tools import LoggerManager, get_name
+
 
 class RequestHandler(BaseHTTPRequestHandler):
     """HTTP请求处理器"""
@@ -85,6 +87,8 @@ class SignalHolder(QObject):
 class LocalServerPlugin(IPlugin):
     """本地HTTP服务器插件"""
 
+    _logger = LoggerManager()
+
     @property
     def plugin_name(self) -> str:
         return "本地\n服务器"
@@ -138,21 +142,21 @@ class LocalServerPlugin(IPlugin):
             try:
                 self._server = HTTPServer(('127.0.0.1', self._port), RequestHandler)
                 RequestHandler.on_request_callback = self._on_request
-                print(f"服务器启动成功: http://127.0.0.1:{self._port}")
+                self._logger.info(get_name(), f"Server started: http://127.0.0.1:{self._port}")
                 self._server.serve_forever()
             except Exception as e:
-                print(f"服务器错误: {e}")
+                self._logger.error(get_name(), f"Server error: {e}")
             finally:
                 if self._server:
                     self._server.server_close()
-                print("服务器已停止")
+                self._logger.info(get_name(), "Server stopped")
         return server_func
 
     def _create_stop_callback(self):
         """创建停止回调"""
         def stop_callback():
             """优雅停止服务器"""
-            print("正在停止服务器...")
+            self._logger.info(get_name(), "Stopping server...")
             self._stop_event.set()
             if self._server:
                 self._server.shutdown()
@@ -162,7 +166,7 @@ class LocalServerPlugin(IPlugin):
         """创建状态回调"""
         def status_callback(task_id: str, status: str):
             """状态更新回调"""
-            print(f"服务器状态: {status}")
+            self._logger.debug(get_name(), f"Server status: {status}")
             # 通知UI更新
             self.status_changed.emit({"status": status})
         return status_callback

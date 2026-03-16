@@ -11,6 +11,8 @@ from typing import Optional, Callable, Dict, Any
 
 from .task_model import ScheduledTask, TaskStatus, TaskThreadLocal
 
+from utils.logging_tools import LoggerManager, get_name
+
 
 class TaskScheduler:
     """
@@ -26,6 +28,9 @@ class TaskScheduler:
 
         # 调度间隔（秒）
         self._check_interval = 1.0
+
+        # 日志管理器
+        self._logger = LoggerManager()
 
     def start(self) -> None:
         """启动调度器"""
@@ -54,7 +59,7 @@ class TaskScheduler:
             try:
                 self._check_and_run_tasks()
             except Exception as e:
-                print(f"Error in scheduler loop: {e}")
+                self._logger.error(get_name(), f'Scheduler loop error: {e}')
 
             # 等待下一次检查
             self._stop_event.wait(self._check_interval)
@@ -110,7 +115,7 @@ class SchedulerCallback:
 
         except Exception as e:
             error = str(e)
-            print(f"Error executing scheduled task {task.task_id}: {e}")
+            self._logger.error(get_name(), f'Error executing scheduled task {task.task_id}: {e}')
 
         finally:
             TaskThreadLocal.clear_current_task()
@@ -122,7 +127,7 @@ class SchedulerCallback:
                 status = TaskStatus.FAILED if error else TaskStatus.COMPLETED
                 callback(task.task_id, status, result, error)
             except Exception as e:
-                print(f"Error in scheduled task callback: {e}")
+                self._logger.error(get_name(), f'Error in scheduled task callback: {e}')
 
         return result
 
