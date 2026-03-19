@@ -1,0 +1,96 @@
+/* ═════════════════════════════════════════════════════════════════════════════
+ * 数值选择框 (QSpinBox, QDoubleSpinBox)
+ * ═════════════════════════════════════════════════════════════════════════════ */
+
+/* 数字选择框 */
+QSpinBox, QDoubleSpinBox {
+    background-color: {base};
+    border: 1px solid {borderLight};
+    border-radius: {radius};
+    padding: 6px 8px;
+    color: {windowText};
+}
+
+QSpinBox:hover, QDoubleSpinBox:hover {
+    border-color: {border};
+}
+
+QSpinBox:focus, QDoubleSpinBox:focus {
+    border: 2px solid {accent};
+    padding: 5px 7px;
+}
+
+QSpinBox:disabled, QDoubleSpinBox:disabled {
+    background-color: {alternateBase};
+    color: {textDisabled};
+}
+
+QSpinBox::up-button, QDoubleSpinBox::up-button {
+    border: none;
+    width: 16px;
+    border-left: 1px solid {borderLight};
+    background-color: transparent;
+}
+
+QSpinBox::down-button, QDoubleSpinBox::down-button {
+    border: none;
+    width: 16px;
+    border-left: 1px solid {borderLight};
+    background-color: transparent;
+}
+
+QSpinBox::up-button:hover, QDoubleSpinBox::up-button:hover,
+QSpinBox::down-button:hover, QDoubleSpinBox::down-button:hover {
+    background-color: {controlFillHover};
+}
+
+QSpinBox::up-arrow, QDoubleSpinBox::up-arrow {
+    image: none;
+    border-left: 4px solid transparent;
+    border-right: 4px solid transparent;
+    border-bottom: 5px solid {buttonText};
+}
+
+QSpinBox::down-arrow, QDoubleSpinBox::down-arrow {
+    image: none;
+    border-left: 4px solid transparent;
+    border-right: 4px solid transparent;
+    border-top: 5px solid {buttonText};
+}
+
+/* 日期时间选择框 */
+QDateTimeEdit, QDateEdit, QTimeEdit {
+    background-color: {base};
+    border: 1px solid {borderLight};
+    border-radius: {radius};
+    padding: 6px 8px;
+    color: {windowText};
+}
+
+QDateTimeEdit:hover, QDateEdit:hover, QTimeEdit:hover {
+    border-color: {border};
+}
+
+QDateTimeEdit:focus, QDateEdit:focus, QTimeEdit:focus {
+    border: 2px solid {accent};
+}
+
+QDateTimeEdit::drop-down, QDateEdit::drop-down, QTimeEdit::drop-down {
+    border: none;
+    width: 20px;
+}
+
+QDateTimeEdit QCalendarWidget QSpinBox,
+QDateEdit QCalendarWidget QSpinBox,
+QTimeEdit QCalendarWidget QSpinBox {
+    background-color: {window};
+}
+
+QCalendarWidget QAbstractItemView {
+    background-color: {window};
+    selection-background-color: {highlight};
+}
+
+QCalendarWidget QAbstractItemView::item:hover {
+    background-color: {controlFillHover};
+}

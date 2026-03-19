@@ -1,0 +1,28 @@
+/* ═════════════════════════════════════════════════════════════════════════════
+ * 分组框 (QGroupBox)
+ * ═════════════════════════════════════════════════════════════════════════════ */
+
+QGroupBox {
+    border: 1px solid {borderLight};
+    border-radius: {radius};
+    margin-top: 12px;
+    padding-top: 12px;
+    color: {windowText};
+    font-weight: bold;
+}
+
+QGroupBox::title {
+    subcontrol-origin: margin;
+    subcontrol-position: top left;
+    padding: 0 8px;
+    color: {windowText};
+}
+
+QGroupBox::indicator {
+    width: 18px;
+    height: 18px;
+}
+
+QGroupBox::indicator:checked {
+    background-color: {accent};
+}

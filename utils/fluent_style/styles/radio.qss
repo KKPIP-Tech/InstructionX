@@ -1,0 +1,40 @@
+/* ═════════════════════════════════════════════════════════════════════════════
+ * 单选按钮 (QRadioButton)
+ * ═════════════════════════════════════════════════════════════════════════════ */
+
+QRadioButton {
+    color: {windowText};
+    spacing: 8px;
+}
+
+QRadioButton::indicator {
+    width: 18px;
+    height: 18px;
+    border: 1px solid {border};
+    border-radius: 9px;
+    background-color: {controlFill};
+}
+
+QRadioButton::indicator:hover {
+    border-color: {accent};
+    background-color: {controlFillHover};
+}
+
+QRadioButton::indicator:checked {
+    background-color: {accent};
+    border-color: {accent};
+}
+
+QRadioButton::indicator:checked:hover {
+    background-color: {accentLight};
+    border-color: {accentLight};
+}
+
+QRadioButton:disabled {
+    color: {textDisabled};
+}
+
+QRadioButton::indicator:disabled {
+    background-color: {controlFillDisabled};
+    border-color: {borderLight};
+}

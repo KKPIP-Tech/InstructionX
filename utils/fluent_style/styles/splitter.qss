@@ -1,0 +1,23 @@
+/* ═════════════════════════════════════════════════════════════════════════════
+ * 分割器 (QSplitter)
+ * ═════════════════════════════════════════════════════════════════════════════ */
+
+QSplitter {
+    background-color: {window};
+}
+
+QSplitter::handle {
+    background-color: {borderLight};
+}
+
+QSplitter::handle:horizontal {
+    width: 1px;
+}
+
+QSplitter::handle:vertical {
+    height: 1px;
+}
+
+QSplitter::handle:hover {
+    background-color: {accent};
+}

@@ -1,0 +1,76 @@
+/* ═════════════════════════════════════════════════════════════════════════════
+ * 滑块 (QSlider) 和 旋钮 (QDial)
+ * ═════════════════════════════════════════════════════════════════════════════ */
+
+/* 水平滑块 */
+QSlider::groove:horizontal {
+    border: none;
+    height: 4px;
+    background: {borderLight};
+    border-radius: 2px;
+}
+
+QSlider::handle:horizontal {
+    width: 16px;
+    height: 16px;
+    margin: -6px 0;
+    background: {accent};
+    border-radius: 8px;
+}
+
+QSlider::handle:horizontal:hover {
+    background: {accentLight};
+}
+
+QSlider::handle:horizontal:pressed {
+    background: {accentDark};
+}
+
+QSlider::sub-page:horizontal {
+    background: {accent};
+    border-radius: 2px;
+}
+
+/* 垂直滑块 */
+QSlider::groove:vertical {
+    border: none;
+    width: 4px;
+    background: {borderLight};
+    border-radius: 2px;
+}
+
+QSlider::handle:vertical {
+    width: 16px;
+    height: 16px;
+    margin: 0 -6px;
+    background: {accent};
+    border-radius: 8px;
+}
+
+QSlider::handle:vertical:hover {
+    background: {accentLight};
+}
+
+QSlider::handle:vertical:pressed {
+    background: {accentDark};
+}
+
+QSlider::add-page:vertical {
+    background: {accent};
+    border-radius: 2px;
+}
+
+/* 旋钮 */
+QDial {
+    background-color: {controlFill};
+    border: 1px solid {borderLight};
+}
+
+QDial::groove:horizontal {
+    background: {borderLight};
+}
+
+QDial::handle:horizontal {
+    background: {accent};
+    border-radius: 8px;
+}

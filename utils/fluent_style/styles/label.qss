@@ -1,0 +1,37 @@
+/* ═════════════════════════════════════════════════════════════════════════════
+ * 标签 (QLabel)
+ * ═════════════════════════════════════════════════════════════════════════════ */
+
+QLabel {
+    color: {windowText};
+    background: transparent;
+}
+
+QLabel[heading="true"] {
+    font-size: 24px;
+    font-weight: bold;
+}
+
+QLabel[subheading="true"] {
+    font-size: 18px;
+    font-weight: bold;
+}
+
+QLabel[caption="true"] {
+    font-size: 12px;
+    color: {textDisabled};
+}
+
+QLabel:disabled {
+    color: {textDisabled};
+}
+
+/* 链接标签 */
+QLabel[link="true"] {
+    color: {link};
+    text-decoration: underline;
+}
+
+QLabel[link="true"]:hover {
+    color: {accentLight};
+}

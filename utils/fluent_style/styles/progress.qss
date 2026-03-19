@@ -1,0 +1,26 @@
+/* ═════════════════════════════════════════════════════════════════════════════
+ * 进度条 (QProgressBar)
+ * ═════════════════════════════════════════════════════════════════════════════ */
+
+QProgressBar {
+    border: none;
+    background-color: {borderLight};
+    border-radius: {radius};
+    text-align: center;
+    color: {windowText};
+    min-height: 6px;
+}
+
+QProgressBar::chunk {
+    background-color: {accent};
+    border-radius: {radius};
+}
+
+QProgressBar:horizontal {
+    border: none;
+}
+
+QProgressBar:vertical {
+    border: none;
+    width: 6px;
+}

@@ -1,0 +1,70 @@
+/* ═════════════════════════════════════════════════════════════════════════════
+ * 菜单 (QMenuBar, QMenu)
+ * ═════════════════════════════════════════════════════════════════════════════ */
+
+/* 菜单栏 */
+QMenuBar {
+    background-color: {window};
+    border-bottom: 1px solid {borderLight};
+    padding: 2px;
+}
+
+QMenuBar::item {
+    background: transparent;
+    padding: 6px 12px;
+    color: {windowText};
+}
+
+QMenuBar::item:selected {
+    background-color: {controlFillHover};
+}
+
+QMenuBar::item:pressed {
+    background-color: {controlFillPressed};
+}
+
+QMenuBar::item:disabled {
+    color: {textDisabled};
+}
+
+/* 菜单 */
+QMenu {
+    background-color: {window};
+    border: 1px solid {borderLight};
+    border-radius: {radius};
+    padding: 4px;
+}
+
+QMenu::item {
+    padding: 6px 32px 6px 12px;
+    border-radius: {radius};
+    color: {windowText};
+}
+
+QMenu::item:selected {
+    background-color: {highlight};
+    color: {highlightedText};
+}
+
+QMenu::item:disabled {
+    color: {textDisabled};
+}
+
+QMenu::separator {
+    height: 1px;
+    background-color: {borderLight};
+    margin: 4px 8px;
+}
+
+QMenu::indicator {
+    width: 16px;
+    height: 16px;
+    margin-left: 4px;
+}
+
+QMenu::right-arrow {
+    image: none;
+    border-left: 5px solid {buttonText};
+    border-top: 5px solid transparent;
+    border-bottom: 5px solid transparent;
+}

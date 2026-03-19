@@ -1,0 +1,25 @@
+/* ═════════════════════════════════════════════════════════════════════════════
+ * 对话框 (QDialog, QMessageBox, QDialogButtonBox)
+ * ═════════════════════════════════════════════════════════════════════════════ */
+
+QDialog, QMessageBox {
+    background-color: {window};
+}
+
+QDialogButtonBox {
+    button-layout: 0;
+}
+
+QDialogButtonBox QPushButton {
+    min-width: 75px;
+    min-height: 28px;
+}
+
+QDialogButtonBox QPushButton:focus {
+    border: 2px solid {accent};
+}
+
+QDialogButtonBox QPushButton:default {
+    background-color: {accent};
+    color: {highlightedText};
+}

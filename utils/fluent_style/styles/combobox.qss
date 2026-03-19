@@ -1,0 +1,58 @@
+/* ═════════════════════════════════════════════════════════════════════════════
+ * 下拉框 (QComboBox)
+ * ═════════════════════════════════════════════════════════════════════════════ */
+
+QComboBox {
+    background-color: {controlFill};
+    border: 1px solid {borderLight};
+    border-radius: {radius};
+    padding: 6px 12px;
+    color: {buttonText};
+    min-width: 75px;
+}
+
+QComboBox:hover {
+    background-color: {controlFillHover};
+    border-color: {border};
+}
+
+QComboBox:focus {
+    border: 2px solid {accent};
+}
+
+QComboBox:disabled {
+    background-color: {controlFillDisabled};
+    color: {textDisabled};
+}
+
+QComboBox::drop-down {
+    border: none;
+    width: 24px;
+}
+
+QComboBox::down-arrow {
+    image: none;
+    border-left: 4px solid transparent;
+    border-right: 4px solid transparent;
+    border-top: 5px solid {buttonText};
+    margin-right: 8px;
+}
+
+QComboBox QAbstractItemView {
+    background-color: {window};
+    border: 1px solid {borderLight};
+    border-radius: {radius};
+    selection-background-color: {highlight};
+    selection-color: {highlightedText};
+    padding: 4px;
+    show-decoration-selected: 1;
+}
+
+QComboBox QAbstractItemView::item {
+    min-height: 32px;
+    padding: 6px 12px;
+}
+
+QComboBox QAbstractItemView::item:hover {
+    background-color: {controlFillHover};
+}

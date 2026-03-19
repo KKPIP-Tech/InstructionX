@@ -1,0 +1,46 @@
+/* ═════════════════════════════════════════════════════════════════════════════
+ * 工具栏 (QToolBar, QToolButton)
+ * ═════════════════════════════════════════════════════════════════════════════ */
+
+QToolBar {
+    background-color: {window};
+    border: none;
+    padding: 4px;
+    spacing: 4px;
+}
+
+QToolBar::separator {
+    width: 1px;
+    background-color: {borderLight};
+    margin: 4px;
+}
+
+QToolButton {
+    background-color: transparent;
+    border: none;
+    border-radius: {radius};
+    padding: 6px;
+}
+
+QToolButton:hover {
+    background-color: {controlFillHover};
+}
+
+QToolButton:pressed {
+    background-color: {controlFillPressed};
+}
+
+QToolButton:disabled {
+    background-color: transparent;
+    opacity: 0.5;
+}
+
+QToolButton[popupMode="1"]::menu-button {
+    border: none;
+    width: 16px;
+}
+
+QToolButton[popupMode="2"]::menu-button {
+    border: none;
+    width: 16px;
+}

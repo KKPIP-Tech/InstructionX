@@ -1,0 +1,58 @@
+/* ═════════════════════════════════════════════════════════════════════════════
+ * 输入控件 (QLineEdit, QTextEdit, QPlainTextEdit)
+ * ═════════════════════════════════════════════════════════════════════════════ */
+
+/* 单行输入框 */
+QLineEdit {
+    background-color: {base};
+    border: 1px solid {borderLight};
+    border-radius: {radius};
+    padding: 6px 8px;
+    color: {windowText};
+    selection-background-color: {highlight};
+}
+
+QLineEdit:hover {
+    border-color: {border};
+}
+
+QLineEdit:focus {
+    border: 2px solid {accent};
+    padding: 5px 7px;
+}
+
+QLineEdit:disabled {
+    background-color: {alternateBase};
+    color: {textDisabled};
+}
+
+QLineEdit:read-only {
+    background-color: {alternateBase};
+}
+
+/* 占位符颜色 */
+QLineEdit QPlaceholderText {
+    color: {textDisabled};
+}
+
+/* 文本编辑 */
+QTextEdit, QPlainTextEdit {
+    background-color: {base};
+    border: 1px solid {borderLight};
+    border-radius: {radius};
+    color: {windowText};
+    selection-background-color: {highlight};
+}
+
+QTextEdit:hover, QPlainTextEdit:hover {
+    border-color: {border};
+}
+
+QTextEdit:focus, QPlainTextEdit:focus {
+    border: 2px solid {accent};
+}
+
+QTextEdit:disabled, QPlainTextEdit:disabled {
+    background-color: {alternateBase};
+    color: {textDisabled};
+}

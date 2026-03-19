@@ -1,0 +1,45 @@
+/* ═════════════════════════════════════════════════════════════════════════════
+ * 复选框 (QCheckBox)
+ * ═════════════════════════════════════════════════════════════════════════════ */
+
+QCheckBox {
+    color: {windowText};
+    spacing: 8px;
+}
+
+QCheckBox::indicator {
+    width: 18px;
+    height: 18px;
+    border: 1px solid {border};
+    border-radius: 3px;
+    background-color: {controlFill};
+}
+
+QCheckBox::indicator:hover {
+    border-color: {accent};
+    background-color: {controlFillHover};
+}
+
+QCheckBox::indicator:checked {
+    background-color: {accent};
+    border-color: {accent};
+}
+
+QCheckBox::indicator:checked:hover {
+    background-color: {accentLight};
+    border-color: {accentLight};
+}
+
+QCheckBox::indicator:indeterminate {
+    background-color: {accent};
+    border-color: {accent};
+}
+
+QCheckBox:disabled {
+    color: {textDisabled};
+}
+
+QCheckBox::indicator:disabled {
+    background-color: {controlFillDisabled};
+    border-color: {borderLight};
+}

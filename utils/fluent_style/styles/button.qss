@@ -1,0 +1,131 @@
+/* ═════════════════════════════════════════════════════════════════════════════
+ * 按钮样式 (QPushButton)
+ * ═════════════════════════════════════════════════════════════════════════════ */
+
+/* 普通按钮 */
+QPushButton {
+    background-color: {controlFill};
+    border: 1px solid {borderLight};
+    border-radius: {radius};
+    padding: 6px 16px;
+    color: {buttonText};
+    min-width: 75px;
+    min-height: 24px;
+}
+
+QPushButton:hover {
+    background-color: {controlFillHover};
+    border-color: {border};
+}
+
+QPushButton:pressed {
+    background-color: {controlFillPressed};
+}
+
+QPushButton:disabled {
+    background-color: {controlFillDisabled};
+    color: {textDisabled};
+    border-color: {borderLight};
+}
+
+QPushButton:focus {
+    border: 2px solid {accent};
+    padding: 5px 15px;
+}
+
+QPushButton:flat {
+    background-color: transparent;
+    border: none;
+}
+
+QPushButton:flat:hover {
+    background-color: {controlFillHover};
+}
+
+QPushButton:flat:pressed {
+    background-color: {controlFillPressed};
+}
+
+/* 主要按钮 */
+QPushButton[class="primary"], QPushButton[class="accent"] {
+    background-color: {accent};
+    border: 1px solid {accent};
+    color: {highlightedText};
+}
+
+QPushButton[class="primary"]:hover, QPushButton[class="accent"]:hover {
+    background-color: {accentLight};
+    border-color: {accentLight};
+}
+
+QPushButton[class="primary"]:pressed, QPushButton[class="accent"]:pressed {
+    background-color: {accentDark};
+    border-color: {accentDark};
+}
+
+QPushButton[class="primary"]:disabled, QPushButton[class="accent"]:disabled {
+    background-color: {controlFillDisabled};
+    border-color: {borderLight};
+    color: {textDisabled};
+}
+
+/* 危险按钮 */
+QPushButton[class="danger"] {
+    background-color: #D13438;
+    border: 1px solid #D13438;
+    color: white;
+}
+
+QPushButton[class="danger"]:hover {
+    background-color: #E74856;
+    border-color: #E74856;
+}
+
+QPushButton[class="danger"]:pressed {
+    background-color: #A80000;
+    border-color: #A80000;
+}
+
+/* 成功按钮 */
+QPushButton[class="success"] {
+    background-color: #107C10;
+    border: 1px solid #107C10;
+    color: white;
+}
+
+QPushButton[class="success"]:hover {
+    background-color: #16C60C;
+    border-color: #16C60C;
+}
+
+QPushButton[class="success"]:pressed {
+    background-color: #0B6A0B;
+    border-color: #0B6A0B;
+}
+
+/* 轮廓按钮 */
+QPushButton[class="outline"] {
+    background-color: transparent;
+    border: 1px solid {border};
+    color: {buttonText};
+}
+
+QPushButton[class="outline"]:hover {
+    background-color: {controlFillHover};
+    border-color: {accent};
+}
+
+/* 柔和按钮 */
+QPushButton[class="subtle"] {
+    background-color: transparent;
+    border: none;
+    color: {buttonText};
+}
+
+QPushButton[class="subtle"]:hover {
+    background-color: {controlFillHover};
+}
+
+QPushButton[class="subtle"]:pressed {
+    background-color: {controlFillPressed};
+}
