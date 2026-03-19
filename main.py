@@ -16,7 +16,7 @@ from ui.main_window import InstructionXMainWindow
 
 # ===================================================================
 # 自定义工具
-from utils import set_light_theme
+from utils.themes import set_fluent_theme
 from utils.logging_tools import LoggerManager, get_name
 
 # ===================================================================
@@ -32,8 +32,8 @@ def main():
     application.setApplicationName("InstructionX - CE")
     application.setOrganizationName("LumenThread")
     
-    # 设置浅色主题
-    set_light_theme(application)
+    # 设置 FluentUI3 主题（自动检测系统主题）
+    set_fluent_theme(application)
 
     # 初始化日志管理器
     logger = LoggerManager()
