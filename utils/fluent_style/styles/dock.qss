@@ -4,7 +4,6 @@
 
 QDockWidget {
     background-color: {window};
-    titlebar-normal-icon: none;
 }
 
 QDockWidget::title {
@@ -28,8 +27,4 @@ QDockWidget::close-button:hover, QDockWidget::float-button:hover {
 
 QDockWidget::separator {
     background-color: {borderLight};
-}
-
-QDockWidget < QTitleBar {
-    background-color: {button};
 }

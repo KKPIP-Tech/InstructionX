@@ -17,12 +17,9 @@ QMainWindow, QDialog, QMessageBox {
     background-color: {window};
 }
 
-QWindowsStyle, QFusionStyle {
-    name: "FluentUI3";
-}
 
 /* 通用框架 */
-QFrame, QStackedWidget, QScrollArea, QDecorationBackground {
+QFrame, QStackedWidget, QScrollArea {
     background-color: {window};
 }
 
