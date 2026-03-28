@@ -6,7 +6,7 @@ from PySide6.QtWidgets import (
     QApplication, QMessageBox, QStyleFactory
 )
 from PySide6.QtGui import (
-    QPalette, QColor
+    QPalette, QColor, QIcon
 )
 from PySide6.QtCore import Qt
 
@@ -41,6 +41,7 @@ def main():
 
     # 创建并显示主窗口
     main_window = InstructionXMainWindow()
+    main_window.setWindowIcon(QIcon("ui/logo.ico"))
     main_window.show()
     
     # 强制立即处理事件，显示启动画面

@@ -108,7 +108,7 @@ class InstructionXMainWindow(QMainWindow):
 
         # 关于软件
         menu_help_about_action = QAction("关于", self)
-        # menu_help_about_action.setShortcut()
+        menu_help_about_action.triggered.connect(self._open_about_dialog)
         menu_help.addAction(menu_help_about_action)
 
 
@@ -200,6 +200,12 @@ class InstructionXMainWindow(QMainWindow):
         if dialog.exec() == QDialog.DialogCode.Accepted:
             # 用户点击了保存，重新加载 skills panel
             self.skills_panel.load_skills_from_manager()
+
+    def _open_about_dialog(self):
+        """打开关于对话框"""
+        from ui.dialog.about_dialog import AboutDialog
+        dialog = AboutDialog(self)
+        dialog.exec()
 
     def _open_llm_settings_dialog(self):
         """
