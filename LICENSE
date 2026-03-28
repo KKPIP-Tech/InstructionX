@@ -1,0 +1,79 @@
+# InstructionX Commercial Source License
+
+Copyright (c) 2025-2026 Kuang Da. All rights reserved.
+
+This software is protected by copyright law. The following license terms govern the use of InstructionX and supersede any other agreements. 
+
+**This is not an Open Source license.** While the source code is available for viewing, specific usage scenarios require explicit commercial authorization.
+
+## 1. Definitions
+
+**"Commercial Use"**: For the purposes of this license, "Commercial Use" is defined broadly to include any use by an organization or entity, regardless of its tax status or purpose. This explicitly includes, but is not limited to:
+*   **Corporate Entities**: For-profit companies, partnerships, and sole proprietorships.
+*   **Non-Commercial Entities**: Non-profit organizations, charities, NGOs, and foundations.
+*   **Educational Institutions**: Public and private schools, universities, training centers, and research institutes.
+*   **Government & Public Sector**: Government agencies, state-owned enterprises (SOEs), and public administration bodies.
+
+**"Producer"**: Refers to the copyright holder, Kuang Da.
+
+## 2. Authorization Requirements
+
+InstructionX may be used commercially, but specific thresholds and scenarios require explicit written authorization from the Producer. 
+
+Authorization is **required** if any of the following conditions are met:
+
+### 2.1 Organizational Scale
+Use by any organization (including companies, non-profits, educational institutions, and government bodies) with more than **100 global employees** (including full-time, part-time, and contractors) requires written authorization.
+
+### 2.2 Deployment Scale
+Use exceeding **30 installed instances** across all devices (including but not limited to computers, servers, virtual machines, containers, or any other hardware/software environments) requires written authorization.
+
+### 2.3 SaaS and Multi-tenant Service
+Unless explicitly authorized by the Producer in writing, you may not use the InstructionX source code to operate a multi-tenant environment (Software-as-a-Service).
+*   **Tenant Definition**: One tenant corresponds to one workspace. The workspace provides a separated area for each tenant's data and configurations.
+
+### 2.4 Redistribution
+Redistribution of InstructionX in any form (including source code, binary distribution, bundling with other products, or as part of a service offering) requires written authorization from the Producer.
+
+## 3. Permitted Use (Non-Commercial Personal Use)
+
+Individuals may use InstructionX for personal, non-commercial projects, provided they do not meet any of the authorization thresholds listed in Section 2 above. 
+
+## 4. Plugin System and Third-Party Development
+
+Third-party plugins developed for InstructionX may have their own commercial licensing terms. The commercial use, pricing, and licensing of such plugins are determined solely by the respective plugin developers and are not governed by this license.
+
+**Note**: The use of the InstructionX framework itself remains subject to the conditions specified in Section 2, regardless of the licensing terms of any plugins.
+
+## 5. Trademark and UI Copyright
+
+In the process of using InstructionX's user interface, you may not remove, obscure, or modify the InstructionX logo, name, or copyright information.
+*   **User Interface Definition**: The "user interface" includes all components located in the `./ui/` directory, including but not limited to graphical interfaces, visual elements, icons, styles, and interaction components.
+
+## 6. Intellectual Property Protection
+
+a) The Producer retains all copyright and other intellectual property rights to the InstructionX software, including but not limited to core logic, UI components, official plugins, and documentation.
+
+b) The visual appearance, user interface layout, and overall user experience of InstructionX are protected. No party may directly copy or substantially imitate the overall visual design and interaction patterns of InstructionX.
+
+## 7. Contributor Terms
+
+As a contributor to InstructionX, you agree that:
+
+a) The Producer reserves the right to modify, tighten, or relax this license as deemed necessary.
+
+b) Your contributed code may be used for commercial purposes, including but not limited to cloud services, derivative products, and commercial applications.
+
+## 8. Governing Law and Dispute Resolution
+
+This license shall be governed by and construed in accordance with the laws of the jurisdiction where the Producer resides. Any disputes arising from this license shall be resolved through negotiation; if negotiation fails, the dispute shall be submitted to the competent court in the Producer's location.
+
+## 9. Contact
+
+For commercial licensing inquiries or to obtain written authorization, please contact: 
+
+**Email**: dakuang2002@126.com
+
+## 10. Disclaimer of Warranty
+
+THIS SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE PRODUCER BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
