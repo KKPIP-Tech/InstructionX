@@ -31,9 +31,13 @@ documents/
 │   │   ├── overview.md         # DataProvider 概述
 │   │   └── api-reference.md    # DataProvider API 参考
 │   │
-│   └── background-task/         # 后台任务
-│       ├── overview.md          # 后台任务概述
-│       └── api-reference.md    # 后台任务 API 参考
+│   ├── background-task/         # 后台任务
+│   │   ├── overview.md        # 后台任务概述
+│   │   └── api-reference.md    # 后台任务 API 参考
+│   │
+│   └── llm-provider/            # LLM 提供者
+│       ├── overview.md         # LLM Provider 概述
+│       └── api-reference.md    # LLM Provider API 参考
 │
 ├── ui/                          # UI 模块文档
 │   ├── main-window.md           # 主窗口
@@ -70,8 +74,10 @@ documents/
 
 9. **[后台任务概述](core/background-task/overview.md)** - 后台任务系统
 10. **[后台任务 API 参考](core/background-task/api-reference.md)** - 任务 API
-11. **[UI 模块文档](ui/)** - 界面组件详解
-12. **[完整 API 参考](api/full-reference.md)** - 所有 API 索引
+11. **[LLM Provider 概述](core/llm-provider/overview.md)** - LLM 提供者框架
+12. **[LLM Provider API 参考](core/llm-provider/api-reference.md)** - LLM API
+13. **[UI 模块文档](ui/)** - 界面组件详解
+14. **[完整 API 参考](api/full-reference.md)** - 所有 API 索引
 
 ---
 
@@ -81,9 +87,10 @@ documents/
 
 项目核心组件均采用单例模式，确保全局唯一性：
 
-- **DataProvider** - 数据提供者
 - **PluginManager** - 插件管理器
+- **DataProvider** - 数据提供者
 - **BackgroundTaskManager** - 后台任务管理器
+- **LLMProvider** - LLM 提供者
 
 ### 插件系统
 
@@ -132,6 +139,9 @@ from core import DataProvider, DataNamespace
 
 # 后台任务
 from core import BackgroundTaskManager, TaskType, TaskStatus
+
+# LLM 提供者
+from core.llm import get_llm_provider
 ```
 
 ### 获取单例实例
@@ -145,6 +155,9 @@ data_provider = DataProvider()
 
 # 后台任务管理器
 task_manager = BackgroundTaskManager()
+
+# LLM 提供者
+llm_provider = get_llm_provider()
 ```
 
 ---

@@ -53,7 +53,7 @@ from .data.data_provider import DataProvider, DataNamespace
 # ==================== 后台任务 ====================
 
 from .task.background_task import BackgroundTaskManager
-from .task.task_model import TaskType, TaskStatus, BackgroundTask, ScheduledTask
+from .task.task_model import TaskType, TaskStatus, BackgroundTask, ScheduledTask, LongRunningTask
 
 
 __all__ = [
@@ -72,4 +72,5 @@ __all__ = [
     "TaskStatus",
     "BackgroundTask",
     "ScheduledTask",
+    "LongRunningTask",
 ]

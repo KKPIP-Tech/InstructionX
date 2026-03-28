@@ -127,6 +127,66 @@ def get_plugin_id_by_name(self, plugin_name: str) -> Optional[str]:
     """
 ```
 
+#### get_official_plugins()
+
+```python
+def get_official_plugins(self) -> List[IPlugin]:
+    """
+    获取所有官方插件实例
+
+    Returns:
+        官方插件列表
+    """
+```
+
+#### get_thirdparty_plugins()
+
+```python
+def get_thirdparty_plugins(self) -> List[IPlugin]:
+    """
+    获取所有第三方插件实例
+
+    Returns:
+        第三方插件列表
+    """
+```
+
+#### reload_plugins()
+
+```python
+def reload_plugins(self):
+    """
+    重新加载所有插件
+
+    清空当前注册的插件，然后重新扫描并加载所有插件。
+    """
+```
+
+#### register_plugin()
+
+```python
+def register_plugin(self, plugin: IPlugin, is_official: bool = False):
+    """
+    手动注册插件到管理器
+
+    Args:
+        plugin: 插件实例
+        is_official: 是否为官方插件，默认为 False
+    """
+```
+
+#### unregister_plugin()
+
+```python
+def unregister_plugin(self, plugin_name: str):
+    """
+    从管理器移除插件
+
+    Args:
+        plugin_name: 插件名称
+    """
+```
+
 ### 3.3 插件顺序管理
 
 #### apply_custom_order()
@@ -300,6 +360,50 @@ def get_all_function_tools(self) -> List[Dict[str, Any]]:
                 }
             }
         ]
+    """
+```
+
+### 3.7 API 描述查询
+
+#### get_api_description()
+
+```python
+def get_api_description(self,
+                     plugin_id: str,
+                     method_name: Optional[str] = None) -> Dict[str, Any]:
+    """
+    获取 API 的结构化描述（适用于 MCP 或函数工具）
+
+    Args:
+        plugin_id: 插件唯一标识符
+        method_name: 可选，指定方法名。None 时返回所有方法的描述
+
+    Returns:
+        API 描述字典，包含方法名、参数、返回值等信息
+
+    Example:
+        # 获取所有方法描述
+        desc = manager.get_api_description("plugin-uuid")
+        
+        # 获取单个方法描述
+        method_desc = manager.get_api_description("plugin-uuid", "add_task")
+    """
+```
+
+### 3.8 API 注销
+
+#### unregister_plugin_api()
+
+```python
+def unregister_plugin_api(self, plugin_id: str) -> None:
+    """
+    移除插件的 API 注册
+
+    Args:
+        plugin_id: 插件唯一标识符
+
+    Note:
+        通常在插件卸载时调用，清理 API 注册表
     """
 ```
 

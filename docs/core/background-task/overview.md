@@ -284,11 +284,54 @@ flowchart TD
     G --> H
 ```
 
+**注意**：长期任务工厂应在 `on_plugin_loaded()` 中注册，而非 `_create_widget()` 中。
+
 ---
 
-## 7. 回调函数
+## 7. 长期任务状态管理
 
-### 7.1 回调签名
+### 7.1 更新任务状态
+
+```python
+def update_long_running_task_status(self, task_id: str, status: str) -> bool:
+    """
+    更新长期任务的状态描述
+
+    Args:
+        task_id: 任务 ID
+        status: 状态描述字符串
+
+    Returns:
+        是否成功更新
+
+    Example:
+        manager.update_long_running_task_status(
+            task_id="long-task-001",
+            status="正在处理第 5/10 个文件..."
+        )
+    """
+```
+
+### 7.2 获取长期任务列表
+
+```python
+def get_long_running_tasks(self, plugin_id: Optional[str] = None) -> List[LongRunningTask]:
+    """
+    获取长期任务列表
+
+    Args:
+        plugin_id: 可选的插件 ID，如果提供则只返回该插件的任务
+
+    Returns:
+        长期任务列表
+    """
+```
+
+---
+
+## 8. 回调函数
+
+### 8.1 回调签名
 
 ```python
 def task_callback(
@@ -309,7 +352,7 @@ def task_callback(
     pass
 ```
 
-### 7.2 使用示例
+### 8.2 使用示例
 
 ```python
 def on_task_complete(task_id, status, result, error):
@@ -329,11 +372,12 @@ task_id = manager.register_async_task(
 )
 ```
 
+
 ---
 
-## 8. 持久化存储
+## 9. 持久化存储
 
-### 8.1 tasks.json 结构
+### 9.1 tasks.json 结构
 
 ```json
 {
@@ -378,9 +422,10 @@ task_id = manager.register_async_task(
 }
 ```
 
+
 ---
 
-## 9. 相关文档
+## 10. 相关文档
 
 - [后台任务 API 参考](api-reference.md)
 - [插件开发指南](../plugin-system/plugin-development.md)

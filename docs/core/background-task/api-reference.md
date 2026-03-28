@@ -41,6 +41,41 @@ class TaskStatus(Enum):
     CANCELLED = "cancelled"  # 已取消
 ```
 
+### TaskThreadLocal
+
+```python
+class TaskThreadLocal:
+    """线程本地任务存储
+
+    利用线程本地存储机制，在多线程环境下安全传递当前任务信息。
+    用于在任务执行的子线程中获取关联的任务上下文。
+    """
+
+    @classmethod
+    def set_current_task(cls, task: BackgroundTask) -> None:
+        """设置当前线程的关联任务"""
+
+    @classmethod
+    def get_current_task(cls) -> Optional[BackgroundTask]:
+        """获取当前线程关联的任务"""
+
+    @classmethod
+    def clear_current_task(cls) -> None:
+        """清除当前线程的任务关联"""
+```
+
+**使用场景**：在任务执行的子线程中获取关联的任务上下文，例如记录任务 ID 到日志中。
+
+```python
+from core.task.task_model import TaskThreadLocal
+
+# 在任务执行函数中
+def my_task_func(task_id):
+    task = TaskThreadLocal.get_current_task()
+    if task:
+        print(f"当前任务: {task.name}")
+```
+
 ---
 
 ## 3. 任务注册方法
@@ -358,13 +393,14 @@ def restore_long_running_tasks(self, plugin_id: str) -> int
 ### stop_long_running_task()
 
 ```python
-def stop_long_running_task(self, task_id: str) -> bool
+def stop_long_running_task(self, task_id: str, delete_from_storage: bool = True) -> bool
 ```
 
 停止长期任务（会调用 stop_callback 进行优雅关闭）。
 
 **参数**:
 - `task_id`: 任务 ID
+- `delete_from_storage`: 是否从持久化存储中删除任务，默认为 True
 
 **返回**:
 - 是否成功停止
@@ -729,8 +765,9 @@ manager.enable_scheduled_task(scheduled_id)
 
 # 清理已完成的任务
 manager.clear_completed_tasks("my-plugin")
+```
 
-# 9.4 长期任务控制
+### 9.4 长期任务控制
 
 ```python
 # 获取长期任务列表
@@ -746,6 +783,25 @@ plugin_tasks = manager.get_long_running_tasks("service-plugin")
 
 # 停止长期任务（会调用 stop_callback）
 manager.stop_long_running_task(long_running_id)
+```
+
+## 10. 生命周期管理
+
+### shutdown()
+
+```python
+def shutdown(self) -> None
+```
+
+关闭任务管理器，释放所有资源。
+
+此方法应在应用程序退出前调用，以确保所有任务正确停止。
+
+**示例**:
+```python
+# 在应用程序退出时调用
+manager.shutdown()
+print("任务管理器已关闭")
 ```
 
 ---

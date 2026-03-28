@@ -16,7 +16,24 @@ from core import PluginManager, IPlugin, IPluginInfo
 from core import DataProvider, DataNamespace
 
 # 后台任务
-from core import BackgroundTaskManager, TaskType, TaskStatus, BackgroundTask, ScheduledTask
+from core import BackgroundTaskManager, TaskType, TaskStatus, BackgroundTask, ScheduledTask, LongRunningTask
+```
+
+### 1.2 从 core.llm 导入
+
+```python
+# LLM 提供者
+from core.llm import get_llm_provider
+
+# LLM 数据类型
+from core.llm.provider_interface import Message, ChatResponse, EmbeddingResponse, ModelInfo
+
+# LLM 异常
+from core.llm.exceptions import (
+    LLMException, ConfigurationError, AuthenticationError, APIError,
+    RateLimitError, InvalidRequestError, ModelNotSupportedError,
+    ConnectionError, TimeoutError, StreamingError
+)
 ```
 
 ---
@@ -37,12 +54,18 @@ from core import BackgroundTaskManager, TaskType, TaskStatus, BackgroundTask, Sc
 | `get_plugin_by_id(plugin_id)` | 根据 UUID 获取插件 | Optional[IPlugin] |
 | `get_plugin_by_name(name)` | 根据名称获取插件 | Optional[IPlugin] |
 | `get_plugin_id_by_name(name)` | 根据名称获取 UUID | Optional[str] |
+| `get_official_plugins()` | 获取官方插件列表 | List[IPlugin] |
+| `get_thirdparty_plugins()` | 获取第三方插件列表 | List[IPlugin] |
+| `reload_plugins()` | 重新加载所有插件 | None |
+| `register_plugin(plugin, is_official)` | 手动注册插件 | None |
+| `unregister_plugin(plugin_name)` | 移除插件 | None |
 | `apply_custom_order()` | 应用自定义顺序 | None |
 | `save_plugin_order(official, thirdparty)` | 保存插件顺序 | bool |
 | `get_official_plugin_ids()` | 获取官方插件 UUID 列表 | List[str] |
 | `get_thirdparty_plugin_ids()` | 获取第三方插件 UUID 列表 | List[str] |
 | `get_plugin_api(plugin_id)` | 获取插件 API 信息 | Optional[Dict] |
 | `get_all_apis()` | 获取所有 API | Dict |
+| `register_plugin_api(plugin_id, instance, descriptions)` | 注册插件 API | None |
 | `call_plugin_method(caller, plugin, method, **kwargs)` | 跨插件调用 | Any |
 | `get_all_function_tools()` | 获取 MCP 工具列表 | List[Dict] |
 
@@ -139,6 +162,12 @@ from core import BackgroundTaskManager, TaskType, TaskStatus, BackgroundTask, Sc
 | `enable_scheduled_task(task_id)` | 启用定时任务 | bool |
 | `disable_scheduled_task(task_id)` | 禁用定时任务 | bool |
 | `unregister_scheduled_task(task_id)` | 注销定时任务 | bool |
+| `register_long_running_task(plugin_id, name, func, callback, stop_callback, status_callback, auto_restart)` | 注册长期任务 | str (task_id) |
+| `register_long_running_task_factory(plugin_id, func, callback, stop_callback, status_callback, restore_callback)` | 注册长期任务工厂 | None |
+| `restore_long_running_tasks(plugin_id)` | 恢复长期任务 | int |
+| `stop_long_running_task(task_id, delete_from_storage)` | 停止长期任务 | bool |
+| `update_long_running_task_status(task_id, status)` | 更新长期任务状态 | bool |
+| `get_long_running_tasks(plugin_id)` | 获取长期任务列表 | List[LongRunningTask] |
 | `get_task(task_id)` | 获取任务 | Optional[BackgroundTask] |
 | `get_tasks_by_plugin(plugin_id)` | 获取插件任务 | List[BackgroundTask] |
 | `get_all_tasks()` | 获取所有任务 | List[BackgroundTask] |
@@ -146,6 +175,7 @@ from core import BackgroundTaskManager, TaskType, TaskStatus, BackgroundTask, Sc
 | `get_scheduled_tasks(plugin_id)` | 获取定时任务 | List[ScheduledTask] |
 | `cancel_task(task_id)` | 取消任务 | bool |
 | `clear_completed_tasks(plugin_id)` | 清理已完成任务 | int |
+| `shutdown()` | 关闭任务管理器 | None |
 
 ### 4.2 TaskType
 
@@ -156,6 +186,7 @@ from core import BackgroundTaskManager, TaskType, TaskStatus, BackgroundTask, Sc
 | `TaskType.SYNC` | 同步任务 |
 | `TaskType.ASYNC` | 异步任务 |
 | `TaskType.SCHEDULED` | 定时任务 |
+| `TaskType.LONG_RUNNING` | 长期任务 |
 
 ### 4.3 TaskStatus
 
@@ -168,6 +199,54 @@ from core import BackgroundTaskManager, TaskType, TaskStatus, BackgroundTask, Sc
 | `TaskStatus.COMPLETED` | 已完成 |
 | `TaskStatus.FAILED` | 执行失败 |
 | `TaskStatus.CANCELLED` | 已取消 |
+
+---
+
+## 5. LLM Provider API
+
+### 5.1 LLMProvider
+
+**文件**: `core/llm/llm_provider.py`
+
+| 方法 | 说明 | 返回值 |
+|------|------|--------|
+| `get_llm_provider()` | 获取单例实例 | LLMProvider |
+| `chat(messages, provider, model, tools)` | 同步聊天 | ChatResponse |
+| `stream_chat(messages, callback, provider, model)` | 流式聊天 | Iterator[ChatResponse] |
+| `async_chat(messages, provider, model)` | 异步聊天 | ChatResponse |
+| `async_stream_chat(messages, callback, provider, model)` | 异步流式聊天 | AsyncIterator |
+| `embed(texts, provider, model)` | 文本嵌入 | List[EmbeddingResponse] |
+| `async_embed(texts, provider, model)` | 异步文本嵌入 | List[EmbeddingResponse] |
+| `get_models(provider)` | 获取模型列表 | Dict[str, List[ModelInfo]] |
+| `refresh_provider_models(provider_name, force)` | 刷新指定 Provider 模型 | List[ModelInfo] |
+| `refresh_all_models(force)` | 刷新所有模型 | Dict[str, List[ModelInfo]] |
+| `get_cached_models(provider_name)` | 获取缓存模型 | List[ModelInfo] |
+| `get_provider(name)` | 获取 Provider 实例 | Optional[ILLM] |
+| `get_all_providers()` | 获取所有 Provider | Dict[str, ILLM] |
+| `get_enabled_providers(feature)` | 获取启用的 Provider | List[str] |
+| `add_provider(name, config)` | 添加 Provider | None |
+| `remove_provider(name)` | 移除 Provider | None |
+| `reload_config()` | 重新加载配置 | None |
+| `close()` | 关闭连接 | None |
+| `config` | 配置管理器 | LLMConfig |
+| `available_providers` | 可用 Provider 列表 | List[str] |
+
+### 5.2 异常类
+
+**文件**: `core/llm/exceptions.py`
+
+| 异常类 | 说明 |
+|--------|------|
+| `LLMException` | 基础异常类 |
+| `ConfigurationError` | 配置错误 |
+| `AuthenticationError` | 认证错误 |
+| `APIError` | API 调用错误 |
+| `RateLimitError` | 速率限制 |
+| `InvalidRequestError` | 无效请求 |
+| `ModelNotSupportedError` | 模型不支持 |
+| `ConnectionError` | 连接错误 |
+| `TimeoutError` | 超时错误 |
+| `StreamingError` | 流式输出错误 |
 
 ---
 
@@ -184,6 +263,9 @@ data_provider = DataProvider()
 
 # 后台任务管理器
 task_manager = BackgroundTaskManager()
+
+# LLM 提供者
+llm_provider = get_llm_provider()
 ```
 
 ### 5.2 创建插件 Widget
@@ -280,6 +362,9 @@ task_id = task_manager.register_scheduled_task(
 - [DataProvider API 参考](../core/data-provider/api-reference.md)
 - [后台任务概述](../core/background-task/overview.md)
 - [后台任务 API 参考](../core/background-task/api-reference.md)
+- [LLM Provider 概述](../core/llm-provider/overview.md)
+- [LLM Provider API 参考](../core/llm-provider/api-reference.md)
+- [插件系统概述](../core/plugin-system/overview.md)
 
 ---
 

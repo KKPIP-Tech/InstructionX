@@ -24,9 +24,11 @@ from core.llm.exceptions import (
     AuthenticationError,
     APIError,
     RateLimitError,
-    TimeoutError,
+    InvalidRequestError,
+    ModelNotSupportedError,
     ConnectionError,
-    InvalidRequestError
+    TimeoutError,
+    StreamingError
 )
 ```
 
@@ -528,6 +530,77 @@ for name, models in all_models.items():
 
 # 获取指定 Provider 的模型
 minimax_models = provider.get_models("minimax")
+```
+
+---
+
+#### refresh_provider_models()
+
+```python
+def refresh_provider_models(self, provider_name: str, force: bool = False) -> List[ModelInfo]
+```
+
+刷新指定 Provider 的模型列表。
+
+**参数**:
+- `provider_name`: Provider 名称
+- `force`: 是否强制从 API 刷新，默认为 False（优先使用缓存）
+
+**返回**:
+- `List[ModelInfo]`: 模型列表
+
+**示例**:
+```python
+# 强制刷新 MiniMax 模型列表
+models = provider.refresh_provider_models("minimax", force=True)
+for model in models:
+    print(f"{model.id}: Chat={model.support_chat}, Vision={model.support_vision}")
+```
+
+---
+
+#### refresh_all_models()
+
+```python
+def refresh_all_models(self, force: bool = False) -> Dict[str, List[ModelInfo]]
+```
+
+刷新所有已配置 Provider 的模型列表。
+
+**参数**:
+- `force`: 是否强制从 API 刷新，默认为 False
+
+**返回**:
+- `Dict[str, List[ModelInfo]]`: 每个 Provider 的模型列表
+
+**示例**:
+```python
+# 刷新所有模型
+all_models = provider.refresh_all_models(force=True)
+print(f"共获取 {len(all_models)} 个 Provider 的模型")
+```
+
+---
+
+#### get_cached_models()
+
+```python
+def get_cached_models(self, provider_name: str) -> List[ModelInfo]
+```
+
+获取指定 Provider 缓存的模型列表（不调用 API）。
+
+**参数**:
+- `provider_name`: Provider 名称
+
+**返回**:
+- `List[ModelInfo]`: 缓存的模型列表
+
+**示例**:
+```python
+# 获取缓存的模型（快速返回）
+cached = provider.get_cached_models("minimax")
+print(f"缓存中有 {len(cached)} 个模型")
 ```
 
 ---
