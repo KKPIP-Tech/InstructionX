@@ -1,6 +1,24 @@
+"""MiniMax Provider 实现模块
+
+该模块提供 MiniMax 大语言模型的接口实现。
+继承自 BaseProvider，实现聊天、嵌入、流式输出等功能。
+
+MiniMax API 文档: https://platform.minimaxi.com/docs/api-reference
+
+支持的模型:
+    - CHAT_MODELS: 文本聊天模型（MiniMax-M2.5, MiniMax-M2.1 等）
+    - EMBEDDING_MODELS: 向量嵌入模型（embedding-2）
+
+Classes:
+    MiniMaxProvider: MiniMax 提供商实现
+
+使用示例:
+    >>> from core.llm.providers.minimax import MiniMaxProvider
+    >>> config = {"api_key": "xxx", "base_url": "https://api.minimax.chat/v1"}
+    >>> provider = MiniMaxProvider(config, provider_name="minimax")
+    >>> response = provider.chat([Message("user", "你好")])
 """
-MiniMax Provider 实现
-"""
+
 from typing import Dict, Any, Optional, List, Union, AsyncIterator
 
 from .base import BaseProvider
@@ -9,15 +27,49 @@ from ..exceptions import APIError
 
 
 class MiniMaxProvider(BaseProvider):
-    """MiniMax LLM Provider"""
+    """MiniMax LLM Provider
 
+    MiniMax 大语言模型提供商实现，支持文本聊天、嵌入生成等功能。
+    由于 MiniMax 官方没有提供模型列表 API，使用预设模型列表。
+
+    Class Attributes:
+        provider_type: 提供商类型标识 ("minimax")
+        provider_name: 提供商显示名称 ("MiniMax")
+        support_chat: 是否支持聊天功能 (True)
+        support_streaming: 是否支持流式输出 (True)
+        support_embedding: 是否支持嵌入功能 (True)
+        support_vision: 是否支持视觉功能 (False - 当前不支持图像和音频输入)
+        CHAT_MODELS: 文本聊天模型列表
+        EMBEDDING_MODELS: 向量嵌入模型列表
+        MODEL_DETAILS: 预设模型详细信息
+
+    API 端点:
+        - /text/chatcompletion_v2: 聊天完成
+        - /embeddings/embedding_async_v2: 嵌入生成
+
+    使用示例:
+        >>> from core.llm.providers.minimax import MiniMaxProvider
+        >>> from core.llm import Message
+        >>> config = {"api_key": "your_api_key", "chat_model": "MiniMax-M2.5"}
+        >>> provider = MiniMaxProvider(config)
+        >>> response = provider.chat([Message("user", "你好")])
+        >>> print(response.content)
+    """
+
+    # ==================== 类属性定义 ====================
+
+    # 提供商标识
     provider_type = "minimax"
     provider_name = "MiniMax"
 
+    # 功能支持标志
     support_chat = True
     support_streaming = True
     support_embedding = True
-    support_vision = False  # MiniMax 不支持 Vision（文档明确说明"当前不支持图像和音频类型的输入"）
+    # MiniMax 不支持 Vision（官方文档明确说明"当前不支持图像和音频类型的输入"）
+    support_vision = False
+
+    # ==================== 预设模型列表 ====================
 
     # MiniMax 官方没有提供模型列表 API，使用预设列表
     # 参考: https://platform.minimaxi.com/docs/api-reference/api-overview
@@ -67,14 +119,34 @@ class MiniMaxProvider(BaseProvider):
         },
     }
 
+    # ==================== 初始化 ====================
+
     def __init__(self, config: Optional[Dict[str, Any]] = None, provider_name: str = ""):
+        """初始化 MiniMax Provider
+
+        Args:
+            config: 提供商配置字典
+            provider_name: 提供商名称（用于缓存标识）
+        """
         super().__init__(config, provider_name)
+        # API 端点定义
         self._chat_endpoint = "/text/chatcompletion_v2"
         self._embedding_endpoint = "/embeddings/embedding-async_v2"
         # MiniMax 没有模型列表 API，使用预设列表
 
+    # ==================== 模型列表解析 ====================
+
     def _parse_models_response(self, response: Dict[str, Any]) -> List[ModelInfo]:
-        """解析 MiniMax API 返回的模型列表"""
+        """解析 MiniMax API 返回的模型列表
+
+        从 MiniMax API 响应中提取模型信息，并根据模型类型判断支持的功能。
+
+        Args:
+            response: API 响应字典
+
+        Returns:
+            List[ModelInfo]: 模型信息列表
+        """
         models = []
 
         for model_data in response.get("data", []):
@@ -103,6 +175,8 @@ class MiniMaxProvider(BaseProvider):
 
         return models
 
+    # ==================== 请求载荷准备 ====================
+
     def _prepare_chat_payload(
         self,
         messages: List[Union[Message, Dict]],
@@ -112,7 +186,22 @@ class MiniMaxProvider(BaseProvider):
         stream: bool = False,
         **kwargs
     ) -> Dict[str, Any]:
-        """准备聊天请求载荷"""
+        """准备聊天请求载荷
+
+        准备发送给 MiniMax API 的请求参数。
+        特别注意：MiniMax 使用 base64 编码的图片，需要特殊处理。
+
+        Args:
+            messages: 消息列表
+            model: 模型名称
+            temperature: 温度参数
+            max_tokens: 最大 token 数
+            stream: 是否流式输出
+            **kwargs: 其他参数
+
+        Returns:
+            Dict[str, Any]: 请求载荷字典
+        """
         prepared_messages = self._prepare_messages(messages)
 
         payload: Dict[str, Any] = {
@@ -135,8 +224,22 @@ class MiniMaxProvider(BaseProvider):
         payload.update(kwargs)
         return payload
 
+    # ==================== 响应解析 ====================
+
     def _parse_chat_response(self, response: Dict[str, Any]) -> ChatResponse:
-        """解析聊天响应"""
+        """解析聊天响应
+
+        从 MiniMax API 响应中提取聊天内容和思考过程。
+
+        Args:
+            response: API 响应字典
+
+        Returns:
+            ChatResponse: 聊天响应对象
+
+        Raises:
+            APIError: 当响应为空时抛出
+        """
         choices = response.get("choices", [])
         if not choices:
             raise APIError("Empty response from MiniMax")
@@ -153,7 +256,19 @@ class MiniMaxProvider(BaseProvider):
         )
 
     def _parse_stream_response(self, data: Dict) -> ChatResponse:
-        """解析流式响应"""
+        """解析流式响应
+
+        从流式数据块中提取聊天内容和思考过程。
+
+        Args:
+            data: 流式数据块
+
+        Returns:
+            ChatResponse: 聊天响应对象
+
+        Raises:
+            APIError: 当响应为空时抛出
+        """
         choices = data.get("choices", [])
         if not choices:
             raise APIError("Empty stream chunk from MiniMax")
@@ -179,7 +294,20 @@ class MiniMaxProvider(BaseProvider):
         max_tokens: Optional[int] = None,
         **kwargs
     ) -> ChatResponse:
-        """发送聊天请求"""
+        """发送聊天请求（同步）
+
+        向 MiniMax API 发送聊天请求，获取完整的响应文本。
+
+        Args:
+            messages: 消息列表
+            model: 模型名称（可选，默认使用配置中的模型）
+            temperature: 温度参数（默认 0.7）
+            max_tokens: 最大生成 token 数（可选）
+            **kwargs: 其他参数
+
+        Returns:
+            ChatResponse: 聊天响应对象
+        """
         payload = self._prepare_chat_payload(
             messages, model, temperature, max_tokens, stream=False, **kwargs
         )
@@ -195,7 +323,21 @@ class MiniMaxProvider(BaseProvider):
         callback=None,
         **kwargs
     ):
-        """发送流式聊天请求"""
+        """发送流式聊天请求（同步）
+
+        向 MiniMax API 发送流式聊天请求，逐块获取响应。
+
+        Args:
+            messages: 消息列表
+            model: 模型名称
+            temperature: 温度参数
+            max_tokens: 最大 token 数
+            callback: 可选的回调函数
+            **kwargs: 其他参数
+
+        Returns:
+            生成器: 流式响应生成器
+        """
         payload = self._prepare_chat_payload(
             messages, model, temperature, max_tokens, stream=True, **kwargs
         )
@@ -207,7 +349,18 @@ class MiniMaxProvider(BaseProvider):
         model: Optional[str] = None,
         **kwargs
     ) -> List[EmbeddingResponse]:
-        """发送嵌入请求"""
+        """发送嵌入请求（同步）
+
+        将文本转换为向量嵌入。
+
+        Args:
+            texts: 单个文本或文本列表
+            model: 嵌入模型名称（可选，默认使用配置中的模型）
+            **kwargs: 其他参数
+
+        Returns:
+            List[EmbeddingResponse]: 嵌入响应列表
+        """
         if isinstance(texts, str):
             texts = [texts]
 
@@ -241,7 +394,18 @@ class MiniMaxProvider(BaseProvider):
         max_tokens: Optional[int] = None,
         **kwargs
     ) -> ChatResponse:
-        """异步发送聊天请求"""
+        """异步发送聊天请求
+
+        Args:
+            messages: 消息列表
+            model: 模型名称
+            temperature: 温度参数
+            max_tokens: 最大 token 数
+            **kwargs: 其他参数
+
+        Returns:
+            ChatResponse: 聊天响应对象
+        """
         payload = self._prepare_chat_payload(
             messages, model, temperature, max_tokens, stream=False, **kwargs
         )
@@ -256,7 +420,18 @@ class MiniMaxProvider(BaseProvider):
         max_tokens: Optional[int] = None,
         **kwargs
     ) -> AsyncIterator[ChatResponse]:
-        """异步发送流式聊天请求"""
+        """异步发送流式聊天请求
+
+        Args:
+            messages: 消息列表
+            model: 模型名称
+            temperature: 温度参数
+            max_tokens: 最大 token 数
+            **kwargs: 其他参数
+
+        Yields:
+            ChatResponse: 聊天响应块
+        """
         payload = self._prepare_chat_payload(
             messages, model, temperature, max_tokens, stream=True, **kwargs
         )
@@ -269,7 +444,16 @@ class MiniMaxProvider(BaseProvider):
         model: Optional[str] = None,
         **kwargs
     ) -> List[EmbeddingResponse]:
-        """异步发送嵌入请求"""
+        """异步发送嵌入请求
+
+        Args:
+            texts: 文本或文本列表
+            model: 嵌入模型名称
+            **kwargs: 其他参数
+
+        Returns:
+            List[EmbeddingResponse]: 嵌入响应列表
+        """
         if isinstance(texts, str):
             texts = [texts]
 
@@ -292,5 +476,11 @@ class MiniMaxProvider(BaseProvider):
         ]
 
     async def async_get_models(self) -> List[ModelInfo]:
-        """异步获取可用模型列表"""
+        """异步获取可用模型列表
+
+        由于使用预设模型列表，直接返回同步版本的结果。
+
+        Returns:
+            List[ModelInfo]: 模型信息列表
+        """
         return self.get_models()

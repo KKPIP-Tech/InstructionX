@@ -1,7 +1,8 @@
 """
-任务数据模型
+任务数据模型定义
 
-定义后台任务和定时任务的数据结构。
+定义后台任务、定时任务、长期任务的数据结构和状态枚举。
+支持任务序列化/反序列化，用于任务持久化存储。
 """
 
 import uuid
@@ -14,28 +15,30 @@ from dataclasses import dataclass, field
 
 class TaskType(Enum):
     """任务类型枚举"""
-    SYNC = "sync"           # 同步任务
-    ASYNC = "async"         # 异步任务
-    SCHEDULED = "scheduled" # 定时任务
-    LONG_RUNNING = "long_running" # 长期任务
+    SYNC = "sync"           # 同步任务：主线程立即执行
+    ASYNC = "async"         # 异步任务：线程池异步执行
+    SCHEDULED = "scheduled" # 定时任务：按固定间隔重复执行
+    LONG_RUNNING = "long_running" # 长期任务：持续运行直到显式停止
 
 
 class TaskStatus(Enum):
     """任务状态枚举"""
-    PENDING = "pending"     # 待执行
-    RUNNING = "running"    # 执行中
-    COMPLETED = "completed" # 已完成
-    FAILED = "failed"      # 执行失败
-    CANCELLED = "cancelled" # 已取消
+    PENDING = "pending"     # 待执行：任务已创建但未开始
+    RUNNING = "running"    # 执行中：任务正在运行
+    COMPLETED = "completed" # 已完成：任务成功执行完毕
+    FAILED = "failed"      # 执行失败：任务执行过程中出错
+    CANCELLED = "cancelled" # 已取消：任务被用户主动取消
 
 
 @dataclass
 class BackgroundTask:
     """
-    后台任务数据类
+    后台任务数据模型
 
-    用于存储和管理单个后台任务的信息。
-    注意：func 和 callback 属性不参与序列化。
+    用于存储和管理一次性执行的后台任务。
+    包含任务标识、状态、执行参数和结果信息。
+
+    注意：func 和 callback 属性为运行时对象，不参与持久化序列化。
     """
     task_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     plugin_id: str = ""
@@ -59,7 +62,14 @@ class BackgroundTask:
     finished_at: Optional[datetime] = None
 
     def to_dict(self) -> Dict[str, Any]:
-        """转换为字典（用于序列化）"""
+        """
+        将任务转换为字典格式
+
+        用于任务持久化存储。自动处理不可序列化的结果对象。
+
+        Returns:
+            包含任务信息的字典
+        """
         return {
             "task_id": self.task_id,
             "plugin_id": self.plugin_id,
@@ -75,7 +85,17 @@ class BackgroundTask:
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'BackgroundTask':
-        """从字典创建实例（用于反序列化）"""
+        """
+        从字典数据恢复任务实例
+
+        用于从持久化存储加载任务。
+
+        Args:
+            data: 任务字典数据
+
+        Returns:
+            重建的 BackgroundTask 实例
+        """
         task = cls()
         task.task_id = data.get("task_id", task.task_id)
         task.plugin_id = data.get("plugin_id", "")
@@ -85,7 +105,7 @@ class BackgroundTask:
         task.result = data.get("result")
         task.error = data.get("error")
 
-        # 解析时间戳
+        # 解析时间戳字符串为 datetime 对象
         created_at = data.get("created_at")
         if created_at:
             task.created_at = datetime.fromisoformat(created_at)
@@ -101,34 +121,44 @@ class BackgroundTask:
         return task
 
     def _serialize_result(self, result: Any) -> Any:
-        """序列化结果（处理不可序列化的对象）"""
+        """
+        序列化任务结果
+
+        尝试将结果转换为 JSON 兼容格式。不可序列化时返回类型描述。
+
+        Args:
+            result: 任务执行结果
+
+        Returns:
+            可序列化结果或类型描述字符串
+        """
         try:
             import json
             json.dumps(result)
             return result
         except (TypeError, ValueError):
-            # 如果不可序列化，返回字符串描述
+            # 不可序列化对象，返回类型描述
             return f"<{type(result).__name__}>"
 
     def mark_running(self) -> None:
-        """标记任务为运行中"""
+        """标记任务为运行中状态，并记录开始时间"""
         self.status = TaskStatus.RUNNING
         self.started_at = datetime.now()
 
     def mark_completed(self, result: Any = None) -> None:
-        """标记任务为已完成"""
+        """标记任务为已完成状态，记录结果和完成时间"""
         self.status = TaskStatus.COMPLETED
         self.result = result
         self.finished_at = datetime.now()
 
     def mark_failed(self, error: str) -> None:
-        """标记任务为失败"""
+        """标记任务为失败状态，记录错误信息和失败时间"""
         self.status = TaskStatus.FAILED
         self.error = error
         self.finished_at = datetime.now()
 
     def mark_cancelled(self) -> None:
-        """标记任务为已取消"""
+        """标记任务为已取消状态，记录取消时间"""
         self.status = TaskStatus.CANCELLED
         self.finished_at = datetime.now()
 
@@ -136,15 +166,17 @@ class BackgroundTask:
 @dataclass
 class ScheduledTask:
     """
-    定时任务数据类
+    定时任务数据模型
 
-    用于存储和管理定时任务的信息。
-    注意：func 和 callback 属性不参与序列化。
+    用于存储和管理按固定时间间隔重复执行的任务。
+    支持任务启用/禁用控制，自动计算下次执行时间。
+
+    注意：func 和 callback 属性为运行时对象，不参与持久化序列化。
     """
     task_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     plugin_id: str = ""
     name: str = ""
-    interval: int = 60  # 间隔（秒）
+    interval: int = 60  # 执行间隔秒数
 
     # 运行时属性（不参与序列化）
     func: Optional[Callable] = field(default=None, repr=False)
@@ -161,7 +193,14 @@ class ScheduledTask:
     created_at: datetime = field(default_factory=datetime.now)
 
     def to_dict(self) -> Dict[str, Any]:
-        """转换为字典（用于序列化）"""
+        """
+        将任务转换为字典格式
+
+        用于任务持久化存储。
+
+        Returns:
+            包含任务信息的字典
+        """
         return {
             "task_id": self.task_id,
             "plugin_id": self.plugin_id,
@@ -177,7 +216,15 @@ class ScheduledTask:
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'ScheduledTask':
-        """从字典创建实例（用于反序列化）"""
+        """
+        从字典数据恢复任务实例
+
+        Args:
+            data: 任务字典数据
+
+        Returns:
+            重建的 ScheduledTask 实例
+        """
         task = cls()
         task.task_id = data.get("task_id", task.task_id)
         task.plugin_id = data.get("plugin_id", "")
@@ -185,11 +232,11 @@ class ScheduledTask:
         task.interval = data.get("interval", 60)
         task.enabled = data.get("enabled", True)
 
-        # 解析 args 和 kwargs
+        # 解析参数
         task.args = tuple(data.get("args", []))
         task.kwargs = dict(data.get("kwargs", {}))
 
-        # 解析时间戳
+        # 解析时间戳字符串为 datetime 对象
         last_run = data.get("last_run")
         if last_run:
             task.last_run = datetime.fromisoformat(last_run)
@@ -205,7 +252,11 @@ class ScheduledTask:
         return task
 
     def calculate_next_run(self) -> None:
-        """计算下次执行时间"""
+        """
+        计算并设置下次执行时间
+
+        基于当前时间加上间隔秒数计算下一次执行的时间点。
+        """
         from datetime import timedelta
         self.next_run = datetime.now() + timedelta(seconds=self.interval)
 
@@ -213,17 +264,18 @@ class ScheduledTask:
 @dataclass
 class LongRunningTask:
     """
-    长期任务数据类
+    长期任务数据模型
 
-    用于存储和管理长期运行的任务信息。
-    任务会持续运行直到被显式停止，支持优雅停止和自动重启。
-    注意：func、callback、stop_callback、status_callback 属性不参与序列化。
+    用于存储和管理持续运行的后台任务。
+    任务会持续运行直到被显式停止，支持优雅停止机制和失败自动重启。
+
+    注意：func、callback、stop_callback、status_callback 为运行时对象，不参与持久化。
     """
     task_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     plugin_id: str = ""
     name: str = ""
     enabled: bool = True
-    auto_restart: bool = True  # 失败后是否自动重启
+    auto_restart: bool = True  # 任务失败后是否自动重启
 
     # 运行时属性（不参与序列化）
     func: Optional[Callable] = field(default=None, repr=False)
@@ -233,18 +285,25 @@ class LongRunningTask:
     args: tuple = field(default_factory=tuple)
     kwargs: dict = field(default_factory=dict)
 
-    # 状态
-    current_status: str = ""  # 当前状态描述
+    # 运行时状态
+    current_status: str = ""  # 当前状态描述文字
     error: Optional[str] = None  # 错误信息
 
     # 时间戳
     created_at: datetime = field(default_factory=datetime.now)
     last_started_at: Optional[datetime] = None
     last_stopped_at: Optional[datetime] = None
-    restart_count: int = 0  # 重启次数
+    restart_count: int = 0  # 自动重启次数
 
     def to_dict(self) -> Dict[str, Any]:
-        """转换为字典（用于序列化）"""
+        """
+        将任务转换为字典格式
+
+        用于任务持久化存储。
+
+        Returns:
+            包含任务信息的字典
+        """
         return {
             "task_id": self.task_id,
             "plugin_id": self.plugin_id,
@@ -263,7 +322,15 @@ class LongRunningTask:
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'LongRunningTask':
-        """从字典创建实例（用于反序列化）"""
+        """
+        从字典数据恢复任务实例
+
+        Args:
+            data: 任务字典数据
+
+        Returns:
+            重建的 LongRunningTask 实例
+        """
         task = cls()
         task.task_id = data.get("task_id", task.task_id)
         task.plugin_id = data.get("plugin_id", "")
@@ -273,11 +340,11 @@ class LongRunningTask:
         task.current_status = data.get("current_status", "")
         task.error = data.get("error")
 
-        # 解析 args 和 kwargs
+        # 解析参数
         task.args = tuple(data.get("args", []))
         task.kwargs = dict(data.get("kwargs", {}))
 
-        # 解析时间戳
+        # 解析时间戳字符串为 datetime 对象
         created_at = data.get("created_at")
         if created_at:
             task.created_at = datetime.fromisoformat(created_at)
@@ -297,24 +364,25 @@ class LongRunningTask:
 
 class TaskThreadLocal:
     """
-    线程本地存储
+    线程本地任务存储
 
-    用于在子线程中安全地访问当前任务信息。
+    利用线程本地存储机制，在多线程环境下安全传递当前任务信息。
+    用于在任务执行的子线程中获取关联的任务上下文。
     """
     _local = threading.local()
 
     @classmethod
     def set_current_task(cls, task: BackgroundTask) -> None:
-        """设置当前任务"""
+        """设置当前线程的关联任务"""
         cls._local.current_task = task
 
     @classmethod
     def get_current_task(cls) -> Optional[BackgroundTask]:
-        """获取当前任务"""
+        """获取当前线程关联的任务"""
         return getattr(cls._local, 'current_task', None)
 
     @classmethod
     def clear_current_task(cls) -> None:
-        """清除当前任务"""
+        """清除当前线程的任务关联"""
         if hasattr(cls._local, 'current_task'):
             delattr(cls._local, 'current_task')

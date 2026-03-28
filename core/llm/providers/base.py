@@ -1,6 +1,25 @@
+"""Base Provider 基类模块
+
+该模块提供所有 LLM 提供商的抽象基类 BaseProvider，包含通用功能实现。
+具体提供商只需继承此类并实现特定方法即可，大幅减少重复代码。
+
+主要功能:
+    - 同步/异步 HTTP 请求封装
+    - 模型列表获取和缓存管理
+    - 聊天/嵌入/流式请求基类实现
+    - Function Calling 支持
+    - 错误处理和异常转换
+
+Classes:
+    BaseProvider: LLM 提供商抽象基类
+
+使用示例:
+    >>> from core.llm.providers.base import BaseProvider
+    >>> class MyProvider(BaseProvider):
+    ...     provider_type = "my_provider"
+    ...     # 实现具体方法...
 """
-Base Provider 基类实现
-"""
+
 import json
 import requests
 import aiohttp
@@ -18,12 +37,50 @@ from ..exceptions import (
 
 
 class BaseProvider(ILLM):
-    """LLM Provider 基类"""
+    """LLM Provider 基类
+
+    所有具体 LLM 提供商的基类，提供通用功能实现。
+    子类只需继承此类并重写必要的方法即可。
+
+    设计原则:
+        - 模板方法模式：基类提供算法骨架，子类提供具体实现
+        - 复用优先：通用的 HTTP 请求、缓存管理等功能在基类实现
+        - 灵活性：子类可重写特定方法以适配不同 API 格式
+
+    Class Attributes:
+        _models_endpoint: 获取模型列表的 API 端点（子类需定义）
+
+    Attributes:
+        api_key: API 密钥
+        base_url: API 基础 URL
+        chat_model: 默认聊天模型
+        embedding_model: 默认嵌入模型
+        timeout: 请求超时时间（秒）
+        _session: 同步 HTTP Session
+        _async_session: 异步 HTTP Session
+        _provider_name: 提供商名称（用于缓存标识）
+
+    Example:
+        >>> class MyProvider(BaseProvider):
+        ...     provider_type = "my_provider"
+        ...     provider_name = "My Provider"
+        ...     _models_endpoint = "/v1/models"
+        ...
+        ...     def chat(self, messages, model=None, **kwargs):
+        ...         # 实现聊天请求
+        ...         pass
+    """
 
     # 子类需要定义这些类属性
     _models_endpoint: str = ""
 
     def __init__(self, config: Optional[Dict[str, Any]] = None, provider_name: str = ""):
+        """初始化 BaseProvider
+
+        Args:
+            config: 提供商配置字典，包含 api_key、base_url、chat_model 等
+            provider_name: 提供商名称，用于缓存标识
+        """
         super().__init__(config)
         self.api_key = config.get("api_key", "") if config else ""
         self.base_url = config.get("base_url", "").rstrip("/")
@@ -37,11 +94,16 @@ class BaseProvider(ILLM):
     # ==================== 模型获取与缓存 ====================
 
     def _fetch_models_from_api(self) -> List[ModelInfo]:
-        """
-        从 API 获取模型列表 - 子类需要重写此方法
+        """从 API 获取模型列表
+
+        从提供商的 API 端点获取模型列表。子类可重写此方法以适配特定 API 格式。
 
         Returns:
             List[ModelInfo]: 模型信息列表
+
+        Note:
+            - 如果 api_key 或 _models_endpoint 为空，返回空列表
+            - 请求失败时返回空列表，不抛出异常
         """
         if not self.api_key or not self._models_endpoint:
             return []
@@ -53,24 +115,31 @@ class BaseProvider(ILLM):
             return []
 
     def _parse_models_response(self, response: Dict[str, Any]) -> List[ModelInfo]:
-        """
-        解析 API 返回的模型列表 - 子类需要重写此方法
+        """解析 API 返回的模型列表
+
+        解析提供商 API 返回的模型列表数据。子类可重写此方法以适配特定格式。
 
         Args:
-            response: API 响应
+            response: API 响应字典
 
         Returns:
             List[ModelInfo]: 模型信息列表
+
+        Note:
+            默认实现尝试从通用字段解析，子类通常需要重写
         """
         return []
 
     def fetch_and_cache_models(self) -> List[ModelInfo]:
-        """
-        获取模型列表并缓存
+        """获取模型列表并缓存
 
-        优先从 API 获取，如果成功则缓存结果
-        如果 API 获取失败，尝试从缓存加载
-        如果缓存也没有，从配置中读取默认模型
+        优先从 API 获取模型列表，如果成功则缓存到本地文件。
+        如果 API 获取失败，尝试从缓存加载。如果缓存也没有，从配置中读取默认模型。
+
+        优先级顺序:
+            1. API 获取（优先）
+            2. 本地缓存
+            3. 配置文件中的默认模型
 
         Returns:
             List[ModelInfo]: 模型信息列表
@@ -92,10 +161,12 @@ class BaseProvider(ILLM):
         return self._get_default_models_from_config()
 
     def _get_default_models_from_config(self) -> List[ModelInfo]:
-        """
-        从配置中读取默认模型
+        """从配置中读取默认模型
 
-        当 API 和缓存都无法获取时使用
+        当 API 和缓存都无法获取模型列表时，从配置中的 chat_model 和 embedding_model 字段创建默认模型信息。
+
+        Returns:
+            List[ModelInfo]: 从配置创建的默认模型列表
         """
         models = []
 
@@ -124,11 +195,10 @@ class BaseProvider(ILLM):
         return models
 
     def get_models(self) -> List[ModelInfo]:
-        """
-        获取可用模型列表（统一实现）
+        """获取可用模型列表（统一实现）
 
-        如果子类定义了 CHAT_MODELS 或 EMBEDDING_MODELS，则使用预设模型列表
-        否则从 API 获取并缓存，失败则尝试缓存
+        如果子类定义了 CHAT_MODELS 或 EMBEDDING_MODELS 类属性，则使用预设模型列表。
+        否则从 API 获取并缓存，获取失败则尝试从缓存加载。
 
         Returns:
             List[ModelInfo]: 模型信息列表
@@ -144,10 +214,23 @@ class BaseProvider(ILLM):
         return models
 
     def _get_fallback_models(self) -> List[ModelInfo]:
-        """
-        获取预设模型列表（子类可重写）
+        """获取预设模型列表
 
-        当子类定义了 CHAT_MODELS 或 EMBEDDING_MODELS 时使用
+        当子类定义了 CHAT_MODELS、EMBEDDING_MODELS、VISION_MODELS 等类属性时使用。
+        从这些预设列表和 MODEL_DETAILS 创建模型信息对象。
+
+        Returns:
+            List[ModelInfo]: 预设模型列表
+
+        Note:
+            支持多种模型类型：
+            - CHAT_MODELS: 聊天模型
+            - EMBEDDING_MODELS: 嵌入模型
+            - VISION_MODELS: 视觉模型
+            - IMAGE_MODELS: 图像生成模型（GLM 专用）
+            - VIDEO_MODELS: 视频生成模型（GLM 专用）
+            - AUDIO_MODELS: 音频生成模型（GLM 专用）
+            - OTHER_MODELS: 其他模型（GLM 专用）
         """
         models = []
 
@@ -269,8 +352,9 @@ class BaseProvider(ILLM):
         return models
 
     def refresh_models(self, force: bool = False) -> List[ModelInfo]:
-        """
-        刷新模型列表
+        """刷新模型列表
+
+        强制或非强制刷新模型列表。
 
         Args:
             force: 是否强制从 API 刷新（忽略缓存）
@@ -298,15 +382,32 @@ class BaseProvider(ILLM):
         return self.get_models()
 
     async def async_get_models(self) -> List[ModelInfo]:
-        """异步获取模型列表"""
+        """异步获取模型列表
+
+        Returns:
+            List[ModelInfo]: 模型信息列表
+        """
         return self.get_models()
 
     async def async_refresh_models(self, force: bool = False) -> List[ModelInfo]:
-        """异步刷新模型列表"""
+        """异步刷新模型列表
+
+        Args:
+            force: 是否强制从 API 刷新
+
+        Returns:
+            List[ModelInfo]: 模型信息列表
+        """
         return self.refresh_models(force=force)
 
     def _save_models_to_cache(self, models: List[ModelInfo]) -> None:
-        """保存模型列表到缓存"""
+        """保存模型列表到缓存
+
+        将模型列表保存到本地缓存文件。
+
+        Args:
+            models: 模型信息列表
+        """
         if not self._provider_name:
             return
 
@@ -319,7 +420,13 @@ class BaseProvider(ILLM):
             pass
 
     def _load_models_from_cache(self) -> List[ModelInfo]:
-        """从缓存加载模型列表"""
+        """从缓存加载模型列表
+
+        从本地缓存文件加载模型列表。
+
+        Returns:
+            List[ModelInfo]: 缓存中的模型列表，如果无缓存则返回空列表
+        """
         if not self._provider_name:
             return []
 
@@ -346,10 +453,10 @@ class BaseProvider(ILLM):
         tools: Optional[List[Dict]] = None,
         **kwargs
     ) -> Dict[str, Any]:
-        """
-        准备聊天请求载荷（基类统一实现）
+        """准备聊天请求载荷（基类统一实现）
 
-        子类可以重写此方法以适配特定 Provider 的请求格式
+        准备发送给 LLM API 的请求参数。
+        子类可以重写此方法以适配特定 Provider 的请求格式。
 
         Args:
             messages: 消息列表
@@ -361,7 +468,7 @@ class BaseProvider(ILLM):
             **kwargs: 其他参数
 
         Returns:
-            请求载荷字典
+            Dict[str, Any]: 请求载荷字典
         """
         prepared_messages = self._prepare_messages(messages)
 
@@ -387,24 +494,31 @@ class BaseProvider(ILLM):
         return payload
 
     def _prepare_vision_messages(self, messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """
-        处理多模态消息 - 子类可重写
+        """处理多模态消息
 
-        默认实现不处理图片，子类如需支持 Vision 需要重写此方法
+        默认实现不处理图片，子类如需支持 Vision 需要重写此方法。
+
+        Args:
+            messages: 消息列表
+
+        Returns:
+            List[Dict[str, Any]]: 处理后的消息列表
         """
         return messages
 
     def _parse_chat_response(self, response: Dict[str, Any]) -> ChatResponse:
-        """
-        解析聊天响应（基类统一实现）
+        """解析聊天响应（基类统一实现）
 
-        提取 content 和 tool_calls
+        从 API 响应中提取 content 和 tool_calls。
 
         Args:
-            response: API 响应
+            response: API 响应字典
 
         Returns:
-            ChatResponse 对象
+            ChatResponse: 聊天响应对象
+
+        Raises:
+            APIError: 当响应为空时抛出
         """
         choices = response.get("choices", [])
         if not choices:
@@ -426,16 +540,15 @@ class BaseProvider(ILLM):
         )
 
     def _parse_stream_response(self, data: Dict) -> ChatResponse:
-        """
-        解析流式响应（基类统一实现）
+        """解析流式响应（基类统一实现）
 
-        提取 content 和 tool_calls
+        从流式数据块中提取 content 和 tool_calls。
 
         Args:
             data: 流式数据块
 
         Returns:
-            ChatResponse 对象
+            ChatResponse: 聊天响应对象
         """
         # 处理 message 格式（可能是 delta 或 message）
         message = data.get("delta", data.get("message", {}))
@@ -458,16 +571,21 @@ class BaseProvider(ILLM):
         )
 
     def _parse_models_response(self, response: Dict[str, Any]) -> List[ModelInfo]:
-        """
-        解析 API 返回的模型列表（基类默认实现）
+        """解析 API 返回的模型列表（基类默认实现）
 
-        子类可以重写此方法以适配特定 Provider 的响应格式
+        尝试从通用字段解析模型列表。子类可以重写此方法以适配特定 Provider 的响应格式。
 
         Args:
-            response: API 响应
+            response: API 响应字典
 
         Returns:
-            模型信息列表
+            List[ModelInfo]: 模型信息列表
+
+        Note:
+            默认实现尝试多种常见的模型列表响应格式：
+            - response.get("data")
+            - response.get("models")
+            - response.get("model_list")
         """
         # 默认实现尝试从通用字段解析
         models = []
@@ -494,7 +612,14 @@ class BaseProvider(ILLM):
     # ==================== 同步请求方法 ====================
 
     def _get_session(self) -> requests.Session:
-        """获取同步 HTTP Session"""
+        """获取同步 HTTP Session
+
+        使用单例模式管理 HTTP Session，避免重复创建。
+        Session 会自动添加 Content-Type 和 Authorization 头。
+
+        Returns:
+            requests.Session: HTTP Session 对象
+        """
         if self._session is None:
             self._session = requests.Session()
             self._session.headers.update({
@@ -514,7 +639,27 @@ class BaseProvider(ILLM):
         params: Optional[Dict] = None,
         timeout: Optional[int] = None
     ) -> Dict[str, Any]:
-        """发起同步 HTTP 请求"""
+        """发起同步 HTTP 请求
+
+        封装通用的 HTTP 请求逻辑，自动处理错误和异常转换。
+
+        Args:
+            method: HTTP 方法（GET、POST 等）
+            endpoint: API 端点（相对于 base_url）
+            data: 请求体数据（字典）
+            params: URL 查询参数
+            timeout: 超时时间（秒）
+
+        Returns:
+            Dict[str, Any]: API 响应数据
+
+        Raises:
+            AuthenticationError: API 密钥无效（401）
+            RateLimitError: 请求频率超限（429）
+            TimeoutError: 请求超时
+            ConnectionError: 连接失败
+            APIError: 其他 API 错误
+        """
         url = f"{self.base_url}{endpoint}"
         timeout = timeout or self.timeout
 
@@ -550,7 +695,13 @@ class BaseProvider(ILLM):
     # ==================== 异步请求方法 ====================
 
     async def _get_async_session(self) -> aiohttp.ClientSession:
-        """获取异步 HTTP Session"""
+        """获取异步 HTTP Session
+
+        使用单例模式管理异步 HTTP Session。
+
+        Returns:
+            aiohttp.ClientSession: 异步 HTTP Session 对象
+        """
         if self._async_session is None or self._async_session.closed:
             headers = {"Content-Type": "application/json"}
             if self.api_key:
@@ -570,7 +721,27 @@ class BaseProvider(ILLM):
         params: Optional[Dict] = None,
         timeout: Optional[int] = None
     ) -> Dict[str, Any]:
-        """发起异步 HTTP 请求"""
+        """发起异步 HTTP 请求
+
+        封装通用的异步 HTTP 请求逻辑。
+
+        Args:
+            method: HTTP 方法
+            endpoint: API 端点
+            data: 请求体数据
+            params: URL 查询参数
+            timeout: 超时时间（秒）
+
+        Returns:
+            Dict[str, Any]: API 响应数据
+
+        Raises:
+            AuthenticationError: API 密钥无效
+            RateLimitError: 请求频率超限
+            TimeoutError: 请求超时
+            ConnectionError: 连接失败
+            APIError: 其他 API 错误
+        """
         url = f"{self.base_url}{endpoint}"
         timeout = timeout or self.timeout
 
@@ -613,7 +784,24 @@ class BaseProvider(ILLM):
         data: Dict,
         callback: Optional[Callable[[ChatResponse], None]] = None
     ):
-        """发起同步流式请求（生成器）"""
+        """发起同步流式请求
+
+        使用生成器模式实现流式响应，逐块解析并返回。
+
+        Args:
+            endpoint: API 端点
+            data: 请求体数据
+            callback: 可选的回调函数，每收到一个响应块调用一次
+
+        Yields:
+            ChatResponse: 聊天响应块
+
+        Raises:
+            AuthenticationError: API 密钥无效
+            RateLimitError: 请求频率超限
+            TimeoutError: 请求超时
+            ConnectionError: 连接失败
+        """
         url = f"{self.base_url}{endpoint}"
 
         try:
@@ -657,7 +845,23 @@ class BaseProvider(ILLM):
         endpoint: str,
         data: Dict
     ) -> AsyncIterator[ChatResponse]:
-        """发起异步流式请求"""
+        """发起异步流式请求
+
+        使用异步生成器实现流式响应。
+
+        Args:
+            endpoint: API 端点
+            data: 请求体数据
+
+        Yields:
+            ChatResponse: 聊天响应块
+
+        Raises:
+            AuthenticationError: API 密钥无效
+            RateLimitError: 请求频率超限
+            TimeoutError: 请求超时
+            ConnectionError: 连接失败
+        """
         url = f"{self.base_url}{endpoint}"
 
         try:
@@ -696,7 +900,19 @@ class BaseProvider(ILLM):
             raise ConnectionError("Connection failed", provider=self.provider_type)
 
     def _parse_stream_response(self, data: Dict) -> ChatResponse:
-        """解析流式响应 - 子类需要重写"""
+        """解析流式响应
+
+        子类需要重写此方法以适配特定的流式响应格式。
+
+        Args:
+            data: 流式数据块
+
+        Returns:
+            ChatResponse: 聊天响应对象
+
+        Raises:
+            NotImplementedError: 子类未重写时抛出
+        """
         raise NotImplementedError("Subclass must implement _parse_stream_response")
 
     # ==================== 抽象方法实现 ====================
@@ -709,7 +925,23 @@ class BaseProvider(ILLM):
         max_tokens: Optional[int] = None,
         **kwargs
     ) -> ChatResponse:
-        """发送聊天请求 - 子类需要重写"""
+        """发送聊天请求
+
+        子类需要重写此方法以实现具体的聊天逻辑。
+
+        Args:
+            messages: 消息列表
+            model: 模型名称
+            temperature: 温度参数
+            max_tokens: 最大 token 数
+            **kwargs: 其他参数
+
+        Returns:
+            ChatResponse: 聊天响应对象
+
+        Raises:
+            NotImplementedError: 子类未重写时抛出
+        """
         raise NotImplementedError("Subclass must implement chat method")
 
     def embed(
@@ -718,7 +950,21 @@ class BaseProvider(ILLM):
         model: Optional[str] = None,
         **kwargs
     ) -> List[EmbeddingResponse]:
-        """发送嵌入请求 - 子类需要重写"""
+        """发送嵌入请求
+
+        子类需要重写此方法以实现具体的嵌入逻辑。
+
+        Args:
+            texts: 文本或文本列表
+            model: 模型名称
+            **kwargs: 其他参数
+
+        Returns:
+            List[EmbeddingResponse]: 嵌入响应列表
+
+        Raises:
+            NotImplementedError: 子类未重写时抛出
+        """
         raise NotImplementedError("Subclass must implement embed method")
 
     # 注意: get_models 和 async_get_models 已在基类中实现
@@ -732,7 +978,23 @@ class BaseProvider(ILLM):
         max_tokens: Optional[int] = None,
         **kwargs
     ) -> ChatResponse:
-        """异步发送聊天请求 - 子类需要重写"""
+        """异步发送聊天请求
+
+        子类需要重写此方法以实现具体的异步聊天逻辑。
+
+        Args:
+            messages: 消息列表
+            model: 模型名称
+            temperature: 温度参数
+            max_tokens: 最大 token 数
+            **kwargs: 其他参数
+
+        Returns:
+            ChatResponse: 聊天响应对象
+
+        Raises:
+            NotImplementedError: 子类未重写时抛出
+        """
         raise NotImplementedError("Subclass must implement async_chat method")
 
     async def async_stream_chat(
@@ -743,7 +1005,23 @@ class BaseProvider(ILLM):
         max_tokens: Optional[int] = None,
         **kwargs
     ) -> AsyncIterator[ChatResponse]:
-        """异步发送流式聊天请求 - 子类需要重写"""
+        """异步发送流式聊天请求
+
+        子类需要重写此方法以实现具体的异步流式聊天逻辑。
+
+        Args:
+            messages: 消息列表
+            model: 模型名称
+            temperature: 温度参数
+            max_tokens: 最大 token 数
+            **kwargs: 其他参数
+
+        Returns:
+            AsyncIterator[ChatResponse]: 异步流式响应迭代器
+
+        Raises:
+            NotImplementedError: 子类未重写时抛出
+        """
         raise NotImplementedError("Subclass must implement async_stream_chat method")
 
     async def async_embed(
@@ -752,9 +1030,29 @@ class BaseProvider(ILLM):
         model: Optional[str] = None,
         **kwargs
     ) -> List[EmbeddingResponse]:
-        """异步发送嵌入请求 - 子类需要重写"""
+        """异步发送嵌入请求
+
+        子类需要重写此方法以实现具体的异步嵌入逻辑。
+
+        Args:
+            texts: 文本或文本列表
+            model: 模型名称
+            **kwargs: 其他参数
+
+        Returns:
+            List[EmbeddingResponse]: 嵌入响应列表
+
+        Raises:
+            NotImplementedError: 子类未重写时抛出
+        """
         raise NotImplementedError("Subclass must implement async_embed method")
 
     def validate_config(self) -> bool:
-        """验证配置"""
+        """验证配置是否有效
+
+        检查 api_key 或 base_url 是否至少有一个非空。
+
+        Returns:
+            bool: 配置是否有效
+        """
         return bool(self.api_key or self.base_url)

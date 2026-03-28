@@ -1,6 +1,29 @@
+"""GLM (智谱AI) Provider 实现模块
+
+该模块提供智谱 GLM 大语言模型的接口实现。
+继承自 BaseProvider，实现聊天、嵌入、流式输出等功能。
+
+智谱AI API 文档: https://open.bigmodel.cn/dev/api
+
+支持的模型类型:
+    - CHAT_MODELS: 文本聊天模型（如 glm-5, glm-4.7, glm-4-flash 等）
+    - EMBEDDING_MODELS: 向量嵌入模型（embedding-3, embedding-2）
+    - VISION_MODELS: 视觉理解模型（glm-4.6v, glm-4v-flash 等）
+    - IMAGE_MODELS: 图像生成模型（glm-image, cogview-4 等）
+    - VIDEO_MODELS: 视频生成模型（cogvideox-3, vidu-2 等）
+    - AUDIO_MODELS: 音视频模型（glm-tts, glm-asr-2512 等）
+    - OTHER_MODELS: 其他模型（codegeex-4, rerank 等）
+
+Classes:
+    GLMProvider: 智谱 GLM 提供商实现
+
+使用示例:
+    >>> from core.llm.providers.glm import GLMProvider
+    >>> config = {"api_key": "xxx", "base_url": "https://open.bigmodel.cn/api/paas/v4"}
+    >>> provider = GLMProvider(config, provider_name="glm")
+    >>> response = provider.chat([Message("user", "你好")])
 """
-GLM (智谱AI) Provider 实现
-"""
+
 from typing import Dict, Any, Optional, List, Union, AsyncIterator
 
 from .base import BaseProvider
@@ -9,15 +32,54 @@ from ..exceptions import APIError
 
 
 class GLMProvider(BaseProvider):
-    """GLM (智谱AI) LLM Provider"""
+    """GLM (智谱AI) LLM Provider
 
+    智谱 AI 大语言模型提供商实现，支持文本聊天、视觉理解、嵌入生成等功能。
+    继承自 BaseProvider，使用预设模型列表无需调用 API 获取模型列表。
+
+    Class Attributes:
+        provider_type: 提供商类型标识 ("glm")
+        provider_name: 提供商显示名称 ("GLM")
+        support_chat: 是否支持聊天功能 (True)
+        support_streaming: 是否支持流式输出 (True)
+        support_embedding: 是否支持嵌入功能 (True)
+        support_vision: 是否支持视觉功能 (True)
+        CHAT_MODELS: 文本聊天模型列表
+        EMBEDDING_MODELS: 向量嵌入模型列表
+        VISION_MODELS: 视觉理解模型列表
+        IMAGE_MODELS: 图像生成模型列表
+        VIDEO_MODELS: 视频生成模型列表
+        AUDIO_MODELS: 音视频模型列表
+        OTHER_MODELS: 其他模型列表
+        MODEL_DETAILS: 预设模型详细信息
+
+    API 端点:
+        - /chat/completions: 聊天完成
+        - /embeddings: 嵌入生成
+        - /models: 模型列表
+
+    使用示例:
+        >>> from core.llm.providers.glm import GLMProvider
+        >>> from core.llm import Message
+        >>> config = {"api_key": "your_api_key", "chat_model": "glm-4-flash"}
+        >>> provider = GLMProvider(config)
+        >>> response = provider.chat([Message("user", "你好")])
+        >>> print(response.content)
+    """
+
+    # ==================== 类属性定义 ====================
+
+    # 提供商标识
     provider_type = "glm"
     provider_name = "GLM"
 
+    # 功能支持标志
     support_chat = True
     support_streaming = True
     support_embedding = True
     support_vision = True
+
+    # ==================== 预设模型列表 ====================
 
     # GLM 模型列表（官方文档：https://docs.bigmodel.cn/cn/guide/start/model-overview）
     # 文本模型
@@ -90,7 +152,9 @@ class GLMProvider(BaseProvider):
         "rerank",
     ]
 
-    # 预设模型详情
+    # ==================== 预设模型详情 ====================
+
+    # 预设模型详情字典，包含上下文长度、输出限制、功能支持等信息
     MODEL_DETAILS = {
         # 文本模型
         "glm-5": {
@@ -296,30 +360,46 @@ class GLMProvider(BaseProvider):
         },
     }
 
+    # ==================== 初始化 ====================
+
     def __init__(self, config: Optional[Dict[str, Any]] = None, provider_name: str = ""):
+        """初始化 GLM Provider
+
+        Args:
+            config: 提供商配置字典
+            provider_name: 提供商名称（用于缓存标识）
+        """
         super().__init__(config, provider_name)
+        # API 端点定义
         self._chat_endpoint = "/chat/completions"
         self._embedding_endpoint = "/embeddings"
         self._models_endpoint = "/models"
 
+    # ==================== 模型列表解析 ====================
+
     def _parse_models_response(self, response: Dict[str, Any]) -> List[ModelInfo]:
-        """
-        解析 GLM API 返回的模型列表
+        """解析 GLM API 返回的模型列表
 
-        API 文档: https://open.bigmodel.cn/dev/api
+        从智谱 API 响应中提取模型信息，并根据模型 ID 判断模型类型。
 
-        响应格式:
-        {
-            "request_id": "...",
-            "data": [
-                {
-                    "id": "glm-4",
-                    "object": "model",
-                    "created": 1699254000,
-                    "owned_by": "zhipuai"
-                }
-            ]
-        }
+        API 响应格式:
+            {
+                "request_id": "...",
+                "data": [
+                    {
+                        "id": "glm-4",
+                        "object": "model",
+                        "created": 1699254000,
+                        "owned_by": "zhipuai"
+                    }
+                ]
+            }
+
+        Args:
+            response: API 响应字典
+
+        Returns:
+            List[ModelInfo]: 模型信息列表
         """
         models = []
 
@@ -356,6 +436,8 @@ class GLMProvider(BaseProvider):
 
         return models
 
+    # ==================== 请求载荷准备 ====================
+
     def _prepare_chat_payload(
         self,
         messages: List[Union[Message, Dict]],
@@ -365,7 +447,21 @@ class GLMProvider(BaseProvider):
         stream: bool = False,
         **kwargs
     ) -> Dict[str, Any]:
-        """准备聊天请求载荷"""
+        """准备聊天请求载荷
+
+        准备发送给 GLM API 的请求参数。
+
+        Args:
+            messages: 消息列表
+            model: 模型名称
+            temperature: 温度参数
+            max_tokens: 最大 token 数
+            stream: 是否流式输出
+            **kwargs: 其他参数
+
+        Returns:
+            Dict[str, Any]: 请求载荷字典
+        """
         prepared_messages = self._prepare_messages(messages)
 
         payload: Dict[str, Any] = {
@@ -381,8 +477,22 @@ class GLMProvider(BaseProvider):
         payload.update(kwargs)
         return payload
 
+    # ==================== 响应解析 ====================
+
     def _parse_chat_response(self, response: Dict[str, Any]) -> ChatResponse:
-        """解析聊天响应"""
+        """解析聊天响应
+
+        从 GLM API 响应中提取聊天内容。
+
+        Args:
+            response: API 响应字典
+
+        Returns:
+            ChatResponse: 聊天响应对象
+
+        Raises:
+            APIError: 当响应为空时抛出
+        """
         choices = response.get("choices", [])
         if not choices:
             raise APIError("Empty response from GLM")
@@ -398,7 +508,16 @@ class GLMProvider(BaseProvider):
         )
 
     def _parse_stream_response(self, data: Dict) -> ChatResponse:
-        """解析流式响应"""
+        """解析流式响应
+
+        从流式数据块中提取聊天内容。
+
+        Args:
+            data: 流式数据块
+
+        Returns:
+            ChatResponse: 聊天响应对象
+        """
         if data.get("choices"):
             choices = data.get("choices", [])
             if choices:
@@ -426,7 +545,25 @@ class GLMProvider(BaseProvider):
         max_tokens: Optional[int] = None,
         **kwargs
     ) -> ChatResponse:
-        """发送聊天请求"""
+        """发送聊天请求（同步）
+
+        向 GLM API 发送聊天请求，获取完整的响应文本。
+
+        Args:
+            messages: 消息列表
+            model: 模型名称（可选，默认使用配置中的模型）
+            temperature: 温度参数（默认 0.7）
+            max_tokens: 最大生成 token 数（可选）
+            **kwargs: 其他参数
+
+        Returns:
+            ChatResponse: 聊天响应对象
+
+        Example:
+            >>> provider = GLMProvider(config)
+            >>> response = provider.chat([Message("user", "你好")])
+            >>> print(response.content)
+        """
         payload = self._prepare_chat_payload(
             messages, model, temperature, max_tokens, stream=False, **kwargs
         )
@@ -442,7 +579,25 @@ class GLMProvider(BaseProvider):
         callback=None,
         **kwargs
     ):
-        """发送流式聊天请求"""
+        """发送流式聊天请求（同步）
+
+        向 GLM API 发送流式聊天请求，逐块获取响应。
+
+        Args:
+            messages: 消息列表
+            model: 模型名称
+            temperature: 温度参数
+            max_tokens: 最大 token 数
+            callback: 可选的回调函数
+            **kwargs: 其他参数
+
+        Returns:
+            生成器: 流式响应生成器
+
+        Example:
+            >>> for response in provider.stream_chat([Message("user", "你好")]):
+            ...     print(response.content, end="")
+        """
         payload = self._prepare_chat_payload(
             messages, model, temperature, max_tokens, stream=True, **kwargs
         )
@@ -454,7 +609,22 @@ class GLMProvider(BaseProvider):
         model: Optional[str] = None,
         **kwargs
     ) -> List[EmbeddingResponse]:
-        """发送嵌入请求"""
+        """发送嵌入请求（同步）
+
+        将文本转换为向量嵌入。
+
+        Args:
+            texts: 单个文本或文本列表
+            model: 嵌入模型名称（可选，默认使用配置中的模型）
+            **kwargs: 其他参数
+
+        Returns:
+            List[EmbeddingResponse]: 嵌入响应列表
+
+        Example:
+            >>> responses = provider.embed("要嵌入的文本")
+            >>> print(responses[0].embedding)
+        """
         if isinstance(texts, str):
             texts = [texts]
 
@@ -488,7 +658,18 @@ class GLMProvider(BaseProvider):
         max_tokens: Optional[int] = None,
         **kwargs
     ) -> ChatResponse:
-        """异步发送聊天请求"""
+        """异步发送聊天请求
+
+        Args:
+            messages: 消息列表
+            model: 模型名称
+            temperature: 温度参数
+            max_tokens: 最大 token 数
+            **kwargs: 其他参数
+
+        Returns:
+            ChatResponse: 聊天响应对象
+        """
         payload = self._prepare_chat_payload(
             messages, model, temperature, max_tokens, stream=False, **kwargs
         )
@@ -503,7 +684,18 @@ class GLMProvider(BaseProvider):
         max_tokens: Optional[int] = None,
         **kwargs
     ) -> AsyncIterator[ChatResponse]:
-        """异步发送流式聊天请求"""
+        """异步发送流式聊天请求
+
+        Args:
+            messages: 消息列表
+            model: 模型名称
+            temperature: 温度参数
+            max_tokens: 最大 token 数
+            **kwargs: 其他参数
+
+        Yields:
+            ChatResponse: 聊天响应块
+        """
         payload = self._prepare_chat_payload(
             messages, model, temperature, max_tokens, stream=True, **kwargs
         )
@@ -516,7 +708,16 @@ class GLMProvider(BaseProvider):
         model: Optional[str] = None,
         **kwargs
     ) -> List[EmbeddingResponse]:
-        """异步发送嵌入请求"""
+        """异步发送嵌入请求
+
+        Args:
+            texts: 文本或文本列表
+            model: 嵌入模型名称
+            **kwargs: 其他参数
+
+        Returns:
+            List[EmbeddingResponse]: 嵌入响应列表
+        """
         if isinstance(texts, str):
             texts = [texts]
 
@@ -539,5 +740,11 @@ class GLMProvider(BaseProvider):
         ]
 
     async def async_get_models(self) -> List[ModelInfo]:
-        """异步获取可用模型列表"""
+        """异步获取可用模型列表
+
+        由于使用预设模型列表，直接返回同步版本的结果。
+
+        Returns:
+            List[ModelInfo]: 模型信息列表
+        """
         return self.get_models()
