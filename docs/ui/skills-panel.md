@@ -17,21 +17,36 @@
 ```mermaid
 graph TB
     subgraph SkillsPanel["SkillsPanel"]
-        SA[ScrollArea<br/>可滚动区域]
+        TW[QTabWidget<br/>标签页控件]
     end
 
-    subgraph Buttons["技能按钮"]
-        B1["技能按钮 1<br/>[图标] 名称"]
-        B2["技能按钮 2<br/>[图标] 名称"]
-        B3["技能按钮 3<br/>[图标] 名称"]
-        B4["技能按钮 N<br/>[图标] 名称"]
+    subgraph Tab1["官方功能 标签"]
+        SA1[ScrollArea<br/>可滚动区域]
+        B1["技能按钮 1"]
+        B2["技能按钮 2"]
+        B3["技能按钮 N"]
+        SA1 --> B1
+        SA1 --> B2
+        SA1 --> B3
     end
 
-    SA --> B1
-    SA --> B2
-    SA --> B3
-    SA --> B4
+    subgraph Tab2["第三方功能 标签"]
+        SA2[ScrollArea<br/>可滚动区域]
+        C1["技能按钮 1"]
+        C2["技能按钮 2"]
+        C3["技能按钮 M"]
+        SA2 --> C1
+        SA2 --> C2
+        SA2 --> C3
+    end
+
+    TW --> Tab1
+    TW --> Tab2
 ```
+
+**标签页结构**:
+- **官方功能**: 来自 `plugin/` 目录的官方插件
+- **第三方功能**: 来自 `custom_plugin/` 目录的第三方插件
 
 ---
 
@@ -44,6 +59,11 @@ graph TB
 - **名称**: 插件的 `plugin_name` 属性
 - **描述**: 插件的 `skill_description` 属性
 - **提示**: 鼠标悬停时显示的名称和描述
+
+**文本自动处理**:
+- 插件名称超过 5 个字符时会自动换行，每行最多显示 5 个字符
+- 超长文本末尾自动添加省略号（...）
+- 避免按钮因文本过长而破坏布局
 
 ### 3.2 按钮状态
 
@@ -90,44 +110,91 @@ def set_plugin_manager(self, manager: PluginManager):
 
 ```python
 def load_skills_from_manager(self):
-    """
-    从 PluginManager 加载技能按钮
-    """
-    # 清空现有技能
-    self.clear_skills()
+    """从 PluginManager 加载技能按钮"""
+    if self.plugin_manager is None:
+        return
 
-    # 获取所有插件
-    plugins = self.plugin_manager.get_all_plugins()
+    # 清空现有按钮
+    self._clear_layout(self.official_layout)
+    self._clear_layout(self.thirdparty_layout)
 
-    # 为每个插件创建技能按钮
-    for plugin in plugins:
-        self.add_skill(plugin)
+    # 清除激活状态
+    self._active_button = None
+
+    # 加载官方技能
+    official_plugins = self.plugin_manager.get_official_plugins()
+    for plugin in official_plugins:
+        self.add_skill_button(plugin, is_official=True)
+
+    # 加载第三方技能
+    thirdparty_plugins = self.plugin_manager.get_thirdparty_plugins()
+    for plugin in thirdparty_plugins:
+        self.add_skill_button(plugin, is_official=False)
 ```
 
 ### 5.3 添加技能
 
 ```python
-def add_skill(self, plugin: IPlugin):
+def add_skill_button(self, plugin, is_official: bool):
     """
-    添加技能按钮
+    添加技能按钮到指定标签页
 
     Args:
         plugin: 插件实例
+        is_official: 是否为官方插件（True = 官方功能标签，False = 第三方功能标签）
     """
-    button = SkillButton(plugin)
-    button.clicked.connect(lambda: self._on_skill_clicked(plugin))
-    self.skills_layout.addWidget(button)
+    # 获取插件图标和描述
+    try:
+        icon = getattr(plugin, 'skill_icon', None)
+        if icon is None or (isinstance(icon, QIcon) and icon.isNull()):
+            style = self.style()
+            icon = style.standardIcon(QStyle.StandardPixmap.SP_FileIcon)
+        name = plugin.plugin_name
+        description = getattr(plugin, 'skill_description', name)
+    except Exception:
+        return
+
+    # 创建技能按钮
+    skill_btn = SkillButton(icon, name, description, self)
+    skill_btn.clicked.connect(lambda checked=False, btn=skill_btn, p=plugin: self._on_skill_clicked(btn, p))
+
+    # 添加到相应布局
+    if is_official:
+        self.official_layout.addWidget(skill_btn)
+    else:
+        self.thirdparty_layout.addWidget(skill_btn)
 ```
 
-### 5.4 清除高亮
+### 5.4 刷新技能
+
+```python
+def refresh_skills(self):
+    """刷新技能列表"""
+    if self.plugin_manager:
+        self.plugin_manager.reload_plugins()
+        self.load_skills_from_manager()
+```
+
+### 5.5 清除高亮
 
 ```python
 def clear_active_state(self):
-    """清除所有按钮的活跃状态"""
-    for i in range(self.skills_layout.count()):
-        widget = self.skills_layout.itemAt(i).widget()
-        if isinstance(widget, SkillButton):
-            widget.set_active(False)
+    """
+    公共方法：清除所有按钮的激活状态
+    用于当工作区被清空时，取消所有按钮的高亮
+    """
+    self._clear_all_active_states()
+
+def _clear_all_active_states(self):
+    """内部方法：清除所有按钮的激活状态"""
+    for layout in [self.official_layout, self.thirdparty_layout]:
+        for i in range(layout.count()):
+            item = layout.itemAt(i)
+            if item:
+                widget = item.widget()
+                if isinstance(widget, SkillButton):
+                    widget.set_active(False)
+    self._active_button = None
 ```
 
 ---

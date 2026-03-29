@@ -17,6 +17,7 @@
 ```mermaid
 graph TB
     subgraph WorkArea["WorkArea"]
+        Root[根 Widget<br/>QWidget]
         SL[QStackedLayout<br/>堆叠布局]
     end
 
@@ -26,6 +27,7 @@ graph TB
         W3["索引 N<br/>..."]
     end
 
+    Root --> SL
     SL --> W1
     SL --> W2
     SL --> W3

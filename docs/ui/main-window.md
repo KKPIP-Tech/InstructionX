@@ -19,8 +19,9 @@
 ```mermaid
 graph TB
     subgraph Window["InstructionXMainWindow"]
+        TitleBar["CustomTitleBar<br/>无边框标题栏（Logo + 标题 + 窗口控制）"]
         Menu["菜单栏<br/>文件 编辑 用户中心 帮助"]
-        SP["SkillsPanel<br/>技能面板 120-150px"]
+        SP["SkillsPanel<br/>技能面板 105-115px"]
         Divider["分割线"]
         WA["WorkArea<br/>工作区"]
     end
@@ -57,14 +58,27 @@ def _create_menus(self) -> None:
     menu_help.addAction(menu_help_about_action)
 ```
 
-### 3.2 技能面板 (SkillsPanel)
+### 3.2 自定义标题栏 (CustomTitleBar)
 
-- **位置**: 窗口顶部
-- **高度**: 最小 120px，最大 150px
+**文件位置**: `ui/title_bar.py`
+
+主窗口采用无边框（FramelessWindow）设计，通过 `CustomTitleBar` 实现窗口控制功能：
+
+- **Logo 显示**: 从 `ui/logo.png` 加载 24x24 应用 Logo
+- **标题文字**: 显示应用名称 "InstructionX - CE"
+- **菜单栏集成**: 内嵌 QMenuBar，与样式系统无缝结合
+- **窗口控制按钮**: 三个按钮（最小化□、最大化/还原❐、关闭×），每个按钮 40x40
+- **拖拽移动**: 按住标题栏拖动可移动窗口；从最大化状态拖动时自动先还原到正常窗口再移动
+- **双击操作**: 双击标题栏切换最大化/还原状态
+
+### 3.3 技能面板 (SkillsPanel)
+
+- **位置**: 窗口顶部（标题栏下方）
+- **高度**: 最小 105px，最大 115px
 - **功能**: 显示所有已加载的插件作为技能按钮
 - **通信**: 通过 `skill_clicked` 信号与主窗口通信
 
-### 3.3 工作区 (WorkArea)
+### 3.4 工作区 (WorkArea)
 
 - **位置**: 窗口中部（技能面板下方）
 - **特性**: 可伸缩，占用剩余空间
@@ -77,31 +91,37 @@ def _create_menus(self) -> None:
 ```mermaid
 flowchart TD
     A[__init__] --> B[super().__init__]
-    B --> C[设置窗口尺寸]
-    C --> D[_create_menus 创建菜单]
-    D --> E[_create_main_layout]
+    B --> C[设置窗口属性<br/>FramelessWindow + 最小尺寸]
+    C --> D[设置窗口尺寸]
+    D --> E[_create_menus 创建菜单]
+    E --> F[_create_custom_title_bar 创建标题栏]
+    F --> G[_create_main_layout]
 
-    E --> F[创建中心部件]
-    F --> G[初始化 PluginManager]
-    G --> H[load_plugins 加载插件]
-    H --> I[apply_custom_order 应用顺序]
+    G --> H[创建中心部件]
+    H --> I[初始化 PluginManager]
+    I --> J[load_plugins 加载插件]
+    J --> K[apply_custom_order 应用顺序]
 
-    I --> J[创建 SkillsPanel]
-    J --> K[设置回调]
-    K --> L[连接信号]
-    L --> M[完成]
+    K --> L[创建 SkillsPanel]
+    L --> M[设置回调]
+    M --> N[连接信号]
+    N --> O[完成]
 ```
 
 ```python
 def __init__(self):
     super().__init__()
 
-    # 设置初始窗口大小
+    # 设置窗口属性：无边框 + 最小尺寸
+    self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
     self.setMinimumSize(800, 600)
     self.resize(1024, 768)
 
     # 创建菜单
     self._create_menus()
+
+    # 创建自定义标题栏
+    self._create_custom_title_bar()
 
     # 创建主布局
     self._create_main_layout()
@@ -126,8 +146,8 @@ def _create_main_layout(self) -> None:
     self.skills_panel = SkillsPanel(central_widget)
     self.skills_panel.set_plugin_manager(self.plugin_manager)
     self.skills_panel.load_skills_from_manager()
-    self.skills_panel.setMaximumHeight(150)
-    self.skills_panel.setMinimumHeight(120)
+    self.skills_panel.setMaximumHeight(115)
+    self.skills_panel.setMinimumHeight(105)
     main_layout.addWidget(self.skills_panel)
 
     # 添加分割线
@@ -191,7 +211,53 @@ def _on_skill_clicked(self, plugin):
         self.work_area.add_widget(error_label)
 ```
 
-### 5.2 插件排序
+### 5.3 窗口边缘缩放
+
+主窗口支持 8 个方向的边缘拖拽缩放：
+
+- **边缘检测**: 窗口边缘 8 像素范围内检测鼠标位置，判断缩放方向（上、下、左、右、左上、左下、右上、右下）
+- **拖拽缩放**: 按住鼠标左键拖拽边缘或角落时，实时计算并应用新的窗口几何尺寸
+- **最小尺寸限制**: 缩放时限制最小窗口尺寸（800x600），防止界面异常
+- **光标提示**: 鼠标悬停在边缘时自动变换光标形状，提示可缩放方向
+
+```mermaid
+flowchart TD
+    Mouse["鼠标移动"] --> Detect{"检测边缘区域"}
+    Detect -->|8px 范围内| Direction["判断缩放方向"]
+    Direction --> Drag["按住拖拽"]
+    Drag --> Resize["应用新尺寸"]
+    Resize --> Limit{"达到最小尺寸?"}
+    Limit -->|是| Clamp["限制为最小尺寸"]
+    Limit -->|否| Apply["应用新尺寸"]
+```
+
+### 5.4 对话框
+
+#### 关于对话框
+
+通过 **帮助 > 关于** 打开，显示应用 Logo、名称（InstructionX - CE）、版本号（0.1.0）、版权声明和专有软件声明。
+
+```python
+def _open_about_dialog(self):
+    """打开关于对话框"""
+    from ui.dialog.about_dialog import AboutDialog
+    dialog = AboutDialog(self)
+    dialog.exec()
+```
+
+#### LLM 设置对话框
+
+通过 **编辑 > LLM 设置** (Ctrl+L) 打开，提供 Provider 列表管理，支持添加/删除 Provider、配置 API Key/Base URL/模型参数、测试连接、保存配置。
+
+```python
+def _open_llm_settings_dialog(self):
+    """打开 LLM 设置对话框"""
+    from ui.dialog.llm_settings_dialog import LLMSettingsDialog
+    dialog = LLMSettingsDialog(self)
+    dialog.exec()
+```
+
+### 5.5 插件排序
 
 ```python
 def _open_plugin_order_dialog(self):
@@ -209,11 +275,13 @@ def _open_plugin_order_dialog(self):
 
 | 属性 | 值 |
 |------|------|
+| 窗口类型 | FramelessWindow（无边框） |
 | 最小尺寸 | 800 x 600 |
 | 默认尺寸 | 1024 x 768 |
 | 边距 | 5px |
 | 间距 | 5px |
-| 技能面板高度 | 最小 120px，最大 150px |
+| 技能面板高度 | 最小 105px，最大 115px |
+| 边缘检测范围 | 8px（用于拖拽缩放） |
 
 ---
 
