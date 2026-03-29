@@ -1,4 +1,8 @@
-# InstructionX
+
+
+<div align="center">
+
+<img src="./assets/logo.png" alt="InstructionX Logo" width="100%">
 
 [English Version](README_EN.md) | 中文版
 
@@ -8,7 +12,10 @@
 [![License](https://img.shields.io/badge/License-Modified%20Apache%202.0-orange.svg)](LICENSE)
 [![Version](https://img.shields.io/badge/Version-0.1.0%20CE-blue.svg)](#)
 
-> 基于 PySide6 的插件式桌面应用框架，支持 LLM 集成、MCP Function Calling 和热插拔插件系统
+<p>基于 PySide6 的插件式桌面应用框架，支持 LLM 集成、MCP Function Calling 和热插拔插件系统</p>
+
+</div>
+
 
 ---
 

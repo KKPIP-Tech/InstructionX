@@ -1,6 +1,10 @@
-# InstructionX
 
-[中文版](README.md) | English Version
+
+<div align="center">
+
+<img src="./assets/logo.png" alt="InstructionX Logo" width="100%">
+
+[English Version](README_EN.md) | 中文版
 
 [![Python](https://img.shields.io/badge/Python-3.14+-blue.svg)](https://www.python.org/)
 [![PySide6](https://img.shields.io/badge/PySide6-6.10+-green.svg)](https://doc.qt.io/qtforpython/)
@@ -9,6 +13,8 @@
 [![Version](https://img.shields.io/badge/Version-0.1.0%20CE-blue.svg)](#)
 
 > A PySide6-based plugin desktop application framework with LLM integration, MCP Function Calling, and hot-swappable plugin system
+
+</div>
 
 ---
 
@@ -82,7 +88,7 @@ When switching plugins, the plugin's UI state is automatically cached. When you 
 
 ## Quick Start
 
-### Requirements
+### Environment Requirements
 
 - Python 3.14 or higher
 - Windows 10/11
