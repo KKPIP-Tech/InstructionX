@@ -1,21 +1,21 @@
-# FluentUI3 样式系统
+# StyleQSS 样式系统
 
-> FluentUI3 样式模块的架构设计和核心概念
+> StyleQSS 样式模块的架构设计和核心概念
 
 ---
 
 ## 1. 概述
 
-`FluentUI3 样式系统` 是 InstructionX 项目的 UI 主题模块，为 PySide6 提供 Windows 11 FluentUI3 风格的视觉体验。
+`StyleQSS 样式系统` 是 InstructionX 项目的 UI 主题模块，为 PySide6 提供现代化的桌面视觉体验。
 
-**文件位置**: `utils/fluent_style/`
+**文件位置**: `utils/style_qss/`
 
 **核心功能**:
-- Windows 11 FluentUI3 风格主题
 - 浅色/深色主题支持
 - 系统主题自动检测
 - 模块化 QSS 样式文件
 - 运行时变量替换
+- 26 个 QSS 样式文件覆盖常用控件
 
 **支持的控件**:
 - 基础控件：按钮、输入框、标签
@@ -32,9 +32,9 @@
 ### 2.1 模块结构
 
 ```
-utils/fluent_style/
+utils/style_qss/
 ├── __init__.py          # 主入口，导出主要接口
-├── colors.py            # FluentUI3 颜色定义
+├── colors.py            # 颜色定义
 ├── palette.py           # QPalette 调色板创建
 ├── registry.py          # QSS 注册表，管理样式片段
 └── styles/
@@ -62,24 +62,26 @@ utils/fluent_style/
     ├── tooltip.qss      # 工具提示
     ├── dock.qss         # 停靠窗口
     ├── mainwindow.qss   # 主窗口
-    └── custom.qss      # 自定义样式（可覆盖）
+    ├── titlebar.qss     # 自定义标题栏
+    ├── spinbox.qss      # 数值选择
+    └── custom.qss       # 自定义样式（可覆盖）
 ```
 
-### 2.2 FluentColors
+### 2.2 StyleQSSColors
 
-FluentUI3 颜色定义类，提供浅色和深色主题的颜色配置。
+颜色定义类，提供浅色和深色主题的颜色配置。
 
 ```python
-from utils.fluent_style import FluentColors
+from utils.style_qss import StyleQSSColors
 
 # 获取浅色主题颜色
-light_colors = FluentColors.get_colors('light')
+light_colors = StyleQSSColors.get_colors('light')
 
 # 获取深色主题颜色
-dark_colors = FluentColors.get_colors('dark')
+dark_colors = StyleQSSColors.get_colors('dark')
 
 # 获取指定颜色
-accent = FluentColors.get_color('accent', 'light')
+accent = StyleQSSColors.get_color('accent', 'light')
 ```
 
 ### 2.3 QssRegistry
@@ -87,7 +89,7 @@ accent = FluentColors.get_color('accent', 'light')
 QSS 注册表，管理所有模块化样式片段，支持变量替换。
 
 ```python
-from utils.fluent_style import QssRegistry
+from utils.style_qss import QssRegistry
 
 # 获取所有 QSS（已替换变量）
 qss = QssRegistry.get_all('light')
@@ -96,16 +98,16 @@ qss = QssRegistry.get_all('light')
 button_qss = QssRegistry.get('button')
 ```
 
-### 2.4 create_fluent_palette
+### 2.4 create_qss_palette
 
-创建 FluentUI3 调色板，设置 Qt 原生控件的颜色。
+创建 QSS 调色板，设置 Qt 原生控件的颜色。
 
 ```python
-from utils.fluent_style import create_fluent_palette
+from utils.style_qss import create_qss_palette
 from PySide6.QtWidgets import QApplication
 
 app = QApplication([])
-palette = create_fluent_palette('light')
+palette = create_qss_palette('light')
 app.setPalette(palette)
 ```
 
@@ -115,17 +117,17 @@ app.setPalette(palette)
 
 ```mermaid
 graph TB
-    subgraph FluentStyle["FluentUI3 样式系统"]
+    subgraph StyleQSS["StyleQSS 样式系统"]
         Init["__init__.py<br/>主入口"]
         Colors["colors.py<br/>颜色定义"]
         Palette["palette.py<br/>调色板"]
         Registry["registry.py<br/>QSS 注册"]
-        Styles["styles/<br/>25个QSS文件"]
+        Styles["styles/<br/>26个QSS文件"]
     end
 
     subgraph Theme["主题层"]
         Detect["detect_system_theme<br/>系统主题检测"]
-        Fluent["FluentStyle<br/>全局实例"]
+        Global["StyleQSS<br/>全局实例"]
     end
 
     subgraph Output["输出"]
@@ -138,7 +140,7 @@ graph TB
     Init --> Registry
     Registry --> Styles
     Init --> Detect
-    Detect --> Fluent
+    Detect --> Global
     Colors --> Registry
     Registry --> Qss
     Palette --> QPalette
@@ -149,19 +151,19 @@ graph TB
 ```mermaid
 sequenceDiagram
     participant App as QApplication
-    participant Init as fluent_style/__init__.py
+    participant Init as style_qss/__init__.py
     participant Styles as styles/__init__.py
     participant Registry as QssRegistry
     participant Files as QSS 文件
 
-    App->>Init: set_fluent_theme(app, "auto")
+    App->>Init: set_style_qss_theme(app, "auto")
     Init->>Init: detect_system_theme()
     Init->>Styles: init_styles()
     Styles->>Files: 遍历加载 .qss 文件
     Files-->>Styles: QSS 内容
     Styles->>Registry: QssRegistry.register()
     Registry->>Registry: 按优先级排序
-    Init->>Palette: create_fluent_palette(theme)
+    Init->>Palette: create_qss_palette(theme)
     Palette-->>App: QPalette
     Init->>Registry: QssRegistry.get_all(theme)
     Registry->>Registry: _replace_variables()
@@ -226,9 +228,9 @@ sequenceDiagram
 
 ### 5.1 核心函数
 
-#### set_fluent_theme(app, theme="auto")
+#### set_style_qss_theme(app, theme="auto")
 
-设置 FluentUI3 主题。
+设置 StyleQSS 主题。
 
 | 参数 | 类型 | 说明 |
 |------|------|------|
@@ -237,18 +239,18 @@ sequenceDiagram
 
 ```python
 from PySide6.QtWidgets import QApplication
-from utils.fluent_style import set_fluent_theme
+from utils.style_qss import set_style_qss_theme
 
 app = QApplication([])
 
 # 自动检测系统主题
-set_fluent_theme(app, "auto")
+set_style_qss_theme(app, "auto")
 
 # 强制浅色主题
-set_fluent_theme(app, "light")
+set_style_qss_theme(app, "light")
 
 # 强制深色主题
-set_fluent_theme(app, "dark")
+set_style_qss_theme(app, "dark")
 ```
 
 #### detect_system_theme()
@@ -256,42 +258,42 @@ set_fluent_theme(app, "dark")
 检测系统主题。
 
 ```python
-from utils.fluent_style import detect_system_theme
+from utils.style_qss import detect_system_theme
 
 theme = detect_system_theme()  # 返回 'light' 或 'dark'
 ```
 
-#### create_fluent_qss(theme='light')
+#### create_qss(theme='light')
 
-创建 FluentUI3 QSS 样式表。
+创建 QSS 样式表。
 
 ```python
-from utils.fluent_style import create_fluent_qss
+from utils.style_qss import create_qss
 
 # 获取浅色 QSS
-qss = create_fluent_qss('light')
+qss = create_qss('light')
 
 # 应用到应用
 app.setStyleSheet(qss)
 ```
 
-#### create_fluent_palette(theme='light')
+#### create_qss_palette(theme='light')
 
-创建 FluentUI3 调色板。
+创建 QSS 调色板。
 
 ```python
-from utils.fluent_style import create_fluent_palette
+from utils.style_qss import create_qss_palette
 
-palette = create_fluent_palette('dark')
+palette = create_qss_palette('dark')
 app.setPalette(palette)
 ```
 
-### 5.2 FluentStyle 类
+### 5.2 StyleQSS 类
 
 ```python
-from utils.fluent_style import get_fluent_style
+from utils.style_qss import get_style_qss
 
-style = get_fluent_style()
+style = get_style_qss()
 style.set_theme('dark')
 print(style.theme())   # 'dark'
 print(style.colors())  # 颜色字典
@@ -301,7 +303,7 @@ print(style.color('accent'))  # '#0078D4'
 ### 5.3 QssRegistry 类
 
 ```python
-from utils.fluent_style import QssRegistry
+from utils.style_qss import QssRegistry
 
 # 获取所有 QSS
 qss = QssRegistry.get_all('light')
@@ -322,15 +324,15 @@ QssRegistry.clear()
 ```python
 import sys
 from PySide6.QtWidgets import QApplication, QPushButton
-from utils.fluent_style import set_fluent_theme
+from utils.style_qss import set_style_qss_theme
 
 app = QApplication(sys.argv)
 
-# 设置 FluentUI3 主题（自动检测系统主题）
-set_fluent_theme(app, "auto")
+# 设置 StyleQSS 主题（自动检测系统主题）
+set_style_qss_theme(app, "auto")
 
 # 创建测试窗口
-button = QPushButton("Hello FluentUI")
+button = QPushButton("Hello StyleQSS")
 button.show()
 
 sys.exit(app.exec())
@@ -341,12 +343,12 @@ sys.exit(app.exec())
 ```python
 # main.py
 from PySide6.QtWidgets import QMainWindow
-from utils.themes import set_fluent_theme
+from utils.themes import set_style_qss_theme
 
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("FluentUI3 Demo")
+        self.setWindowTitle("StyleQSS Demo")
         # 窗口内容...
 
 if __name__ == "__main__":
@@ -355,8 +357,8 @@ if __name__ == "__main__":
 
     app = QApplication(sys.argv)
 
-    # 设置 FluentUI3 主题
-    set_fluent_theme(app, "auto")
+    # 设置 StyleQSS 主题
+    set_style_qss_theme(app, "auto")
 
     window = MainWindow()
     window.show()
@@ -367,16 +369,16 @@ if __name__ == "__main__":
 ### 6.3 动态切换主题
 
 ```python
-from utils.fluent_style import set_theme, create_fluent_qss
+from utils.style_qss import set_theme, create_qss
 from PySide6.QtWidgets import QApplication
 
 def switch_to_dark(app: QApplication):
     set_theme('dark')
-    app.setStyleSheet(create_fluent_qss('dark'))
+    app.setStyleSheet(create_qss('dark'))
 
 def switch_to_light(app: QApplication):
     set_theme('light')
-    app.setStyleSheet(create_fluent_qss('light'))
+    app.setStyleSheet(create_qss('light'))
 ```
 
 ### 6.4 使用按钮样式类
@@ -415,39 +417,36 @@ subtle_btn.setProperty("class", "subtle")
 
 ```python
 # utils/__init__.py
-from .themes import set_light_theme
+from .themes import set_style_qss_theme
 ```
 
 通过 `utils/themes.py` 间接调用：
 
 ```python
 # utils/themes.py
-from utils.fluent_style import (
-    set_fluent_theme as _set_fluent_theme,
-    FluentStyle
+from utils.style_qss import (
+    set_style_qss_theme as _set_style_qss_theme,
+    StyleQSS
 )
 
-def set_light_theme(app: QApplication) -> None:
-    _set_fluent_theme(app, theme='light')
-
-def set_fluent_theme(app: QApplication, theme: str = "auto") -> None:
-    _set_fluent_theme(app, theme=theme)
+def set_style_qss_theme(app: QApplication, theme: str = "auto") -> None:
+    _set_style_qss_theme(app, theme=theme)
 ```
 
 ### 7.2 集成方式
 
 ```python
 # 方式 1: 通过 utils 模块（推荐）
-from utils import set_light_theme
-set_light_theme(app)
+from utils import set_style_qss_theme
+set_style_qss_theme(app)
 
-# 方式 2: 直接导入 fluent_style
-from utils.fluent_style import set_fluent_theme
-set_fluent_theme(app, 'dark')
+# 方式 2: 直接导入 style_qss
+from utils.style_qss import set_style_qss_theme
+set_style_qss_theme(app, 'dark')
 
 # 方式 3: 使用 utils.themes（兼容）
-from utils.themes import set_fluent_theme
-set_fluent_theme(app, 'auto')
+from utils.themes import set_style_qss_theme
+set_style_qss_theme(app, 'auto')
 ```
 
 ### 7.3 数据流转
@@ -455,21 +454,15 @@ set_fluent_theme(app, 'auto')
 ```
 系统主题设置
     ↓
-themes.set_fluent_theme()
+themes.set_style_qss_theme()
     ↓
-fluent_style.set_fluent_theme()
+style_qss.set_style_qss_theme()
     ├── detect_system_theme() → 获取系统主题
-    ├── create_fluent_palette() → 创建 QPalette
+    ├── create_qss_palette() → 创建 QPalette
     ├── QssRegistry.get_all() → 获取 QSS
     │   └── _replace_variables() → 替换颜色变量
     └── app.setStyleSheet() → 应用样式
 ```
-
-### 7.4 潜在集成点
-
-- **UI Demo 插件**: 展示所有控件的 FluentUI3 样式
-- **主题切换功能**: 在设置中提供主题选择
-- **插件系统**: 各插件可自定义符合 FluentUI3 风格的 UI
 
 ---
 
@@ -525,7 +518,7 @@ QPushButton {
 
 ## 9. 注意事项
 
-1. **Fusion 样式**: `set_fluent_theme` 会将应用样式设置为 `Fusion`，这是 FluentUI3 样式的基础
+1. **Fusion 样式**: `set_style_qss_theme` 会将应用样式设置为 `Fusion`，这是样式系统的基础
 2. **自动主题检测**: Windows 系统通过注册表 `AppsUseLightTheme` 检测系统主题
 3. **QSS 注释**: 模块会自动移除 `/* */` 和 `//` 注释，避免编码问题
 4. **变量替换**: 替换使用简单的字符串替换，确保变量名不包含特殊字符

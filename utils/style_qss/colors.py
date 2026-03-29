@@ -1,14 +1,14 @@
 """
-FluentUI3 颜色定义
+StyleQSS 颜色定义
 """
 
 from PySide6.QtGui import QColor
 
 
-class FluentColors:
-    """FluentUI3 颜色定义类"""
+class StyleQSSColors:
+    """StyleQSS 颜色定义类"""
 
-    # FluentUI3 颜色定义
+    # 颜色定义
     COLORS = {
         'light': {
             # 基础色
@@ -49,7 +49,7 @@ class FluentColors:
             'borderLight': '#CCCCCC',
             'borderDark': '#898989',
 
-            # Fluent 专用
+            # 专用
             'accent': '#0078D4',
             'accentLight': '#4CC2FF',
             'accentDark': '#005A9E',
@@ -105,7 +105,7 @@ class FluentColors:
             'borderLight': '#3C3C3C',
             'borderDark': '#646464',
 
-            # Fluent 专用
+            # 专用
             'accent': '#0078D4',
             'accentLight': '#4CC2FF',
             'accentDark': '#005A9E',
@@ -155,4 +155,4 @@ class FluentColors:
 # 导出颜色常量供 QSS 使用
 def get_color_dict(theme: str = 'light') -> dict:
     """获取颜色字典，用于 QSS 变量替换"""
-    return FluentColors.get_colors(theme)
+    return StyleQSSColors.get_colors(theme)

@@ -12,9 +12,9 @@ def parse_color(hex_color: str) -> QColor:
     return QColor(hex_color)
 
 
-def create_fluent_palette(theme: str = 'light') -> QPalette:
+def create_qss_palette(theme: str = 'light') -> QPalette:
     """
-    创建 FluentUI3 调色板
+    创建 QSS 调色板
 
     Args:
         theme: 主题类型，'light' 或 'dark'
@@ -22,7 +22,7 @@ def create_fluent_palette(theme: str = 'light') -> QPalette:
     Returns:
         QPalette 对象
     """
-    from .colors import FluentColors, get_color_dict
+    from .colors import StyleQSSColors, get_color_dict
 
     colors = get_color_dict(theme)
 
