@@ -18,7 +18,8 @@ import numpy as np
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QSplitter,
     QHBoxLayout, QVBoxLayout, QLayoutItem,
-    QFileDialog, QMessageBox, QDialog, QPushButton, QLabel
+    QFileDialog, QMessageBox, QDialog, QPushButton, QLabel,
+    QApplication
 )
 from PySide6.QtGui import (
     QAction, QIcon, QCursor, QMouseEvent
@@ -35,6 +36,7 @@ from ui.dialog.plugin_order_dialog import PluginOrderDialog
 from ui.work_area.work_area import WorkArea
 from ui.title_bar import CustomTitleBar
 from core.plugin.manager import PluginManager
+from core.data.data_provider import DataProvider, DataNamespace
 from utils.style_qss import get_style_qss
 
 
@@ -71,6 +73,12 @@ class InstructionXMainWindow(QMainWindow):
         self._style_qss = get_style_qss()
         self._current_theme = self._style_qss.theme()
 
+        # 主题映射：浅色 → 深色 → 跟随系统
+        self._theme_map = {'light': 'dark', 'dark': 'auto', 'auto': 'light'}
+
+        # 加载保存的主题设置
+        self._load_saved_theme()
+
         # 创建主容器（用于圆角效果）
         self._container = QWidget()
         self._container.setObjectName("mainContainer")
@@ -105,7 +113,7 @@ class InstructionXMainWindow(QMainWindow):
         """
         创建菜单栏
 
-        包含文件、编辑、用户中心、帮助等菜单项。
+        包含编辑、用户中心、帮助等菜单项。
         菜单栏将移动到自定义标题栏中。
         """
 
@@ -113,15 +121,6 @@ class InstructionXMainWindow(QMainWindow):
         menu_bar = self.menuBar()
         menu_bar.setNativeMenuBar(False)
         self._title_bar.set_menu_bar(menu_bar)
-
-        # -------------------------------------------------
-        # 文件
-        menu_file = menu_bar.addMenu("文件")
-
-        # 加载录制文件动作 - 使用新的安全方法
-        menu_file_load_action = QAction("加载录制文件", self)
-        menu_file_load_action.setShortcut("Ctrl+Shift+L")
-        menu_file.addAction(menu_file_load_action)
 
         # -------------------------------------------------
         # 编辑
@@ -138,6 +137,14 @@ class InstructionXMainWindow(QMainWindow):
         menu_edit_llm_settings_action.setShortcut("Ctrl+L")
         menu_edit_llm_settings_action.triggered.connect(self._open_llm_settings_dialog)
         menu_edit.addAction(menu_edit_llm_settings_action)
+
+        # 主题切换
+        menu_edit.addSeparator()
+        self._menu_theme_action = QAction("切换主题", self)
+        self._menu_theme_action.setToolTip("浅色 → 深色 → 跟随系统")
+        self._menu_theme_action.triggered.connect(self._cycle_theme)
+        menu_edit.addAction(self._menu_theme_action)
+        self._update_theme_action_text()
 
         # -------------------------------------------------
         # 用户中心
@@ -234,6 +241,63 @@ class InstructionXMainWindow(QMainWindow):
         from ui.dialog.about_dialog import AboutDialog
         dialog = AboutDialog(self)
         dialog.exec()
+
+    def _load_saved_theme(self):
+        """从 DataProvider 加载保存的主题设置"""
+        try:
+            provider = DataProvider()
+            # 注册应用配置插件（如果不存在）
+            try:
+                provider.register_plugin("__app_config__", "AppConfig")
+            except:
+                pass  # 已存在则忽略
+            
+            # 读取保存的主题
+            saved_theme = provider.get_plugin_data(
+                "__app_config__", "theme",
+                DataNamespace.PRIVATE, "auto"
+            )
+            
+            # 如果保存的主题不是 auto，则应用它
+            if saved_theme != "auto":
+                from utils.style_qss import set_style_qss_theme
+                self._current_theme = saved_theme
+                set_style_qss_theme(QApplication.instance(), saved_theme)  # type: ignore
+        except Exception:
+            pass  # 如果加载失败，使用默认主题
+
+    def _save_theme(self, theme: str):
+        """保存主题设置到 DataProvider"""
+        try:
+            provider = DataProvider()
+            # 确保应用配置插件已注册
+            try:
+                provider.register_plugin("__app_config__", "AppConfig")
+            except:
+                pass  # 已存在则忽略
+            
+            provider.set_plugin_data(
+                "__app_config__", "theme",
+                theme, DataNamespace.PRIVATE, notify=False
+            )
+        except Exception:
+            pass  # 如果保存失败，忽略错误
+
+    def _update_theme_action_text(self):
+        """更新主题菜单项文字，显示当前主题"""
+        theme_labels = {'light': '浅色', 'dark': '深色', 'auto': '跟随系统'}
+        label = theme_labels.get(self._current_theme, '跟随系统')
+        self._menu_theme_action.setText(f"切换主题 ({label})")
+
+    def _cycle_theme(self):
+        """循环切换主题：浅色 → 深色 → 跟随系统"""
+        from utils.style_qss import set_style_qss_theme
+        next_theme = self._theme_map.get(self._current_theme, 'auto')
+        self._current_theme = next_theme
+        set_style_qss_theme(QApplication.instance(), next_theme)  # type: ignore
+        self._update_container_style()
+        self._update_theme_action_text()
+        self._save_theme(next_theme)
 
     def _open_llm_settings_dialog(self):
         """
