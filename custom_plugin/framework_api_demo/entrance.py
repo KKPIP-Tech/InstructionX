@@ -130,60 +130,108 @@ class FrameworkAPIDemoPlugin(IPlugin):
         # 插件注册区域
         register_group = QGroupBox("插件注册")
         register_layout = QHBoxLayout()
+        register_layout.setSpacing(10)
 
         self.register_plugin_btn = QPushButton("注册演示插件")
+        self.register_plugin_btn.setMinimumWidth(120)
         self.register_plugin_btn.clicked.connect(self._on_register_plugin)
         register_layout.addWidget(self.register_plugin_btn)
 
         self.unregister_plugin_btn = QPushButton("注销演示插件")
+        self.unregister_plugin_btn.setMinimumWidth(120)
         self.unregister_plugin_btn.clicked.connect(self._on_unregister_plugin)
         register_layout.addWidget(self.unregister_plugin_btn)
 
+        register_layout.addStretch()
         register_group.setLayout(register_layout)
         layout.addWidget(register_group)
 
         # 数据操作区域
         data_group = QGroupBox("数据操作")
-        data_layout = QFormLayout()
+        data_layout = QVBoxLayout()
+        data_layout.setSpacing(10)
 
-        # 私有数据
-        self.private_key_input = QLineEdit("test_key")
-        self.private_value_input = QLineEdit("test_value")
-        private_layout = QHBoxLayout()
-        private_layout.addWidget(self.private_key_input)
-        private_layout.addWidget(self.private_value_input)
+        # 私有数据行
+        private_row = QHBoxLayout()
+        private_row.setSpacing(8)
+        
+        private_label = QLabel("Private 数据:")
+        private_label.setMinimumWidth(80)
+        private_row.addWidget(private_label)
+
+        self.private_key_input = QLineEdit()
+        self.private_key_input.setPlaceholderText("key")
+        self.private_key_input.setText("test_key")
+        self.private_key_input.setMinimumWidth(100)
+        private_row.addWidget(self.private_key_input)
+
+        self.private_value_input = QLineEdit()
+        self.private_value_input.setPlaceholderText("value")
+        self.private_value_input.setText("test_value")
+        self.private_value_input.setMinimumWidth(100)
+        private_row.addWidget(self.private_value_input)
 
         self.write_private_btn = QPushButton("写入 Private")
+        self.write_private_btn.setMinimumWidth(90)
         self.write_private_btn.clicked.connect(self._on_write_private)
-        private_layout.addWidget(self.write_private_btn)
+        private_row.addWidget(self.write_private_btn)
 
         self.read_private_btn = QPushButton("读取 Private")
+        self.read_private_btn.setMinimumWidth(90)
         self.read_private_btn.clicked.connect(self._on_read_private)
-        private_layout.addWidget(self.read_private_btn)
+        private_row.addWidget(self.read_private_btn)
 
-        data_layout.addRow("Private 数据:", private_layout)
+        private_row.addStretch()
+        data_layout.addLayout(private_row)
 
-        # 公共数据
-        self.public_key_input = QLineEdit("shared_key")
-        self.public_value_input = QLineEdit("shared_value")
-        public_layout = QHBoxLayout()
-        public_layout.addWidget(self.public_key_input)
-        public_layout.addWidget(self.public_value_input)
+        # 公共数据行
+        public_row = QHBoxLayout()
+        public_row.setSpacing(8)
+
+        public_label = QLabel("Public 数据:")
+        public_label.setMinimumWidth(80)
+        public_row.addWidget(public_label)
+
+        self.public_key_input = QLineEdit()
+        self.public_key_input.setPlaceholderText("key")
+        self.public_key_input.setText("shared_key")
+        self.public_key_input.setMinimumWidth(100)
+        public_row.addWidget(self.public_key_input)
+
+        self.public_value_input = QLineEdit()
+        self.public_value_input.setPlaceholderText("value")
+        self.public_value_input.setText("shared_value")
+        self.public_value_input.setMinimumWidth(100)
+        public_row.addWidget(self.public_value_input)
 
         self.write_public_btn = QPushButton("写入 Public")
+        self.write_public_btn.setMinimumWidth(90)
         self.write_public_btn.clicked.connect(self._on_write_public)
-        public_layout.addWidget(self.write_public_btn)
+        public_row.addWidget(self.write_public_btn)
 
         self.read_public_btn = QPushButton("读取 Public")
+        self.read_public_btn.setMinimumWidth(90)
         self.read_public_btn.clicked.connect(self._on_read_public)
-        public_layout.addWidget(self.read_public_btn)
+        public_row.addWidget(self.read_public_btn)
 
-        data_layout.addRow("Public 数据:", public_layout)
+        public_row.addStretch()
+        data_layout.addLayout(public_row)
 
-        # 获取所有数据
+        # 查询行
+        query_row = QHBoxLayout()
+        query_row.setSpacing(8)
+
+        query_label = QLabel("查询:")
+        query_label.setMinimumWidth(80)
+        query_row.addWidget(query_label)
+
         self.get_all_data_btn = QPushButton("获取所有数据")
+        self.get_all_data_btn.setMinimumWidth(120)
         self.get_all_data_btn.clicked.connect(self._on_get_all_data)
-        data_layout.addRow("查询:", self.get_all_data_btn)
+        query_row.addWidget(self.get_all_data_btn)
+
+        query_row.addStretch()
+        data_layout.addLayout(query_row)
 
         data_group.setLayout(data_layout)
         layout.addWidget(data_group)
@@ -191,15 +239,19 @@ class FrameworkAPIDemoPlugin(IPlugin):
         # 资源管理区域
         asset_group = QGroupBox("资源管理")
         asset_layout = QHBoxLayout()
+        asset_layout.setSpacing(10)
 
         self.save_asset_btn = QPushButton("保存资源")
+        self.save_asset_btn.setMinimumWidth(120)
         self.save_asset_btn.clicked.connect(self._on_save_asset)
         asset_layout.addWidget(self.save_asset_btn)
 
         self.load_asset_btn = QPushButton("加载资源")
+        self.load_asset_btn.setMinimumWidth(120)
         self.load_asset_btn.clicked.connect(self._on_load_asset)
         asset_layout.addWidget(self.load_asset_btn)
 
+        asset_layout.addStretch()
         asset_group.setLayout(asset_layout)
         layout.addWidget(asset_group)
 

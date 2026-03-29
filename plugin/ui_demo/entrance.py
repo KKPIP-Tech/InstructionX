@@ -1,5 +1,5 @@
 """
-UI 控件演示插件
+UI 控件演示插件 - 最终修复方案（不干扰 FluentUI3 样式）
 
 展示 FluentUI3 风格的所有控件效果
 """
@@ -12,7 +12,8 @@ from PySide6.QtWidgets import (
     QTableWidget, QTreeWidget, QMenuBar, QMenu, QToolBar,
     QToolButton, QScrollArea, QFrame, QSplitter, QStackedWidget,
     QButtonGroup, QListWidgetItem, QTableWidgetItem, QTreeWidgetItem,
-    QScrollBar, QStatusBar, QMenuBar, QDialogButtonBox
+    QScrollBar, QStatusBar, QDialogButtonBox, QSizePolicy, QStyle,
+    QMessageBox, QStyleOptionSlider
 )
 from PySide6.QtCore import Qt, QSize, QTimer
 from PySide6.QtGui import QAction, QIcon, QColor
@@ -22,6 +23,14 @@ from .service import Service
 
 class UiDemoPlugin(IPlugin):
     """UI 控件演示插件"""
+
+    def __init__(self):
+        """初始化插件"""
+        super().__init__()
+        self.progress_bar = None
+        self._timer = None
+        self._progress_step = 0
+        self.radio_group = None
 
     @property
     def plugin_name(self) -> str:
@@ -89,7 +98,7 @@ class UiDemoPlugin(IPlugin):
         return widget
 
     def _create_basic_controls_tab(self) -> QWidget:
-        """创建基础控件页面"""
+        """创建基础控件页面（含滑块调试功能）"""
         widget = QWidget()
         layout = QVBoxLayout(widget)
         layout.setContentsMargins(5, 5, 5, 5)
@@ -183,25 +192,42 @@ class UiDemoPlugin(IPlugin):
         checkbox_group.setLayout(checkbox_layout)
         layout.addWidget(checkbox_group)
 
-        # 滑块和进度条
+        # ═══════════════════════════════════════════════════════════════════════
+        # 滑块和进度条 - 【最终方案：不设置尺寸，让 FluentUI3 完全控制】
+        # ═══════════════════════════════════════════════════════════════════════
         slider_group = QGroupBox("滑块 (QSlider) 和 进度条 (QProgressBar)")
         slider_layout = QGridLayout()
+        slider_layout.setColumnStretch(1, 1)
+        # 【关键】增加行间距，给滑块上下留空间
+        slider_layout.setRowMinimumHeight(0, 40)
+        slider_layout.setRowMinimumHeight(1, 40)
 
-        # 水平滑块
+        # ═══════════════════════════════════════════════════════════════════════
+        # 【关键修复 1】水平滑块 - 不设置任何尺寸限制
+        # ═══════════════════════════════════════════════════════════════════════
         h_slider = QSlider(Qt.Orientation.Horizontal)
         h_slider.setMinimum(0)
         h_slider.setMaximum(100)
         h_slider.setValue(50)
+        # ❌ 删除所有 setMinimumHeight/setMaximumHeight
+        # ❌ 删除 setSizePolicy
+        # ✅ 让 FluentUI3 样式完全控制
         slider_layout.addWidget(QLabel("水平滑块:"), 0, 0)
         slider_layout.addWidget(h_slider, 0, 1)
 
-        # 垂直滑块
+        # ═══════════════════════════════════════════════════════════════════════
+        # 【关键修复 2】垂直滑块 - 只设置最小宽度，不限制高度
+        # ═══════════════════════════════════════════════════════════════════════
         v_slider = QSlider(Qt.Orientation.Vertical)
         v_slider.setMinimum(0)
         v_slider.setMaximum(100)
         v_slider.setValue(50)
+        # ✅ 只设置一个合理的最小宽度
+        v_slider.setMinimumWidth(32)
+        # ❌ 不设置 maximumWidth
+        # ❌ 不设置 minimumHeight（让布局决定）
         slider_layout.addWidget(QLabel("垂直滑块:"), 0, 2)
-        slider_layout.addWidget(v_slider, 1, 2, 2, 1)
+        slider_layout.addWidget(v_slider, 0, 3, 3, 1)
 
         # 进度条
         self.progress_bar = QProgressBar()
@@ -227,8 +253,126 @@ class UiDemoPlugin(IPlugin):
         slider_group.setLayout(slider_layout)
         layout.addWidget(slider_group)
 
+        # ═══════════════════════════════════════════════════════════════════════
+        # 【调试按钮】点击打印滑块尺寸信息
+        # ═══════════════════════════════════════════════════════════════════════
+        debug_btn = QPushButton("🔍 调试：打印滑块尺寸信息")
+        debug_btn.clicked.connect(
+            lambda: self._debug_slider_info(h_slider, v_slider)
+        )
+        layout.addWidget(debug_btn)
+
+        # 【自动调试】窗口显示后 500ms 自动打印一次调试信息
+        def auto_debug():
+            self._debug_slider_info(h_slider, v_slider)
+        QTimer.singleShot(500, auto_debug)
+
         layout.addStretch()
         return widget
+
+    def _debug_slider_info(self, h_slider: QSlider, v_slider: QSlider):
+        """
+        打印滑块调试信息到控制台
+        
+        Args:
+            h_slider: 水平滑块实例
+            v_slider: 垂直滑块实例
+        """
+        print("\n" + "=" * 70)
+        print("🔍 滑块尺寸调试信息")
+        print("=" * 70)
+        
+        # 水平滑块信息
+        print("\n【水平滑块】")
+        print(f"  geometry:      {h_slider.geometry()}")
+        print(f"  rect:          {h_slider.rect()}")
+        print(f"  sizeHint:      {h_slider.sizeHint()}")
+        print(f"  minimumHeight: {h_slider.minimumHeight()}px")
+        print(f"  height:        {h_slider.height()}px")
+        
+        # 创建样式选项并初始化
+        h_option = QStyleOptionSlider()
+        h_option.initFrom(h_slider)
+        h_option.orientation = Qt.Orientation.Horizontal
+        h_option.minimum = h_slider.minimum()
+        h_option.maximum = h_slider.maximum()
+        h_option.sliderPosition = h_slider.sliderPosition()
+        h_option.sliderValue = h_slider.value()
+        h_option.upsideDown = h_slider.invertedAppearance()
+        
+        # 获取各个区域的尺寸
+        h_groove_rect = h_slider.style().subControlRect(
+            QStyle.ComplexControl.CC_Slider,
+            h_option,
+            QStyle.SubControl.SC_SliderGroove,
+            h_slider
+        )
+        h_handle_rect = h_slider.style().subControlRect(
+            QStyle.ComplexControl.CC_Slider,
+            h_option,
+            QStyle.SubControl.SC_SliderHandle,
+            h_slider
+        )
+        
+        print(f"  groove rect:   {h_groove_rect}")
+        print(f"  groove height: {h_groove_rect.height()}px")
+        print(f"  handle rect:   {h_handle_rect}")
+        print(f"  handle size:   {h_handle_rect.width()}x{h_handle_rect.height()}px")
+        
+        # 垂直滑块信息
+        print("\n【垂直滑块】")
+        print(f"  geometry:      {v_slider.geometry()}")
+        print(f"  rect:          {v_slider.rect()}")
+        print(f"  sizeHint:      {v_slider.sizeHint()}")
+        print(f"  minimumWidth:  {v_slider.minimumWidth()}px")
+        print(f"  width:         {v_slider.width()}px")
+        print(f"  height:        {v_slider.height()}px")
+        
+        # 创建样式选项并初始化
+        v_option = QStyleOptionSlider()
+        v_option.initFrom(v_slider)
+        v_option.orientation = Qt.Orientation.Vertical
+        v_option.minimum = v_slider.minimum()
+        v_option.maximum = v_slider.maximum()
+        v_option.sliderPosition = v_slider.sliderPosition()
+        v_option.sliderValue = v_slider.value()
+        v_option.upsideDown = v_slider.invertedAppearance()
+        
+        # 获取各个区域的尺寸
+        v_groove_rect = v_slider.style().subControlRect(
+            QStyle.ComplexControl.CC_Slider,
+            v_option,
+            QStyle.SubControl.SC_SliderGroove,
+            v_slider
+        )
+        v_handle_rect = v_slider.style().subControlRect(
+            QStyle.ComplexControl.CC_Slider,
+            v_option,
+            QStyle.SubControl.SC_SliderHandle,
+            v_slider
+        )
+        
+        print(f"  groove rect:   {v_groove_rect}")
+        print(f"  groove width:  {v_groove_rect.width()}px")
+        print(f"  handle rect:   {v_handle_rect}")
+        print(f"  handle size:   {v_handle_rect.width()}x{v_handle_rect.height()}px")
+        
+        # 截断检查
+        print("\n【截断检查】")
+        h_clipped = h_handle_rect.top() < 0 or h_handle_rect.bottom() > h_slider.height()
+        v_clipped = v_handle_rect.left() < 0 or v_handle_rect.right() > v_slider.width()
+        
+        if h_clipped:
+            print(f"  ⚠️  水平滑块 handle 可能截断")
+        else:
+            print(f"  ✅ 水平滑块 handle 无截断")
+        
+        if v_clipped:
+            print(f"  ⚠️  垂直滑块 handle 可能截断")
+        else:
+            print(f"  ✅ 垂直滑块 handle 无截断")
+        
+        print("=" * 70 + "\n")
 
     def _create_input_controls_tab(self) -> QWidget:
         """创建输入控件页面"""
@@ -337,7 +481,7 @@ class UiDemoPlugin(IPlugin):
 
         tab_widget = QTabWidget()
 
-        # 标签页1
+        # 标签页 1
         page1 = QWidget()
         page1_layout = QVBoxLayout()
         page1_layout.addWidget(QLabel("这是标签页 1 的内容"))
@@ -346,7 +490,7 @@ class UiDemoPlugin(IPlugin):
         page1.setLayout(page1_layout)
         tab_widget.addTab(page1, "页面 1")
 
-        # 标签页2
+        # 标签页 2
         page2 = QWidget()
         page2_layout = QVBoxLayout()
         page2_layout.addWidget(QLabel("这是标签页 2 的内容"))
@@ -355,11 +499,13 @@ class UiDemoPlugin(IPlugin):
         page2.setLayout(page2_layout)
         tab_widget.addTab(page2, "页面 2")
 
-        # 标签页3
+        # 标签页 3
         page3 = QWidget()
         page3_layout = QVBoxLayout()
         page3_layout.addWidget(QLabel("这是标签页 3 的内容"))
-        page3_layout.addWidget(QSlider(Qt.Orientation.Horizontal))
+        inner_slider = QSlider(Qt.Orientation.Horizontal)
+        # ✅ 不设置任何尺寸
+        page3_layout.addWidget(inner_slider)
         page3_layout.addStretch()
         page3.setLayout(page3_layout)
         tab_widget.addTab(page3, "页面 3")
@@ -464,7 +610,7 @@ class UiDemoPlugin(IPlugin):
         table_layout = QVBoxLayout()
 
         table_widget = QTableWidget(5, 3)
-        table_widget.setHorizontalHeaderLabels(["列1", "列2", "列3"])
+        table_widget.setHorizontalHeaderLabels(["列 1", "列 2", "列 3"])
         for i in range(5):
             for j in range(3):
                 table_widget.setItem(i, j, QTableWidgetItem(f"单元格 {i+1},{j+1}"))
@@ -496,7 +642,7 @@ class UiDemoPlugin(IPlugin):
         menu_bar = QMenuBar()
 
         # 文件菜单
-        file_menu = QMenu("文件(&F)")
+        file_menu = QMenu("文件 (&F)")
         file_menu.addAction("新建", lambda: self._show_message("新建文件"))
         file_menu.addAction("打开", lambda: self._show_message("打开文件"))
         file_menu.addSeparator()
@@ -507,7 +653,7 @@ class UiDemoPlugin(IPlugin):
         menu_bar.addMenu(file_menu)
 
         # 编辑菜单
-        edit_menu = QMenu("编辑(&E)")
+        edit_menu = QMenu("编辑 (&E)")
         edit_menu.addAction("撤销", lambda: self._show_message("撤销"))
         edit_menu.addAction("重做", lambda: self._show_message("重做"))
         edit_menu.addSeparator()
@@ -517,14 +663,14 @@ class UiDemoPlugin(IPlugin):
         menu_bar.addMenu(edit_menu)
 
         # 视图菜单
-        view_menu = QMenu("视图(&V)")
+        view_menu = QMenu("视图 (&V)")
         view_menu.addAction("全屏", lambda: self._show_message("全屏"))
         view_menu.addAction("放大", lambda: self._show_message("放大"))
         view_menu.addAction("缩小", lambda: self._show_message("缩小"))
         menu_bar.addMenu(view_menu)
 
         # 帮助菜单
-        help_menu = QMenu("帮助(&H)")
+        help_menu = QMenu("帮助 (&H)")
         help_menu.addAction("关于", lambda: self._show_message("关于"))
         help_menu.addAction("文档", lambda: self._show_message("文档"))
         menu_bar.addMenu(help_menu)
@@ -545,7 +691,6 @@ class UiDemoPlugin(IPlugin):
         toolbar.addAction("保存", lambda: self._show_message("保存"))
         toolbar.addSeparator()
 
-        # 添加带图标的工具按钮
         action1 = QAction("设置", toolbar)
         toolbar.addAction(action1)
         toolbar.addAction("帮助", lambda: self._show_message("帮助"))
@@ -571,17 +716,20 @@ class UiDemoPlugin(IPlugin):
 
     def _show_message(self, message: str):
         """显示消息"""
-        from PySide6.QtWidgets import QMessageBox
         QMessageBox.information(None, "提示", message)
 
     def _adjust_progress(self, delta: int):
         """调整进度条"""
+        if self.progress_bar is None:
+            return
         new_value = self.progress_bar.value() + delta
         new_value = max(0, min(100, new_value))
         self.progress_bar.setValue(new_value)
 
     def _animate_progress(self):
         """动画进度条"""
+        if self._timer is not None:
+            self._timer.stop()
         self._progress_step = 0
         self._timer = QTimer()
         self._timer.timeout.connect(self._update_progress)
@@ -589,9 +737,12 @@ class UiDemoPlugin(IPlugin):
 
     def _update_progress(self):
         """更新进度条"""
+        if self.progress_bar is None:
+            return
         self._progress_step += 1
         if self._progress_step > 100:
-            self._timer.stop()
+            if self._timer is not None:
+                self._timer.stop()
             self._progress_step = 0
         else:
             self.progress_bar.setValue(self._progress_step)
