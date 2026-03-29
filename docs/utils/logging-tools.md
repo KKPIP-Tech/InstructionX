@@ -181,7 +181,7 @@ graph TB
 from .logging_tools import LoggerManager, get_name
 
 __all__ = [
-    "set_light_theme",
+    "set_style_qss_theme",
     "LoggerManager",
     "get_name"
 ]

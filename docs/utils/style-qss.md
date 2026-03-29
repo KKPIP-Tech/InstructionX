@@ -300,6 +300,17 @@ print(style.colors())  # 颜色字典
 print(style.color('accent'))  # '#0078D4'
 ```
 
+### 5.2 get_color_dict()
+
+获取指定主题的颜色字典。
+
+```python
+from utils.style_qss import get_color_dict
+
+colors = get_color_dict('dark')
+print(colors['accent'])  # '#0078D4'
+```
+
 ### 5.3 QssRegistry 类
 
 ```python
@@ -366,7 +377,7 @@ if __name__ == "__main__":
     sys.exit(app.exec())
 ```
 
-### 6.3 动态切换主题
+### 6.4 动态切换主题
 
 ```python
 from utils.style_qss import set_theme, create_qss
@@ -381,7 +392,7 @@ def switch_to_light(app: QApplication):
     app.setStyleSheet(create_qss('light'))
 ```
 
-### 6.4 使用按钮样式类
+### 6.5 使用按钮样式类
 
 QSS 支持通过 `class` 属性选择不同风格的按钮：
 
@@ -413,24 +424,16 @@ subtle_btn.setProperty("class", "subtle")
 
 ### 7.1 模块导出
 
-通过 `utils/__init__.py` 导出：
+`StyleQSS` 的主入口为 `utils/style_qss/__init__.py`，可直接导入：
 
 ```python
-# utils/__init__.py
-from .themes import set_style_qss_theme
-```
+# 方式 1: 直接导入（推荐）
+from utils.style_qss import set_style_qss_theme
+set_style_qss_theme(app, 'dark')
 
-通过 `utils/themes.py` 间接调用：
-
-```python
-# utils/themes.py
-from utils.style_qss import (
-    set_style_qss_theme as _set_style_qss_theme,
-    StyleQSS
-)
-
-def set_style_qss_theme(app: QApplication, theme: str = "auto") -> None:
-    _set_style_qss_theme(app, theme=theme)
+# 方式 2: 通过 utils 包（需要 themes 模块支持）
+from utils import set_style_qss_theme
+set_style_qss_theme(app, 'auto')
 ```
 
 ### 7.2 集成方式
@@ -440,13 +443,9 @@ def set_style_qss_theme(app: QApplication, theme: str = "auto") -> None:
 from utils import set_style_qss_theme
 set_style_qss_theme(app)
 
-# 方式 2: 直接导入 style_qss
+# 方式 2: 直接导入 style_qss（推荐）
 from utils.style_qss import set_style_qss_theme
 set_style_qss_theme(app, 'dark')
-
-# 方式 3: 使用 utils.themes（兼容）
-from utils.themes import set_style_qss_theme
-set_style_qss_theme(app, 'auto')
 ```
 
 ### 7.3 数据流转
