@@ -245,6 +245,20 @@ sequenceDiagram
             "last_run": "2026-01-01T00:00:00",
             "next_run": "2026-01-01T00:01:00"
         }
+    },
+    "long_running_tasks": {
+        "long-running-uuid-1": {
+            "task_id": "long-running-uuid-1",
+            "plugin_id": "plugin-uuid",
+            "name": "Web服务",
+            "enabled": true,
+            "auto_restart": true,
+            "current_status": "running",
+            "error": null,
+            "created_at": "2026-01-01T10:00:00",
+            "last_started_at": "2026-01-01T10:00:05",
+            "restart_count": 0
+        }
     }
 }
 ```

@@ -25,7 +25,7 @@
 graph TB
     subgraph MainWindow["应用主窗口 InstructionXMainWindow"]
         direction TB
-        Menu[菜单栏] --> SP["SkillsPanel<br/>技能面板 120-150px"]
+        Menu[菜单栏] --> SP["SkillsPanel<br/>技能面板 105-115px"]
         SP --> Divider["分割线"]
         Divider --> WA["WorkArea<br/>工作区"]
     end
@@ -201,6 +201,7 @@ InstructionX/
 │   ├── work_area/           # 工作区
 │   │   └── work_area.py
 │   └── dialog/              # 对话框
+│       ├── about_dialog.py      # 关于对话框
 │       ├── llm_settings_dialog.py
 │       └── plugin_order_dialog.py
 │

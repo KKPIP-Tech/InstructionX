@@ -13,7 +13,7 @@
 ## 文档结构
 
 ```
-documents/
+docs/
 ├── README.md                      # 本文档 - 文档索引和导航
 │
 ├── architecture/                  # 架构文档
