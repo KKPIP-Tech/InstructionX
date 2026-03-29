@@ -18,10 +18,10 @@ import numpy as np
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QSplitter,
     QHBoxLayout, QVBoxLayout, QLayoutItem,
-    QFileDialog, QMessageBox, QDialog, QPushButton, QLabel, QFrame
+    QFileDialog, QMessageBox, QDialog, QPushButton, QLabel
 )
 from PySide6.QtGui import (
-    QAction, QIcon
+    QAction, QIcon, QCursor, QMouseEvent
 )
 from PySide6.QtCore import (
     Qt, QDateTime, QThread,
@@ -33,7 +33,9 @@ from PySide6.QtCore import (
 from ui.skills_panel.panel import SkillsPanel
 from ui.dialog.plugin_order_dialog import PluginOrderDialog
 from ui.work_area.work_area import WorkArea
+from ui.title_bar import CustomTitleBar
 from core.plugin.manager import PluginManager
+from utils.fluent_style import get_fluent_style
 
 
 class InstructionXMainWindow(QMainWindow):
@@ -57,12 +59,45 @@ class InstructionXMainWindow(QMainWindow):
 
         super().__init__()
 
+        # 设置无边框窗口
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+
         # 设置初始窗口大小
         self.setMinimumSize(800, 600)
         self.resize(1024, 768)
 
+        # 获取当前主题
+        self._fluent_style = get_fluent_style()
+        self._current_theme = self._fluent_style.theme()
+
+        # 创建主容器（用于圆角效果）
+        self._container = QWidget()
+        self._container.setObjectName("mainContainer")
+        self.setCentralWidget(self._container)
+
+        # 主布局
+        self._container_layout = QVBoxLayout(self._container)
+        self._container_layout.setContentsMargins(8, 0, 8, 8)
+        self._container_layout.setSpacing(0)
+
+        # 创建自定义标题栏
+        self._title_bar = CustomTitleBar(self)
+        self._container_layout.addWidget(self._title_bar)
+
+        # 创建菜单栏并移到标题栏
         self._create_menus()
+
+        # 创建主布局内容
         self._create_main_layout()
+
+        # 应用容器样式
+        self._update_container_style()
+
+        # 边缘 resize 相关变量
+        self._resize_margin = 8  # 边缘检测区域宽度
+        self._resize_dir = None  # 当前 resize 方向
+        self._resize_start = None  # resize 起始位置和窗口大小
 
     # ===============================================================
     # GUI 界面
@@ -71,11 +106,17 @@ class InstructionXMainWindow(QMainWindow):
         创建菜单栏
 
         包含文件、编辑、用户中心、帮助等菜单项。
+        菜单栏将移动到自定义标题栏中。
         """
+
+        # 获取原生菜单栏并移到自定义标题栏
+        menu_bar = self.menuBar()
+        menu_bar.setNativeMenuBar(False)
+        self._title_bar.set_menu_bar(menu_bar)
 
         # -------------------------------------------------
         # 文件
-        menu_file = self.menuBar().addMenu("文件")
+        menu_file = menu_bar.addMenu("文件")
 
         # 加载录制文件动作 - 使用新的安全方法
         menu_file_load_action = QAction("加载录制文件", self)
@@ -84,7 +125,7 @@ class InstructionXMainWindow(QMainWindow):
 
         # -------------------------------------------------
         # 编辑
-        menu_edit = self.menuBar().addMenu("编辑")
+        menu_edit = menu_bar.addMenu("编辑")
 
         # 插件排序
         menu_edit_plugin_order_action = QAction("插件排序", self)
@@ -100,11 +141,11 @@ class InstructionXMainWindow(QMainWindow):
 
         # -------------------------------------------------
         # 用户中心
-        menu_user = self.menuBar().addMenu("用户中心")
+        menu_user = menu_bar.addMenu("用户中心")
 
         # -------------------------------------------------
         # 帮助
-        menu_help = self.menuBar().addMenu("帮助")
+        menu_help = menu_bar.addMenu("帮助")
 
         # 关于软件
         menu_help_about_action = QAction("关于", self)
@@ -119,13 +160,11 @@ class InstructionXMainWindow(QMainWindow):
         初始化插件管理器，加载插件，创建技能面板和工作区。
         """
 
-        central_widget = QWidget()
-        self.setCentralWidget(central_widget)
-
-        # 使用垂直布局：工具栏在上，工作区在下
-        main_layout = QVBoxLayout(central_widget)
-        main_layout.setContentsMargins(5, 5, 5, 5)
-        main_layout.setSpacing(5)
+        # 创建内容布局（用于技能面板和工作区）
+        content_layout = QVBoxLayout()
+        content_layout.setContentsMargins(0, 0, 0, 0)
+        content_layout.setSpacing(5)
+        self._container_layout.addLayout(content_layout)
 
         # 初始化插件管理器
         self.plugin_manager = PluginManager()
@@ -135,29 +174,16 @@ class InstructionXMainWindow(QMainWindow):
         self.plugin_manager.apply_custom_order()
 
         # 创建并添加 SkillsPanel（固定高度）
-        self.skills_panel = SkillsPanel(central_widget)
+        self.skills_panel = SkillsPanel(self._container)
         self.skills_panel.set_plugin_manager(self.plugin_manager)
         self.skills_panel.load_skills_from_manager()
-        self.skills_panel.setMaximumHeight(150)  # 设置最大高度
-        self.skills_panel.setMinimumHeight(120)  # 设置最小高度
-        main_layout.addWidget(self.skills_panel)
-
-        # 添加分割线
-        separator = QFrame()
-        separator.setFrameShape(QFrame.Shape.HLine)
-        separator.setFrameShadow(QFrame.Shadow.Sunken)
-        separator.setStyleSheet("""
-            QFrame {
-                background-color: #CCCCCC;
-                max-height: 2px;
-                min-height: 2px;
-            }
-        """)
-        main_layout.addWidget(separator)
+        self.skills_panel.setMaximumHeight(115)  # 设置最大高度
+        self.skills_panel.setMinimumHeight(105)  # 设置最小高度
+        content_layout.addWidget(self.skills_panel)
 
         # 创建工作区（可伸缩）
-        self.work_area = WorkArea(central_widget)
-        main_layout.addWidget(self.work_area.get_widget(), stretch=1)
+        self.work_area = WorkArea(self._container)
+        content_layout.addWidget(self.work_area.get_widget(), stretch=1)
 
         # 设置清除高亮的回调
         self.work_area.set_clear_highlight_callback(self.skills_panel.clear_active_state)
@@ -221,3 +247,194 @@ class InstructionXMainWindow(QMainWindow):
             # 用户点击了保存，重新加载 LLM Provider
             from core.llm.llm_provider import get_llm_provider
             get_llm_provider().reload_config()
+
+    def _update_container_style(self):
+        """更新容器样式（圆角/最大化状态），适配当前主题"""
+        colors = self._fluent_style.colors()
+        window_bg = colors.get('window', '#202020')
+        border_color = colors.get('borderLight', '#3C3C3C')
+
+        if self.isMaximized():
+            # 最大化时移除圆角
+            self._container.setStyleSheet(f"""
+                QWidget#mainContainer {{
+                    background-color: {window_bg};
+                    border-radius: 0px;
+                }}
+            """)
+        else:
+            # 还原时显示圆角
+            self._container.setStyleSheet(f"""
+                QWidget#mainContainer {{
+                    background-color: {window_bg};
+                    border-radius: 8px;
+                    border: 1px solid {border_color};
+                }}
+            """)
+
+    def changeEvent(self, event):
+        """监听窗口状态变化，更新标题栏按钮"""
+        if event.type() == event.Type.WindowStateChange:
+            colors = self._fluent_style.colors()
+            window_bg = colors.get('window', '#202020')
+
+            if self.isMaximized():
+                self._title_bar.set_maximized(True)
+                self._container.setStyleSheet(f"""
+                    QWidget#mainContainer {{
+                        background-color: {window_bg};
+                        border-radius: 0px;
+                    }}
+                """)
+            else:
+                self._title_bar.set_maximized(False)
+                border_color = colors.get('borderLight', '#3C3C3C')
+                self._container.setStyleSheet(f"""
+                    QWidget#mainContainer {{
+                        background-color: {window_bg};
+                        border-radius: 8px;
+                        border: 1px solid {border_color};
+                    }}
+                """)
+        super().changeEvent(event)
+
+    # ===============================================================
+    # 边缘 resize 功能
+    def _get_resize_direction(self, pos: QMouseEvent) -> Optional[str]:
+        """
+        检测鼠标位置对应的 resize 方向
+
+        Args:
+            pos: 鼠标事件
+
+        Returns:
+            resize 方向字符串：'top', 'bottom', 'left', 'right',
+            'top-left', 'top-right', 'bottom-left', 'bottom-right' 或 None
+        """
+        if self.isMaximized():
+            return None
+
+        margin = self._resize_margin
+        x, y = pos.pos().x(), pos.pos().y()
+        width = self.width()
+        height = self.height()
+
+        # 检测是否在边缘区域
+        on_left = x < margin
+        on_right = x > width - margin
+        on_top = y < margin
+        on_bottom = y > height - margin
+
+        if on_top and on_left:
+            return 'top-left'
+        elif on_top and on_right:
+            return 'top-right'
+        elif on_bottom and on_left:
+            return 'bottom-left'
+        elif on_bottom and on_right:
+            return 'bottom-right'
+        elif on_top:
+            return 'top'
+        elif on_bottom:
+            return 'bottom'
+        elif on_left:
+            return 'left'
+        elif on_right:
+            return 'right'
+        return None
+
+    def _get_resize_cursor(self, direction: Optional[str]) -> Qt.CursorShape:
+        """根据 resize 方向获取对应的光标样式"""
+        cursor_map = {
+            'top': Qt.CursorShape.SizeVerCursor,
+            'bottom': Qt.CursorShape.SizeVerCursor,
+            'left': Qt.CursorShape.SizeHorCursor,
+            'right': Qt.CursorShape.SizeHorCursor,
+            'top-left': Qt.CursorShape.SizeFDiagCursor,
+            'top-right': Qt.CursorShape.SizeBDiagCursor,
+            'bottom-left': Qt.CursorShape.SizeBDiagCursor,
+            'bottom-right': Qt.CursorShape.SizeFDiagCursor,
+        }
+        return cursor_map.get(direction, Qt.CursorShape.ArrowCursor)
+
+    def mouseMoveEvent(self, event: QMouseEvent):
+        """处理鼠标移动事件 - 边缘检测和 resize"""
+        # 如果正在执行 resize 操作
+        if self._resize_dir and event.buttons() == Qt.MouseButton.LeftButton:
+            self._do_resize(event)
+            return
+
+        # 否则检测边缘位置
+        direction = self._get_resize_direction(event)
+        if direction:
+            cursor = self._get_resize_cursor(direction)
+            self.setCursor(QCursor(cursor))
+            self._resize_dir = direction
+        else:
+            if self._resize_dir:
+                self.setCursor(QCursor(Qt.CursorShape.ArrowCursor))
+                self._resize_dir = None
+
+        super().mouseMoveEvent(event)
+
+    def mousePressEvent(self, event: QMouseEvent):
+        """处理鼠标按下事件 - 开始 resize"""
+        if event.button() == Qt.MouseButton.LeftButton:
+            direction = self._get_resize_direction(event)
+            if direction and not self.isMaximized():
+                self._resize_dir = direction
+                self._resize_start = {
+                    'pos': event.globalPosition().toPoint(),
+                    'geometry': self.geometry()
+                }
+                return
+
+        super().mousePressEvent(event)
+
+    def mouseReleaseEvent(self, event: QMouseEvent):
+        """处理鼠标释放事件 - 结束 resize"""
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._resize_dir = None
+            self._resize_start = None
+            # 恢复默认光标
+            self.setCursor(QCursor(Qt.CursorShape.ArrowCursor))
+
+        super().mouseReleaseEvent(event)
+
+    def _do_resize(self, event: QMouseEvent):
+        """执行窗口 resize"""
+        if not self._resize_start:
+            return
+
+        start_pos = self._resize_start['pos']
+        start_geo = self._resize_start['geometry']
+        current_pos = event.globalPosition().toPoint()
+
+        delta = current_pos - start_pos
+        direction = self._resize_dir
+
+        new_x = start_geo.x()
+        new_y = start_geo.y()
+        new_width = start_geo.width()
+        new_height = start_geo.height()
+
+        # 根据方向调整窗口几何
+        if 'left' in direction:
+            new_x = start_geo.x() + delta.x()
+            new_width = start_geo.width() - delta.x()
+        if 'right' in direction:
+            new_width = start_geo.width() + delta.x()
+        if 'top' in direction:
+            new_y = start_geo.y() + delta.y()
+            new_height = start_geo.height() - delta.y()
+        if 'bottom' in direction:
+            new_height = start_geo.height() + delta.y()
+
+        # 应用最小尺寸限制
+        min_w = self.minimumWidth()
+        min_h = self.minimumHeight()
+        new_width = max(new_width, min_w)
+        new_height = max(new_height, min_h)
+
+        # 调整窗口位置和大小
+        self.setGeometry(new_x, new_y, new_width, new_height)

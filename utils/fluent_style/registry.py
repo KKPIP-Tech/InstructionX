@@ -68,6 +68,7 @@ class QssRegistry:
             'tooltip': 92,
             'dock': 93,
             'mainwindow': 100,
+            'titlebar': 101,
         }
         return priorities.get(name, 50)
 

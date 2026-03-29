@@ -33,6 +33,7 @@ _STYLE_FILES = [
     'tooltip',        # 工具提示
     'dock',           # 停靠窗口
     'mainwindow',     # 主窗口
+    'titlebar',       # 自定义标题栏
 ]
 
 
