@@ -261,7 +261,68 @@ def _on_skill_clicked(self, plugin):
 
 ---
 
-## 8. 相关文档
+## 8. 深色模式支持
+
+SkillsPanel 完全支持深色模式，通过 StyleQSS 的颜色变量自动适配主题。
+
+### 8.1 颜色变量
+
+SkillsPanel 使用以下颜色变量：
+
+| 颜色变量 | 浅色主题 | 深色主题 | 用途 |
+|---------|---------|---------|------|
+| `skillPanel` | `#F5F5F5` | `#787878` | 面板背景 |
+| `skillPanelTab` | `#E8E8E8` | `#6A6A6A` | Tab 背景 |
+| `windowText` | `#000000` | `#FFFFFF` | 文字颜色 |
+| `accent` | `#0078D4` | `#0078D4` | 选中边框 |
+| `controlFillHover` | `rgba(0,0,0,12)` | `rgba(255,255,255,12)` | 悬停效果 |
+
+### 8.2 色彩层次
+
+SkillsPanel 与工作区保持色彩层次区分：
+
+**浅色模式：**
+- SkillsPanel: `#F5F5F5`（浅灰）
+- WorkArea: `#FFFFFF`（白色）
+
+**深色模式：**
+- SkillsPanel: `#787878`（中灰）
+- WorkArea: `#202020`（深灰）
+
+### 8.3 样式文件
+
+SkillsPanel 的样式定义在 `utils/style_qss/styles/custom.qss`：
+
+```css
+/* SkillsPanel 容器 */
+SkillsPanel {
+    background-color: {skillPanel};
+    border-bottom: 1px solid {borderLight};
+}
+
+/* Tab 样式 */
+SkillsPanel QTabBar::tab {
+    background: {skillPanelTab};
+    color: {windowText};
+}
+SkillsPanel QTabBar::tab:selected {
+    background: {skillPanel};
+    border-bottom: 2px solid {accent};
+}
+
+/* 技能按钮 */
+SkillButton {
+    color: {windowText};
+}
+SkillButton[active="true"] {
+    border: 2px solid {accent};
+    background-color: {controlFillSelected};
+}
+```
+
+---
+
+## 9. 相关文档
 
 - [主窗口](main-window.md)
 - [工作区](work-area.md)

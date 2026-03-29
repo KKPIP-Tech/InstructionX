@@ -19,6 +19,10 @@ class StyleQSSColors:
             'toolTipBase': '#FFFFFF',
             'toolTipText': '#000000',
 
+            # 技能面板专用
+            'skillPanel': '#F5F5F5',
+            'skillPanelTab': '#E8E8E8',
+
             # 控件色
             'button': '#F3F3F3',
             'buttonText': '#000000',
@@ -74,6 +78,10 @@ class StyleQSSColors:
             'alternateBase': '#323232',
             'toolTipBase': '#323232',
             'toolTipText': '#FFFFFF',
+
+            # 技能面板专用
+            'skillPanel': "#454545",
+            'skillPanelTab': '#6A6A6A',
 
             # 控件色
             'button': '#2C2C2C',

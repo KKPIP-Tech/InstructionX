@@ -214,7 +214,14 @@ sequenceDiagram
 | `controlFillDisabled` | `rgba(0,0,0,4)` | `rgba(255,255,255,4)` | 禁用填充 |
 | `controlFillSelected` | `rgba(0,120,212,20)` | `rgba(0,120,212,40)` | 选中填充 |
 
-### 4.5 圆角
+### 4.5 技能面板专用色
+
+| 变量 | 浅色主题 | 深色主题 | 说明 |
+|------|---------|---------|------|
+| `skillPanel` | `#F5F5F5` | `#787878` | SkillsPanel 主背景 |
+| `skillPanelTab` | `#E8E8E8` | `#6A6A6A` | SkillsPanel Tab 背景 |
+
+### 4.6 圆角
 
 | 变量 | 值 | 说明 |
 |------|-----|------|
