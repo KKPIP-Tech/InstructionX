@@ -104,47 +104,30 @@ class PluginOrderDialog(QDialog):
         # 左侧：官方插件
         official_layout = QVBoxLayout()
         official_label = QLabel("官方插件")
-        official_label.setStyleSheet("font-weight: bold; font-size: 11px;")
+        official_label.setProperty("captionBold", "true")
+        official_label.style().unpolish(official_label)
+        official_label.style().polish(official_label)
         official_layout.addWidget(official_label)
-        
+
         self.official_list = OrderListWidget()
-        self.official_list.setStyleSheet("""
-            QListWidget {
-                border: 1px solid #CCCCCC;
-                border-radius: 4px;
-                padding: 5px;
-                background-color: #FAFAFA;
-            }
-            QListWidget::item {
-                padding: 8px;
-                margin: 2px;
-                border-radius: 3px;
-                background-color: white;
-                border: 1px solid #E0E0E0;
-            }
-            QListWidget::item:selected {
-                background-color: #0078D7;
-                color: white;
-            }
-            QListWidget::item:selected:hover {
-                background-color: #106EBE;
-                color: #E8F4FF;
-            }
-            QListWidget::item:hover:!selected {
-                background-color: #F0F0F0;
-            }
-        """)
+        self.official_list.setProperty("class", "dialog")
+        self.official_list.style().unpolish(self.official_list)
+        self.official_list.style().polish(self.official_list)
         official_layout.addWidget(self.official_list)
         content_layout.addLayout(official_layout, stretch=1)
-        
+
         # 右侧：第三方插件
         thirdparty_layout = QVBoxLayout()
         thirdparty_label = QLabel("第三方插件")
-        thirdparty_label.setStyleSheet("font-weight: bold; font-size: 11px;")
+        thirdparty_label.setProperty("captionBold", "true")
+        thirdparty_label.style().unpolish(thirdparty_label)
+        thirdparty_label.style().polish(thirdparty_label)
         thirdparty_layout.addWidget(thirdparty_label)
-        
+
         self.thirdparty_list = OrderListWidget()
-        self.thirdparty_list.setStyleSheet(self.official_list.styleSheet())
+        self.thirdparty_list.setProperty("class", "dialog")
+        self.thirdparty_list.style().unpolish(self.thirdparty_list)
+        self.thirdparty_list.style().polish(self.thirdparty_list)
         thirdparty_layout.addWidget(self.thirdparty_list)
         content_layout.addLayout(thirdparty_layout, stretch=1)
         
@@ -179,20 +162,9 @@ class PluginOrderDialog(QDialog):
         # 保存按钮
         self.save_button = QPushButton("保存")
         self.save_button.setMinimumWidth(80)
-        self.save_button.setStyleSheet("""
-            QPushButton {
-                background-color: #0078D7;
-                color: white;
-                border-radius: 4px;
-                padding: 6px 12px;
-            }
-            QPushButton:hover {
-                background-color: #106EBE;
-            }
-            QPushButton:pressed {
-                background-color: #005A9E;
-            }
-        """)
+        self.save_button.setProperty("class", "accentSave")
+        self.save_button.style().unpolish(self.save_button)
+        self.save_button.style().polish(self.save_button)
         self.save_button.clicked.connect(self._save_order)
         button_layout.addWidget(self.save_button)
         

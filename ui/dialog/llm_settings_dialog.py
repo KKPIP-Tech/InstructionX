@@ -67,28 +67,9 @@ class LLMSettingsDialog(QDialog):
 
         # Provider 列表
         self.provider_list = QListWidget()
-        self.provider_list.setStyleSheet("""
-            QListWidget {
-                border: 1px solid #CCCCCC;
-                border-radius: 4px;
-                padding: 5px;
-                background-color: #FAFAFA;
-            }
-            QListWidget::item {
-                padding: 10px;
-                margin: 3px;
-                border-radius: 3px;
-                background-color: white;
-                border: 1px solid #E0E0E0;
-            }
-            QListWidget::item:selected {
-                background-color: #0078D7;
-                color: white;
-            }
-            QListWidget::item:hover:!selected {
-                background-color: #F0F0F0;
-            }
-        """)
+        self.provider_list.setProperty("class", "dialog")
+        self.provider_list.style().unpolish(self.provider_list)
+        self.provider_list.style().polish(self.provider_list)
         self.provider_list.itemClicked.connect(self._on_provider_selected)
         layout.addWidget(self.provider_list)
 
@@ -130,13 +111,11 @@ class LLMSettingsDialog(QDialog):
         # Provider 名称（只读）
         self.name_edit = QLineEdit()
         self.name_edit.setReadOnly(True)
-        self.name_edit.setStyleSheet("background-color: #F0F0F0;")
         self.config_layout.addRow("名称:", self.name_edit)
 
         # Provider 类型（只读）
         self.type_edit = QLineEdit()
         self.type_edit.setReadOnly(True)
-        self.type_edit.setStyleSheet("background-color: #F0F0F0;")
         self.config_layout.addRow("类型:", self.type_edit)
 
         # API Key
@@ -176,17 +155,23 @@ class LLMSettingsDialog(QDialog):
 
         # Vision 支持（显示）
         self.vision_label = QLabel("未知")
-        self.vision_label.setStyleSheet("color: #666;")
+        self.vision_label.setProperty("muted", "true")
+        self.vision_label.style().unpolish(self.vision_label)
+        self.vision_label.style().polish(self.vision_label)
         self.config_layout.addRow("多模态:", self.vision_label)
 
         # Function Calling 支持（显示）
         self.function_calling_label = QLabel("未知")
-        self.function_calling_label.setStyleSheet("color: #666;")
+        self.function_calling_label.setProperty("muted", "true")
+        self.function_calling_label.style().unpolish(self.function_calling_label)
+        self.function_calling_label.style().polish(self.function_calling_label)
         self.config_layout.addRow("Function Calling:", self.function_calling_label)
 
         # 上下文长度（显示）
         self.context_length_label = QLabel("未知")
-        self.context_length_label.setStyleSheet("color: #666;")
+        self.context_length_label.setProperty("muted", "true")
+        self.context_length_label.style().unpolish(self.context_length_label)
+        self.context_length_label.style().polish(self.context_length_label)
         self.config_layout.addRow("上下文长度:", self.context_length_label)
 
         scroll.setWidget(scroll_content)
@@ -212,23 +197,9 @@ class LLMSettingsDialog(QDialog):
         # 保存按钮
         self.save_button = QPushButton("保存")
         self.save_button.setMinimumWidth(80)
-        self.save_button.setStyleSheet("""
-            QPushButton {
-                background-color: #0078D7;
-                color: white;
-                border-radius: 4px;
-                padding: 6px 12px;
-            }
-            QPushButton:hover {
-                background-color: #106EBE;
-            }
-            QPushButton:pressed {
-                background-color: #005A9E;
-            }
-            QPushButton:disabled {
-                background-color: #CCCCCC;
-            }
-        """)
+        self.save_button.setProperty("class", "accentSave")
+        self.save_button.style().unpolish(self.save_button)
+        self.save_button.style().polish(self.save_button)
         self.save_button.clicked.connect(self._on_save)
         self.save_button.setEnabled(False)
         button_layout.addWidget(self.save_button)
@@ -476,17 +447,9 @@ class LLMSettingsDialog(QDialog):
         if self.current_provider and text:
             # 提示用户刷新模型
             self.refresh_button.setText("待刷新")
-            self.refresh_button.setStyleSheet("""
-                QPushButton {
-                    background-color: #FF9800;
-                    color: white;
-                    border-radius: 4px;
-                    padding: 6px 12px;
-                }
-                QPushButton:hover {
-                    background-color: #F57C00;
-                }
-            """)
+            self.refresh_button.setProperty("class", "warning")
+            self.refresh_button.style().unpolish(self.refresh_button)
+            self.refresh_button.style().polish(self.refresh_button)
         self._on_config_changed()
 
     def _on_config_changed(self):
@@ -560,7 +523,9 @@ class LLMSettingsDialog(QDialog):
 
             # 重置刷新按钮样式
             self.refresh_button.setText("刷新模型")
-            self.refresh_button.setStyleSheet("")
+            self.refresh_button.setProperty("class", "accentSave")
+            self.refresh_button.style().unpolish(self.refresh_button)
+            self.refresh_button.style().polish(self.refresh_button)
 
             if chat_models or embedding_models:
                 QMessageBox.information(

@@ -72,7 +72,6 @@ class AboutDialog(QDialog):
         name_font.setBold(True)
         name_label.setFont(name_font)
         name_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        name_label.setStyleSheet("color: #333333;")
         layout.addWidget(name_label)
 
         # 版本号
@@ -81,7 +80,9 @@ class AboutDialog(QDialog):
         version_font.setPointSize(11)
         version_label.setFont(version_font)
         version_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        version_label.setStyleSheet("color: #666666;")
+        version_label.setProperty("muted", "true")
+        version_label.style().unpolish(version_label)
+        version_label.style().polish(version_label)
         layout.addWidget(version_label)
 
         # 版权信息
@@ -90,7 +91,9 @@ class AboutDialog(QDialog):
         copyright_font.setPointSize(9)
         copyright_label.setFont(copyright_font)
         copyright_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        copyright_label.setStyleSheet("color: #999999;")
+        copyright_label.setProperty("muted", "true")
+        copyright_label.style().unpolish(copyright_label)
+        copyright_label.style().polish(copyright_label)
         layout.addWidget(copyright_label)
 
         # 专有软件声明
@@ -99,7 +102,9 @@ class AboutDialog(QDialog):
         proprietary_font.setPointSize(8)
         proprietary_label.setFont(proprietary_font)
         proprietary_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        proprietary_label.setStyleSheet("color: #999999;")
+        proprietary_label.setProperty("muted", "true")
+        proprietary_label.style().unpolish(proprietary_label)
+        proprietary_label.style().polish(proprietary_label)
         proprietary_label.setWordWrap(True)
         layout.addWidget(proprietary_label)
 

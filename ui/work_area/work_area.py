@@ -31,12 +31,9 @@ class WorkArea:
         # 初始显示的占位标签
         self.work_placeholder = QLabel("点击上方技能按钮，在此处显示插件功能")
         self.work_placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.work_placeholder.setStyleSheet("""
-            QLabel {
-                color: #999999;
-                font-size: 14px;
-            }
-        """)
+        self.work_placeholder.setProperty("placeholder", "true")
+        self.work_placeholder.style().unpolish(self.work_placeholder)
+        self.work_placeholder.style().polish(self.work_placeholder)
         self.work_layout.addWidget(self.work_placeholder)
 
     def get_widget(self) -> QWidget:

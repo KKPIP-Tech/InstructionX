@@ -90,41 +90,9 @@ class SkillButton(QToolButton):
 
     def _apply_style(self):
         """应用 FluentUI3 风格的样式"""
-        if self._is_active:
-            # 激活状态样式 - 使用 FluentUI3 变量
-            self.setStyleSheet("""
-                QToolButton {
-                    border: 2px solid #0078D4;
-                    border-radius: 6px;
-                    padding: 2px;
-                    background-color: rgba(0, 120, 212, 15);
-                    color: #005A9E;
-                    text-align: top;
-                    font-weight: 500;
-                    font-size: 10px;
-                }
-            """)
-        else:
-            # 普通状态样式 - 使用 FluentUI3 变量
-            self.setStyleSheet("""
-                QToolButton {
-                    border: 1px solid transparent;
-                    border-radius: 6px;
-                    padding: 3px;
-                    background-color: transparent;
-                    color: #1F1F1F;
-                    text-align: top;
-                    font-size: 10px;
-                }
-                QToolButton:hover {
-                    background-color: rgba(0, 0, 0, 5);
-                    border: 1px solid rgba(0, 0, 0, 10);
-                }
-                QToolButton:pressed {
-                    background-color: rgba(0, 0, 0, 10);
-                    border: 1px solid rgba(0, 0, 0, 20);
-                }
-            """)
+        self.setProperty("active", "true" if self._is_active else "false")
+        self.style().unpolish(self)
+        self.style().polish(self)
 
 
 class SkillsPanel(QWidget):
@@ -165,34 +133,6 @@ class SkillsPanel(QWidget):
         tab_widget.addTab(self.official_tab, "官方功能")
         tab_widget.addTab(self.thirdparty_tab, "第三方功能")
 
-        # 应用 Tab 样式 - Office 风格
-        tab_widget.setStyleSheet("""
-            QTabWidget::pane {
-                border: none;
-                background: #F5F5F5;
-            }
-            QTabBar::tab {
-                background: #E8E8E8;
-                padding: 2px 10px;
-                margin-right: 1px;
-                border-top-left-radius: 3px;
-                border-top-right-radius: 3px;
-                min-height: 16px;
-                font-size: 11px;
-                border: none;
-            }
-            QTabBar::tab:selected {
-                background: #F5F5F5;
-                border-bottom: 2px solid #0078D4;
-            }
-            QTabBar::tab:hover:!selected {
-                background: #DCDCDC;
-            }
-        """)
-
-        # 设置面板背景色
-        self.setStyleSheet("background-color: #F5F5F5; border-bottom: 1px solid #D0D0D0;")
-
         main_layout.addWidget(tab_widget)
 
     def _create_skills_tab(self, tab_name: str) -> QWidget:
@@ -208,49 +148,9 @@ class SkillsPanel(QWidget):
         scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
 
-        # 滚动区域样式 - 现代细线风格，悬浮显示
-        scroll_area.setStyleSheet("""
-            QScrollArea {
-                border: none;
-                background: #F5F5F5;
-            }
-            /* 滚动条轨道 - 默认透明 */
-            QScrollBar:horizontal {
-                height: 6px;
-                background: transparent;
-                margin: 0px;
-                border-radius: 3px;
-            }
-            /* 滚动条滑块 - 默认透明隐藏 */
-            QScrollBar::handle:horizontal {
-                background: transparent;
-                min-width: 30px;
-                border-radius: 3px;
-            }
-            /* 滚动区域悬停时显示滚动条 */
-            QScrollArea:hover QScrollBar::handle:horizontal {
-                background: rgba(160, 160, 160, 0.8);
-            }
-            /* 滚动条滑块悬停效果 */
-            QScrollArea:hover QScrollBar::handle:horizontal:hover {
-                background: rgba(128, 128, 128, 1);
-            }
-            /* 滚动时保持显示 */
-            QScrollBar::handle:horizontal:active {
-                background: rgba(128, 128, 128, 1);
-            }
-            QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
-                height: 0px;
-                width: 0px;
-            }
-            QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {
-                background: transparent;
-            }
-        """)
-
         # 创建容器 widget 用于放置技能按钮
         container = QWidget()
-        container.setStyleSheet("background-color: #F5F5F5;")
+        container.setObjectName("skillsContainer")
         container_layout = QHBoxLayout(container)
         container_layout.setContentsMargins(6, 3, 6, 5)
         container_layout.setSpacing(6)

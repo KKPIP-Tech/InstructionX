@@ -212,7 +212,9 @@ class InstructionXMainWindow(QMainWindow):
             # 如果插件 widget 创建失败，显示错误信息
             error_label = QLabel(f"无法加载插件：{plugin.plugin_name}")
             error_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            error_label.setStyleSheet("color: red;")
+            error_label.setProperty("error", "true")
+            error_label.style().unpolish(error_label)
+            error_label.style().polish(error_label)
             self.work_area.add_widget(error_label)
 
     def _open_plugin_order_dialog(self):
