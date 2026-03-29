@@ -26,9 +26,9 @@ class SkillButton(QToolButton):
         # 设置按钮属性
         self.setIcon(icon)
         self._process_display_text(name)
-        self.setIconSize(QSize(36, 36))  # 减小图标尺寸
+        self.setIconSize(QSize(28, 28))  # 图标尺寸
         self.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextUnderIcon)
-        self.setFixedSize(60, 80)  # 恢复原有尺寸
+        self.setFixedSize(60, 70)  # 紧凑的按钮尺寸
         self.setToolTip(f"{name}\n{description}")
 
         # 启用自动提升效果（悬停时突出显示）
@@ -55,17 +55,19 @@ class SkillButton(QToolButton):
         """
         处理显示文本
         - 允许插件设计者自行决定换行位置（使用 \n）
-        - 每行最多4个字，超出用...替代
+        - 每行最多5个字，超出用...替代
         """
-        max_chars_per_line = 4
+        max_chars_per_line = 5
 
         # 如果文本包含换行符，按换行符分割
         if '\n' in text:
             lines = text.split('\n')
         else:
-            # 没有换行符，自动分成两行
+            # 没有换行符，根据长度决定
             if len(text) > max_chars_per_line:
-                lines = [text[:max_chars_per_line], text[max_chars_per_line:]]
+                # 尝试在中间位置分割
+                mid = len(text) // 2
+                lines = [text[:mid], text[mid:]]
             else:
                 lines = [text]
 
@@ -73,9 +75,10 @@ class SkillButton(QToolButton):
         if len(lines) > 2:
             lines = lines[:2]
 
-        # 处理每一行，确保不超过4个字
+        # 处理每一行，确保不超过5个字
         processed_lines = []
         for line in lines:
+            line = line.strip()
             if len(line) > max_chars_per_line:
                 processed_lines.append(line[:max_chars_per_line] + "...")
             else:
@@ -86,37 +89,40 @@ class SkillButton(QToolButton):
         self.setText(display_text)
 
     def _apply_style(self):
-        """应用 MS Office 风格的样式"""
+        """应用 FluentUI3 风格的样式"""
         if self._is_active:
-            # 激活状态样式（减小padding，使用1px边框）
+            # 激活状态样式 - 使用 FluentUI3 变量
             self.setStyleSheet("""
                 QToolButton {
-                    border: 1px solid #0078D4;
-                    border-radius: 4px;
+                    border: 2px solid #0078D4;
+                    border-radius: 6px;
                     padding: 2px;
-                    background-color: #E6F2FF;
-                    color: #0056B3;
+                    background-color: rgba(0, 120, 212, 15);
+                    color: #005A9E;
                     text-align: top;
+                    font-weight: 500;
+                    font-size: 10px;
                 }
             """)
         else:
-            # 普通状态样式
+            # 普通状态样式 - 使用 FluentUI3 变量
             self.setStyleSheet("""
                 QToolButton {
                     border: 1px solid transparent;
-                    border-radius: 4px;
-                    padding: 4px;
+                    border-radius: 6px;
+                    padding: 3px;
                     background-color: transparent;
-                    color: #333333;
+                    color: #1F1F1F;
                     text-align: top;
+                    font-size: 10px;
                 }
                 QToolButton:hover {
-                    background-color: #E5F3FF;
-                    border: 1px solid #B3D9FF;
+                    background-color: rgba(0, 0, 0, 5);
+                    border: 1px solid rgba(0, 0, 0, 10);
                 }
                 QToolButton:pressed {
-                    background-color: #CCE8FF;
-                    border: 1px solid #99CCFF;
+                    background-color: rgba(0, 0, 0, 10);
+                    border: 1px solid rgba(0, 0, 0, 20);
                 }
             """)
 
@@ -159,30 +165,33 @@ class SkillsPanel(QWidget):
         tab_widget.addTab(self.official_tab, "官方功能")
         tab_widget.addTab(self.thirdparty_tab, "第三方功能")
 
-        # 应用 Tab 样式
+        # 应用 Tab 样式 - Office 风格
         tab_widget.setStyleSheet("""
             QTabWidget::pane {
-                border: 1px solid #CCCCCC;
-                border-top: none;
-                background: white;
+                border: none;
+                background: #F5F5F5;
             }
             QTabBar::tab {
-                background: #F0F0F0;
-                padding: 2px 12px;
-                margin-right: 2px;
-                border-top-left-radius: 4px;
-                border-top-right-radius: 4px;
-                min-height: 20px;
-                font-size: 12px;
+                background: #E8E8E8;
+                padding: 2px 10px;
+                margin-right: 1px;
+                border-top-left-radius: 3px;
+                border-top-right-radius: 3px;
+                min-height: 16px;
+                font-size: 11px;
+                border: none;
             }
             QTabBar::tab:selected {
-                background: white;
+                background: #F5F5F5;
                 border-bottom: 2px solid #0078D4;
             }
             QTabBar::tab:hover:!selected {
-                background: #E8E8E8;
+                background: #DCDCDC;
             }
         """)
+
+        # 设置面板背景色
+        self.setStyleSheet("background-color: #F5F5F5; border-bottom: 1px solid #D0D0D0;")
 
         main_layout.addWidget(tab_widget)
 
@@ -199,37 +208,53 @@ class SkillsPanel(QWidget):
         scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
 
-        # 滚动区域样式
+        # 滚动区域样式 - 现代细线风格，悬浮显示
         scroll_area.setStyleSheet("""
             QScrollArea {
                 border: none;
-                background: white;
+                background: #F5F5F5;
             }
+            /* 滚动条轨道 - 默认透明 */
             QScrollBar:horizontal {
-                height: 12px;
-                background: #F0F0F0;
+                height: 6px;
+                background: transparent;
                 margin: 0px;
-                border-radius: 6px;
+                border-radius: 3px;
             }
+            /* 滚动条滑块 - 默认透明隐藏 */
             QScrollBar::handle:horizontal {
-                background: #C0C0C0;
+                background: transparent;
                 min-width: 30px;
-                border-radius: 6px;
+                border-radius: 3px;
             }
-            QScrollBar::handle:horizontal:hover {
-                background: #A0A0A0;
+            /* 滚动区域悬停时显示滚动条 */
+            QScrollArea:hover QScrollBar::handle:horizontal {
+                background: rgba(160, 160, 160, 0.8);
+            }
+            /* 滚动条滑块悬停效果 */
+            QScrollArea:hover QScrollBar::handle:horizontal:hover {
+                background: rgba(128, 128, 128, 1);
+            }
+            /* 滚动时保持显示 */
+            QScrollBar::handle:horizontal:active {
+                background: rgba(128, 128, 128, 1);
             }
             QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
                 height: 0px;
+                width: 0px;
+            }
+            QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {
+                background: transparent;
             }
         """)
 
         # 创建容器 widget 用于放置技能按钮
         container = QWidget()
+        container.setStyleSheet("background-color: #F5F5F5;")
         container_layout = QHBoxLayout(container)
-        container_layout.setContentsMargins(8, 8, 8, 8)
-        container_layout.setSpacing(8)
-        container_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        container_layout.setContentsMargins(6, 3, 6, 5)
+        container_layout.setSpacing(6)
+        container_layout.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
 
         scroll_area.setWidget(container)
         layout.addWidget(scroll_area)
