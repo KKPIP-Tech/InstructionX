@@ -421,7 +421,7 @@ class PluginManager:
         self._thirdparty_plugins: List[IPlugin] = []
 
         # 插件注册表
-        self._plugin_registry: Dict[str, IPlugin] = {}  # plugin_id -> plugin
+        self._plugin_registry: Dict[str, IPlugin] = {}  # plugin_id (UUID) -> plugin
         self._plugin_name_to_id: Dict[str, str] = {}    # plugin_name -> plugin_id
 
         # API 注册表

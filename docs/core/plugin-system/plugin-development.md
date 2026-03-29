@@ -120,7 +120,7 @@ class Service:
 from core.plugin.plugin_info_interface import IPluginInfo
 from core.plugin.plugin_version import PluginVersion
 from core.plugin.plugin_icon import PluginIcon
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 
 class MyPluginInfo(IPluginInfo):
@@ -196,7 +196,7 @@ class MyPluginInfo(IPluginInfo):
         return "我的插件功能描述"
 
     @property
-    def tags(self) -> list:
+    def tags(self) -> Optional[list[str]]:
         """插件标签"""
         return ["工具", "示例"]
 ```
@@ -251,7 +251,7 @@ class Service:
 from core.plugin.plugin_info_interface import IPluginInfo
 from core.plugin.plugin_version import PluginVersion
 from core.plugin.plugin_icon import PluginIcon
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 
 class TextFormattingPluginInfo(IPluginInfo):
@@ -262,6 +262,14 @@ class TextFormattingPluginInfo(IPluginInfo):
     @property
     def developer(self) -> str:
         return "InstructionX Team"
+
+    @property
+    def developer_email(self) -> str:
+        return "support@instructionx.dev"
+
+    @property
+    def developer_website(self) -> str:
+        return "https://instructionx.dev"
 
     @property
     def is_free(self) -> bool:

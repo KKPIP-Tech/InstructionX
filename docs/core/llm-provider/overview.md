@@ -272,40 +272,48 @@ if response.tool_calls:
 {
     "providers": {
         "minimax": {
+            "name": "MiniMax",
             "provider_type": "minimax",
-            "enabled": true,
-            "features": ["chat", "embedding"],
             "api_key": "your-api-key",
             "base_url": "https://api.minimax.chat/v1",
-            "chat_model": "MiniMax-M2.1",
+            "chat_model": "MiniMax-M2.5",
             "embedding_model": "embedding-2",
-            "timeout": 60
+            "enabled_chat": true,
+            "enabled_embedding": true,
+            "support_vision": true
         },
         "siliconflow": {
+            "name": "SiliconFlow",
             "provider_type": "siliconflow",
-            "enabled": true,
-            "features": ["chat", "embedding"],
             "api_key": "your-api-key",
             "base_url": "https://api.siliconflow.cn/v1",
             "chat_model": "Pro/deepseek-ai/DeepSeek-V3",
-            "embedding_model": "BAAI/bge-m3"
+            "embedding_model": "BAAI/bge-m3",
+            "enabled_chat": true,
+            "enabled_embedding": true,
+            "support_vision": true
         },
         "glm": {
+            "name": "GLM",
             "provider_type": "glm",
-            "enabled": true,
-            "features": ["chat", "embedding"],
             "api_key": "your-api-key",
             "base_url": "https://open.bigmodel.cn/api/paas/v4",
-            "chat_model": "glm-4-flash",
-            "embedding_model": "embedding-3"
+            "chat_model": "glm-4",
+            "embedding_model": "embedding-3",
+            "enabled_chat": true,
+            "enabled_embedding": true,
+            "support_vision": true
         },
         "ollama": {
+            "name": "Ollama",
             "provider_type": "ollama",
-            "enabled": true,
-            "features": ["chat", "embedding"],
+            "api_key": "",
             "base_url": "http://localhost:11434",
             "chat_model": "llama3.1",
-            "embedding_model": "nomic-embed-text"
+            "embedding_model": "nomic-embed-text",
+            "enabled_chat": true,
+            "enabled_embedding": true,
+            "support_vision": true
         }
     }
 }

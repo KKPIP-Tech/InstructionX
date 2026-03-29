@@ -187,12 +187,15 @@ def add_provider(self, name: str, config: ProviderConfig) -> None
 from core.llm.config import ProviderConfig
 
 config = ProviderConfig(
+    name="Custom Provider",
     provider_type="custom",
     api_key="your-key",
     base_url="https://api.example.com",
     chat_model="gpt-4",
-    enabled=True,
-    features=["chat"]
+    embedding_model="text-embedding-3",
+    enabled_chat=True,
+    enabled_embedding=True,
+    support_vision=True
 )
 provider.add_provider("custom", config)
 ```
@@ -656,67 +659,17 @@ provider.close()
 
 ---
 
-## 4. Provider 实例方法
+## 4. 关于 Provider 实现类
 
-每个 Provider 实例（如 MiniMaxProvider）都有以下方法：
+> **注意**: 各个 Provider 的实现类（如 `MiniMaxProvider`、`SiliconFlowProvider` 等）为框架内部实现类，不建议开发者直接实例化。所有功能应通过 `get_llm_provider()` 获取的 `LLMProvider` 单例来调用。
 
-### 4.1 Chat
-
-```python
-# 同步
-response = provider.chat(
-    messages=[...],
-    model="MiniMax-M2.1",
-    temperature=0.7,
-    max_tokens=1000
-)
-
-# 流式
-responses = provider.stream_chat(
-    messages=[...],
-    callback=lambda r: print(r.content)
-)
-
-# 异步
-response = await provider.async_chat(messages=[...])
-
-# 异步流式
-async for response in provider.async_stream_chat(messages=[...]):
-    print(response.content)
-```
-
-### 4.2 Embedding
-
-```python
-# 同步
-responses = provider.embed(texts=["hello", "world"])
-
-# 异步
-responses = await provider.async_embed(texts=["hello", "world"])
-```
-
-### 4.3 Models
-
-```python
-# 获取模型列表
-models = provider.get_models()
-
-# 异步
-models = await provider.async_get_models()
-```
-
-### 4.4 配置验证
-
-```python
-# 验证配置是否有效
-is_valid = provider.validate_config()
-```
+Provider 实现类的细节（如请求格式差异、响应解析逻辑等）由框架内部管理，开发者无需关注。如需扩展新的 Provider，请参考 [LLM Provider 概述](overview.md) 中的扩展指南。
 
 ---
 
 ## 5. 完整示例
 
-### 5.1 基础使用
+### 6.1 基础使用
 
 ```python
 from core.llm import get_llm_provider
@@ -738,7 +691,7 @@ print(f"Model: {response.model}")
 print(f"Response: {response.content}")
 ```
 
-### 5.2 使用 Vision
+### 6.2 使用 Vision
 
 ```python
 import base64
@@ -762,7 +715,7 @@ response = provider.chat(
 print(response.content)
 ```
 
-### 5.3 并发调用
+### 6.3 并发调用
 
 ```python
 import asyncio
@@ -797,7 +750,7 @@ async def concurrent_chat():
 asyncio.run(concurrent_chat())
 ```
 
-### 5.4 Embedding 相似度计算
+### 6.4 Embedding 相似度计算
 
 ```python
 import numpy as np
@@ -819,7 +772,7 @@ similarity = np.dot(vec1, vec2) / (np.linalg.norm(vec1) * np.linalg.norm(vec2))
 print(f"相似度: {similarity:.4f}")
 ```
 
-### 5.5 Function Calling
+### 6.5 Function Calling
 
 ```python
 from core.llm import get_llm_provider
@@ -887,7 +840,7 @@ if response.tool_calls:
 
 ---
 
-## 6. 相关文档
+## 7. 相关文档
 
 - [LLM Provider 概述](overview.md)
 - [插件开发指南](../plugin-system/plugin-development.md)

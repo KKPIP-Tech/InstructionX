@@ -227,7 +227,7 @@ def register_scheduled_task_factory(
 
 注册定时任务工厂函数。
 
-用于在应用启动时恢复定时任务。插件应该在 `_create_widget` 中调用此方法注册工厂。
+用于在应用启动时恢复定时任务。插件应该在 `on_plugin_loaded()` 中调用此方法注册工厂。
 
 **参数**:
 - `plugin_id`: 插件 UUID
@@ -242,7 +242,7 @@ def periodic_func():
 def periodic_callback(task_id, status, result, error):
     print(f"任务 {task_id} 完成")
 
-# 在插件的 _create_widget 中注册工厂
+# 在插件的 on_plugin_loaded 中注册工厂
 manager.register_scheduled_task_factory(
     plugin_id=self.plugin_id,
     func=periodic_func,
@@ -330,13 +330,14 @@ def register_long_running_task_factory(
     func: Callable,
     callback: Optional[Callable] = None,
     stop_callback: Optional[Callable] = None,
-    status_callback: Optional[Callable] = None
+    status_callback: Optional[Callable] = None,
+    restore_callback: Optional[Callable] = None
 ) -> None
 ```
 
 注册长期任务工厂函数。
 
-用于在应用启动时恢复长期任务。插件应该在 `on_plugin_loaded` 中调用此方法注册工厂。
+用于在应用启动时恢复长期任务。插件应该在 `on_plugin_loaded()` 中调用此方法注册工厂。
 
 **参数**:
 - `plugin_id`: 插件 UUID
@@ -344,6 +345,7 @@ def register_long_running_task_factory(
 - `callback`: 可选的回调函数
 - `stop_callback`: 可选的停止回调
 - `status_callback`: 可选的状态更新回调
+- `restore_callback`: 可选的恢复回调，任务从持久化存储恢复并开始运行时触发
 
 **示例**:
 ```python
@@ -361,12 +363,17 @@ def stop_callback():
 def status_callback(task_id, status):
     print(f"状态: {status}")
 
+def restore_callback(task_id, task):
+    """恢复回调：任务从存储恢复并启动时调用"""
+    print(f"任务 {task_id} 已恢复运行")
+
 # 在插件的 on_plugin_loaded 中注册工厂
 manager.register_long_running_task_factory(
     plugin_id=self.plugin_id,
     func=service_func,
     stop_callback=stop_callback,
-    status_callback=status_callback
+    status_callback=status_callback,
+    restore_callback=restore_callback
 )
 ```
 
@@ -711,13 +718,18 @@ def service_callback(task_id, status, result, error):
     """任务完成回调"""
     print(f"任务完成: {status}")
 
+def service_restore_callback(task_id, task):
+    """恢复回调：任务从存储恢复并启动时调用"""
+    print(f"任务 {task_id} 已从存储恢复并开始运行")
+
 # 先注册工厂（应用启动时）
 manager.register_long_running_task_factory(
     plugin_id="service-plugin",
     func=long_running_service,
     stop_callback=service_stop_callback,
     status_callback=service_status_callback,
-    callback=service_callback
+    callback=service_callback,
+    restore_callback=service_restore_callback
 )
 
 # 然后注册长期任务

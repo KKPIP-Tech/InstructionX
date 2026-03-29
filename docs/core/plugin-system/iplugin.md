@@ -126,6 +126,25 @@ def plugin_info(self) -> Optional['IPluginInfo']:
     ...
 ```
 
+### 2.7 tags（可选）
+
+```python
+@property
+def tags(self) -> Optional[list[str]]:
+    """
+    插件标签（可选）
+
+    用于分类和搜索插件。
+
+    Returns:
+        标签列表，如 ["text", "formatting", "utility"]
+        如果无标签则返回 None
+    """
+    return None
+```
+
+> 注意：`tags` 是 IPluginInfo 的可选属性，返回 None 表示无标签。插件开发者可根据需要在 information.py 中覆盖此属性。
+
 ---
 
 ## 3. 核心方法

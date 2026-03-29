@@ -118,7 +118,7 @@ from core.llm.exceptions import (
 | `get_active_instance(type)` | 获取活跃实例 | Optional[str] |
 | `set_active_instance(instance_id)` | 设置活跃实例 | None |
 | `get_plugin_data(instance_id, key, namespace, default)` | 获取数据 | Any |
-| `set_plugin_data(instance_id, key, value, namespace, notify)` | 设置数据 | None |
+| `set_plugin_data(instance_id, key, value, namespace, notify)` | 设置数据，notify 默认 True，控制是否通知订阅者 | None |
 | `get_all_plugin_data(instance_id, namespace)` | 获取所有数据 | Dict |
 | `subscribe(subscriber, target, key, callback)` | 订阅数据 | None |
 | `unsubscribe(subscriber, target)` | 取消订阅 | None |
@@ -223,7 +223,7 @@ from core.llm.exceptions import (
 | `get_cached_models(provider_name)` | 获取缓存模型 | List[ModelInfo] |
 | `get_provider(name)` | 获取 Provider 实例 | Optional[ILLM] |
 | `get_all_providers()` | 获取所有 Provider | Dict[str, ILLM] |
-| `get_enabled_providers(feature)` | 获取启用的 Provider | List[str] |
+| `get_enabled_providers(feature)` | 获取启用的 Provider | Dict[str, ILLM] |
 | `add_provider(name, config)` | 添加 Provider | None |
 | `remove_provider(name)` | 移除 Provider | None |
 | `reload_config()` | 重新加载配置 | None |
