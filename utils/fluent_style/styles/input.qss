@@ -7,23 +7,26 @@ QLineEdit {
     background-color: {base};
     border: 1px solid {borderLight};
     border-radius: {radius};
-    padding: 6px 8px;
+    padding: 8px 10px;
     color: {windowText};
     selection-background-color: {highlight};
+    min-height: 20px;
 }
 
 QLineEdit:hover {
     border-color: {border};
+    background-color: {base};
 }
 
 QLineEdit:focus {
     border: 2px solid {accent};
-    padding: 5px 7px;
+    background-color: {base};
 }
 
 QLineEdit:disabled {
     background-color: {alternateBase};
     color: {textDisabled};
+    border-color: {borderLight};
 }
 
 QLineEdit:read-only {
@@ -42,17 +45,21 @@ QTextEdit, QPlainTextEdit {
     border-radius: {radius};
     color: {windowText};
     selection-background-color: {highlight};
+    padding: 6px;
 }
 
 QTextEdit:hover, QPlainTextEdit:hover {
     border-color: {border};
+    background-color: {base};
 }
 
 QTextEdit:focus, QPlainTextEdit:focus {
     border: 2px solid {accent};
+    background-color: {base};
 }
 
 QTextEdit:disabled, QPlainTextEdit:disabled {
     background-color: {alternateBase};
     color: {textDisabled};
+    border-color: {borderLight};
 }

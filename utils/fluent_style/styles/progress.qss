@@ -2,25 +2,28 @@
  * 进度条 (QProgressBar)
  * ═════════════════════════════════════════════════════════════════════════════ */
 
+/* ─────────────────────────────────────────────────────────────────────────────
+ * 进度条 (QProgressBar) - 确保与滑块对齐
+ * ───────────────────────────────────────────────────────────────────────────── */
+
 QProgressBar {
     border: none;
-    background-color: {borderLight};
-    border-radius: {radius};
+    background: {borderLight};
+    border-radius: 3px;
+    height: 6px;
     text-align: center;
-    color: {windowText};
-    min-height: 6px;
+    color: {textPrimary};
 }
 
 QProgressBar::chunk {
-    background-color: {accent};
-    border-radius: {radius};
+    background: {accent};
+    border-radius: 3px;
 }
 
-QProgressBar:horizontal {
-    border: none;
+QProgressBar:disabled {
+    background: {borderLight};
 }
 
-QProgressBar:vertical {
-    border: none;
-    width: 6px;
+QProgressBar:disabled::chunk {
+    background: {borderLight};
 }

@@ -8,16 +8,31 @@ QListView, QTreeView, QTableView, QColumnView {
     border-radius: {radius};
     color: {windowText};
     show-decoration-selected: 1;
+    outline: none;
+    gridline-color: {borderLight};
 }
 
 QListView::item, QTreeView::item, QTableView::item {
-    padding: 6px;
-    border-radius: {radius};
+    padding: 6px 8px;
+    border-radius: 4px;
+    margin: 1px 2px;
+    min-height: 20px;
+}
+
+/* 树视图特定样式 */
+QTreeView::item {
+    padding-left: 4px;
+}
+
+QTreeWidget::item {
+    padding: 6px 8px;
+    min-height: 20px;
 }
 
 QListView::item:selected, QTreeView::item:selected, QTableView::item:selected {
-    background-color: {highlight};
-    color: {highlightedText};
+    background-color: rgba(0, 120, 212, 30);
+    color: {windowText};
+    border: 1px solid {accent};
 }
 
 QListView::item:hover, QTreeView::item:hover, QTableView::item:hover {
@@ -25,14 +40,51 @@ QListView::item:hover, QTreeView::item:hover, QTableView::item:hover {
 }
 
 QListView::item:selected:!active, QTreeView::item:selected:!active {
-    background-color: {controlFillSelected};
+    background-color: rgba(0, 120, 212, 20);
+    color: {windowText};
+    border: 1px solid rgba(0, 120, 212, 60);
+}
+
+/* QListWidget 选中样式 */
+QListWidget::item:selected {
+    background-color: rgba(0, 120, 212, 30);
+    color: {windowText};
+    border: 1px solid {accent};
+}
+
+QListWidget::item:selected:!active {
+    background-color: rgba(0, 120, 212, 20);
+    color: {windowText};
+    border: 1px solid rgba(0, 120, 212, 60);
+}
+
+/* 表头样式 */
+QHeaderView::section {
+    background-color: {alternateBase};
+    color: {windowText};
+    padding: 8px 12px;
+    border: none;
+    border-bottom: 1px solid {borderLight};
+    font-weight: 600;
+}
+
+QHeaderView::section:hover {
+    background-color: {controlFillHover};
 }
 
 /* 树视图展开按钮 */
 QTreeView::branch {
     background: transparent;
+    width: 16px;
+    height: 16px;
 }
 
-QTreeView::branch:has-children:!has-siblings {
-    border: none;
+QTreeView::branch:has-children:!has-siblings:closed,
+QTreeView::branch:closed:has-children:has-siblings {
+    image: none;
+}
+
+QTreeView::branch:open:has-children:!has-siblings,
+QTreeView::branch:open:has-children:has-siblings {
+    image: none;
 }

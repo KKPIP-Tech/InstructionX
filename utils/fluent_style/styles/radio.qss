@@ -23,11 +23,13 @@ QRadioButton::indicator:hover {
 QRadioButton::indicator:checked {
     background-color: {accent};
     border-color: {accent};
+    image: none;
 }
 
 QRadioButton::indicator:checked:hover {
     background-color: {accentLight};
     border-color: {accentLight};
+    image: none;
 }
 
 QRadioButton:disabled {

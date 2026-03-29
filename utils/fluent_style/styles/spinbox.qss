@@ -27,16 +27,18 @@ QSpinBox:disabled, QDoubleSpinBox:disabled {
 
 QSpinBox::up-button, QDoubleSpinBox::up-button {
     border: none;
-    width: 16px;
+    width: 20px;
     border-left: 1px solid {borderLight};
-    background-color: transparent;
+    background-color: {controlFill};
+    border-top-right-radius: {radius};
 }
 
 QSpinBox::down-button, QDoubleSpinBox::down-button {
     border: none;
-    width: 16px;
+    width: 20px;
     border-left: 1px solid {borderLight};
-    background-color: transparent;
+    background-color: {controlFill};
+    border-bottom-right-radius: {radius};
 }
 
 QSpinBox::up-button:hover, QDoubleSpinBox::up-button:hover,
@@ -44,18 +46,27 @@ QSpinBox::down-button:hover, QDoubleSpinBox::down-button:hover {
     background-color: {controlFillHover};
 }
 
+QSpinBox::up-button:pressed, QDoubleSpinBox::up-button:pressed,
+QSpinBox::down-button:pressed, QDoubleSpinBox::down-button:pressed {
+    background-color: {controlFillPressed};
+}
+
 QSpinBox::up-arrow, QDoubleSpinBox::up-arrow {
     image: none;
     border-left: 4px solid transparent;
     border-right: 4px solid transparent;
-    border-bottom: 5px solid {buttonText};
+    border-bottom: 5px solid {windowText};
+    width: 0px;
+    height: 0px;
 }
 
 QSpinBox::down-arrow, QDoubleSpinBox::down-arrow {
     image: none;
     border-left: 4px solid transparent;
     border-right: 4px solid transparent;
-    border-top: 5px solid {buttonText};
+    border-top: 5px solid {windowText};
+    width: 0px;
+    height: 0px;
 }
 
 /* 日期时间选择框 */

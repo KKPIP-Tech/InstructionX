@@ -23,16 +23,19 @@ QCheckBox::indicator:hover {
 QCheckBox::indicator:checked {
     background-color: {accent};
     border-color: {accent};
+    image: none;
 }
 
 QCheckBox::indicator:checked:hover {
     background-color: {accentLight};
     border-color: {accentLight};
+    image: none;
 }
 
 QCheckBox::indicator:indeterminate {
     background-color: {accent};
     border-color: {accent};
+    image: none;
 }
 
 QCheckBox:disabled {

@@ -5,24 +5,44 @@
 QGroupBox {
     border: 1px solid {borderLight};
     border-radius: {radius};
-    margin-top: 12px;
-    padding-top: 12px;
+    margin-top: 14px;
+    padding-top: 16px;
+    padding-left: 12px;
+    padding-right: 12px;
+    padding-bottom: 12px;
     color: {windowText};
-    font-weight: bold;
+    font-weight: 600;
 }
 
 QGroupBox::title {
     subcontrol-origin: margin;
     subcontrol-position: top left;
-    padding: 0 8px;
+    left: 12px;
+    padding: 0 6px;
     color: {windowText};
+    font-size: 13px;
 }
 
 QGroupBox::indicator {
     width: 18px;
     height: 18px;
+    border: 1px solid {border};
+    border-radius: 3px;
+    background-color: {controlFill};
+}
+
+QGroupBox::indicator:hover {
+    border-color: {accent};
+    background-color: {controlFillHover};
 }
 
 QGroupBox::indicator:checked {
     background-color: {accent};
+    border-color: {accent};
+    image: none;
+}
+
+QGroupBox::indicator:unchecked {
+    background-color: {controlFill};
+    border-color: {border};
 }

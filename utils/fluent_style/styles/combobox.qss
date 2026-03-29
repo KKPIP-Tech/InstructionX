@@ -36,6 +36,8 @@ QComboBox::down-arrow {
     border-right: 4px solid transparent;
     border-top: 5px solid {buttonText};
     margin-right: 8px;
+    width: 0px;
+    height: 0px;
 }
 
 QComboBox QAbstractItemView {
