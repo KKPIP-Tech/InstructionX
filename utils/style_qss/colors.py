@@ -62,8 +62,8 @@ class StyleQSSColors:
             'controlFillSelected': 'rgba(0, 120, 212, 20)',
 
             # 圆角
-            'radius': '4px',
-            'radiusLarge': '8px',
+            'radius': '3px',
+            'radiusLarge': '6px',
             'radiusSmall': '2px',
         },
         'dark': {
@@ -118,8 +118,8 @@ class StyleQSSColors:
             'controlFillSelected': 'rgba(0, 120, 212, 40)',
 
             # 圆角
-            'radius': '4px',
-            'radiusLarge': '8px',
+            'radius': '3px',
+            'radiusLarge': '6px',
             'radiusSmall': '2px',
         }
     }

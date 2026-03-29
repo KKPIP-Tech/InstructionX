@@ -6,9 +6,9 @@ QComboBox {
     background-color: {controlFill};
     border: 1px solid {borderLight};
     border-radius: {radius};
-    padding: 6px 12px;
+    padding: 4px 10px;
     color: {buttonText};
-    min-width: 75px;
+    min-width: 60px;
 }
 
 QComboBox:hover {
@@ -27,7 +27,7 @@ QComboBox:disabled {
 
 QComboBox::drop-down {
     border: none;
-    width: 24px;
+    width: 20px;
 }
 
 QComboBox::down-arrow {
@@ -51,8 +51,8 @@ QComboBox QAbstractItemView {
 }
 
 QComboBox QAbstractItemView::item {
-    min-height: 32px;
-    padding: 6px 12px;
+    min-height: 26px;
+    padding: 4px 10px;
 }
 
 QComboBox QAbstractItemView::item:hover {

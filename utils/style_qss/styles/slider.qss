@@ -8,18 +8,18 @@
 
 QSlider::groove:horizontal {
     border: none;
-    height: 6px;
+    height: 4px;
     background: {borderLight};
-    border-radius: 3px;
+    border-radius: 2px;
 }
 
 QSlider::handle:horizontal {
-    width: 18px;
-    height: 18px;
+    width: 14px;
+    height: 14px;
     /* 负 margin 让 handle 超出 groove，需要容器有足够空间 */
-    margin: -6px 0;
+    margin: -5px 0;
     background: {accent};
-    border-radius: 9px;
+    border-radius: 7px;
     border: 2px solid white;
 }
 
@@ -38,27 +38,27 @@ QSlider::handle:horizontal:disabled {
 
 QSlider::sub-page:horizontal {
     background: {accent};
-    border-radius: 3px;
+    border-radius: 2px;
 }
 
 QSlider::add-page:horizontal {
     background: {borderLight};
-    border-radius: 3px;
+    border-radius: 2px;
 }
 
-/* 
+/*
  * 【修复关键】使用更具体的选择器提高优先级
- * 容器高度 = handle 高度 (18px) + 上下 margin (6px × 2) + 安全边距 (2px) = 32px
+ * 容器高度 = handle 高度 (14px) + 上下 margin (5px × 2) + 安全边距 (2px) = 26px
  */
 QSlider[orientation="horizontal"] {
-    min-height: 32px !important;
-    max-height: 32px !important;
+    min-height: 24px !important;
+    max-height: 24px !important;
 }
 
 /* 针对基础控件页面的滑块特别样式 */
 QGroupBox > QGridLayout > QSlider[orientation="horizontal"] {
-    min-height: 32px !important;
-    max-height: 32px !important;
+    min-height: 24px !important;
+    max-height: 24px !important;
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -67,18 +67,18 @@ QGroupBox > QGridLayout > QSlider[orientation="horizontal"] {
 
 QSlider::groove:vertical {
     border: none;
-    width: 6px;
+    width: 4px;
     background: {borderLight};
-    border-radius: 3px;
+    border-radius: 2px;
 }
 
 QSlider::handle:vertical {
-    width: 18px;
-    height: 18px;
+    width: 14px;
+    height: 14px;
     /* 负 margin 让 handle 超出 groove，需要容器有足够空间 */
-    margin: 0 -6px;
+    margin: 0 -5px;
     background: {accent};
-    border-radius: 9px;
+    border-radius: 7px;
     border: 2px solid white;
 }
 
@@ -97,27 +97,27 @@ QSlider::handle:vertical:disabled {
 
 QSlider::sub-page:vertical {
     background: {accent};
-    border-radius: 3px;
+    border-radius: 2px;
 }
 
 QSlider::add-page:vertical {
     background: {borderLight};
-    border-radius: 3px;
+    border-radius: 2px;
 }
 
-/* 
- * 【修复关键】容器宽度 = handle 宽度 (18px) + 左右 margin (6px × 2) + 安全边距 (2px) = 32px
+/*
+ * 【修复关键】容器宽度 = handle 宽度 (14px) + 左右 margin (5px × 2) + 安全边距 (2px) = 26px
  */
 QSlider[orientation="vertical"] {
-    min-width: 32px !important;
-    max-width: 32px !important;
+    min-width: 24px !important;
+    max-width: 24px !important;
     min-height: 100px !important;
 }
 
 /* 针对基础控件页面的垂直滑块特别样式 */
 QGroupBox > QGridLayout > QSlider[orientation="vertical"] {
-    min-width: 32px !important;
-    max-width: 32px !important;
+    min-width: 24px !important;
+    max-width: 24px !important;
     min-height: 120px !important;
 }
 
@@ -129,8 +129,8 @@ QDial {
     background-color: {controlFill};
     border: 1px solid {borderLight};
     border-radius: 50px;
-    min-width: 60px;
-    min-height: 60px;
+    min-width: 48px;
+    min-height: 48px;
 }
 
 QDial:hover {

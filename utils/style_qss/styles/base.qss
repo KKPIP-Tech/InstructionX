@@ -10,7 +10,7 @@
 /* 基础窗口 */
 QWidget {
     font-family: "Segoe UI", "Microsoft YaHei", "PingFang SC", sans-serif;
-    font-size: 14px;
+    font-size: 12px;
 }
 
 QMainWindow, QDialog, QMessageBox {

@@ -5,7 +5,7 @@
 QToolBar {
     background-color: {window};
     border: none;
-    padding: 4px;
+    padding: 3px;
     spacing: 4px;
 }
 
@@ -19,7 +19,7 @@ QToolButton {
     background-color: transparent;
     border: none;
     border-radius: {radius};
-    padding: 6px;
+    padding: 4px;
 }
 
 QToolButton:hover {

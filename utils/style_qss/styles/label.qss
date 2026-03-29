@@ -8,17 +8,17 @@ QLabel {
 }
 
 QLabel[heading="true"] {
-    font-size: 24px;
+    font-size: 16px;
     font-weight: bold;
 }
 
 QLabel[subheading="true"] {
-    font-size: 18px;
+    font-size: 13px;
     font-weight: bold;
 }
 
 QLabel[caption="true"] {
-    font-size: 12px;
+    font-size: 10px;
     color: {textDisabled};
 }
 
@@ -44,7 +44,7 @@ QLabel[muted="true"] {
 /* 占位符文本 */
 QLabel[placeholder="true"] {
     color: #999999;
-    font-size: 14px;
+    font-size: 12px;
 }
 
 /* 错误文本 */
@@ -55,5 +55,5 @@ QLabel[error="true"] {
 /* 标题标签 - 小号加粗 */
 QLabel[captionBold="true"] {
     font-weight: bold;
-    font-size: 11px;
+    font-size: 10px;
 }

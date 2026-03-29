@@ -5,14 +5,14 @@
 /* 垂直滚动条 */
 QScrollBar:vertical {
     background: transparent;
-    width: 10px;
+    width: 8px;
     margin: 0;
 }
 
 QScrollBar::handle:vertical {
     background: {borderLight};
-    border-radius: 5px;
-    min-height: 30px;
+    border-radius: 4px;
+    min-height: 24px;
     margin: 2px;
 }
 
@@ -35,14 +35,14 @@ QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
 /* 水平滚动条 */
 QScrollBar:horizontal {
     background: transparent;
-    height: 10px;
+    height: 8px;
     margin: 0;
 }
 
 QScrollBar::handle:horizontal {
     background: {borderLight};
-    border-radius: 5px;
-    min-width: 30px;
+    border-radius: 4px;
+    min-width: 24px;
     margin: 2px;
 }
 

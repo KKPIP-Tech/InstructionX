@@ -6,6 +6,6 @@ QToolTip, QTipLabel {
     background-color: {toolTipBase};
     border: 1px solid {border};
     border-radius: {radius};
-    padding: 4px 8px;
+    padding: 3px 6px;
     color: {toolTipText};
 }

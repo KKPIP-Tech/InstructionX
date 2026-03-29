@@ -7,10 +7,10 @@ QPushButton {
     background-color: {controlFill};
     border: 1px solid {borderLight};
     border-radius: {radius};
-    padding: 6px 16px;
+    padding: 4px 12px;
     color: {buttonText};
-    min-width: 75px;
-    min-height: 24px;
+    min-width: 60px;
+    min-height: 20px;
 }
 
 QPushButton:hover {
@@ -30,7 +30,7 @@ QPushButton:disabled {
 
 QPushButton:focus {
     border: 2px solid {accent};
-    padding: 5px 15px;
+    padding: 4px 11px;
 }
 
 QPushButton:flat {
@@ -136,7 +136,7 @@ QPushButton[class="accentSave"] {
     border: 1px solid {accent};
     border-radius: {radius};
     color: white;
-    padding: 6px 12px;
+    padding: 4px 10px;
 }
 QPushButton[class="accentSave"]:hover { background-color: {accentLight}; border-color: {accentLight}; }
 QPushButton[class="accentSave"]:pressed { background-color: {accentDark}; border-color: {accentDark}; }
@@ -148,6 +148,6 @@ QPushButton[class="warning"] {
     border: 1px solid #FF9800;
     border-radius: {radius};
     color: white;
-    padding: 6px 12px;
+    padding: 4px 10px;
 }
 QPushButton[class="warning"]:hover { background-color: #F57C00; border-color: #F57C00; }

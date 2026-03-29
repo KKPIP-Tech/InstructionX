@@ -68,7 +68,7 @@ class AboutDialog(QDialog):
         # 软件名称
         name_label = QLabel("InstructionX - CE")
         name_font = QFont()
-        name_font.setPointSize(20)
+        name_font.setPointSize(16)
         name_font.setBold(True)
         name_label.setFont(name_font)
         name_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -77,7 +77,7 @@ class AboutDialog(QDialog):
         # 版本号
         version_label = QLabel("版本 0.1.0")
         version_font = QFont()
-        version_font.setPointSize(11)
+        version_font.setPointSize(9)
         version_label.setFont(version_font)
         version_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         version_label.setProperty("muted", "true")
@@ -88,7 +88,7 @@ class AboutDialog(QDialog):
         # 版权信息
         copyright_label = QLabel("© 2025-2026 dakuang. 保留所有权利。")
         copyright_font = QFont()
-        copyright_font.setPointSize(9)
+        copyright_font.setPointSize(8)
         copyright_label.setFont(copyright_font)
         copyright_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         copyright_label.setProperty("muted", "true")
@@ -99,7 +99,7 @@ class AboutDialog(QDialog):
         # 专有软件声明
         proprietary_label = QLabel("Proprietary software.\nCommercial use requires authorization if thresholds are exceeded.")
         proprietary_font = QFont()
-        proprietary_font.setPointSize(8)
+        proprietary_font.setPointSize(7)
         proprietary_label.setFont(proprietary_font)
         proprietary_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         proprietary_label.setProperty("muted", "true")

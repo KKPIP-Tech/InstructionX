@@ -11,8 +11,8 @@ QDialogButtonBox {
 }
 
 QDialogButtonBox QPushButton {
-    min-width: 75px;
-    min-height: 28px;
+    min-width: 60px;
+    min-height: 24px;
 }
 
 QDialogButtonBox QPushButton:focus {

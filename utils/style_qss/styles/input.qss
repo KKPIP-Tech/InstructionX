@@ -7,10 +7,10 @@ QLineEdit {
     background-color: {base};
     border: 1px solid {borderLight};
     border-radius: {radius};
-    padding: 8px 10px;
+    padding: 5px 8px;
     color: {windowText};
     selection-background-color: {highlight};
-    min-height: 20px;
+    min-height: 18px;
 }
 
 QLineEdit:hover {
@@ -45,7 +45,7 @@ QTextEdit, QPlainTextEdit {
     border-radius: {radius};
     color: {windowText};
     selection-background-color: {highlight};
-    padding: 6px;
+    padding: 4px;
 }
 
 QTextEdit:hover, QPlainTextEdit:hover {

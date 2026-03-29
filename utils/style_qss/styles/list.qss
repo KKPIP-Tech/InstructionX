@@ -13,10 +13,10 @@ QListView, QTreeView, QTableView, QColumnView {
 }
 
 QListView::item, QTreeView::item, QTableView::item {
-    padding: 6px 8px;
+    padding: 4px 6px;
     border-radius: 4px;
     margin: 1px 2px;
-    min-height: 20px;
+    min-height: 18px;
 }
 
 /* 树视图特定样式 */
@@ -25,8 +25,8 @@ QTreeView::item {
 }
 
 QTreeWidget::item {
-    padding: 6px 8px;
-    min-height: 20px;
+    padding: 4px 6px;
+    min-height: 18px;
 }
 
 QListView::item:selected, QTreeView::item:selected, QTableView::item:selected {
@@ -62,7 +62,7 @@ QListWidget::item:selected:!active {
 QHeaderView::section {
     background-color: {alternateBase};
     color: {windowText};
-    padding: 8px 12px;
+    padding: 4px 8px;
     border: none;
     border-bottom: 1px solid {borderLight};
     font-weight: 600;
@@ -97,7 +97,7 @@ QListWidget[class="dialog"] {
     background-color: #FAFAFA;
 }
 QListWidget[class="dialog"]::item {
-    padding: 10px;
+    padding: 8px;
     margin: 3px;
     border-radius: 3px;
     background-color: white;

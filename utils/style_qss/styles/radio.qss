@@ -4,14 +4,14 @@
 
 QRadioButton {
     color: {windowText};
-    spacing: 8px;
+    spacing: 6px;
 }
 
 QRadioButton::indicator {
-    width: 18px;
-    height: 18px;
+    width: 14px;
+    height: 14px;
     border: 1px solid {border};
-    border-radius: 9px;
+    border-radius: 7px;
     background-color: {controlFill};
 }
 

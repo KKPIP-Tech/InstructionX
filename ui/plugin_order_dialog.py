@@ -85,7 +85,7 @@ class PluginOrderDialog(QDialog):
         # 标题
         title_label = QLabel("拖动插件项来调整顺序")
         title_font = QFont()
-        title_font.setPointSize(12)
+        title_font.setPointSize(10)
         title_font.setBold(True)
         title_label.setFont(title_font)
         title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)

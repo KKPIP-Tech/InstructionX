@@ -7,7 +7,7 @@ QSpinBox, QDoubleSpinBox {
     background-color: {base};
     border: 1px solid {borderLight};
     border-radius: {radius};
-    padding: 6px 8px;
+    padding: 4px 6px;
     color: {windowText};
 }
 
@@ -17,7 +17,7 @@ QSpinBox:hover, QDoubleSpinBox:hover {
 
 QSpinBox:focus, QDoubleSpinBox:focus {
     border: 2px solid {accent};
-    padding: 5px 7px;
+    padding: 4px 5px;
 }
 
 QSpinBox:disabled, QDoubleSpinBox:disabled {
@@ -27,7 +27,7 @@ QSpinBox:disabled, QDoubleSpinBox:disabled {
 
 QSpinBox::up-button, QDoubleSpinBox::up-button {
     border: none;
-    width: 20px;
+    width: 16px;
     border-left: 1px solid {borderLight};
     background-color: {controlFill};
     border-top-right-radius: {radius};
@@ -35,7 +35,7 @@ QSpinBox::up-button, QDoubleSpinBox::up-button {
 
 QSpinBox::down-button, QDoubleSpinBox::down-button {
     border: none;
-    width: 20px;
+    width: 16px;
     border-left: 1px solid {borderLight};
     background-color: {controlFill};
     border-bottom-right-radius: {radius};
@@ -53,18 +53,18 @@ QSpinBox::down-button:pressed, QDoubleSpinBox::down-button:pressed {
 
 QSpinBox::up-arrow, QDoubleSpinBox::up-arrow {
     image: none;
-    border-left: 4px solid transparent;
-    border-right: 4px solid transparent;
-    border-bottom: 5px solid {windowText};
+    border-left: 3px solid transparent;
+    border-right: 3px solid transparent;
+    border-bottom: 4px solid {windowText};
     width: 0px;
     height: 0px;
 }
 
 QSpinBox::down-arrow, QDoubleSpinBox::down-arrow {
     image: none;
-    border-left: 4px solid transparent;
-    border-right: 4px solid transparent;
-    border-top: 5px solid {windowText};
+    border-left: 3px solid transparent;
+    border-right: 3px solid transparent;
+    border-top: 4px solid {windowText};
     width: 0px;
     height: 0px;
 }
@@ -74,7 +74,7 @@ QDateTimeEdit, QDateEdit, QTimeEdit {
     background-color: {base};
     border: 1px solid {borderLight};
     border-radius: {radius};
-    padding: 6px 8px;
+    padding: 4px 6px;
     color: {windowText};
 }
 
@@ -88,7 +88,7 @@ QDateTimeEdit:focus, QDateEdit:focus, QTimeEdit:focus {
 
 QDateTimeEdit::drop-down, QDateEdit::drop-down, QTimeEdit::drop-down {
     border: none;
-    width: 20px;
+    width: 16px;
 }
 
 QDateTimeEdit QCalendarWidget QSpinBox,

@@ -60,7 +60,7 @@ class LLMSettingsDialog(QDialog):
         # 标题
         title_label = QLabel("Provider 列表")
         title_font = QFont()
-        title_font.setPointSize(11)
+        title_font.setPointSize(10)
         title_font.setBold(True)
         title_label.setFont(title_font)
         layout.addWidget(title_label)

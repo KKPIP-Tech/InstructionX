@@ -11,7 +11,7 @@ QMenuBar {
 
 QMenuBar::item {
     background: transparent;
-    padding: 6px 12px;
+    padding: 5px 10px;
     color: {windowText};
 }
 
@@ -32,16 +32,16 @@ QMenu {
     background-color: {window};
     border: 1px solid {borderLight};
     border-radius: {radius};
-    padding: 4px;
+    padding: 3px;
     margin: 0px;
 }
 
 QMenu::item {
-    padding: 4px 24px;
-    padding-left: 32px;
+    padding: 3px 18px;
+    padding-left: 26px;
     color: {windowText};
-    border-radius: 4px;
-    min-width: 120px;
+    border-radius: 3px;
+    min-width: 100px;
 }
 
 QMenu::item:selected {
@@ -61,15 +61,15 @@ QMenu::separator {
 
 QMenu::icon {
     margin-left: 8px;
-    width: 16px;
-    height: 16px;
+    width: 14px;
+    height: 14px;
 }
 
 QMenu::indicator {
-    width: 18px;
-    height: 18px;
+    width: 14px;
+    height: 14px;
     margin-left: 6px;
-    border-radius: 3px;
+    border-radius: 2px;
     border: 1px solid {border};
 }
 
@@ -83,12 +83,12 @@ QMenu::indicator:non-exclusive:checked {
     background-color: {accent};
     border-color: {accent};
     image: none;
-    border-radius: 9px;
+    border-radius: 7px;
 }
 
 QMenu::right-arrow {
     image: none;
-    border-left: 5px solid {buttonText};
-    border-top: 5px solid transparent;
-    border-bottom: 5px solid transparent;
+    border-left: 4px solid {buttonText};
+    border-top: 4px solid transparent;
+    border-bottom: 4px solid transparent;
 }

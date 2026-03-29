@@ -4,14 +4,14 @@
 
 QCheckBox {
     color: {windowText};
-    spacing: 8px;
+    spacing: 6px;
 }
 
 QCheckBox::indicator {
-    width: 18px;
-    height: 18px;
+    width: 14px;
+    height: 14px;
     border: 1px solid {border};
-    border-radius: 3px;
+    border-radius: 2px;
     background-color: {controlFill};
 }
 

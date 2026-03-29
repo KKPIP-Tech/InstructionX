@@ -11,7 +11,7 @@ QTabWidget::pane {
 QTabBar::tab {
     background-color: transparent;
     color: {windowText};
-    padding: 8px 16px;
+    padding: 6px 12px;
     border: none;
     border-bottom: 2px solid transparent;
 }
@@ -52,7 +52,7 @@ QToolBox::tab {
     background-color: {controlFill};
     border: 1px solid {borderLight};
     border-radius: {radius};
-    padding: 8px 12px;
+    padding: 6px 10px;
     color: {windowText};
 }
 
