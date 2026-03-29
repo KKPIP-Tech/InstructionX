@@ -35,7 +35,7 @@ from ui.dialog.plugin_order_dialog import PluginOrderDialog
 from ui.work_area.work_area import WorkArea
 from ui.title_bar import CustomTitleBar
 from core.plugin.manager import PluginManager
-from utils.fluent_style import get_fluent_style
+from utils.style_qss import get_style_qss
 
 
 class InstructionXMainWindow(QMainWindow):
@@ -68,8 +68,8 @@ class InstructionXMainWindow(QMainWindow):
         self.resize(1024, 768)
 
         # 获取当前主题
-        self._fluent_style = get_fluent_style()
-        self._current_theme = self._fluent_style.theme()
+        self._style_qss = get_style_qss()
+        self._current_theme = self._style_qss.theme()
 
         # 创建主容器（用于圆角效果）
         self._container = QWidget()
@@ -252,7 +252,7 @@ class InstructionXMainWindow(QMainWindow):
 
     def _update_container_style(self):
         """更新容器样式（圆角/最大化状态），适配当前主题"""
-        colors = self._fluent_style.colors()
+        colors = self._style_qss.colors()
         window_bg = colors.get('window', '#202020')
         border_color = colors.get('borderLight', '#3C3C3C')
 
@@ -277,7 +277,7 @@ class InstructionXMainWindow(QMainWindow):
     def changeEvent(self, event):
         """监听窗口状态变化，更新标题栏按钮"""
         if event.type() == event.Type.WindowStateChange:
-            colors = self._fluent_style.colors()
+            colors = self._style_qss.colors()
             window_bg = colors.get('window', '#202020')
 
             if self.isMaximized():

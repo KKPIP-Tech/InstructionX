@@ -1,7 +1,7 @@
 """
 自定义标题栏模块
 
-提供 FluentUI3 风格的自定义标题栏，包含 Logo、标题、菜单栏和窗口控制按钮。
+提供自定义标题栏，包含 Logo、标题、菜单栏和窗口控制按钮。
 """
 
 import os
@@ -12,7 +12,7 @@ from PySide6.QtGui import QMouseEvent, QPixmap
 
 class CustomTitleBar(QWidget):
     """
-    自定义标题栏 - FluentUI3 风格
+    自定义标题栏
 
     包含：Logo、软件名称、菜单栏、窗口控制按钮（最小化/最大化/关闭）
     支持拖拽移动、双击最大化功能

@@ -13,8 +13,8 @@ from utils.logging_tools import LoggerManager, get_name
 
 class SkillButton(QToolButton):
     """
-    MS Office 风格的技能按钮
-    图标在上，文字在下
+    图标在上、文字在下的技能按钮
+    支持激活状态高亮显示
     """
 
     def __init__(self, icon: QIcon, name: str, description: str, parent=None):
@@ -89,7 +89,7 @@ class SkillButton(QToolButton):
         self.setText(display_text)
 
     def _apply_style(self):
-        """应用 FluentUI3 风格的样式"""
+        """应用 StyleQSS 风格的样式"""
         self.setProperty("active", "true" if self._is_active else "false")
         self.style().unpolish(self)
         self.style().polish(self)
@@ -97,7 +97,7 @@ class SkillButton(QToolButton):
 
 class SkillsPanel(QWidget):
     """
-    Skills Panel - 类似 MS Office 工具栏的技能面板
+    技能面板组件
     支持横向滚动，包含官方技能和第三方技能两个标签页
     """
 
