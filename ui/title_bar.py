@@ -88,23 +88,26 @@ class CustomTitleBar(QWidget):
         controls_layout.setContentsMargins(0, 0, 0, 0)
         controls_layout.setSpacing(0)
 
+        w = 45
+        h = 40
+        
         # 最小化按钮
-        self._btn_min = QPushButton("−")
-        self._btn_min.setFixedSize(40, 40)
+        self._btn_min = QPushButton("—")
+        self._btn_min.setFixedSize(w, h)
         self._btn_min.setObjectName("btnMinimize")
         self._btn_min.clicked.connect(self._parent_window.showMinimized)
         controls_layout.addWidget(self._btn_min)
 
         # 最大化/还原按钮
         self._btn_max = QPushButton("□")
-        self._btn_max.setFixedSize(40, 40)
+        self._btn_max.setFixedSize(w, h)
         self._btn_max.setObjectName("btnMaximize")
         self._btn_max.clicked.connect(self._toggle_maximize)
         controls_layout.addWidget(self._btn_max)
 
         # 关闭按钮
         self._btn_close = QPushButton("X")
-        self._btn_close.setFixedSize(40, 40)
+        self._btn_close.setFixedSize(w, h)
         self._btn_close.setObjectName("btnClose")
         self._btn_close.clicked.connect(self._parent_window.close)
         controls_layout.addWidget(self._btn_close)
