@@ -6,6 +6,7 @@
 [![PySide6](https://img.shields.io/badge/PySide6-6.10+-green.svg)](https://doc.qt.io/qtforpython/)
 [![Platform](https://img.shields.io/badge/Platform-Windows-lightgrey.svg)](#)
 [![License](https://img.shields.io/badge/License-Modified%20Apache%202.0-orange.svg)](LICENSE)
+[![Version](https://img.shields.io/badge/Version-0.1.0%20CE-blue.svg)](#)
 
 > 基于 PySide6 的插件式桌面应用框架，支持 LLM 集成、MCP Function Calling 和热插拔插件系统
 
@@ -66,11 +67,11 @@ InstructionX 是一个功能强大的**插件集成框架**，允许你根据实
 - **跨插件调用**：一个插件可以调用另一个插件的功能
 - **数据共享**：通过 PUBLIC 命名空间共享数据
 
-### 🎨 FluentUI3 主题系统
+### 🎨 StyleQSS 主题系统
 
-内置完整的 FluentUI3 样式系统，提供现代化的界面外观：
+内置完整的 StyleQSS 样式系统，提供 FluentUI3 风格的现代化界面外观：
 - **自动主题检测**：根据操作系统设置自动切换深色/浅色模式
-- **完整控件样式**：20+ 个 QSS 样式文件覆盖常用 Qt 控件
+- **完整控件样式**：26 个 QSS 样式文件覆盖常用 Qt 控件
 - **动态加载**：通过样式注册表动态加载和应用 QSS 样式
 
 ### 💾 UI 状态缓存
@@ -167,7 +168,7 @@ graph TD
 | core/llm | `core/llm/` | LLM 提供者框架 |
 | ui | `ui/` | 用户界面组件 |
 | utils | `utils/` | 工具类（日志、主题） |
-| utils/fluent_style | `utils/fluent_style/` | FluentUI3 样式系统 |
+| utils/style_qss | `utils/style_qss/` | StyleQSS 样式系统 |
 | plugin | `plugin/` | 官方插件目录 |
 | custom_plugin | `custom_plugin/` | 自定义插件目录 |
 | workers | `workers/` | 工作线程（预留扩展） |
@@ -181,6 +182,7 @@ graph TD
 - [DataProvider 概述](docs/core/data-provider/overview.md)
 - [后台任务概述](docs/core/background-task/overview.md)
 - [LLM 提供者概述](docs/core/llm-provider/overview.md)
+- [StyleQSS 样式系统](docs/utils/style-qss.md)
 
 ---
 
@@ -304,13 +306,14 @@ InstructionX 采用**修改版 Apache License 2.0** 许可证：
 
 | 技术 | 用途 | 版本 |
 |------|------|------|
+| InstructionX CE | 应用版本 | 0.1.0 |
 | PySide6 | Qt GUI 框架 | >= 6.10 |
 | Python | 编程语言 | >= 3.14 |
 | requests | HTTP 请求 | - |
 | aiohttp | 异步 HTTP | - |
 | opencv-python | 图像处理 | - |
 | numpy | 数值计算 | - |
-| FluentUI3 | 界面主题 | 内置 |
+| StyleQSS | 界面主题 | 内置 |
 
 ---
 

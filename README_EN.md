@@ -6,6 +6,7 @@
 [![PySide6](https://img.shields.io/badge/PySide6-6.10+-green.svg)](https://doc.qt.io/qtforpython/)
 [![Platform](https://img.shields.io/badge/Platform-Windows-lightgrey.svg)](#)
 [![License](https://img.shields.io/badge/License-Modified%20Apache%202.0-orange.svg)](LICENSE)
+[![Version](https://img.shields.io/badge/Version-0.1.0%20CE-blue.svg)](#)
 
 > A PySide6-based plugin desktop application framework with LLM integration, MCP Function Calling, and hot-swappable plugin system
 
@@ -66,11 +67,11 @@ Plugins can call each other's APIs to achieve functional collaboration:
 - **Cross-Plugin Calls**: One plugin can call another plugin's functionality
 - **Data Sharing**: Share data through the PUBLIC namespace
 
-### 🎨 FluentUI3 Theme System
+### 🎨 StyleQSS Theme System
 
-Built-in complete FluentUI3 styling system for modern interface appearance:
+Built-in complete StyleQSS styling system with FluentUI3-inspired modern interface appearance:
 - **Auto Theme Detection**: Automatically switch between dark/light mode based on OS settings
-- **Complete Control Styles**: 20+ QSS style files covering common Qt controls
+- **Complete Control Styles**: 26 QSS style files covering common Qt controls
 - **Dynamic Loading**: Dynamically load and apply QSS styles through style registry
 
 ### 💾 UI State Caching
@@ -167,7 +168,7 @@ graph TD
 | core/llm | `core/llm/` | LLM provider framework |
 | ui | `ui/` | User interface components |
 | utils | `utils/` | Utility classes (logging, themes) |
-| utils/fluent_style | `utils/fluent_style/` | FluentUI3 styling system |
+| utils/style_qss | `utils/style_qss/` | StyleQSS styling system |
 | plugin | `plugin/` | Official plugin directory |
 | custom_plugin | `custom_plugin/` | Custom plugin directory |
 | workers | `workers/` | Worker threads (reserved for extension) |
@@ -181,6 +182,7 @@ graph TD
 - [DataProvider Overview](docs/core/data-provider/overview.md)
 - [Background Task Overview](docs/core/background-task/overview.md)
 - [LLM Provider Overview](docs/core/llm-provider/overview.md)
+- [StyleQSS Styling System](docs/utils/style-qss.md)
 
 ---
 
@@ -304,13 +306,14 @@ The project includes complete technical documentation (in Chinese) located in th
 
 | Technology | Purpose | Version |
 |------------|---------|---------|
+| InstructionX CE | Application version | 0.1.0 |
 | PySide6 | Qt GUI framework | >= 6.10 |
 | Python | Programming language | >= 3.14 |
 | requests | HTTP requests | - |
 | aiohttp | Asynchronous HTTP | - |
 | opencv-python | Image processing | - |
 | numpy | Numerical computation | - |
-| FluentUI3 | UI theme | Built-in |
+| StyleQSS | UI theme | Built-in |
 
 ---
 
