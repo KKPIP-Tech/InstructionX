@@ -63,3 +63,8 @@ QTextEdit:disabled, QPlainTextEdit:disabled {
     color: {textDisabled};
     border-color: {borderLight};
 }
+
+/* 只读输入字段 */
+QLineEdit[class="readonly"] {
+    background-color: {controlFill};
+}

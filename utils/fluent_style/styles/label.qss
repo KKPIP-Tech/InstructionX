@@ -35,3 +35,25 @@ QLabel[link="true"] {
 QLabel[link="true"]:hover {
     color: {accentLight};
 }
+
+/* 次要/柔和文本 */
+QLabel[muted="true"] {
+    color: {textSecondary};
+}
+
+/* 占位符文本 */
+QLabel[placeholder="true"] {
+    color: #999999;
+    font-size: 14px;
+}
+
+/* 错误文本 */
+QLabel[error="true"] {
+    color: #D13438;
+}
+
+/* 标题标签 - 小号加粗 */
+QLabel[captionBold="true"] {
+    font-weight: bold;
+    font-size: 11px;
+}

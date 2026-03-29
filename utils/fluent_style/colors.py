@@ -40,6 +40,10 @@ class FluentColors:
             'text': '#000000',
             'textDisabled': '#6D6D6D',
 
+            # 文本色
+            'textPrimary': '#000000',
+            'textSecondary': '#666666',
+
             # 边框
             'border': '#898989',
             'borderLight': '#CCCCCC',
@@ -91,6 +95,10 @@ class FluentColors:
             # 禁用
             'text': '#FFFFFF',
             'textDisabled': '#6D6D6D',
+
+            # 文本色
+            'textPrimary': '#FFFFFF',
+            'textSecondary': '#999999',
 
             # 边框
             'border': '#646464',

@@ -88,3 +88,25 @@ QTreeView::branch:open:has-children:!has-siblings,
 QTreeView::branch:open:has-children:has-siblings {
     image: none;
 }
+
+/* 对话框列表样式 */
+QListWidget[class="dialog"] {
+    border: 1px solid {borderLight};
+    border-radius: {radius};
+    padding: 5px;
+    background-color: #FAFAFA;
+}
+QListWidget[class="dialog"]::item {
+    padding: 10px;
+    margin: 3px;
+    border-radius: 3px;
+    background-color: white;
+    border: 1px solid {borderLight};
+}
+QListWidget[class="dialog"]::item:selected {
+    background-color: {accent};
+    color: white;
+}
+QListWidget[class="dialog"]::item:hover:!selected {
+    background-color: {controlFillHover};
+}
