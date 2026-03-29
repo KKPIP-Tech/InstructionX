@@ -46,7 +46,7 @@ documents/
 │
 ├── utils/                       # 工具模块文档
 │   ├── logging-tools.md         # 日志工具
-│   └── fluent-style.md          # FluentUI3 样式系统
+│   └── style-qss.md             # StyleQSS 样式系统
 │
 └── api/                         # API 参考
     └── full-reference.md        # 完整 API 参考
@@ -167,7 +167,7 @@ llm_provider = get_llm_provider()
 - [插件开发指南](core/plugin-system/plugin-development.md)
 - [DataProvider API 参考](core/data-provider/api-reference.md)
 - [日志工具](utils/logging-tools.md)
-- [FluentUI3 样式系统](utils/fluent-style.md)
+- [StyleQSS 样式系统](utils/style-qss.md)
 - [完整 API 参考](api/full-reference.md)
 
 ---

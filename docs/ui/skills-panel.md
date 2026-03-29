@@ -6,7 +6,7 @@
 
 ## 1. 概述
 
-`SkillsPanel` 是应用程序的技能面板组件，灵感来源于 Microsoft Office 的技能面板，提供类似工具栏的插件快捷访问方式。
+`SkillsPanel` 是应用程序的技能面板组件，提供类似工具栏的插件快捷访问方式。
 
 **文件位置**: `ui/skills_panel/panel.py`
 

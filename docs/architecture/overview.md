@@ -228,7 +228,7 @@ InstructionX/
 ├── utils/                    # 工具类
 │   ├── logging_tools.py
 │   ├── themes.py
-│   └── fluent_style/        # FluentUI3 样式系统
+│   └── style_qss/          # StyleQSS 样式系统
 │
 └── docs/                     # 技术文档
 ```
