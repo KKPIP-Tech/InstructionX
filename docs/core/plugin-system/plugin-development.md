@@ -29,7 +29,7 @@ my_plugin/                    # 插件文件夹（建议使用英文）
 ```python
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel, QPushButton
 
-from core.plugin.plugin_interface import IPlugin
+from core.interfaces import IPlugin  # 推荐导入路径
 from .service import Service
 
 
@@ -117,7 +117,7 @@ class Service:
 插件元数据，定义 API 接口。
 
 ```python
-from core.plugin.plugin_info_interface import IPluginInfo
+from core.interfaces import IPluginInfo  # 推荐导入路径
 from core.plugin.plugin_version import PluginVersion
 from core.plugin.plugin_icon import PluginIcon
 from typing import Dict, Any, Optional
@@ -151,6 +151,15 @@ class MyPluginInfo(IPluginInfo):
     @property
     def description(self) -> str:
         return "这是我的插件的详细描述"
+
+    @property
+    def plugin_type_id(self) -> str:
+        """插件类型标识符（必需）
+
+        用于代码层面的插件识别，应保持稳定不随显示名称变化。
+        建议使用小写字母、数字、连字符格式。
+        """
+        return "my-plugin"
 
     @property
     def service_api(self) -> Dict[str, Any]:
@@ -197,7 +206,7 @@ class MyPluginInfo(IPluginInfo):
 
     @property
     def tags(self) -> Optional[list[str]]:
-        """插件标签"""
+        """插件标签（可选）"""
         return ["工具", "示例"]
 ```
 
@@ -248,7 +257,7 @@ class Service:
 ### 3.3 information.py
 
 ```python
-from core.plugin.plugin_info_interface import IPluginInfo
+from core.interfaces import IPluginInfo  # 推荐导入路径
 from core.plugin.plugin_version import PluginVersion
 from core.plugin.plugin_icon import PluginIcon
 from typing import Dict, Any, Optional
@@ -278,6 +287,15 @@ class TextFormattingPluginInfo(IPluginInfo):
     @property
     def description(self) -> str:
         return "提供文本格式化功能，包括大小写转换、翻转等功能"
+
+    @property
+    def plugin_type_id(self) -> str:
+        """插件类型标识符，用于代码层面的插件识别"""
+        return "text-formatting"
+
+    @property
+    def tags(self) -> Optional[list[str]]:
+        return ["工具", "格式化"]
 
     @property
     def service_api(self) -> Dict[str, Any]:
@@ -330,7 +348,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt
 
-from core.plugin.plugin_interface import IPlugin
+from core.interfaces import IPlugin  # 推荐导入路径
 from .service import Service
 
 

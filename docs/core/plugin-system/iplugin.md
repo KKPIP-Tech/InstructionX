@@ -8,15 +8,20 @@
 
 `IPlugin` 是所有插件必须继承的抽象基类，定义了插件的标准接口和行为。
 
-**文件位置**: `core/plugin/plugin_interface.py`
+**文件位置**:
+- 抽象接口定义: `core/interfaces/i_plugin.py`（推荐导入）
+- 框架实现（含缓存）: `core/plugin/plugin_interface.py`（向后兼容）
 
+推荐导入方式:
 ```python
-from abc import ABC, abstractmethod
-
-class IPlugin(ABC):
-    """插件抽象基类"""
-    pass
+from core.interfaces import IPlugin  # 推荐
+# 或向后兼容:
+from core.plugin.plugin_interface import IPlugin
 ```
+
+框架实现中额外提供的功能（`core/plugin/plugin_interface.py`）：
+- 控件缓存机制（`_cached_widget`）
+- 插件信息动态加载（`_load_plugin_info`）
 
 ---
 
@@ -153,7 +158,7 @@ def tags(self) -> Optional[list[str]]:
 
 ```python
 @abstractmethod
-def _create_widget(self, parent=None, data_provider=None) -> QWidget:
+def _create_widget(self, parent=None, data_provider=None) -> "QWidget":
     """
     创建插件控件的内部方法（抽象方法）
 
@@ -282,17 +287,88 @@ get_widget(parent, data_provider)
                 └── 缓存并返回
 ```
 
-### 4.2 优势
+### 4.2 实现细节
 
-1. **状态保持**: 切换插件再回来时，UI 状态不会丢失
-2. **性能优化**: 无需重复创建 Widget
-3. **开发者透明**: 无需编写额外代码
+缓存机制在 `core/plugin/plugin_interface.py` 中实现：
 
-### 4.3 注意事项
+```python
+class IPlugin(ABC):
+    def __init__(self):
+        # 缓存的 Widget 实例
+        self._cached_widget = None
+        # 缓存的 parent 引用
+        self._cached_parent = None
 
-- `_create_widget()` 只在首次调用时执行
-- 缓存的 Widget 会被隐藏但不会被销毁
-- 如果需要在 Widget 创建时执行逻辑，可以重写 `get_widget()`
+    def get_widget(self, parent=None, data_provider=None) -> QWidget:
+        """
+        获取插件控件（带缓存）
+        
+        首次调用时创建 Widget 并缓存，后续调用返回缓存的实例。
+        如果传入了不同的 parent，会重新设置 Widget 的 parent。
+        """
+        # 情况1: 缓存存在且 parent 相同，直接返回
+        if self._cached_widget is not None and self._cached_parent is parent:
+            return self._cached_widget
+        
+        # 情况2: 缓存存在但 parent 不同，更新 parent
+        if self._cached_widget is not None:
+            self._cached_widget.setParent(parent)
+            self._cached_parent = parent
+            return self._cached_widget
+        
+        # 情况3: 缓存不存在，创建新的 widget
+        widget = self._create_widget(parent, data_provider)
+        self._cached_widget = widget
+        self._cached_parent = parent
+        return widget
+```
+
+### 4.3 优势
+
+1. **状态保持**: 切换插件再回来时，UI 状态（如输入框内容、选中的选项等）不会丢失
+2. **性能优化**: 无需重复创建 Widget，节省内存和 CPU 资源
+3. **开发者透明**: 框架自动管理缓存，开发者无需编写额外代码
+4. **内存可控**: Widget 在插件卸载时会被清理，不会永久占用内存
+
+### 4.4 注意事项
+
+- `_create_widget()` 只在首次调用 `get_widget()` 时执行
+- 缓存的 Widget 会被隐藏（`hide()`）但不会被销毁
+- Widget 的生命周期与插件实例绑定
+- 如果需要在 Widget 创建时执行额外逻辑，可以重写 `get_widget()` 方法
+
+### 4.5 缓存失效策略
+
+当前实现的缓存策略是**永久缓存**（直到插件卸载），适用于大多数场景。如果需要实现更复杂的缓存策略，可以考虑：
+
+1. **基于时间的缓存**: 设置缓存过期时间
+2. **基于内存压力的缓存**: 当内存不足时自动清理
+3. **手动清除**: 提供方法让开发者手动清除缓存
+
+### 4.6 自定义缓存行为示例
+
+```python
+class CustomPlugin(IPlugin):
+    def __init__(self):
+        super().__init__()
+        self._cache_enabled = True
+    
+    def get_widget(self, parent=None, data_provider=None) -> QWidget:
+        """自定义缓存逻辑"""
+        if not self._cache_enabled:
+            # 禁用缓存，每次都重新创建
+            return self._create_widget(parent, data_provider)
+        
+        # 使用默认缓存逻辑
+        return super().get_widget(parent, data_provider)
+    
+    def clear_cache(self):
+        """手动清除缓存"""
+        if self._cached_widget is not None:
+            self._cached_widget.deleteLater()
+            self._cached_widget = None
+            self._cached_parent = None
+```
 
 ---
 
@@ -304,7 +380,7 @@ get_widget(parent, data_provider)
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel, QPushButton
 from PySide6.QtCore import Signal
 
-from core.plugin.plugin_interface import IPlugin
+from core.interfaces import IPlugin  # 推荐导入路径
 
 
 class TextFormattingPlugin(IPlugin):

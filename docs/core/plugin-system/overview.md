@@ -208,15 +208,17 @@ class MyPluginInfo(IPluginInfo):
 ## 6. 核心类图
 
 ```mermaid
- class IPlugin {
 classDiagram
-           <<abstract>>
+    class IPlugin {
+        <<abstract>>
         +plugin_name: str
-        +_create_widget(parent, data_provider): QWidget
-        +get_widget(parent, data_provider): QWidget
         +plugin_id: str
         +skill_icon: QIcon
         +skill_description: str
+        +skill_tooltip: str
+        +plugin_info: IPluginInfo
+        +_create_widget(parent, data_provider): QWidget
+        +get_widget(parent, data_provider): QWidget
         +on_plugin_loaded(): None
     }
 
@@ -224,12 +226,28 @@ classDiagram
         <<abstract>>
         +version: PluginVersion
         +developer: str
+        +developer_email: str
+        +developer_website: str
+        +is_free: bool
+        +description: str
         +service_api: Dict
         +skill_icon: PluginIcon
         +skill_description: str
+        +plugin_type_id: str
+        +tags: Optional[list]
+        +dependencies: Optional[Dict]
     }
 
-    IPlugin <|-- IPluginInfo
+    class PluginManager {
+        +load_plugins()
+        +get_plugin_by_id(plugin_id)
+        +get_all_plugins()
+        +register_plugin_api()
+        +call_plugin_method()
+    }
+
+    IPlugin --> PluginManager : 注册到
+    IPlugin --> IPluginInfo : 通过 plugin_info 属性访问
 ```
 
 ---

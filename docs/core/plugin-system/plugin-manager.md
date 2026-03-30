@@ -127,6 +127,36 @@ def get_plugin_id_by_name(self, plugin_name: str) -> Optional[str]:
     """
 ```
 
+#### get_plugin_id_by_type_id()
+
+```python
+def get_plugin_id_by_type_id(self, plugin_type_id: str) -> Optional[str]:
+    """
+    通过插件类型标识符（plugin_type_id）获取插件 UUID
+
+    Args:
+        plugin_type_id: 插件类型标识符（如 "string-tools"）
+
+    Returns:
+        插件 UUID，如果不存在则返回 None
+    """
+```
+
+#### get_plugin_by_type_id()
+
+```python
+def get_plugin_by_type_id(self, plugin_type_id: str) -> Optional[IPlugin]:
+    """
+    通过插件类型标识符获取插件实例
+
+    Args:
+        plugin_type_id: 插件类型标识符（如 "string-tools"）
+
+    Returns:
+        插件实例，如果不存在则返回 None
+    """
+```
+
 #### get_official_plugins()
 
 ```python
