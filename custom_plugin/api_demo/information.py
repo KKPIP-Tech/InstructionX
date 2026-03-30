@@ -60,7 +60,7 @@ class ApiDemoPluginInfo(IPluginInfo):
     @property
     def skill_icon(self) -> PluginIcon:
         """插件图标配置"""
-        return PluginIcon.builtin("SP_ArrowForward")
+        return PluginIcon.builtin("SP_MessageBoxQuestion")
     
     @property
     def skill_description(self) -> str:
@@ -76,3 +76,8 @@ class ApiDemoPluginInfo(IPluginInfo):
     def dependencies(self) -> None:
         """依赖项"""
         return None
+
+    @property
+    def plugin_type_id(self) -> str:
+        """插件类型标识符"""
+        return "api-demo"

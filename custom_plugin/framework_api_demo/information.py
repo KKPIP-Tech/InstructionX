@@ -114,7 +114,7 @@ class FrameworkAPIDemoPluginInfo(IPluginInfo):
     @property
     def skill_icon(self) -> PluginIcon:
         """插件图标配置"""
-        return PluginIcon.builtin("SP_FileIcon")
+        return PluginIcon.builtin("SP_VistaShield")
 
     @property
     def skill_description(self) -> str:
@@ -130,3 +130,8 @@ class FrameworkAPIDemoPluginInfo(IPluginInfo):
     def dependencies(self) -> None:
         """依赖项"""
         return None
+
+    @property
+    def plugin_type_id(self) -> str:
+        """插件类型标识符"""
+        return "framework-api-demo"

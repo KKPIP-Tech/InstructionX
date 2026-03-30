@@ -19,7 +19,6 @@ class ApiDemoPlugin(IPlugin):
     def __init__(self):
         super().__init__()
         self.plugin_manager = PluginManager()
-        self.my_plugin_id = "api-demo"
 
     @property
     def plugin_name(self) -> str:
@@ -184,7 +183,7 @@ class ApiDemoPlugin(IPlugin):
         api_list.clear()
 
         # 获取字符串工具插件的 ID
-        string_tools_id = self.plugin_manager.get_plugin_id_by_name("字符串\n工具")
+        string_tools_id = self.plugin_manager.get_plugin_id_by_type_id("string-tools")
 
         if string_tools_id:
             # 获取该插件的 API
@@ -228,7 +227,7 @@ class ApiDemoPlugin(IPlugin):
             return
 
         # 获取字符串工具插件的 ID
-        string_tools_id = self.plugin_manager.get_plugin_id_by_name("字符串\n工具")
+        string_tools_id = self.plugin_manager.get_plugin_id_by_type_id("string-tools")
 
         if not string_tools_id:
             output_text.setText("错误: 未找到字符串工具插件")
@@ -237,7 +236,7 @@ class ApiDemoPlugin(IPlugin):
         try:
             # 调用 API
             result = self.plugin_manager.call_plugin_method(
-                caller_id=self.my_plugin_id,
+                caller_id=self.plugin_id,
                 plugin_id=string_tools_id,
                 method_name=method_name,
                 text=text_input

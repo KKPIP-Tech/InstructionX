@@ -75,3 +75,8 @@ class ColorConverterPluginInfo(IPluginInfo):
     @property
     def dependencies(self) -> Optional[Dict[str, str]]:
         return None
+
+    @property
+    def plugin_type_id(self) -> str:
+        """插件类型标识符"""
+        return "color-converter"

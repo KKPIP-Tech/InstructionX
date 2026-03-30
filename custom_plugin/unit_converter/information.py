@@ -122,7 +122,7 @@ class UnitConverterPluginInfo(IPluginInfo):
     
     @property
     def skill_icon(self) -> PluginIcon:
-        return PluginIcon.builtin("SP_BrowserReload")
+        return PluginIcon.builtin("SP_ArrowUp")
     
     @property
     def skill_description(self) -> str:
@@ -135,3 +135,8 @@ class UnitConverterPluginInfo(IPluginInfo):
     @property
     def dependencies(self) -> Optional[Dict[str, str]]:
         return None
+
+    @property
+    def plugin_type_id(self) -> str:
+        """插件类型标识符"""
+        return "unit-converter"
