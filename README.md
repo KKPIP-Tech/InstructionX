@@ -117,7 +117,7 @@ python main.py
 
 ## 插件生态
 
-### 官方插件（12个）
+### 官方插件（10个）
 
 | 插件 | 功能描述 |
 |------|----------|
@@ -169,6 +169,7 @@ graph TD
 
 | 模块 | 路径 | 说明 |
 |------|------|------|
+| core/interfaces | `core/interfaces/` | 抽象接口层（IPlugin、IDataProvider 等） |
 | core/plugin | `core/plugin/` | 插件系统核心 |
 | core/data | `core/data/` | 数据持久化层 |
 | core/task | `core/task/` | 后台任务系统 |
@@ -236,7 +237,7 @@ class MyPlugin(IPlugin):
 在 `information.py` 中定义 `service_api`，框架会自动将其转换为 LLM 可调用的工具：
 
 ```python
-from core.plugin.plugin_info_interface import IPluginInfo
+from core.interfaces import IPluginInfo  # 推荐导入路径
 
 class MyPluginInfo(IPluginInfo):
     @property

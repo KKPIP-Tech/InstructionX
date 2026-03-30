@@ -13,7 +13,7 @@
 | 技术 | 用途 |
 |------|------|
 | **PySide6** | Qt 图形界面框架 |
-| **Python 3.14+** | 编程语言 |
+| **Python 3.14** | 编程语言 |
 | **JSON** | 数据持久化 |
 | **Threading** | 多线程支持 |
 
@@ -114,6 +114,79 @@ graph TB
 
 **单例模式**: 全局 LLM 服务入口
 
+### 3.5 PluginVersion（版本管理）
+
+**文件位置**: `core/plugin/plugin_version.py`
+
+**职责**: 语义化版本管理，支持类型前缀（release/beta/alpha/internal）和中文显示。
+
+### 3.6 PluginIcon（图标管理）
+
+**文件位置**: `core/plugin/plugin_icon.py`
+
+**职责**: 支持多种图标加载策略（BUILTIN、FILE、RESOURCE、BASE64、NONE）。
+
+### 3.7 PluginIdentity（身份标识）
+
+**文件位置**: `core/plugin/plugin_identity.py`
+
+**职责**: 为每个插件生成和管理唯一 UUID，持久化到 `.plugin_info.json`。
+
+### 3.8 PluginConfigManager（配置管理）
+
+**文件位置**: `core/plugin/config_manager.py`
+
+**职责**: 管理插件显示顺序配置，持久化到 `config/plugin_order.json`。
+
+### 3.9 TaskStorage（任务持久化）
+
+**文件位置**: `core/task/task_storage.py`
+
+**职责**: 任务数据持久化层，管理 `data/tasks.json`，支持原子写入和缓存。
+
+### 3.10 抽象接口层
+
+**文件位置**: `core/interfaces/`
+
+**职责**: 定义框架的抽象接口层，将插件开发 API 与内部实现解耦。这是框架设计的核心层，确保插件只依赖接口而非具体实现。
+
+**设计目标**:
+- **解耦**: 插件通过接口与核心服务交互，不依赖具体实现类
+- **契约**: 明确每个服务的能力边界和使用方式
+- **测试**: 可以为接口创建 mock 实现进行单元测试
+- **扩展**: 未来可以替换实现而无需修改插件代码
+
+**接口清单**:
+
+| 接口 | 文件 | 说明 | 实现类 |
+|------|------|------|--------|
+| `IPlugin` | `i_plugin.py` | 插件抽象基类 | `core/plugin/plugin_interface.py` |
+| `IPluginInfo` | `i_plugin_info.py` | 插件信息抽象基类 | `core/plugin/plugin_info_interface.py` |
+| `IDataProvider` | `i_data_provider.py` | 数据提供者接口 | `core/data/data_provider.py` |
+| `ITaskManager` | `i_task_manager.py` | 任务管理器接口 | `core/task/background_task.py` |
+| `ILLMFacade` | `i_llm_facade.py` | LLM 外观接口 | `core/llm/llm_provider.py` |
+| `ILogger` | `i_logger.py` | 日志接口 | `utils/logging_tools.py` |
+| `PluginServices` | `plugin_services.py` | 服务封装（依赖注入容器） | - |
+
+**导入指南**:
+```python
+# 从 core.interfaces 导入所有接口（推荐）
+from core.interfaces import (
+    IPlugin,
+    IPluginInfo,
+    IDataProvider,
+    ITaskManager,
+    ILLMFacade,
+    ILogger,
+    PluginServices,
+    TaskType,
+    TaskStatus,
+    DataNamespace
+)
+```
+
+**详细文档**: [接口层概述](../core/interfaces/overview.md)
+
 ---
 
 ## 4. 数据流
@@ -162,27 +235,34 @@ InstructionX/
 ├── main.py                    # 应用入口
 │
 ├── core/                      # 核心模块
-│   ├── __init__.py          # 导出核心 API
-│   ├── plugin/               # 插件系统
+│   ├── interfaces/           # 抽象接口定义
+│   │   ├── __init__.py      # 导出所有接口（含 ILogger 重导出）
+│   │   ├── i_plugin.py       # IPlugin 抽象基类
+│   │   ├── i_plugin_info.py  # IPluginInfo 抽象基类
+│   │   ├── i_data_provider.py    # IDataProvider 抽象接口
+│   │   ├── i_task_manager.py      # ITaskManager 抽象接口
+│   │   ├── i_llm_facade.py       # ILLMFacade 抽象接口
+│   │   └── plugin_services.py    # PluginServices 服务封装
+│   ├── plugin/               # 插件系统实现
 │   │   ├── manager.py       # PluginManager
-│   │   ├── plugin_interface.py  # IPlugin
-│   │   ├── plugin_info_interface.py
+│   │   ├── plugin_interface.py  # IPlugin（向后兼容导入路径）
+│   │   ├── plugin_info_interface.py  # IPluginInfo（向后兼容导入路径）
 │   │   ├── plugin_version.py
 │   │   ├── plugin_icon.py
 │   │   ├── plugin_identity.py
 │   │   └── config_manager.py
-│   ├── data/                 # 数据层
+│   ├── data/                 # 数据层实现
 │   │   ├── data_provider.py # DataProvider（核心）
 │   │   ├── dao.py           # 预留：DAO 扩展
 │   │   ├── database_connection.py  # 预留：数据库连接
 │   │   ├── database_manager.py     # 预留：数据库管理
 │   │   └── sql_map.py       # 预留：SQL 映射
-│   ├── task/                 # 后台任务
+│   ├── task/                 # 后台任务实现
 │   │   ├── background_task.py
 │   │   ├── task_model.py
 │   │   ├── task_storage.py
 │   │   └── scheduler.py
-│   └── llm/                  # LLM 提供者
+│   └── llm/                  # LLM 提供者实现
 │       ├── llm_provider.py  # LLMProvider
 │       ├── provider_interface.py
 │       ├── config.py
@@ -196,14 +276,18 @@ InstructionX/
 │
 ├── ui/                       # UI 模块
 │   ├── main_window.py       # 主窗口
+│   ├── title_bar.py        # 自定义标题栏
+│   ├── plugin_order_dialog.py  # 插件排序对话框（主文件）
 │   ├── skills_panel/        # 技能面板
-│   │   └── panel.py
+│   │   ├── panel.py        # SkillsPanel 面板
+│   │   └── skill_button.py  # SkillButton 按钮组件
 │   ├── work_area/           # 工作区
 │   │   └── work_area.py
 │   └── dialog/              # 对话框
+│       ├── __init__.py      # 导出 PluginOrderDialog
 │       ├── about_dialog.py      # 关于对话框
 │       ├── llm_settings_dialog.py
-│       └── plugin_order_dialog.py
+│       └── plugin_order_dialog.py  # 重导出
 │
 ├── workers/                  # 预留：多进程工作池
 │
@@ -228,6 +312,7 @@ InstructionX/
 │
 ├── utils/                    # 工具类
 │   ├── logging_tools.py
+│   ├── i_logger.py          # ILogger 接口实现
 │   ├── themes.py
 │   └── style_qss/          # StyleQSS 样式系统
 │

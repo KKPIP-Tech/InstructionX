@@ -82,12 +82,28 @@ def _create_menus(self) -> None:
 self._theme_map = {'light': 'dark', 'dark': 'auto', 'auto': 'light'}
 ```
 
-**主题持久化**: 用户选择的主题自动保存到 `data/data.json`，下次启动时自动应用。
+**主题持久化**: 用户选择的主题自动保存到 DataProvider 的 `__app_config__` 插件中，键名为 `theme`。下次启动时自动应用保存的主题。
 
 **实现方法**:
-- `_load_saved_theme()`: 启动时加载保存的主题
-- `_cycle_theme()`: 切换主题并保存
+- `_load_saved_theme()`: 启动时从 DataProvider 加载保存的主题
+- `_cycle_theme()`: 循环切换主题（light → dark → auto）
 - `_save_theme(theme)`: 保存主题到 DataProvider
+- `_update_theme_action_text()`: 更新菜单项文字，显示当前主题
+
+**主题应用**:
+```python
+from utils.style_qss import set_style_qss_theme
+
+# 设置主题
+set_style_qss_theme(QApplication.instance(), theme)
+```
+
+**菜单显示**:
+```
+切换主题 (浅色)  # 当前是浅色
+切换主题 (深色)  # 当前是深色
+切换主题 (跟随系统)  # 当前是跟随系统
+```
 
 ### 3.4 技能面板 (SkillsPanel)
 
@@ -231,22 +247,57 @@ def _on_skill_clicked(self, plugin):
 
 ### 5.3 窗口边缘缩放
 
-主窗口支持 8 个方向的边缘拖拽缩放：
+主窗口支持 8 个方向的边缘拖拽缩放（无边框窗口的标准交互）：
 
-- **边缘检测**: 窗口边缘 8 像素范围内检测鼠标位置，判断缩放方向（上、下、左、右、左上、左下、右上、右下）
+- **边缘检测**: 窗口边缘 8 像素范围内检测鼠标位置，判断缩放方向
+- **支持的方向**: 
+  - 上、下、左、右（4个边）
+  - 左上、左下、右上、右下（4个角）
 - **拖拽缩放**: 按住鼠标左键拖拽边缘或角落时，实时计算并应用新的窗口几何尺寸
 - **最小尺寸限制**: 缩放时限制最小窗口尺寸（800x600），防止界面异常
 - **光标提示**: 鼠标悬停在边缘时自动变换光标形状，提示可缩放方向
+- **最大化限制**: 窗口最大化时禁用边缘缩放
 
 ```mermaid
 flowchart TD
-    Mouse["鼠标移动"] --> Detect{"检测边缘区域"}
-    Detect -->|8px 范围内| Direction["判断缩放方向"]
-    Direction --> Drag["按住拖拽"]
-    Drag --> Resize["应用新尺寸"]
-    Resize --> Limit{"达到最小尺寸?"}
-    Limit -->|是| Clamp["限制为最小尺寸"]
-    Limit -->|否| Apply["应用新尺寸"]
+    Mouse["鼠标移动"] --> Maximized{"窗口已最大化?"}
+    Maximized -->|是| Exit["退出边缘检测"]
+    Maximized -->|否| Detect{"在8px边缘范围内?"}
+    Detect -->|是| Direction["判断缩放方向<br/>8个方向之一"]
+    Detect -->|否| Exit
+    Direction --> Cursor["设置对应光标"]
+    Cursor --> Pressed{"鼠标按下?"}
+    Pressed -->|左键按下| Resize["计算新尺寸"]
+    Pressed -->|否| Wait["等待用户操作"]
+    Resize --> MinSize{"达到最小尺寸?"}
+    MinSize -->|是| Clamp["限制为800x600"]
+    MinSize -->|否| Apply["应用新尺寸"]
+    Clamp --> Apply
+    Apply --> Released{"鼠标释放?"}
+    Released -->|否| Resize
+    Released -->|是| Exit
+```
+
+**实现方法**:
+- `_get_resize_direction(event)`: 检测鼠标位置对应的缩放方向
+- `_get_resize_cursor(direction)`: 根据缩放方向获取对应的光标样式
+- `_do_resize(event)`: 执行窗口 resize，应用新尺寸
+- `mouseMoveEvent(event)`: 处理鼠标移动事件 - 边缘检测和 resize
+- `mousePressEvent(event)`: 处理鼠标按下事件 - 开始 resize
+- `mouseReleaseEvent(event)`: 处理鼠标释放事件 - 结束 resize
+
+**光标映射**:
+```python
+cursor_map = {
+    'top': Qt.CursorShape.SizeVerCursor,        # 上下箭头
+    'bottom': Qt.CursorShape.SizeVerCursor,
+    'left': Qt.CursorShape.SizeHorCursor,      # 左右箭头
+    'right': Qt.CursorShape.SizeHorCursor,
+    'top-left': Qt.CursorShape.SizeFDiagCursor,    # 左上-右下对角线
+    'bottom-right': Qt.CursorShape.SizeFDiagCursor,
+    'top-right': Qt.CursorShape.SizeBDiagCursor,   # 右上-左下对角线
+    'bottom-left': Qt.CursorShape.SizeBDiagCursor,
+}
 ```
 
 ### 5.4 对话框

@@ -18,36 +18,32 @@
 graph TB
     subgraph WorkArea["WorkArea"]
         Root[根 Widget<br/>QWidget]
-        SL[QStackedLayout<br/>堆叠布局]
+        VL[QVBoxLayout<br/>垂直布局]
+        Placeholder["占位符标签<br/>\"点击上方技能按钮，在此处显示插件功能\""]
     end
 
-    subgraph Widgets["Widget 列表"]
-        W1["索引 0<br/>任务管理器 UI"]
-        W2["索引 1<br/>文本格式化 UI"]
-        W3["索引 N<br/>..."]
-    end
-
-    Root --> SL
-    SL --> W1
-    SL --> W2
-    SL --> W3
+    Root --> VL
+    VL --> Placeholder
 ```
+
+> **注意**：WorkArea 使用 `QVBoxLayout` 而非 `QStackedLayout`。它维护一个占位符标签，当用户切换插件时，占位符被替换为插件的 Widget；切换回来时 Widget 被隐藏而非销毁，以保留 UI 状态。
 
 ---
 
 ## 3. 核心概念
 
-### 3.1 堆叠布局
+### 3.1 垂直布局
 
-WorkArea 使用 `QStackedLayout`，允许：
-- 多个 Widget 叠加在一起
-- 每次只显示一个 Widget
-- 快速切换显示内容
+WorkArea 使用 `QVBoxLayout`，通过以下方式管理多个 Widget：
+
+- 使用 `add_widget()` 将 Widget 添加到布局（显示该 Widget）
+- 使用 `clear()` 或 `clear_keep_highlight()` 移除 Widget
+- 切换插件时，旧的 Widget 被 `hide()`（而非销毁），新的 Widget 被 `show()`，从而保留 UI 状态
 
 ### 3.2 Widget 管理
 
 - 添加 Widget 到工作区
-- 移除 Widget（可选）
+- 移除 Widget（可选，保留实例）
 - 清除所有 Widget
 
 ---
@@ -76,25 +72,40 @@ def add_widget(self, widget: QWidget):
     Args:
         widget: 要添加的 QWidget
     """
-    # 添加到堆叠布局
-    self.stack_layout.addWidget(widget)
+    # 移除当前所有 Widget
+    while self.work_layout.count() > 0:
+        child = self.work_layout.takeAt(0)
+        if child.widget():
+            child.widget().hide()
 
-    # 切换到新添加的 Widget
-    self.stack_layout.setCurrentIndex(self.stack_layout.count() - 1)
+    # 添加新 Widget 并显示
+    self.work_layout.addWidget(widget)
+    widget.show()
 ```
 
 ### 4.3 清除工作区
 
 ```python
-def clear(self):
+def clear(self, clear_highlight: bool = True):
     """
     清除所有 Widget
+
+    Args:
+        clear_highlight: 是否同时清除按钮高亮状态，默认为 True。
+                       设为 False 时仅清除 Widget，不触发高亮回调。
     """
-    # 遍历并移除所有 Widget
-    while self.stack_layout.count() > 0:
-        widget = self.stack_layout.widget(0)
-        self.stack_layout.removeWidget(widget)
-        widget.deleteLater()
+    # 移除并销毁所有 Widget
+    while self.work_layout.count() > 0:
+        child = self.work_layout.takeAt(0)
+        if child.widget():
+            child.widget().deleteLater()
+
+    # 如果需要清除高亮，调用回调
+    if clear_highlight and self.clear_highlight_callback:
+        self.clear_highlight_callback()
+
+    # 显示占位符
+    self.show_placeholder()
 ```
 
 ### 4.4 清除但保持高亮
@@ -104,13 +115,9 @@ def clear_keep_highlight(self):
     """
     清除工作区但不清除按钮高亮状态
 
-    用于切换插件时保留技能按钮的选中状态。
+    内部调用 clear(clear_highlight=False)。用于切换插件时保留技能按钮的选中状态。
     """
-    # 遍历并移除所有 Widget
-    while self.stack_layout.count() > 0:
-        widget = self.stack_layout.widget(0)
-        self.stack_layout.removeWidget(widget)
-        widget.deleteLater()
+    self.clear(clear_highlight=False)
 ```
 
 ### 4.5 设置清除高亮回调
@@ -136,8 +143,12 @@ class WorkArea:
         # 创建根 Widget
         self._widget = QWidget(parent)
 
-        # 创建堆叠布局
-        self.stack_layout = QStackedLayout(self._widget)
+        # 创建垂直布局
+        self.work_layout = QVBoxLayout(self._widget)
+        self.work_layout.setContentsMargins(0, 0, 0, 0)
+
+        # 占位符标签
+        self.work_placeholder = QLabel("点击上方技能按钮，在此处显示插件功能")
 
         # 回调函数
         self.clear_highlight_callback = None
@@ -193,9 +204,10 @@ self.work_area.clear_keep_highlight()
 
 | 属性 | 值 |
 |------|------|
-| 布局类型 | QStackedLayout |
+| 布局类型 | QVBoxLayout |
 | 伸缩因子 | 1 (占用剩余空间) |
 | 尺寸策略 | Expanding |
+| 布局边距 | 0 (无内边距) |
 
 ---
 
@@ -204,13 +216,13 @@ self.work_area.clear_keep_highlight()
 ```mermaid
 flowchart TD
     A[用户点击技能按钮] --> B[主窗口接收 skill_clicked 信号]
-    B --> C[clear_keep_highlight 清除现有 Widget]
+    B --> C[clear_keep_highlight 隐藏现有 Widget]
     C --> D[plugin.get_widget 获取插件 Widget]
 
     D -->|首次| E[_create_widget 创建 UI]
     D -->|后续| F[返回缓存的 Widget]
 
-    E --> G[add_widget 添加到工作区]
+    E --> G[add_widget 替换布局中的 Widget]
     F --> G
 
     G --> H[显示 Widget]

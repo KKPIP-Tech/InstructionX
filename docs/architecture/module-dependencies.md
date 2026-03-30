@@ -23,7 +23,7 @@ graph TB
         DP[core/data/data_provider.py<br/>DataProvider 单例]
         BTM[core/task/background_task.py<br/>BackgroundTaskManager 单例]
         LLM[core/llm/llm_provider.py<br/>LLMProvider 单例]
-        IPlugin[core/plugin/plugin_interface.py<br/>IPlugin]
+        IPlugin[core/interfaces/i_plugin.py<br/>IPlugin]
     end
 
     subgraph Plugins["插件层"]
