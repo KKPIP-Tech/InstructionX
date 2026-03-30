@@ -223,7 +223,7 @@ class LLMConfig:
                     "embedding_model": "embedding-2",
                     "enabled_chat": True,
                     "enabled_embedding": True,
-                    "support_vision": True
+                    "support_vision": False
                 },
                 "siliconflow": {
                     "name": "SiliconFlow",
