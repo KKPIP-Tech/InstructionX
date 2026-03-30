@@ -195,6 +195,7 @@ class PluginManager:
 
             # 实例化插件
             plugin_instance = plugin_class()
+            plugin_instance._plugin_dir = plugin_dir  # 用于 _load_plugin_info() 直接定位文件
 
             # 生成或加载唯一标识符
             identity = PluginIdentity(plugin_dir)
@@ -240,7 +241,10 @@ class PluginManager:
         Returns:
             插件实例，未找到时返回 None
         """
-        return self._plugin_registry.get(name)
+        plugin_id = self._plugin_name_to_id.get(name)
+        if plugin_id is None:
+            return None
+        return self._plugin_registry.get(plugin_id)
 
     def reload_plugins(self):
         """重新加载所有插件（清空注册表后重新扫描目录）"""
@@ -274,6 +278,40 @@ class PluginManager:
         """
         return self._plugin_name_to_id.get(plugin_name)
 
+    def get_plugin_id_by_type_id(self, plugin_type_id: str) -> Optional[str]:
+        """
+        通过插件类型标识符查询其唯一标识符
+
+        Args:
+            plugin_type_id: 插件类型标识符（如 "string-tools"）
+
+        Returns:
+            UUID 字符串，未找到时返回 None
+        """
+        for plugin in self._plugin_registry.values():
+            try:
+                plugin_info = plugin.plugin_info
+                if plugin_info and plugin_info.plugin_type_id == plugin_type_id:
+                    return plugin.plugin_id
+            except Exception:
+                continue
+        return None
+
+    def get_plugin_by_type_id(self, plugin_type_id: str) -> Optional[IPlugin]:
+        """
+        通过插件类型标识符查询插件实例
+
+        Args:
+            plugin_type_id: 插件类型标识符
+
+        Returns:
+            插件实例，未找到时返回 None
+        """
+        plugin_id = self.get_plugin_id_by_type_id(plugin_type_id)
+        if plugin_id is None:
+            return None
+        return self._plugin_registry.get(plugin_id)
+
     def register_plugin(self, plugin: IPlugin, is_official: bool = False):
         """
         手动注册插件到管理器
@@ -282,7 +320,11 @@ class PluginManager:
             plugin: 插件实例
             is_official: 是否属于官方插件
         """
-        self._plugin_registry[plugin.plugin_name] = plugin
+        plugin_id = plugin.plugin_id
+        if not plugin_id:
+            plugin_id = plugin.plugin_name
+        self._plugin_registry[plugin_id] = plugin
+        self._plugin_name_to_id[plugin.plugin_name] = plugin_id
         if is_official:
             self._official_plugins.append(plugin)
         else:
@@ -295,7 +337,11 @@ class PluginManager:
         Args:
             plugin_name: 插件名称
         """
-        plugin = self._plugin_registry.pop(plugin_name, None)
+        plugin_id = self._plugin_name_to_id.get(plugin_name)
+        if not plugin_id:
+            return
+        plugin = self._plugin_registry.pop(plugin_id, None)
+        self._plugin_name_to_id.pop(plugin_name, None)
         if plugin:
             if plugin in self._official_plugins:
                 self._official_plugins.remove(plugin)
@@ -391,10 +437,15 @@ class PluginManager:
 
             try:
                 # 清理可能缓存的模块以获取最新定义
-                if f"{module_name}.information" in sys.modules:
-                    del sys.modules[f"{module_name}.information"]
-                if f"{module_name}.service" in sys.modules:
-                    del sys.modules[f"{module_name}.service"]
+                modules_to_remove = [
+                    module_name,
+                    f"{module_name}.information",
+                    f"{module_name}.service",
+                    f"{module_name}.entrance",
+                ]
+                for mod_name in modules_to_remove:
+                    if mod_name in sys.modules:
+                        del sys.modules[mod_name]
 
                 info_module = importlib.import_module(f"{module_name}.information")
                 service_module = importlib.import_module(f"{module_name}.service")

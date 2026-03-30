@@ -7,15 +7,19 @@
 - 缓存机制
 - 技能图标和描述获取
 - 生命周期回调
+
+注意：此文件已迁移至 core/interfaces/i_plugin.py。
+此处保留作为向后兼容的导入路径，并扩展了带缓存的实现。
 """
 
 import sys
+import os
+import importlib.util
 from abc import ABC, abstractmethod
-from typing import Optional, TYPE_CHECKING
+from typing import Optional, Tuple, TYPE_CHECKING
 from pathlib import Path
 from PySide6.QtWidgets import QWidget, QApplication, QStyle
 from PySide6.QtGui import QIcon
-from PySide6.QtCore import QObject
 
 if TYPE_CHECKING:
     from .plugin_info_interface import IPluginInfo
@@ -30,7 +34,7 @@ class IPlugin(ABC):
     所有插件必须继承此类并实现抽象方法。该类提供：
     - 插件唯一标识和名称管理
     - 控件缓存机制，避免重复创建
-    - 技能图标和描述的动态加载
+    - 技能图标和描述的动态加载（带缓存）
     - 插件生命周期回调钩子
     """
 
@@ -42,6 +46,8 @@ class IPlugin(ABC):
         self._plugin_name: Optional[str] = None
         self._cached_widget: Optional[QWidget] = None
         self._cached_parent: Optional[QWidget] = None
+        self._info_cache: Optional[Tuple[float, 'IPluginInfo']] = None
+        self._info_cache_path: Optional[str] = None
 
     @property
     @abstractmethod
@@ -100,126 +106,113 @@ class IPlugin(ABC):
         self._cached_widget = widget
         self._cached_parent = parent
         return widget
-    
+
+    def _load_plugin_info(self) -> Optional['IPluginInfo']:
+        """
+        加载并缓存插件信息
+
+        使用文件 mtime 作为缓存失效依据，当文件被修改时自动重新加载。
+
+        Returns:
+            IPluginInfo 实例，加载失败返回 None
+        """
+        try:
+            # 优先使用 _plugin_dir（PluginManager 加载时设置），否则从 sys.modules 查找
+            plugin_dir = getattr(self, '_plugin_dir', None)
+            if plugin_dir is None:
+                plugin_module = sys.modules.get(self.__class__.__module__)
+                if plugin_module and hasattr(plugin_module, '__file__') and plugin_module.__file__:
+                    plugin_dir = Path(plugin_module.__file__).parent
+                else:
+                    return None
+
+            info_file = plugin_dir / "information.py"
+            if not info_file.exists():
+                return None
+
+            current_mtime = os.path.getmtime(info_file)
+
+            # 缓存命中且文件未变化
+            if (isinstance(self._info_cache, tuple) and
+                self._info_cache_path == str(info_file) and
+                self._info_cache[0] == current_mtime):
+                return self._info_cache[1]
+
+            # 重新加载
+            module_name = f"{plugin_dir.name}_information"
+            spec = importlib.util.spec_from_file_location(module_name, info_file)
+            if not (spec and spec.loader):
+                return None
+
+            module = importlib.util.module_from_spec(spec)
+            sys.modules[module_name] = module
+            spec.loader.exec_module(module)
+
+            from .plugin_info_interface import IPluginInfo
+            plugin_info_class = None
+            for attr_name in dir(module):
+                attr = getattr(module, attr_name)
+                if (isinstance(attr, type) and
+                    issubclass(attr, IPluginInfo) and
+                    attr is not IPluginInfo):
+                    plugin_info_class = attr
+                    break
+
+            if not plugin_info_class:
+                return None
+
+            plugin_info = plugin_info_class()
+            self._info_cache = (current_mtime, plugin_info)
+            self._info_cache_path = str(info_file)
+            return plugin_info
+
+        except (ImportError, AttributeError, Exception):
+            return None
+
     @property
     def skill_icon(self) -> Optional[QIcon]:
         """
         获取技能面板按钮图标
 
-        动态从插件目录下的 information.py 文件中加载图标配置。
-        如果文件不存在或加载失败，返回系统默认图标。
+        从缓存的插件信息中加载图标配置。如果文件不存在或加载失败，
+        返回系统默认图标。
 
         Returns:
             Qt 图标对象，加载失败时返回系统默认文件图标
         """
-        try:
-            import importlib.util
+        plugin_info = self._load_plugin_info()
+        if plugin_info is None:
+            app = QApplication.instance()
+            if app and hasattr(app, 'style'):
+                return app.style().standardIcon(QStyle.StandardPixmap.SP_FileIcon)
+            return None
 
-            # 获取插件模块路径
-            plugin_module = sys.modules.get(self.__class__.__module__)
-            if plugin_module and hasattr(plugin_module, '__file__'):
-                # 获取插件根目录
-                plugin_dir = Path(plugin_module.__file__).parent
-                info_file = plugin_dir / "information.py"
+        plugin_dir = getattr(self, '_plugin_dir', None)
+        icon = plugin_info.skill_icon.load_icon(plugin_dir) if plugin_dir else None
 
-                # 文件不存在时返回默认图标
-                if not info_file.exists():
-                    app = QApplication.instance()
-                    if app and hasattr(app, 'style'):
-                        return app.style().standardIcon(QStyle.StandardPixmap.SP_FileIcon)
-                    return None
+        if icon is None or icon.isNull():
+            app = QApplication.instance()
+            if app and hasattr(app, 'style'):
+                return app.style().standardIcon(QStyle.StandardPixmap.SP_FileIcon)
+            return None
+        return icon
 
-                # 动态加载 information.py 模块
-                module_name = f"{plugin_dir.name}_information"
-                spec = importlib.util.spec_from_file_location(module_name, info_file)
-                if spec and spec.loader:
-                    module = importlib.util.module_from_spec(spec)
-                    sys.modules[module_name] = module
-                    spec.loader.exec_module(module)
-
-                    # 查找实现 IPluginInfo 接口的类
-                    from .plugin_info_interface import IPluginInfo
-                    plugin_info_class = None
-
-                    for attr_name in dir(module):
-                        attr = getattr(module, attr_name)
-                        if (isinstance(attr, type) and
-                            issubclass(attr, IPluginInfo) and
-                            attr is not IPluginInfo):
-                            plugin_info_class = attr
-                            break
-
-                    if plugin_info_class:
-                        icon = plugin_info_class().skill_icon.load_icon(plugin_dir)
-
-                        # 图标加载失败时返回默认图标
-                        if icon is None or icon.isNull():
-                            app = QApplication.instance()
-                            if app and hasattr(app, 'style'):
-                                return app.style().standardIcon(QStyle.StandardPixmap.SP_FileIcon)
-
-                        return icon
-
-        except (ImportError, AttributeError, Exception) as e:
-            self._logger.warning(get_name(), f'Failed to load icon from information.py: {e}')
-
-        # 所有加载失败时返回系统默认图标
-        app = QApplication.instance()
-        if app and hasattr(app, 'style'):
-            return app.style().standardIcon(QStyle.StandardPixmap.SP_FileIcon)
-        return None
-    
     @property
     def skill_description(self) -> str:
         """
         获取技能面板按钮的简短描述文本
 
-        动态从插件目录下的 information.py 文件中加载描述。
-        如果文件不存在或加载失败，返回插件名称作为后备。
+        从缓存的插件信息中加载描述。如果文件不存在或加载失败，
+        返回插件名称作为后备。
 
         Returns:
             技能描述文本
         """
-        try:
-            import importlib.util
-
-            # 获取插件模块路径
-            plugin_module = sys.modules.get(self.__class__.__module__)
-            if plugin_module and hasattr(plugin_module, '__file__'):
-                # 获取插件根目录
-                plugin_dir = Path(plugin_module.__file__).parent
-                info_file = plugin_dir / "information.py"
-
-                # 动态加载 information.py 模块
-                if info_file.exists():
-                    module_name = f"{plugin_dir.name}_information"
-                    spec = importlib.util.spec_from_file_location(module_name, info_file)
-                    if spec and spec.loader:
-                        module = importlib.util.module_from_spec(spec)
-                        sys.modules[module_name] = module
-                        spec.loader.exec_module(module)
-
-                        # 查找实现 IPluginInfo 接口的类
-                        from .plugin_info_interface import IPluginInfo
-                        plugin_info_class = None
-
-                        for attr_name in dir(module):
-                            attr = getattr(module, attr_name)
-                            if (isinstance(attr, type) and
-                                issubclass(attr, IPluginInfo) and
-                                attr is not IPluginInfo):
-                                plugin_info_class = attr
-                                break
-
-                        if plugin_info_class:
-                            return plugin_info_class().skill_description
-
-        except (ImportError, AttributeError, Exception) as e:
-            self._logger.warning(get_name(), f'Failed to load description from information.py: {e}')
-
-        # 加载失败时返回插件名称作为后备
+        plugin_info = self._load_plugin_info()
+        if plugin_info:
+            return plugin_info.skill_description
         return self.plugin_name
-    
+
     @property
     def skill_tooltip(self) -> str:
         """
@@ -261,47 +254,9 @@ class IPlugin(ABC):
         """
         获取插件信息对象
 
-        动态从插件目录下的 information.py 文件中加载并实例化插件信息类。
-        如果文件不存在或加载失败，返回 None。
+        从缓存中加载插件信息类实例。如果文件不存在或加载失败，返回 None。
 
         Returns:
             IPluginInfo 实例，未定义时返回 None
         """
-        try:
-            import importlib.util
-
-            # 获取插件模块路径
-            plugin_module = sys.modules.get(self.__class__.__module__)
-            if plugin_module and hasattr(plugin_module, '__file__'):
-                # 获取插件根目录
-                plugin_dir = Path(plugin_module.__file__).parent
-                info_file = plugin_dir / "information.py"
-
-                # 动态加载 information.py 模块
-                if info_file.exists():
-                    module_name = f"{plugin_dir.name}_information"
-                    spec = importlib.util.spec_from_file_location(module_name, info_file)
-                    if spec and spec.loader:
-                        module = importlib.util.module_from_spec(spec)
-                        sys.modules[module_name] = module
-                        spec.loader.exec_module(module)
-
-                        # 查找实现 IPluginInfo 接口的类
-                        from .plugin_info_interface import IPluginInfo
-                        plugin_info_class = None
-
-                        for attr_name in dir(module):
-                            attr = getattr(module, attr_name)
-                            if (isinstance(attr, type) and
-                                issubclass(attr, IPluginInfo) and
-                                attr is not IPluginInfo):
-                                plugin_info_class = attr
-                                break
-
-                        if plugin_info_class:
-                            return plugin_info_class()
-
-        except (ImportError, AttributeError, Exception) as e:
-            self._logger.warning(get_name(), f'Failed to load plugin info from information.py: {e}')
-
-        return None
+        return self._load_plugin_info()
