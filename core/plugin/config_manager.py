@@ -19,6 +19,9 @@ class PluginConfigManager:
 
     管理插件显示顺序等配置信息的持久化。采用 JSON 格式存储配置，
     支持官方插件和第三方插件两组独立的顺序配置。
+
+    注意：此类不是单例，由 PluginManager 在初始化时创建实例，
+    主要作为 JSON 配置文件读写工具使用。
     """
 
     def __init__(self, config_dir: Optional[Path] = None):
@@ -48,7 +51,7 @@ class PluginConfigManager:
         Returns:
             包含 'official_plugins' 和 'thirdparty_plugins' 键的字典，
             分别存储官方插件和第三方插件的 UUID 列表。
-            配置文件不存在或格式错误时返回空列表。
+            配置文件不存在或格式错误时返回空字典结构 `{"official_plugins": [], "thirdparty_plugins": []}`。
         """
         if not self.config_file.exists():
             return {
@@ -108,30 +111,30 @@ class PluginConfigManager:
             self._logger.error(get_name(), f'Error saving plugin order config: {e}')
             return False
 
-    def update_official_order(self, plugin_names: List[str]) -> bool:
+    def update_official_order(self, plugin_uuids: List[str]) -> bool:
         """
         仅更新官方插件的显示顺序
 
         Args:
-            plugin_names: 官方插件 UUID 列表
+            plugin_uuids: 官方插件 UUID 列表
 
         Returns:
             保存操作是否成功
         """
         config = self.load_plugin_order()
-        config["official_plugins"] = plugin_names
+        config["official_plugins"] = plugin_uuids
         return self.save_plugin_order(config["official_plugins"], config["thirdparty_plugins"])
 
-    def update_thirdparty_order(self, plugin_names: List[str]) -> bool:
+    def update_thirdparty_order(self, plugin_uuids: List[str]) -> bool:
         """
         仅更新第三方插件的显示顺序
 
         Args:
-            plugin_names: 第三方插件 UUID 列表
+            plugin_uuids: 第三方插件 UUID 列表
 
         Returns:
             保存操作是否成功
         """
         config = self.load_plugin_order()
-        config["thirdparty_plugins"] = plugin_names
+        config["thirdparty_plugins"] = plugin_uuids
         return self.save_plugin_order(config["official_plugins"], config["thirdparty_plugins"])

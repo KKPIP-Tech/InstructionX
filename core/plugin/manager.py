@@ -480,6 +480,8 @@ class PluginManager:
             for attr_name in dir(service_module):
                 attr = getattr(service_module, attr_name)
                 if isinstance(attr, type) and attr.__name__ == 'Service':
+                    # 注意：Service 类名硬编码，不支持自定义类名。
+                    # 这是当前 API 注册机制的限制，详见文档。
                     service_class = attr
                     break
 
