@@ -30,11 +30,11 @@
 
 | 方法 | 功能 |
 |------|------|
-| `stream_send_message` | 流式发送消息（生成器，UI 主要使用此方法） |
-| `send_message` | 发送非流式消息 |
+| `stream_send_message` | 流式发送消息（生成器，UI 主要使用此方法），返回 Dict 含 chunk/done/error 字段 |
+| `send_message` | 发送非流式消息，返回 Dict 含 success/response/model/reasoning/tool_calls/error/error_type 字段 |
 | `get_providers` | 获取可用 Provider 列表 |
 | `get_models` | 获取指定 Provider 的模型列表 |
-| `validate_provider` | 验证 Provider 配置是否正确 |
+| `validate_provider` | 验证 Provider 配置是否正确，返回 Dict 含 valid/message/supports_vision 字段 |
 
 ### 界面布局
 
@@ -59,8 +59,6 @@
 ### 功能描述
 
 提供基础的文本大小写转换功能。
-
-> 注意：此插件没有 information.py 文件，不通过标准框架 metadata 机制注册 API。
 
 ### service_api
 
@@ -148,7 +146,7 @@
 
 ### 功能描述
 
-完整的任务管理功能，支持 CRUD、状态跟踪、优先级管理和导出。
+完整的任务管理功能，支持任务创建、状态切换/跟踪、优先级设置和导出。
 
 ### service_api
 
@@ -243,7 +241,7 @@ TaskManager ID 列表（双击编辑）、订阅/取消订阅按钮、统计信�
 
 **版本**: `release.1.0.0`
 
-**开发者**: InstructionX 官方
+**开发者**: InstructionX Team
 
 ### 功能描述
 
@@ -340,11 +338,11 @@ TaskManager ID 列表（双击编辑）、订阅/取消订阅按钮、统计信�
 
 | 标签页 | 内容 |
 |--------|------|
-| Basic | 按钮、复选框、单选按钮、滑块、进度条 |
-| Input | 输入框、文本框、SpinBox、ComboBox |
-| Container | TabWidget、GroupBox、ScrollArea |
-| List | ListWidget、TreeWidget、TableWidget |
-| Menu/Toolbar | MenuBar、ToolBar、Splitter |
+| 基础控件 | 按钮、复选框、单选按钮、滑块、进度条 |
+| 输入控件 | 输入框、文本框、SpinBox、ComboBox |
+| 容器控件 | TabWidget、GroupBox、ScrollArea |
+| 列表控件 | ListWidget、TreeWidget、TableWidget |
+| 菜单工具栏 | MenuBar、ToolBar、Splitter |
 
 ---
 

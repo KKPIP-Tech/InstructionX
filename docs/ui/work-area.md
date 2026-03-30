@@ -38,7 +38,8 @@ WorkArea 使用 `QVBoxLayout`，通过以下方式管理多个 Widget：
 
 - 使用 `add_widget()` 将 Widget 添加到布局（显示该 Widget）
 - 使用 `clear()` 或 `clear_keep_highlight()` 移除 Widget
-- 切换插件时，旧的 Widget 被 `hide()`（而非销毁），新的 Widget 被 `show()`，从而保留 UI 状态
+- `clear()` 移除并销毁（`deleteLater()`）所有 Widget，通常用于彻底清空
+- `clear_keep_highlight()` 仅隐藏（`hide()`）Widget 而不销毁，保留实例以供缓存复用，切换插件时使用此方法
 
 ### 3.2 Widget 管理
 
@@ -69,15 +70,12 @@ def add_widget(self, widget: QWidget):
     """
     添加 Widget 到工作区
 
+    注意：此方法不负责清空现有 Widget。清空由 clear_keep_highlight() 单独负责，
+    由调用方在 add_widget 之前显式调用。
+
     Args:
         widget: 要添加的 QWidget
     """
-    # 移除当前所有 Widget
-    while self.work_layout.count() > 0:
-        child = self.work_layout.takeAt(0)
-        if child.widget():
-            child.widget().hide()
-
     # 添加新 Widget 并显示
     self.work_layout.addWidget(widget)
     widget.show()
@@ -101,8 +99,8 @@ def clear(self, clear_highlight: bool = True):
             child.widget().deleteLater()
 
     # 如果需要清除高亮，调用回调
-    if clear_highlight and self.clear_highlight_callback:
-        self.clear_highlight_callback()
+    if clear_highlight and self._clear_highlight_callback:
+        self._clear_highlight_callback()
 
     # 显示占位符
     self.show_placeholder()
@@ -130,7 +128,19 @@ def set_clear_highlight_callback(self, callback: Callable):
     Args:
         callback: 回调函数
     """
-    self.clear_highlight_callback = callback
+    self._clear_highlight_callback = callback
+```
+
+### 4.6 显示占位符
+
+```python
+def show_placeholder(self):
+    """
+    显示占位标签
+
+    将占位标签添加回布局中央，提示用户点击技能按钮。
+    """
+    self.work_layout.addWidget(self.work_placeholder)
 ```
 
 ---
@@ -141,17 +151,22 @@ def set_clear_highlight_callback(self, callback: Callable):
 class WorkArea:
     def __init__(self, parent=None):
         # 创建根 Widget
-        self._widget = QWidget(parent)
+        self.work_area = QWidget(parent)
 
         # 创建垂直布局
-        self.work_layout = QVBoxLayout(self._widget)
+        self.work_layout = QVBoxLayout(self.work_area)
         self.work_layout.setContentsMargins(0, 0, 0, 0)
 
         # 占位符标签
         self.work_placeholder = QLabel("点击上方技能按钮，在此处显示插件功能")
+        self.work_placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.work_placeholder.setProperty("placeholder", "true")
+        self.work_placeholder.style().unpolish(self.work_placeholder)
+        self.work_placeholder.style().polish(self.work_placeholder)
+        self.work_layout.addWidget(self.work_placeholder)
 
         # 回调函数
-        self.clear_highlight_callback = None
+        self._clear_highlight_callback = None
 ```
 
 ---

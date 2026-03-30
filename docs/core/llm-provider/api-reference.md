@@ -86,11 +86,13 @@ from core.llm.provider_interface import ModelInfo
 # 属性
 model.id                 # str: 模型 ID
 model.name               # str: 模型名称
-model.support_chat       # bool: 是否支持 Chat
-model.support_streaming  # bool: 是否支持流式
-model.support_embedding  # bool: 是否支持 Embedding
-model.support_vision     # bool: 是否支持 Vision
-model.extra              # Dict: 额外信息
+model.support_chat               # bool: 是否支持 Chat
+model.support_streaming          # bool: 是否支持流式
+model.support_embedding          # bool: 是否支持 Embedding
+model.support_vision             # bool: 是否支持 Vision
+model.support_function_calling   # bool: 是否支持函数调用
+model.context_length             # int:  上下文窗口大小（token 数）
+model.extra                      # Dict: 额外信息
 
 # 方法
 model.to_dict()          # 转换为字典
@@ -250,8 +252,6 @@ def chat(
     model: Optional[str] = None,
     temperature: float = 0.7,
     max_tokens: Optional[int] = None,
-    tools: Optional[List[Dict]] = None,
-    images: Optional[List[str]] = None,
     **kwargs
 ) -> ChatResponse
 ```
@@ -264,9 +264,7 @@ def chat(
 - `model`: 模型名称（可选，默认使用配置中的模型）
 - `temperature`: 温度参数，控制随机性，范围 0-2，默认 0.7
 - `max_tokens`: 最大生成 token 数（可选）
-- `tools`: Function Calling 工具定义列表（可选，格式符合 OpenAI Function Calling 规范）
-- `images`: 图片 base64 列表（可选，用于 Vision 功能，仅部分 Provider 支持）
-- `**kwargs`: 其他 Provider 特定参数
+- `**kwargs`: 其他 Provider 特定参数（如 `images` 可通过 `Message` 对象的 `images` 字段传入，`tools` 为 Function Calling 工具定义列表，格式符合 OpenAI Function Calling 规范）
 
 **返回**:
 - `ChatResponse`: 聊天响应对象，包含以下属性：
@@ -283,7 +281,7 @@ def chat(
 - 需要两轮对话：第一轮获取工具调用，第二轮传入工具结果
 
 **Vision 说明**:
-- `images` 参数接受 base64 编码的图片列表
+- 图片通过 `Message` 对象的 `images` 字段传入（base64 编码的图片列表）
 - 仅支持 Vision 的 Provider（如 SiliconFlow、GLM、Ollama）才能使用
 - MiniMax Provider 不支持 Vision 功能
 
@@ -522,7 +520,7 @@ async def async_stream_chat(
     temperature: float = 0.7,
     max_tokens: Optional[int] = None,
     **kwargs
-) -> Any
+) -> AsyncIterator[ChatResponse]
 ```
 
 发送流式聊天请求（异步）。
@@ -746,7 +744,7 @@ Provider 实现类的细节（如请求格式差异、响应解析逻辑等）�
 
 ## 5. 完整示例
 
-### 6.1 基础使用
+### 5.1 基础使用
 
 ```python
 from core.llm import get_llm_provider
@@ -768,7 +766,7 @@ print(f"Model: {response.model}")
 print(f"Response: {response.content}")
 ```
 
-### 6.2 使用 Vision
+### 5.2 使用 Vision
 
 > **注意**：MiniMax Provider 不支持 Vision，请使用 SiliconFlow、GLM 或 Ollama。
 
@@ -794,7 +792,7 @@ response = provider.chat(
 print(response.content)
 ```
 
-### 6.3 并发调用
+### 5.3 并发调用
 
 ```python
 import asyncio
@@ -829,7 +827,7 @@ async def concurrent_chat():
 asyncio.run(concurrent_chat())
 ```
 
-### 6.4 Embedding 相似度计算
+### 5.4 Embedding 相似度计算
 
 ```python
 import numpy as np
@@ -851,7 +849,7 @@ similarity = np.dot(vec1, vec2) / (np.linalg.norm(vec1) * np.linalg.norm(vec2))
 print(f"相似度: {similarity:.4f}")
 ```
 
-### 6.5 Function Calling
+### 5.5 Function Calling
 
 ```python
 from core.llm import get_llm_provider
@@ -919,7 +917,7 @@ if response.tool_calls:
 
 ---
 
-## 7. 相关文档
+## 6. 相关文档
 
 - [LLM Provider 概述](overview.md)
 - [插件开发指南](../plugin-system/plugin-development.md)

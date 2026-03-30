@@ -14,6 +14,8 @@ graph TB
 
     subgraph UI["UI 层"]
         MW[ui/main_window.py<br/>InstructionXMainWindow]
+        TB[ui/title_bar.py<br/>CustomTitleBar]
+        SB[ui/skills_panel/skill_button.py<br/>SkillButton]
         SP[ui/skills_panel/panel.py<br/>SkillsPanel]
         WA[ui/work_area/work_area.py<br/>WorkArea]
     end
@@ -26,13 +28,21 @@ graph TB
         IPlugin[core/interfaces/i_plugin.py<br/>IPlugin]
     end
 
+    subgraph Utils["工具层"]
+        STYLE[utils/style_qss/__init__.py<br/>StyleQSS]
+    end
+
     subgraph Plugins["插件层"]
         PLUGIN[plugin/ + custom_plugin/]
     end
 
     MAIN --> MW
+    MW --> TB
     MW --> SP
     MW --> WA
+    SP --> SB
+    MW --> DP
+    MW --> STYLE
     SP --> PM
     PM --> IPlugin
     IPlugin --> PLUGIN
@@ -64,6 +74,7 @@ self._official_plugins: List[IPlugin]      # 官方插件列表
 self._thirdparty_plugins: List[IPlugin]    # 第三方插件列表
 self._plugin_registry: Dict[str, IPlugin]   # UUID -> 插件实例
 self._api_registry: Dict[str, PluginAPI]   # UUID -> API 信息
+self._config_manager: PluginConfigManager  # 插件顺序配置管理器
 ```
 
 ### 2.2 DataProvider
@@ -98,12 +109,16 @@ self.assets_dir: Path            # 资源目录
 | 异步任务 | `register_async_task()` 线程池执行 |
 | 定时任务 | `register_scheduled_task()` 定时调度 |
 | 任务恢复 | 应用重启后恢复定时任务 |
+| 长期任务 | `register_long_running_task()` 持续运行，支持自动重启 |
+| 状态更新 | `update_long_running_task_status()` 更新长期任务状态 |
+| 优雅关闭 | `shutdown()` 安全关闭任务管理器 |
 
 **关键属性**:
 ```python
-self._executor: ThreadPoolExecutor      # 线程池
-self._running_tasks: Dict               # 运行中的任务
-self._scheduled_task_factories: Dict    # 定时任务工厂
+self._executor: ThreadPoolExecutor           # 线程池
+self._running_tasks: Dict                    # 运行中的任务
+self._scheduled_task_factories: Dict         # 定时任务工厂
+self._long_running_task_factories: Dict      # 长期任务工厂
 ```
 
 ---
@@ -112,7 +127,7 @@ self._scheduled_task_factories: Dict    # 定时任务工厂
 
 ### 3.1 单例列表
 
-项目中有 **4 个核心单例**：
+项目中有 **5 个核心单例**（含 1 个内部单例）：
 
 | 类名 | 文件 | 用途 |
 |------|------|------|
@@ -120,6 +135,7 @@ self._scheduled_task_factories: Dict    # 定时任务工厂
 | **DataProvider** | `core/data/data_provider.py` | 数据管理 |
 | **BackgroundTaskManager** | `core/task/background_task.py` | 任务调度 |
 | **LLMProvider** | `core/llm/llm_provider.py` | 大语言模型管理 |
+| **TaskStorage** | `core/task/task_storage.py` | 任务数据持久化（BackgroundTaskManager 内部使用） |
 
 ### 3.2 单例实现模式
 
@@ -164,6 +180,7 @@ graph LR
     PM[PluginManager] <--> P[插件]
     DP[DataProvider] <--> P
     BTM[BackgroundTaskManager] <--> P
+    LLM[LLMProvider] <--> P  # 插件通过 get_llm_provider() 或 ILLMFacade 调用 LLM
 ```
 
 ### 4.2 发布/订阅
@@ -192,6 +209,21 @@ sequenceDiagram
     PM->>B: 路由并执行方法
     B-->>PM: 返回结果
     PM-->>A: 返回结果
+```
+
+### 4.4 依赖注入（PluginServices）
+
+> 注意：此设计为框架预留。当前所有插件均直接导入单例（如 `DataProvider()` / `BackgroundTaskManager()`），而非通过 `PluginServices` 注入。此设计为未来插件隔离和测试提供基础。
+
+`core/interfaces/plugin_services.py` 中定义了 `PluginServices` 数据类，通过依赖注入将 `IDataProvider`、`ITaskManager`、`ILLMFacade`、`ILogger` 聚合传递给插件：
+
+```python
+@dataclass
+class PluginServices:
+    data_provider: IDataProvider
+    task_manager: ITaskManager
+    llm_facade: ILLMFacade = None
+    logger: ILogger = None
 ```
 
 ---
@@ -232,7 +264,7 @@ sequenceDiagram
             "status": "completed",
             "result": {},
             "created_at": "2026-01-01T00:00:00",
-            "completed_at": "2026-01-01T00:01:00"
+            "finished_at": "2026-01-01T00:01:00"
         }
     },
     "scheduled_tasks": {
@@ -275,9 +307,7 @@ graph TD
     MW --> WA[WorkArea]
     MW --> PM[PluginManager<br/>单例]
     MW --> LLM[LLMProvider<br/>单例]
-
-    PM --> DP[DataProvider<br/>单例]
-    PM --> BTM[BackgroundTaskManager<br/>单例]
+    MW --> DP[DataProvider<br/>单例]    # 主窗口保存/加载主题设置
 
     SP --> PM
     WA --> PM
@@ -285,15 +315,15 @@ graph TD
     PM -.->|插件加载| PL[插件层]
     DP -.->|数据存储| PL
     BTM -.->|任务调度| PL
-    LLM -.->|LLM 调用| PL
+    LLM -.->|LLM 调用| PL  # LLMSettingsDialog 是 LLM 配置的 UI 入口
 
     PL --> IPlugin[IPlugin 接口]
 ```
 
 **依赖规则**:
 - UI 层依赖核心层
-- 核心层相互独立（通过接口通信）
-- 插件依赖核心层
+- 核心层尽量减少相互依赖，但部分核心模块存在直接依赖关系（如 BackgroundTaskManager 依赖 TaskStorage，PluginManager 依赖 PluginConfigManager）
+- 插件依赖核心层（通过接口或直接调用单例）
 - 数据通过 DataProvider 存储
 
 ---
@@ -301,9 +331,14 @@ graph TD
 ## 相关文档
 
 - [系统架构概述](overview.md)
+- [完整架构分析](full-analysis.md)
 - [插件系统概述](../core/plugin-system/overview.md)
 - [DataProvider 概述](../core/data-provider/overview.md)
 - [LLM Provider 概述](../core/llm-provider/overview.md)
+- [后台任务概述](../core/background-task/overview.md)
+- [后台任务 API 参考](../core/background-task/api-reference.md)
+- [后台任务存储](../core/background-task/task-storage.md)
+- [完整 API 参考](../api/full-reference.md)
 
 ---
 

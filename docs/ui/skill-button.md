@@ -78,6 +78,17 @@ def is_active(self) -> bool
 
 返回当前是否为激活状态。
 
+### skill_tooltip
+
+按钮的悬浮提示文本，由 `IPlugin.skill_tooltip` 属性提供，格式为 `"插件名称\n技能描述"`。
+
+**来源**: `IPlugin.skill_tooltip`（`core/plugin/plugin_interface.py`）
+
+```python
+# SkillButton 构造函数中设置 tooltip
+self.setToolTip(f"{name}\n{description}")
+```
+
 ---
 
 ## 5. 内部方法
@@ -87,7 +98,7 @@ def is_active(self) -> bool
 自动处理按钮文本的换行和截断：
 
 - 如果文本包含 `\n`，按换行符分割
-- 否则，如果长度 > 5，在第 5 个字符处换行
+- 否则，如果长度 > 5，在文本中点处换行（midpoint split）
 - 每行最大 5 个字符，超出部分用 `...` 截断
 - 最多显示 2 行
 
@@ -101,8 +112,8 @@ def is_active(self) -> bool
 
 更新按钮样式属性并触发 Qt 样式重算。
 
-- 根据 `_is_active` 设置 `active` 属性（`"true"` 或 `""`)
-- 通过 `setProperty("active", value)` + `style().unpolish()` + `style().polish()` 触发样式更新
+- 根据 `_is_active` 设置 `active` 属性（`"true"` 或 `"false"`）
+- 通过 `setProperty("active", value)` + `style().unpolish()` + `style().polish()` 触发样式更新，确保 QSS 重新匹配
 
 ---
 
@@ -120,8 +131,14 @@ def is_active(self) -> bool
 
 ```css
 SkillButton[active="true"] {
-    border: 2px solid accent_color;
-    border-radius: 4px;
+    border: 2px solid {accent};
+    border-radius: 6px;
+    padding: 2px;
+    background-color: {controlFillSelected};
+    color: {accent};
+    text-align: top;
+    font-weight: 500;
+    font-size: 10px;
 }
 ```
 

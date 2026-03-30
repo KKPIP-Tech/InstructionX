@@ -27,7 +27,12 @@
 - 项目名称: "InstructionX - CE"（加粗，16pt）
 - 版本号: "版本 0.1.0"（次要样式）
 - 版权声明: "© 2025-2026 dakuang. 保留所有权利。"
-- 专有软件声明: "Proprietary software. Commercial use requires authorization if thresholds are exceeded."
+- 专有软件声明:
+  ```
+  Proprietary software.
+  Commercial use requires authorization if thresholds are exceeded.
+  ```
+  （代码中以 `\n` 换行，实际显示为两行）
 - 关闭按钮
 
 ### 1.4 使用方式
@@ -75,13 +80,13 @@ dialog.exec()
 | Embedding 模型 | QComboBox（可编辑） | 嵌入模型选择 |
 | 启用 Chat | QCheckBox | 是否启用聊天功能 |
 | 启用 Embedding | QCheckBox | 是否启用嵌入功能 |
-| Vision 支持 | QLabel（只读） | 显示是否支持视觉（绿色/红色） |
-| Function Calling | QLabel（只读） | 显示是否支持函数调用 |
+| 多模态 | QLabel（只读） | 显示是否支持视觉（绿色文字"支持" / 灰色文字"不支持"） |
+| Function Calling | QLabel（只读） | 显示是否支持函数调用（绿色文字"支持" / 灰色文字"不支持"） |
 | Context Length | QLabel（只读） | 最大上下文长度 |
 
 ### 2.5 底部按钮
 
-- **刷新模型**: 强制从 API 重新获取模型列表
+- **刷新模型**: 强制从 API 重新获取模型列表；填写 API Key 后按钮变为"待刷新"，需点击此按钮刷新模型
 - **测试连接**: 测试 Provider 连接是否正常
 - **保存**: 保存当前配置
 - **取消**: 关闭对话框，不保存
@@ -90,19 +95,21 @@ dialog.exec()
 
 ```python
 from ui.dialog.llm_settings_dialog import LLMSettingsDialog
+from core.llm.llm_provider import get_llm_provider
 
 dialog = LLMSettingsDialog(parent_window)
-dialog.config_changed.connect(self._on_llm_config_changed)
-if dialog.exec():
-    # 配置已保存，LLM Provider 已刷新
-    pass
+if dialog.exec() == QDialog.DialogCode.Accepted:
+    # 配置已保存，重新加载 LLM Provider
+    get_llm_provider().reload_config()
 ```
 
 ### 2.7 信号
 
 ```python
-config_changed = Signal()  # 配置保存后发射
+config_changed = Signal()  # 配置保存后发射，可供自定义使用
 ```
+
+> **备注**: `config_changed` 信号在保存成功后发射。如需在主窗口中使用此信号，可连接自定义槽函数；主窗口默认通过 `exec()` 返回值判断并手动调用 `get_llm_provider().reload_config()`。
 
 ---
 
@@ -126,19 +133,18 @@ config_changed = Signal()  # 配置保存后发射
 左右分栏布局：
 
 ```
-┌──────────────────────────────────────────────────┐
-│  插件排序                                         [×]  │
-├──────────────────────────────────────────────────┤
-│  官方功能                    │  第三方功能              │
-│  ┌──────────────────────┐  │  ┌──────────────────┐  │
-│  │ ≡ LLM Chat          │  │  │ ≡ API Demo      │  │
-│  │ ≡ 文本格式化         │  │  │ ≡ 单位转换       │  │
-│  │ ≡ 任务管理器         │  │  │ ≡ 颜色转换       │  │
-│  │ ≡ ...              │  │  │ ≡ ...           │  │
-│  └──────────────────────┘  │  └──────────────────┘  │
-├──────────────────────────────────────────────────┤
-│               [重置]     [取消]     [保存]          │
-└──────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────┐
+│  拖动插件项来调整顺序                                    │
+├──────────────────────────────────────────────────────┤
+│  官方插件                       │  第三方插件            │
+│  ┌─────────────────────────┐  │  ┌─────────────────┐  │
+│  │ 1 LLM Chat              │  │  │ 1 API Demo     │  │
+│  │ 2 文本格式化              │  │  │ 2 单位转换     │  │
+│  │ ...                     │  │  │ ...            │  │
+│  └─────────────────────────┘  │  └─────────────────┘  │
+├──────────────────────────────────────────────────────┤
+│              [重置]     [取消]     [保存]                │
+└──────────────────────────────────────────────────────┘
 ```
 
 ### 3.4 功能特性
@@ -156,7 +162,7 @@ from ui.dialog.plugin_order_dialog import PluginOrderDialog
 dialog = PluginOrderDialog(plugin_manager, parent_window)
 if dialog.exec():
     # 排序已保存，SkillsPanel 需要刷新
-    skills_panel.refresh_skills()
+    skills_panel.load_skills_from_manager()
 ```
 
 ---

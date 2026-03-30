@@ -50,7 +50,7 @@ module_name = get_name()  # 自动返回调用者模块名
 ### 3.1 输出格式
 
 ```
-[YYYY-MM-DD][HH-MM-SS][模块名称][等级][Message-->][消息内容] || From module [模块名]
+[YYYY-MM-DD][HH-MM-SS][模块名称][等级][Message-->][消息内容]
 ```
 
 ### 3.2 日志级别
@@ -181,7 +181,6 @@ graph TB
 from .logging_tools import LoggerManager, get_name
 
 __all__ = [
-    "set_style_qss_theme",
     "LoggerManager",
     "get_name"
 ]

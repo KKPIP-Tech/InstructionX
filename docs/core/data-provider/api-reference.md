@@ -296,6 +296,8 @@ def subscribe(
 **异常**:
 - `DataProviderError`: 目标插件不存在时抛出
 
+**注意**: 系统不阻止订阅任意 key，仅在 `notify=True` 且 `namespace=PUBLIC` 时才会触发回调通知。
+
 **示例**:
 ```python
 def on_duration_change(plugin_id, key, old_value, new_value):

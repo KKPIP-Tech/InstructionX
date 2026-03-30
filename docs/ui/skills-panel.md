@@ -61,8 +61,10 @@ graph TB
 - **提示**: 鼠标悬停时显示的名称和描述
 
 **文本自动处理**:
-- 插件名称超过 5 个字符时会自动换行，每行最多显示 5 个字符
-- 超长文本末尾自动添加省略号（...）
+- 允许插件设计者自行决定换行位置（使用 `\n`）
+- 如果文本不含 `\n` 且长度超过 5 个字符，自动在中点处换行（midpoint split）
+- 每行最多 5 个字符，超出部分末尾自动添加省略号（...）
+- 最多显示 2 行
 - 避免按钮因文本过长而破坏布局
 
 ### 3.2 按钮状态
@@ -70,9 +72,8 @@ graph TB
 | 状态 | 说明 |
 |------|------|
 | 正常 | 默认显示 |
-| 悬停 | 鼠标悬停时高亮 |
-| 选中/活跃 | 当前正在使用的插件 |
-| 禁用 | 不可点击（当前未使用） |
+| 悬停 | 鼠标悬停时高亮（背景变亮、边框显现） |
+| 选中/活跃 | 当前正在使用的插件（accent 色边框高亮） |
 
 ---
 
@@ -96,14 +97,14 @@ skill_clicked = Signal(object)
 ### 5.1 设置插件管理器
 
 ```python
-def set_plugin_manager(self, manager: PluginManager):
+def set_plugin_manager(self, plugin_manager):
     """
     设置插件管理器
 
     Args:
-        manager: PluginManager 实例
+        plugin_manager: PluginManager 实例
     """
-    self.plugin_manager = manager
+    self.plugin_manager = plugin_manager
 ```
 
 ### 5.2 加载技能
@@ -207,12 +208,13 @@ def _clear_all_active_states(self):
 from ui.skills_panel.panel import SkillsPanel
 from core.plugin.manager import PluginManager
 
-# 创建技能面板
-self.skills_panel = SkillsPanel(central_widget)
+# 创建技能面板（传入容器，而非 central_widget）
+self.skills_panel = SkillsPanel(self._container)
 
 # 设置插件管理器
 self.plugin_manager = PluginManager()
 self.plugin_manager.load_plugins()
+self.plugin_manager.apply_custom_order()  # 应用自定义顺序
 self.skills_panel.set_plugin_manager(self.plugin_manager)
 
 # 加载技能
@@ -227,12 +229,21 @@ self.skills_panel.skill_clicked.connect(self._on_skill_clicked)
 ```python
 def _on_skill_clicked(self, plugin):
     """处理技能按钮点击"""
-    # 清除工作区
+    # 清除工作区（不清除按钮高亮）
     self.work_area.clear_keep_highlight()
 
     # 获取并显示插件 Widget
     plugin_widget = plugin.get_widget(parent=self.work_area.get_widget())
-    self.work_area.add_widget(plugin_widget)
+    if plugin_widget:
+        self.work_area.add_widget(plugin_widget)
+    else:
+        # 如果插件 widget 创建失败，显示错误信息
+        error_label = QLabel(f"无法加载插件：{plugin.plugin_name}")
+        error_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        error_label.setProperty("error", "true")
+        error_label.style().unpolish(error_label)
+        error_label.style().polish(error_label)
+        self.work_area.add_widget(error_label)
 ```
 
 ---
@@ -271,7 +282,7 @@ SkillsPanel 使用以下颜色变量：
 
 | 颜色变量 | 浅色主题 | 深色主题 | 用途 |
 |---------|---------|---------|------|
-| `skillPanel` | `#F5F5F5` | `#787878` | 面板背景 |
+| `skillPanel` | `#F5F5F5` | `#454545` | 面板背景 |
 | `skillPanelTab` | `#E8E8E8` | `#6A6A6A` | Tab 背景 |
 | `windowText` | `#000000` | `#FFFFFF` | 文字颜色 |
 | `accent` | `#0078D4` | `#0078D4` | 选中边框 |
@@ -286,7 +297,7 @@ SkillsPanel 与工作区保持色彩层次区分：
 - WorkArea: `#FFFFFF`（白色）
 
 **深色模式：**
-- SkillsPanel: `#787878`（中灰）
+- SkillsPanel: `#454545`（深灰）
 - WorkArea: `#202020`（深灰）
 
 ### 8.3 样式文件
@@ -314,9 +325,23 @@ SkillsPanel QTabBar::tab:selected {
 SkillButton {
     color: {windowText};
 }
+SkillButton:hover {
+    background-color: {controlFillHover};
+    border: 1px solid {borderLight};
+}
+SkillButton:pressed {
+    background-color: {controlFillPressed};
+    border: 1px solid {border};
+}
 SkillButton[active="true"] {
     border: 2px solid {accent};
+    border-radius: 6px;
+    padding: 2px;
     background-color: {controlFillSelected};
+    color: {accent};
+    text-align: top;
+    font-weight: 500;
+    font-size: 10px;
 }
 ```
 

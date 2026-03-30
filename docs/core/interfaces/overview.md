@@ -88,8 +88,9 @@ graph TB
 |------|------|------|
 | **PluginServices** | `plugin_services.py` | 服务封装类，聚合所有接口用于依赖注入 |
 | **TaskType** | `i_task_manager.py` | 任务类型枚举（SYNC/ASYNC/SCHEDULED/LONG_RUNNING） |
-| **TaskStatus** | `i_task_manager.py` | 任务状态枚举（PENDING/RUNNING/COMPLETED/FAILED/CANCELLED） |
+| **TaskStatus** | `i_task_manager.py` | 任务状态枚举（PENDING/RUNNING/COMPLETED/FAILED/CANCELLED/STOPPED） |
 | **DataNamespace** | `i_data_provider.py` | 数据命名空间枚举（PRIVATE/PUBLIC） |
+| **DataProviderError** | `core/data/data_provider.py` | 数据提供者异常类 |
 
 ---
 
@@ -111,7 +112,7 @@ graph TB
 
 **核心方法**:
 - `_create_widget(parent, data_provider)`: 创建 UI（抽象方法）
-- `get_widget(parent, data_provider)`: 获取 Widget（带缓存）
+- `get_widget(parent, data_provider)`: 获取 Widget（带缓存，自动复用已创建的控件实例）
 - `on_plugin_loaded()`: 加载完成回调
 
 **使用示例**:
@@ -200,11 +201,18 @@ class MyPluginInfo(IPluginInfo):
 
 **核心方法**:
 - `register_plugin(instance_id, plugin_type)`: 注册插件
+- `unregister_plugin(instance_id)`: 注销插件
+- `get_active_instance(plugin_type)`: 获取活跃插件实例
+- `set_active_instance(instance_id)`: 设置活跃插件实例
 - `get_plugin_data(instance_id, key, namespace, default)`: 获取数据
 - `set_plugin_data(instance_id, key, value, namespace, notify)`: 设置数据
+- `get_all_plugin_data(instance_id, namespace)`: 获取所有数据
 - `subscribe(subscriber_id, target_plugin_id, target_key, callback)`: 订阅数据
+- `unsubscribe(subscriber_id, target_plugin_id)`: 取消订阅
 - `publish(publisher_id, key, value, namespace)`: 发布数据
 - `save_asset(plugin_id, filename, content)`: 保存资源文件
+- `get_plugin_info(instance_id)`: 获取插件信息
+- `reset_all_data()`: 重置所有数据
 - `get_asset_path(relative_path)`: 获取资源路径
 
 **使用示例**:
@@ -264,6 +272,7 @@ class MyPlugin(IPlugin):
 - `get_tasks_by_plugin(plugin_id)`: 获取插件任务
 - `get_task_status(task_id)`: 获取任务状态
 - `cancel_task(task_id)`: 取消任务
+- `update_long_running_task_status(task_id, status)`: 更新长期任务的状态
 
 **任务类型**:
 - `TaskType.SYNC`: 同步任务（在主线程执行）
@@ -341,6 +350,13 @@ class MyPlugin(IPlugin):
         return response.content
 ```
 
+**补充说明**：`LLMProvider` 实现类还支持以下异步方法和配置管理方法：
+- `async_chat(...)`: 异步聊天
+- `async_stream_chat(...)`: 异步流式聊天
+- `async_embed(...)`: 异步嵌入
+- `refresh_all_models(force)`: 刷新所有模型
+- `get_enabled_providers(feature)`: 获取已启用的提供商
+
 **详细文档**: [LLM Provider 概述](../llm-provider/overview.md)
 
 ---
@@ -395,23 +411,32 @@ class MyPlugin(IPlugin):
 
 **设计模式**: 依赖注入（Dependency Injection）
 
+> **预留设计**: `PluginServices` 是框架预留的依赖注入设计。**当前所有插件均直接导入单例**（`DataProvider()`、`BackgroundTaskManager()`、`get_llm_provider()` 等），而非通过 `PluginServices` 注入。此设计为未来插件隔离和测试提供基础，尚未实际启用。
+
+**推荐 IPlugin 基类**: 使用 `from core.plugin.plugin_interface import IPlugin`（含控件缓存等框架实现），而非 `core.interfaces` 中的纯抽象接口。
+
 **使用示例**:
 ```python
-from core.interfaces import IPlugin, PluginServices
+from core.plugin.plugin_interface import IPlugin
+from core.data.data_provider import DataProvider, DataNamespace
+from core.task.background_task import BackgroundTaskManager
+from core.llm.llm_provider import get_llm_provider
+from utils.logging_tools import LoggerManager
 
 class MyPlugin(IPlugin):
-    def __init__(self, services: PluginServices):
-        self.data_provider = services.data_provider
-        self.task_manager = services.task_manager
-        self.llm = services.llm_facade
-        self.logger = services.logger
+    def __init__(self):
+        # 直接访问单例（当前所有插件的实际做法）
+        self.data_provider = DataProvider()
+        self.task_manager = BackgroundTaskManager()
+        self.llm = get_llm_provider()
+        self.logger = LoggerManager()
 
     def _create_widget(self, parent=None, data_provider=None):
-        # 使用注入的服务
+        # 通过 data_provider 参数接收可选的注入数据提供者
+        dp = data_provider if data_provider else DataProvider()
+
         widget = QWidget(parent)
-        
-        # 使用数据提供者
-        self.data_provider.set_plugin_data(
+        dp.set_plugin_data(
             self.plugin_id,
             "initialized",
             True
@@ -476,7 +501,7 @@ from core.interfaces import IPlugin, IPluginInfo
 | `IPluginInfo` | `IPluginInfo` | `core/plugin/plugin_info_interface.py` |
 | `IDataProvider` | `DataProvider` | `core/data/data_provider.py` |
 | `ITaskManager` | `BackgroundTaskManager` | `core/task/background_task.py` |
-| `ILLMFacade` | `LLMProvider` | `core/llm/llm_provider.py` |
+| `ILLMFacade` | `LLMProvider` | `core/llm/llm_provider.py` |（通过方法签名实现，避免循环导入）|
 | `ILogger` | `LoggerManager` | `utils/logging_tools.py` |
 
 ### 5.2 访问单例实例

@@ -120,9 +120,10 @@ class TaskStatus(Enum):
     COMPLETED = "completed"  # 已完成
     FAILED = "failed"        # 执行失败
     CANCELLED = "cancelled"  # 已取消
+    STOPPED = "stopped"      # 已停止（长期任务被主动停止）
 ```
 
-> **注意**：`STOPPED` 状态仅存在于接口定义中，实际数据模型不包含此枚举值。
+> **注意**：`STOPPED` 状态仅用于长期任务，表示任务被主动停止。
 
 ### 3.2 状态转换图
 
@@ -133,9 +134,11 @@ stateDiagram-v2
     PENDING --> CANCELLED: 取消
     RUNNING --> COMPLETED: 成功
     RUNNING --> FAILED: 失败
+    RUNNING --> STOPPED: 主动停止（长期任务）
     COMPLETED --> [*]
     FAILED --> [*]
     CANCELLED --> [*]
+    STOPPED --> [*]
 ```
 
 ---
@@ -151,6 +154,7 @@ graph TB
         LongRunningTasks["长期任务<br/>_running_long_running_tasks"]
         ScheduledFactories["定时任务工厂<br/>_scheduled_task_factories"]
         LongRunningFactories["长期任务工厂<br/>_long_running_task_factories"]
+        ScheduleChecker["定时任务检查线程<br/>_check_scheduled_tasks"]
     end
 
     subgraph Storage["存储层"]
@@ -164,10 +168,13 @@ graph TB
     Pool -->|执行任务| RunningTasks
     Pool -->|执行任务| ScheduledTasks
     Pool -->|执行任务| LongRunningTasks
+    ScheduleChecker -->|检查到期| ScheduledTasks
     Register -->|注册| BTM
     BTM -->|持久化| JSON
     BTM -->|恢复| JSON
 ```
+
+> **注意**：`TaskScheduler` 类负责启动定时检查线程，但实际的到期检查逻辑在 `BackgroundTaskManager._check_scheduled_tasks()` daemon 线程中执行（`SchedulerCallback.should_run()` 判断到期，`execute_scheduled_task()` 执行任务）。
 
 ---
 
@@ -191,7 +198,7 @@ class BackgroundTask:
     error: str                # 错误信息
     created_at: datetime      # 创建时间
     started_at: Optional[datetime]  # 开始时间
-    completed_at: Optional[datetime]  # 完成时间
+    finished_at: Optional[datetime]  # 完成时间
 ```
 
 ### 5.2 ScheduledTask
@@ -393,7 +400,8 @@ task_id = manager.register_async_task(
             "result": {},
             "error": null,
             "created_at": "2026-01-01T10:00:00",
-            "completed_at": "2026-01-01T10:00:05"
+            "started_at": "2026-01-01T10:00:00",
+            "finished_at": "2026-01-01T10:00:05"
         }
     },
     "scheduled_tasks": {
@@ -430,7 +438,9 @@ task_id = manager.register_async_task(
 ## 10. 相关文档
 
 - [后台任务 API 参考](api-reference.md)
+- [后台任务存储](task-storage.md)
 - [插件开发指南](../plugin-system/plugin-development.md)
+- [接口层概述](../interfaces/overview.md)
 
 ---
 

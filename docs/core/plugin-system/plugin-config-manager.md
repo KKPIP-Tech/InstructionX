@@ -50,7 +50,7 @@ def load_plugin_order(self) -> Dict[str, List[str]]
 }
 ```
 
-如果文件不存在或读取失败，返回空列表。
+如果文件不存在或读取失败，返回空字典 `{"official_plugins": [], "thirdparty_plugins": []}`。
 
 ### save_plugin_order()
 
@@ -70,13 +70,13 @@ def save_plugin_order(self, official_plugins: List[str], thirdparty_plugins: Lis
 ### update_official_order()
 
 ```python
-def update_official_order(self, plugin_names: List[str]) -> bool
+def update_official_order(self, plugin_uuids: List[str]) -> bool
 ```
 
 更新官方插件的顺序。
 
 **参数**:
-- `plugin_names`: 官方插件的 UUID 列表（按新的显示顺序）
+- `plugin_uuids`: 官方插件的 UUID 列表（按新的显示顺序）
 
 **返回**:
 - 是否更新成功
@@ -84,13 +84,13 @@ def update_official_order(self, plugin_names: List[str]) -> bool
 ### update_thirdparty_order()
 
 ```python
-def update_thirdparty_order(self, plugin_names: List[str]) -> bool
+def update_thirdparty_order(self, plugin_uuids: List[str]) -> bool
 ```
 
 更新第三方插件的顺序。
 
 **参数**:
-- `plugin_names`: 第三方插件的 UUID 列表（按新的显示顺序）
+- `plugin_uuids`: 第三方插件的 UUID 列表（按新的显示顺序）
 
 **返回**:
 - 是否更新成功
@@ -132,7 +132,67 @@ manager.save_plugin_order(
 
 ---
 
-## 5. 相关文档
+## 5. 插件顺序应用机制
+
+### apply_custom_order()
+
+此方法由 `PluginManager` 调用（非 `PluginConfigManager`），用于将持久化的顺序配置应用到运行时。
+
+```python
+def apply_custom_order(self):
+    """从配置文件加载并应用用户自定义的插件显示顺序"""
+```
+
+**排序规则**:
+1. 按 `plugin_order.json` 中记录的 UUID 顺序排列插件
+2. 配置中存在但当前未加载的插件会被跳过
+3. **新安装的插件（UUID 不在配置中）自动追加到列表末尾**，而非插入到特定位置
+
+### 重置顺序
+
+通过 `PluginOrderDialog` 的"重置"按钮调用:
+
+```python
+config_manager.save_plugin_order([], [])  # 清空两个列表
+```
+
+清空后，`apply_custom_order()` 会将所有插件按默认加载顺序（目录扫描顺序）排列，新插件同样追加到末尾。
+
+---
+
+## 6. 核心 API（补充）
+
+### get_official_plugin_ids()
+
+```python
+def get_official_plugin_ids(self) -> List[str]
+```
+
+获取当前顺序下所有官方插件的 UUID 列表。
+
+**返回**:
+- 官方插件 UUID 列表（按当前排列顺序）
+
+### get_thirdparty_plugin_ids()
+
+```python
+def get_thirdparty_plugin_ids(self) -> List[str]
+```
+
+获取当前顺序下所有第三方插件的 UUID 列表。
+
+**返回**:
+- 第三方插件 UUID 列表（按当前排列顺序）
+
+---
+
+## 7. 插件 UUID 管理
+
+插件 UUID 由 `core/plugin/plugin_identity.py` 中的 `PluginIdentity` 类管理。首次加载插件时自动生成 UUID 并存储在插件目录的 `.plugin_info.json` 文件中，后续加载时读取该文件以保持 ID 稳定。`plugin_order.json` 中存储的即为这些 UUID。
+
+---
+
+## 8. 相关文档
 
 - [PluginManager](plugin-manager.md)
 - [插件系统概述](overview.md)

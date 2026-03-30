@@ -137,22 +137,22 @@ plugin_name/
 
 ```mermaid
 flowchart TD
-    A[插件加载时] --> B[检查 information.py]
-    B --> C{是否存在}
+    A[插件加载时] --> B{information.py 存在?}
 
-    C -->|是| D[检查 service.py]
-    C -->|否| E[跳过]
+    B -->|否| Z[跳过]
+    B -->|是| C{service.py 存在?}
 
-    D --> F{是否存在}
-    F -->|是| G[导入 information.py]
-    F -->|否| E
+    C -->|否| Z
+    C -->|是| D[导入 information.py]
 
-    G --> H[查找 IPluginInfo 子类]
-    H --> I[获取 service_api 字典]
-    I --> J[导入 service.py]
-    J --> K[查找 Service 类]
-    K --> L[注册到 _api_registry]
+    D --> E[查找 IPluginInfo 子类]
+    E --> F[获取 service_api 字典]
+    F --> G[导入 service.py]
+    G --> H[查找 Service 类]
+    H --> I[注册到 _api_registry]
 ```
+
+> **前置条件**：`information.py` 和 `service.py` 必须同时存在，缺一不可。只有 `entrance.py` 是必需的。
 
 ### 4.2 service_api 定义示例
 
@@ -240,10 +240,18 @@ classDiagram
 
     class PluginManager {
         +load_plugins()
+        +load_official_plugins()
+        +load_thirdparty_plugins()
         +get_plugin_by_id(plugin_id)
+        +get_plugin_by_name(name)
         +get_all_plugins()
+        +get_official_plugins()
+        +get_thirdparty_plugins()
+        +apply_custom_order()
+        +reload_plugins()
         +register_plugin_api()
         +call_plugin_method()
+        +get_all_function_tools()
     }
 
     IPlugin --> PluginManager : 注册到
@@ -257,9 +265,14 @@ classDiagram
 ```mermaid
 stateDiagram-v2
     [*] --> 初始化: 应用启动
-    初始化 --> 加载插件: PluginManager 初始化
-    加载插件 --> 回调: on_plugin_loaded
-    回调 --> 注册面板: 注册到 SkillsPanel
+    初始化 --> 扫描目录: PluginManager 初始化
+    扫描目录 --> 动态导入: 遍历子目录
+    动态导入 --> 实例化: 找到 IPlugin 子类
+    实例化 --> 生成UUID: PluginIdentity 生成/加载
+    生成UUID --> 回调: on_plugin_loaded()
+    回调 --> 注册API: _auto_register_plugin_api
+    注册API --> 注册表: 写入 _plugin_registry
+    注册表 --> 注册面板: 注册到 SkillsPanel
     注册面板 --> 等待点击: 用户交互
     等待点击 --> 创建UI: 首次点击
     等待点击 --> 返回缓存: 后续点击

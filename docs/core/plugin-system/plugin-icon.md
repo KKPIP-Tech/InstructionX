@@ -113,21 +113,22 @@ def none(cls) -> "PluginIcon"
 ### load_icon()
 
 ```python
-def load_icon(self, plugin_dir: str = None) -> Optional[QIcon]
+def load_icon(self, plugin_dir: Optional[Path] = None) -> Optional[QIcon]
 ```
 
-根据图标类型加载并返回 `QIcon` 对象。
+根据图标类型加载并返回 `QIcon` 对象。所有异常均在内部捕获并记录日志，失败时静默返回 `None`。
 
 **参数**:
-- `plugin_dir`: 插件目录路径（用于解析相对路径）
+- `plugin_dir`: 插件目录路径（用于解析相对路径）。`FILE` 类型必须传入此参数以解析相对路径；其他类型可不传。
 
 **返回**:
-- `QIcon` 对象，或 `None`（类型为 `NONE` 时）
+- `QIcon` 对象，`NONE` 类型或加载失败时返回 `None`。注意：返回值无法区分"显式无图标"和"加载失败"。
 
 **示例**:
 ```python
 icon = PluginIcon.builtin("SP_FileIcon")
-qicon = icon.load_icon()
+qicon = icon.load_icon()                          # BUILTIN/RESOURCE/BASE64 可不传 plugin_dir
+qicon = icon.load_icon(plugin_dir=plugin_dir)     # FILE 类型必须传入 plugin_dir
 ```
 
 ---
@@ -157,6 +158,34 @@ class ImagePluginInfo(IPluginInfo):
         # 使用 Base64 编码的图标
         return PluginIcon.from_base64("iVBORw0KGgoAAAANS...")
 ```
+
+---
+
+### 5.2 IPlugin 中的图标加载机制
+
+`IPlugin` 基类（`core/plugin/plugin_interface.py`）的 `skill_icon` 属性自动处理 `PluginIcon` 的加载与降级，开发者**无需手动调用 `load_icon()`**。
+
+加载流程如下：
+
+1. 调用 `_load_plugin_info()` 加载 `information.py`，获取其中的 `skill_icon` 属性返回值（`PluginIcon` 实例）
+2. 调用 `plugin_info.skill_icon.load_icon(plugin_dir)` 获取 `QIcon`
+3. 如果返回值为 `None` 或 `QIcon.isNull()`，降级为系统默认图标 `SP_FileIcon`
+
+因此，开发者只需在 `information.py` 中按以下方式定义图标即可：
+
+```python
+class MyPluginInfo(IPluginInfo):
+    @property
+    def skill_icon(self) -> PluginIcon:
+        return PluginIcon.builtin("SP_FileIcon")
+        # 也可以使用:
+        # return PluginIcon.from_file("icons/logo.png")
+        # return PluginIcon.from_resource(":/icons/plugin_icon.png")
+        # return PluginIcon.from_base64("iVBORw0KGgoAAAANS...")
+        # return PluginIcon.none()
+```
+
+框架会自动调用 `load_icon()` 并处理所有边界情况，包括文件不存在、图标名无效等异常。
 
 ---
 

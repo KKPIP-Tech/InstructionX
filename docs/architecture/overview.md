@@ -25,7 +25,7 @@
 graph TB
     subgraph MainWindow["应用主窗口 InstructionXMainWindow"]
         direction TB
-        Menu[菜单栏] --> SP["SkillsPanel<br/>技能面板 105-115px"]
+        Menu[菜单栏] --> SP["SkillsPanel<br/>技能面板 最小105px / 最大115px"]
         SP --> Divider["分割线"]
         Divider --> WA["WorkArea<br/>工作区"]
     end
@@ -158,15 +158,15 @@ graph TB
 
 **接口清单**:
 
-| 接口 | 文件 | 说明 | 实现类 |
-|------|------|------|--------|
+| 接口 | 文件 | 说明 | 对应实现 |
+|------|------|------|---------|
 | `IPlugin` | `i_plugin.py` | 插件抽象基类 | `core/plugin/plugin_interface.py` |
 | `IPluginInfo` | `i_plugin_info.py` | 插件信息抽象基类 | `core/plugin/plugin_info_interface.py` |
 | `IDataProvider` | `i_data_provider.py` | 数据提供者接口 | `core/data/data_provider.py` |
 | `ITaskManager` | `i_task_manager.py` | 任务管理器接口 | `core/task/background_task.py` |
-| `ILLMFacade` | `i_llm_facade.py` | LLM 外观接口 | `core/llm/llm_provider.py` |
-| `ILogger` | `i_logger.py` | 日志接口 | `utils/logging_tools.py` |
-| `PluginServices` | `plugin_services.py` | 服务封装（依赖注入容器） | - |
+| `ILLMFacade` | `i_llm_facade.py` | LLM 外观接口（方法签名兼容，非继承） | `core/llm/llm_provider.py`（Duck Typing 实现） |
+| `ILogger` | `i_logger.py`（`core/interfaces/` 重导出） | 日志接口 | `utils/logging_tools.py`（LoggerManager） |
+| `PluginServices` | `plugin_services.py` | 服务封装（依赖注入容器） | — |
 
 **导入指南**:
 ```python
@@ -286,7 +286,7 @@ InstructionX/
 │   └── dialog/              # 对话框
 │       ├── __init__.py      # 导出 PluginOrderDialog
 │       ├── about_dialog.py      # 关于对话框
-│       ├── llm_settings_dialog.py
+│       ├── llm_settings_dialog.py  # LLM 设置对话框
 │       └── plugin_order_dialog.py  # 重导出
 │
 ├── workers/                  # 预留：多进程工作池
@@ -311,10 +311,10 @@ InstructionX/
 │   └── llm_models_cache.json
 │
 ├── utils/                    # 工具类
-│   ├── logging_tools.py
-│   ├── i_logger.py          # ILogger 接口实现
-│   ├── themes.py
-│   └── style_qss/          # StyleQSS 样式系统
+│   ├── logging_tools.py     # 日志管理
+│   ├── i_logger.py         # ILogger 接口
+│   ├── themes.py           # 主题检测与切换
+│   └── style_qss/          # StyleQSS 样式系统（QSS 片段注册 + 主题变量）
 │
 └── docs/                     # 技术文档
 ```
@@ -328,9 +328,10 @@ flowchart TD
     A[main] --> B[QApplication 创建]
     B --> C[InstructionXMainWindow 创建]
     C --> D[创建菜单栏]
-    D --> E[初始化 PluginManager]
-    E --> F[load_official_plugins<br/>扫描plugin/目录]
-    E --> G[load_thirdparty_plugins<br/>扫描custom_plugin/目录]
+    D --> E[_create_main_layout]
+    E --> E1[初始化 PluginManager]
+    E1 --> F[load_official_plugins<br/>扫描plugin/目录]
+    E1 --> G[load_thirdparty_plugins<br/>扫描custom_plugin/目录]
     F --> H[创建 SkillsPanel]
     H --> I[从 PluginManager 加载技能按钮]
     I --> J[创建 WorkArea]
@@ -385,4 +386,3 @@ os.replace(temp_file, data_file)
 
 ---
 
-*本文档由 Claude Code 自动生成*

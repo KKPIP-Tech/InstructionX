@@ -375,8 +375,11 @@ from core.llm.exceptions import (
     AuthenticationError,
     APIError,
     RateLimitError,
+    InvalidRequestError,
+    ModelNotSupportedError,
+    ConnectionError,
     TimeoutError,
-    ConnectionError
+    StreamingError
 )
 
 try:
@@ -387,8 +390,16 @@ except RateLimitError:
     print("请求频率超限")
 except TimeoutError:
     print("请求超时")
+except InvalidRequestError:
+    print("请求参数无效")
+except ModelNotSupportedError:
+    print("模型不支持")
+except StreamingError:
+    print("流式输出错误")
 except APIError as e:
     print(f"API 错误: {e}")
+except ConnectionError:
+    print("连接失败")
 ```
 
 ---

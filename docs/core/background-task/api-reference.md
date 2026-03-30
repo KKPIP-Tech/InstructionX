@@ -39,9 +39,10 @@ class TaskStatus(Enum):
     COMPLETED = "completed"  # 已完成
     FAILED = "failed"        # 执行失败
     CANCELLED = "cancelled"  # 已取消
+    STOPPED = "stopped"      # 已停止（长期任务被主动停止）
 ```
 
-> **注意**：`STOPPED` 状态仅存在于 `core/interfaces/i_task_manager.py` 接口定义中，实际数据模型 `core/task/task_model.py` 中的 `TaskStatus` 枚举不包含此值。
+> **注意**：`STOPPED = "stopped"` 状态在 `core/interfaces/i_task_manager.py` 和 `core/task/task_model.py` 中均有定义，用于表示长期任务被主动停止的状态。
 
 ### TaskThreadLocal
 

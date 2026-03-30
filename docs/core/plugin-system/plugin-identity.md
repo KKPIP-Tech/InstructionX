@@ -10,6 +10,8 @@
 
 **文件位置**: `core/plugin/plugin_identity.py`
 
+> **注意**: `PluginIdentity` 是框架内部类，由 `PluginManager` 在加载插件时自动使用。插件开发者通常无需直接实例化此类；插件的 UUID 可通过 `self.plugin_id` 属性（在 `IPlugin` 基类中定义）访问。
+
 ---
 
 ## 2. 核心功能
@@ -81,6 +83,38 @@ new_id = identity.regenerate_id()
 print(f"新插件 ID: {new_id}")
 ```
 
+### registered_at (只读属性)
+
+```python
+@property
+def registered_at(self) -> Optional[datetime]
+```
+
+获取插件的注册时间（首次生成 UUID 时的时间戳）。返回 `datetime` 对象，尚未调用 `load_or_create_id()` 时返回 `None`。
+
+**示例**:
+```python
+identity = PluginIdentity(plugin_dir="/path/to/plugin")
+identity.load_or_create_id()
+print(f"注册时间: {identity.registered_at}")
+```
+
+### plugin_id (只读属性)
+
+```python
+@property
+def plugin_id(self) -> Optional[str]
+```
+
+获取当前已加载的插件 UUID。返回 UUID 字符串，尚未调用 `load_or_create_id()` 时返回 `None`。
+
+**示例**:
+```python
+identity = PluginIdentity(plugin_dir="/path/to/plugin")
+identity.load_or_create_id()
+print(f"当前 UUID: {identity.plugin_id}")
+```
+
 ---
 
 ## 5. 使用场景
@@ -93,7 +127,10 @@ print(f"新插件 ID: {new_id}")
 identity = PluginIdentity(plugin_dir)
 plugin_id = identity.load_or_create_id()
 plugin_instance._plugin_id = plugin_id
+plugin_instance._plugin_dir = plugin_dir  # 同时设置，用于定位 information.py
 ```
+
+同时，`PluginManager` 还会设置 `plugin_instance._plugin_dir`，使 `IPlugin._load_plugin_info()` 能正确定位 `information.py` 文件。
 
 ### 获取当前插件 ID
 

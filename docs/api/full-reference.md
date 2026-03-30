@@ -35,6 +35,7 @@ from core.interfaces import ILogger, PluginServices
 # 数据层
 from core.data.data_provider import DataProvider, DataNamespace, DataProviderError
 ```
+> 注意：`DataProviderError` 未从 `core` 主模块导出，需使用上述路径导入。
 
 ### 1.4 从 core.llm 导入
 
@@ -48,8 +49,8 @@ from core.llm import Message, ChatResponse, EmbeddingResponse, ModelInfo
 # LLM 异常
 from core.llm.exceptions import (
     LLMException, ConfigurationError, AuthenticationError, APIError,
-    RateLimitError, InvalidRequestError, ModelNotSupportedError,
-    ConnectionError, TimeoutError, StreamingError
+    RateLimitError, ModelNotSupportedError,
+    ConnectionError, TimeoutError
 )
 ```
 
@@ -65,8 +66,6 @@ from core.llm.exceptions import (
 |------|------|--------|
 | `PluginManager()` | 获取单例实例 | PluginManager |
 | `load_plugins()` | 加载所有插件 | None |
-| `load_official_plugins()` | 加载官方插件 | List[IPlugin] |
-| `load_thirdparty_plugins()` | 加载第三方插件 | List[IPlugin] |
 | `get_all_plugins()` | 获取所有插件 | List[IPlugin] |
 | `get_plugin_by_id(plugin_id)` | 根据 UUID 获取插件 | Optional[IPlugin] |
 | `get_plugin_by_name(name)` | 根据名称获取插件 | Optional[IPlugin] |
@@ -103,7 +102,7 @@ from core.llm.exceptions import (
 | `skill_tooltip` | property | 工具提示 |
 | `plugin_info` | property | 插件信息对象 |
 | `_create_widget(parent, data_provider)` | method (abstract) | 创建 UI |
-| `get_widget(parent, data_provider)` | method | 获取 Widget（带缓存） |
+| `get_widget(parent=None, data_provider=None)` | method | 获取 Widget（带缓存） |
 | `on_plugin_loaded()` | method | 加载完成回调 |
 
 ### 2.3 IPluginInfo
@@ -135,7 +134,7 @@ from core.llm.exceptions import (
 
 | 方法 | 说明 | 返回值 |
 |------|------|--------|
-| `DataProvider(data_dir, filename)` | 获取单例实例 | DataProvider |
+| `DataProvider(data_dir=None, data_filename="data.json")` | 获取单例实例（参数均有默认值） | DataProvider |
 | `register_plugin(instance_id, type)` | 注册插件 | None |
 | `unregister_plugin(instance_id)` | 注销插件 | None |
 | `get_active_instance(type)` | 获取活跃实例 | Optional[str] |
@@ -185,7 +184,7 @@ from core.llm.exceptions import (
 | `enable_scheduled_task(task_id)` | 启用定时任务 | bool |
 | `disable_scheduled_task(task_id)` | 禁用定时任务 | bool |
 | `unregister_scheduled_task(task_id)` | 注销定时任务 | bool |
-| `register_long_running_task(plugin_id, name, func, callback, stop_callback, status_callback, auto_restart)` | 注册长期任务 | str (task_id) |
+| `register_long_running_task(plugin_id, name, func, callback, stop_callback, status_callback, auto_restart, args, kwargs)` | 注册长期任务 | str (task_id) |
 | `register_long_running_task_factory(plugin_id, func, callback, stop_callback, status_callback, restore_callback)` | 注册长期任务工厂 | None |
 | `restore_long_running_tasks(plugin_id)` | 恢复长期任务 | int |
 | `stop_long_running_task(task_id, delete_from_storage)` | 停止长期任务 | bool |
@@ -222,8 +221,7 @@ from core.llm.exceptions import (
 | `TaskStatus.COMPLETED` | 已完成 |
 | `TaskStatus.FAILED` | 执行失败 |
 | `TaskStatus.CANCELLED` | 已取消 |
-
-> **注意**：`STOPPED` 状态仅存在于 `ITaskManager` 接口定义中，`TaskStatus` 枚举实际不包含此值。
+| `TaskStatus.STOPPED` | 已停止 |
 
 ---
 
@@ -338,7 +336,7 @@ data_provider.subscribe(
     callback=my_callback
 )
 
-# 发布
+# 发布（namespace 默认为 DataNamespace.PUBLIC）
 data_provider.publish(
     publisher_id="my-plugin",
     key="status",
@@ -357,14 +355,24 @@ result = plugin_manager.call_plugin_method(
     caller_id="my-plugin",
     plugin_id=target_id,
     method_name="method_name",
-    param1="value1"
+    param1="value1",
+    param2="value2"
 )
 ```
 
 ### 6.6 注册后台任务
 
 ```python
-# 异步任务
+# 同步任务（立即在主线程执行）
+task_id = task_manager.register_sync_task(
+    plugin_id="my-plugin",
+    name="同步任务",
+    func=my_function,
+    callback=my_callback,
+    args=(arg1, arg2)
+)
+
+# 异步任务（在线程池中执行）
 task_id = task_manager.register_async_task(
     plugin_id="my-plugin",
     name="后台任务",

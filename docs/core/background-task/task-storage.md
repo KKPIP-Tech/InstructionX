@@ -6,7 +6,9 @@
 
 ## 1. 概述
 
-`TaskStorage` 是 `BackgroundTaskManager` 的持久化层，负责将任务数据保存到 `data/tasks.json` 文件中。
+`TaskStorage` 是 [BackgroundTaskManager](overview.md) 的持久化层，负责将任务数据保存到 `data/tasks.json` 文件中。
+
+**注意**: `TaskStorage` 是 `BackgroundTaskManager` 的内部持久化层。插件通过 `BackgroundTaskManager` 间接使用，无需直接调用此类。
 
 **文件位置**: `core/task/task_storage.py`
 
@@ -82,7 +84,7 @@ def get_tasks_by_plugin(self, plugin_id: str) -> List[BackgroundTask]
 ### delete_task()
 
 ```python
-def delete_task(self, task_id: str)
+def delete_task(self, task_id: str) -> bool
 ```
 
 删除指定任务。
@@ -145,7 +147,7 @@ def delete_scheduled_task(self, task_id: str)
 def update_scheduled_task(self, task: ScheduledTask)
 ```
 
-更新定时任务（仅保存部分字段）。
+更新定时任务。
 
 ---
 
@@ -197,11 +199,27 @@ def delete_long_running_task(self, task_id: str)
 def update_long_running_task(self, task: LongRunningTask)
 ```
 
-更新长期任务（仅保存部分字段）。
+更新长期任务。
 
 ---
 
 ## 7. 缓存管理
+
+### load_data()
+
+```python
+def load_data(self, force_reload: bool = False) -> Dict[str, Any]
+```
+
+从磁盘加载数据到缓存。返回数据字典。`force_reload=True` 时强制从磁盘重新读取。
+
+### save_data()
+
+```python
+def save_data(self) -> None
+```
+
+将当前缓存数据保存到磁盘。
 
 ### clear_cache()
 
@@ -216,10 +234,10 @@ def clear_cache(self)
 ## 8. 原子写入机制
 
 ```python
-def _save_to_disk(self, data):
+def _write_to_disk(self, data: Dict[str, Any]) -> None:
     # 1. 写入临时文件
     with open(temp_file, 'w', encoding='utf-8') as f:
-        json.dump(data, f, ensure_ascii=False, indent=4)
+        json.dump(data, f, ensure_ascii=False, indent=2)
 
     # 2. 原子重命名
     os.replace(temp_file, data_file)

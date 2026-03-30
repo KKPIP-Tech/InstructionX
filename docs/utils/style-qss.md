@@ -15,7 +15,7 @@
 - 系统主题自动检测
 - 模块化 QSS 样式文件
 - 运行时变量替换
-- 26 个 QSS 样式文件覆盖常用控件
+- 27 个 QSS 样式文件覆盖常用控件
 
 **支持的控件**:
 - 基础控件：按钮、输入框、标签
@@ -122,7 +122,7 @@ graph TB
         Colors["colors.py<br/>颜色定义"]
         Palette["palette.py<br/>调色板"]
         Registry["registry.py<br/>QSS 注册"]
-        Styles["styles/<br/>26个QSS文件"]
+        Styles["styles/<br/>27个QSS文件"]
     end
 
     subgraph Theme["主题层"]
@@ -185,6 +185,10 @@ sequenceDiagram
 | `alternateBase` | `#F3F3F3` | `#323232` | 交替基础色 |
 | `button` | `#F3F3F3` | `#2C2C2C` | 按钮背景 |
 | `buttonText` | `#000000` | `#FFFFFF` | 按钮文字 |
+| `toolTipBase` | `#FFFFFF` | `#323232` | 工具提示背景 |
+| `toolTipText` | `#000000` | `#FFFFFF` | 工具提示文字 |
+| `link` | `#0063B1` | `#99BFFF` | 超链接 |
+| `linkVisited` | `#800080` | `#B987B9` | 已访问超链接 |
 
 ### 4.2 高亮与强调色
 
@@ -204,7 +208,14 @@ sequenceDiagram
 | `borderLight` | `#CCCCCC` | `#3C3C3C` | 浅边框色 |
 | `borderDark` | `#898989` | `#646464` | 深边框色 |
 
-### 4.4 控件状态填充
+### 4.4 文本颜色
+
+| 变量 | 浅色主题 | 深色主题 | 说明 |
+|------|---------|---------|------|
+| `textPrimary` | `#000000` | `#FFFFFF` | 主要文字 |
+| `textSecondary` | `#666666` | `#999999` | 次要文字 |
+
+### 4.5 控件状态填充
 
 | 变量 | 浅色主题 | 深色主题 | 说明 |
 |------|---------|---------|------|
@@ -213,20 +224,21 @@ sequenceDiagram
 | `controlFillPressed` | `rgba(0,0,0,18)` | `rgba(255,255,255,18)` | 按下填充 |
 | `controlFillDisabled` | `rgba(0,0,0,4)` | `rgba(255,255,255,4)` | 禁用填充 |
 | `controlFillSelected` | `rgba(0,120,212,20)` | `rgba(0,120,212,40)` | 选中填充 |
+| `textDisabled` | `#6D6D6D` | `#6D6D6D` | 禁用文字 |
 
-### 4.5 技能面板专用色
+### 4.6 技能面板专用色
 
 | 变量 | 浅色主题 | 深色主题 | 说明 |
 |------|---------|---------|------|
-| `skillPanel` | `#F5F5F5` | `#787878` | SkillsPanel 主背景 |
+| `skillPanel` | `#F5F5F5` | `#454545` | SkillsPanel 主背景 |
 | `skillPanelTab` | `#E8E8E8` | `#6A6A6A` | SkillsPanel Tab 背景 |
 
-### 4.6 圆角
+### 4.7 圆角
 
 | 变量 | 值 | 说明 |
 |------|-----|------|
-| `radius` | `4px` | 默认圆角 |
-| `radiusLarge` | `8px` | 大圆角 |
+| `radius` | `3px` | 默认圆角 |
+| `radiusLarge` | `6px` | 大圆角 |
 | `radiusSmall` | `2px` | 小圆角 |
 
 ---
@@ -270,6 +282,16 @@ from utils.style_qss import detect_system_theme
 theme = detect_system_theme()  # 返回 'light' 或 'dark'
 ```
 
+#### set_light_theme(app)
+
+设置浅色主题（兼容旧接口，内部调用 `set_style_qss_theme(app, 'light')`）。
+
+```python
+from utils.style_qss import set_light_theme
+
+set_light_theme(app)
+```
+
 #### create_qss(theme='light')
 
 创建 QSS 样式表。
@@ -307,7 +329,7 @@ print(style.colors())  # 颜色字典
 print(style.color('accent'))  # '#0078D4'
 ```
 
-### 5.2 get_color_dict()
+### 5.3 get_color_dict()
 
 获取指定主题的颜色字典。
 
@@ -318,7 +340,7 @@ colors = get_color_dict('dark')
 print(colors['accent'])  # '#0078D4'
 ```
 
-### 5.3 QssRegistry 类
+### 5.4 QssRegistry 类
 
 ```python
 from utils.style_qss import QssRegistry
@@ -361,7 +383,7 @@ sys.exit(app.exec())
 ```python
 # main.py
 from PySide6.QtWidgets import QMainWindow
-from utils.themes import set_style_qss_theme
+from utils.style_qss import set_style_qss_theme
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -387,16 +409,14 @@ if __name__ == "__main__":
 ### 6.4 动态切换主题
 
 ```python
-from utils.style_qss import set_theme, create_qss
+from utils.style_qss import set_style_qss_theme
 from PySide6.QtWidgets import QApplication
 
 def switch_to_dark(app: QApplication):
-    set_theme('dark')
-    app.setStyleSheet(create_qss('dark'))
+    set_style_qss_theme(app, 'dark')
 
 def switch_to_light(app: QApplication):
-    set_theme('light')
-    app.setStyleSheet(create_qss('light'))
+    set_style_qss_theme(app, 'light')
 ```
 
 ### 6.5 使用按钮样式类
@@ -423,6 +443,14 @@ outline_btn.setProperty("class", "outline")
 # 柔和按钮
 subtle_btn = QPushButton("Subtle")
 subtle_btn.setProperty("class", "subtle")
+
+# 强调保存按钮（蓝色，强调色）
+accent_save_btn = QPushButton("Save")
+accent_save_btn.setProperty("class", "accentSave")
+
+# 警告按钮（橙色）
+warning_btn = QPushButton("Warning")
+warning_btn.setProperty("class", "warning")
 ```
 
 ---
@@ -460,9 +488,9 @@ set_style_qss_theme(app, 'dark')
 ```
 系统主题设置
     ↓
-themes.set_style_qss_theme()
+utils.themes.set_style_qss_theme()
     ↓
-style_qss.set_style_qss_theme()
+utils.style_qss.set_style_qss_theme()
     ├── detect_system_theme() → 获取系统主题
     ├── create_qss_palette() → 创建 QPalette
     ├── QssRegistry.get_all() → 获取 QSS
@@ -492,7 +520,7 @@ QPushButton {
 QPushButton {
     background-color: rgba(0, 0, 0, 7);
     border: 1px solid #CCCCCC;
-    border-radius: 4px;
+    border-radius: 3px;
 }
 ```
 

@@ -330,7 +330,7 @@ def call_plugin_method(self,
 
     Args:
         caller_id: 调用者插件 ID（用于日志）
-        target_plugin_id: 目标插件 ID
+        plugin_id: 目标插件的唯一标识符
         method_name: 方法名
         **kwargs: 方法参数
 
@@ -457,9 +457,9 @@ class PluginManager:
         # API 注册表
         self._api_registry: Dict[str, PluginAPI] = {}   # plugin_id -> PluginAPI
 
-        # 目录配置
-        self.official_plugin_dir = Path("plugin/")
-        self.thirdparty_plugin_dir = Path("custom_plugin/")
+        # 目录配置（基于 manager.py 位置向上定位到项目根目录）
+        self.official_plugin_dir = Path(__file__).parent.parent.parent / "plugin"
+        self.thirdparty_plugin_dir = Path(__file__).parent.parent.parent / "custom_plugin"
 
         # 配置管理器
         self.config_manager = PluginConfigManager()

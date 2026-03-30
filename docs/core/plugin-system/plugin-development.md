@@ -29,7 +29,7 @@ my_plugin/                    # 插件文件夹（建议使用英文）
 ```python
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel, QPushButton
 
-from core.interfaces import IPlugin  # 推荐导入路径
+from core.plugin.plugin_interface import IPlugin  # 框架实现（含控件缓存）
 from .service import Service
 
 
@@ -45,16 +45,8 @@ class MyPlugin(IPlugin):
         """创建插件 UI"""
         plugin_id = self.plugin_id or "my-plugin-default"
 
-        # 创建服务实例
-        service = Service(plugin_id, data_provider)
-
-        # 注册插件到 DataProvider
-        if data_provider:
-            try:
-                data_provider.register_plugin(plugin_id, "MyPlugin")
-                data_provider.set_active_instance(plugin_id)
-            except Exception as e:
-                print(f"注册插件失败: {e}")
+        # 创建服务实例（Service 不需要传入 plugin_id 和 data_provider）
+        service = Service()
 
         # 创建 UI
         widget = QWidget(parent)
@@ -85,27 +77,27 @@ from core.data.data_provider import DataProvider, DataNamespace
 class Service:
     """插件服务类"""
 
-    def __init__(self, plugin_id: str, data_provider=None):
-        self.plugin_id = plugin_id
-        self.data_provider = data_provider or DataProvider()
+    def __init__(self):
+        # DataProvider 为单例，直接获取实例
+        self._data_provider = DataProvider()
 
     def my_method(self, param: str) -> str:
         """可被外部调用的方法"""
         return f"处理: {param}"
 
-    def save_data(self, key: str, value: any):
+    def save_data(self, plugin_id: str, key: str, value: any):
         """保存数据"""
-        self.data_provider.set_plugin_data(
-            self.plugin_id,
+        self._data_provider.set_plugin_data(
+            plugin_id,
             key,
             value,
             DataNamespace.PRIVATE
         )
 
-    def load_data(self, key: str, default=None):
+    def load_data(self, plugin_id: str, key: str, default=None):
         """加载数据"""
-        return self.data_provider.get_plugin_data(
-            self.plugin_id,
+        return self._data_provider.get_plugin_data(
+            plugin_id,
             key,
             DataNamespace.PRIVATE,
             default
@@ -197,7 +189,7 @@ class MyPluginInfo(IPluginInfo):
         """技能按钮图标"""
         return PluginIcon.builtin("SP_FileIcon")
         # 或使用自定义图标:
-        # return PluginIcon.from_file("path/to/icon.png")
+        # return PluginIcon.from_file("icons/icon.png")
 
     @property
     def skill_description(self) -> str:
@@ -233,9 +225,8 @@ from core.data.data_provider import DataProvider, DataNamespace
 class Service:
     """文本格式化服务"""
 
-    def __init__(self, plugin_id: str, data_provider=None):
-        self.plugin_id = plugin_id
-        self.data_provider = data_provider or DataProvider()
+    def __init__(self):
+        self._data_provider = DataProvider()
 
     def to_uppercase(self, text: str) -> str:
         """转换为大写"""
@@ -244,20 +235,12 @@ class Service:
     def to_lowercase(self, text: str) -> str:
         """转换为小写"""
         return text.lower()
-
-    def to_title_case(self, text: str) -> str:
-        """转换为首字母大写"""
-        return text.title()
-
-    def reverse_text(self, text: str) -> str:
-        """反转文本"""
-        return text[::-1]
 ```
 
 ### 3.3 information.py
 
 ```python
-from core.interfaces import IPluginInfo  # 推荐导入路径
+from core.interfaces import IPluginInfo
 from core.plugin.plugin_version import PluginVersion
 from core.plugin.plugin_icon import PluginIcon
 from typing import Dict, Any, Optional
@@ -270,15 +253,15 @@ class TextFormattingPluginInfo(IPluginInfo):
 
     @property
     def developer(self) -> str:
-        return "InstructionX Team"
+        return "KKPIP-Tech"
 
     @property
     def developer_email(self) -> str:
-        return "support@instructionx.dev"
+        return "support@example.com"
 
     @property
     def developer_website(self) -> str:
-        return "https://instructionx.dev"
+        return "https://github.com/KKPIP-Tech/InstructionX"
 
     @property
     def is_free(self) -> bool:
@@ -286,7 +269,7 @@ class TextFormattingPluginInfo(IPluginInfo):
 
     @property
     def description(self) -> str:
-        return "提供文本格式化功能，包括大小写转换、翻转等功能"
+        return "提供文本格式化工具"
 
     @property
     def plugin_type_id(self) -> str:
@@ -295,7 +278,7 @@ class TextFormattingPluginInfo(IPluginInfo):
 
     @property
     def tags(self) -> Optional[list[str]]:
-        return ["工具", "格式化"]
+        return ["text", "formatting", "utility"]
 
     @property
     def service_api(self) -> Dict[str, Any]:
@@ -313,30 +296,16 @@ class TextFormattingPluginInfo(IPluginInfo):
                     "text": {"type": "str", "required": True}
                 },
                 "returns": {"type": "str"}
-            },
-            "to_title_case": {
-                "description": "转换为首字母大写",
-                "parameters": {
-                    "text": {"type": "str", "required": True}
-                },
-                "returns": {"type": "str"}
-            },
-            "reverse_text": {
-                "description": "反转文本",
-                "parameters": {
-                    "text": {"type": "str", "required": True}
-                },
-                "returns": {"type": "str"}
             }
         }
 
     @property
     def skill_icon(self) -> PluginIcon:
-        return PluginIcon.builtin("SP_FileIcon")
+        return PluginIcon.builtin("SP_ArrowForward")
 
     @property
     def skill_description(self) -> str:
-        return "文本格式化工具"
+        return "提供文本格式化工具"
 ```
 
 ### 3.4 entrance.py
@@ -348,7 +317,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt
 
-from core.interfaces import IPlugin  # 推荐导入路径
+from core.plugin.plugin_interface import IPlugin
 from .service import Service
 
 
@@ -360,17 +329,8 @@ class TextFormattingPlugin(IPlugin):
         return "文本\n格式化"
 
     def _create_widget(self, parent=None, data_provider=None):
-        plugin_id = self.plugin_id or "text-formatting-default"
-
         # 创建服务实例
-        service = Service(plugin_id, data_provider)
-
-        # 注册插件
-        if data_provider:
-            try:
-                data_provider.register_plugin(plugin_id, "TextFormatting")
-            except:
-                pass
+        service = Service()
 
         # 创建 UI
         widget = QWidget(parent)
@@ -393,14 +353,6 @@ class TextFormattingPlugin(IPlugin):
         btn_lower.clicked.connect(lambda: self._format(service, 'lower'))
         btn_layout.addWidget(btn_lower)
 
-        btn_title = QPushButton("首字母大写")
-        btn_title.clicked.connect(lambda: self._format(service, 'title'))
-        btn_layout.addWidget(btn_title)
-
-        btn_reverse = QPushButton("翻转")
-        btn_reverse.clicked.connect(lambda: self._format(service, 'reverse'))
-        btn_layout.addWidget(btn_reverse)
-
         layout.addLayout(btn_layout)
 
         # 输出区域
@@ -420,10 +372,6 @@ class TextFormattingPlugin(IPlugin):
             result = service.to_uppercase(text)
         elif mode == 'lower':
             result = service.to_lowercase(text)
-        elif mode == 'title':
-            result = service.to_title_case(text)
-        elif mode == 'reverse':
-            result = service.reverse_text(text)
         else:
             result = text
 
@@ -436,13 +384,16 @@ class TextFormattingPlugin(IPlugin):
 
 ### 4.1 插件注册
 
+> **注意**: 插件注册由 `PluginManager` 在加载时自动处理，通常不需要在 `_create_widget()` 中手动调用。
+> 以下代码仅在有特殊需求（如在插件内部主动注册）时参考。
+
 ```python
 def _create_widget(self, parent=None, data_provider=None):
     plugin_id = self.plugin_id or "my-plugin-default"
 
     if data_provider:
         try:
-            # 注册插件
+            # 注册插件（可选，通常由 PluginManager 自动处理）
             data_provider.register_plugin(plugin_id, "MyPlugin")
             # 设置为活跃实例
             data_provider.set_active_instance(plugin_id)
@@ -454,22 +405,24 @@ def _create_widget(self, parent=None, data_provider=None):
 ### 4.2 数据持久化
 
 ```python
-class Service:
-    def __init__(self, plugin_id, data_provider=None):
-        self.plugin_id = plugin_id
-        self.data_provider = data_provider or DataProvider()
+from core.data.data_provider import DataProvider, DataNamespace
 
-    def save_preference(self, key, value):
-        self.data_provider.set_plugin_data(
-            self.plugin_id,
+
+class Service:
+    def __init__(self):
+        self._data_provider = DataProvider()
+
+    def save_preference(self, plugin_id: str, key: str, value):
+        self._data_provider.set_plugin_data(
+            plugin_id,
             key,
             value,
             DataNamespace.PRIVATE  # 私有数据
         )
 
-    def load_preference(self, key, default=None):
-        return self.data_provider.get_plugin_data(
-            self.plugin_id,
+    def load_preference(self, plugin_id: str, key: str, default=None):
+        return self._data_provider.get_plugin_data(
+            plugin_id,
             key,
             DataNamespace.PRIVATE,
             default
@@ -479,14 +432,16 @@ class Service:
 ### 4.3 发布/订阅
 
 ```python
-class Service:
-    def __init__(self, plugin_id, data_provider=None):
-        self.plugin_id = plugin_id
-        self.data_provider = data_provider or DataProvider()
+from core.data.data_provider import DataProvider
 
-    def subscribe_to_other_plugin(self, target_plugin_id):
-        self.data_provider.subscribe(
-            subscriber_id=self.plugin_id,
+
+class Service:
+    def __init__(self):
+        self._data_provider = DataProvider()
+
+    def subscribe_to_other_plugin(self, my_plugin_id: str, target_plugin_id: str):
+        self._data_provider.subscribe(
+            subscriber_id=my_plugin_id,
             target_plugin_id=target_plugin_id,
             target_key="status",
             callback=self._on_status_changed
@@ -515,6 +470,7 @@ def _create_widget(self, parent=None, data_provider=None):
 ### 5.2 测试 API 调用
 
 ```python
+from core.data.data_provider import DataProviderError
 from core.plugin.manager import PluginManager
 
 manager = PluginManager()
@@ -540,7 +496,11 @@ print("结果:", result)
 - [插件系统概述](overview.md)
 - [IPlugin 接口](iplugin.md)
 - [PluginManager](plugin-manager.md)
+- [PluginIdentity](plugin-identity.md)
+- [接口层概述](../interfaces/overview.md)
 - [DataProvider 概述](../data-provider/overview.md)
+- [后台任务概述](../background-task/overview.md)
+- [后台任务 API 参考](../background-task/api-reference.md)
 
 ---
 

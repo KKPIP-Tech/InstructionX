@@ -19,6 +19,10 @@ from core.interfaces import IPlugin  # 推荐
 from core.plugin.plugin_interface import IPlugin
 ```
 
+> **重要**: 本文档混合描述了抽象接口规范和框架实现行为。以下标注了"框架实现"的内容
+> （如 `get_widget()`、控件缓存、`skill_icon` 动态加载等）定义在 `core/plugin/plugin_interface.py` 中，
+> 而非 `core/interfaces/i_plugin.py` 的抽象接口。
+
 框架实现中额外提供的功能（`core/plugin/plugin_interface.py`）：
 - 控件缓存机制（`_cached_widget`）
 - 插件信息动态加载（`_load_plugin_info`）
@@ -53,7 +57,7 @@ def plugin_id(self) -> Optional[str]:
     """
     插件唯一标识符 (UUID)
 
-    在插件加载时由 PluginManager 自动设置。
+    在插件加载时由 PluginManager 自动设置（存放在内部字段 `_plugin_id`）。
     可用于 DataProvider 等需要唯一标识的场景。
 
     Returns:
@@ -61,6 +65,10 @@ def plugin_id(self) -> Optional[str]:
     """
     return self._plugin_id
 ```
+
+> 注意: 上述 `return self._plugin_id` 行为定义在框架实现 `core/plugin/plugin_interface.py` 中。
+> 抽象接口 `core/interfaces/i_plugin.py` 中该属性直接返回 `None`。
+> 插件应始终由 PluginManager 加载以确保 `plugin_id` 正确设置。
 
 ### 2.3 skill_icon
 
@@ -80,6 +88,10 @@ def skill_icon(self) -> Optional[QIcon]:
     ...
 ```
 
+> 注意: 抽象接口 `core/interfaces/i_plugin.py` 中该属性直接返回 `None`。
+> 动态加载行为由框架实现 `core/plugin/plugin_interface.py` 提供。
+> 插件开发者应在 `information.py` 中配置 `PluginInfo.skill_icon`。
+
 ### 2.4 skill_description
 
 ```python
@@ -97,6 +109,9 @@ def skill_description(self) -> str:
     # 动态从 information.py 加载
     ...
 ```
+
+> 注意: 抽象接口 `core/interfaces/i_plugin.py` 中该属性直接返回 `self.plugin_name`。
+> 动态加载行为由框架实现 `core/plugin/plugin_interface.py` 提供。
 
 ### 2.5 skill_tooltip
 
@@ -131,24 +146,11 @@ def plugin_info(self) -> Optional['IPluginInfo']:
     ...
 ```
 
-### 2.7 tags（可选）
+> 注意: 抽象接口 `core/interfaces/i_plugin.py` 中该属性直接返回 `None`。
+> 动态加载行为由框架实现 `core/plugin/plugin_interface.py` 提供（通过 `_load_plugin_info()` 内部方法）。
 
-```python
-@property
-def tags(self) -> Optional[list[str]]:
-    """
-    插件标签（可选）
-
-    用于分类和搜索插件。
-
-    Returns:
-        标签列表，如 ["text", "formatting", "utility"]
-        如果无标签则返回 None
-    """
-    return None
-```
-
-> 注意：`tags` 是 IPluginInfo 的可选属性，返回 None 表示无标签。插件开发者可根据需要在 information.py 中覆盖此属性。
+> 注意：`tags` 不是 `IPlugin` 的属性，而是 `IPluginInfo` 的可选属性。
+> 插件开发者应在 `information.py` 的 `PluginInfo` 类中覆盖 `tags` 属性，而非在插件入口类中实现。
 
 ---
 
@@ -200,6 +202,9 @@ def _create_widget(self, parent=None, data_provider=None) -> "QWidget":
 ```
 
 ### 3.2 get_widget()
+
+> **重要说明**: `get_widget()` 是**框架实现方法**，定义在 `core/plugin/plugin_interface.py` 中，**不属于抽象接口** `core/interfaces/i_plugin.py`。
+> 开发者只需实现抽象方法 `_create_widget()`，框架会自动提供带缓存的 `get_widget()` 能力。
 
 ```python
 def get_widget(self, parent=None, data_provider=None) -> QWidget:
@@ -289,7 +294,7 @@ get_widget(parent, data_provider)
 
 ### 4.2 实现细节
 
-缓存机制在 `core/plugin/plugin_interface.py` 中实现：
+缓存机制在 `core/plugin/plugin_interface.py` 中实现（**框架实现，非抽象接口**）：
 
 ```python
 class IPlugin(ABC):
@@ -298,6 +303,9 @@ class IPlugin(ABC):
         self._cached_widget = None
         # 缓存的 parent 引用
         self._cached_parent = None
+        # 插件信息缓存 (mtime, instance)
+        self._info_cache = None
+        self._info_cache_path = None
 
     def get_widget(self, parent=None, data_provider=None) -> QWidget:
         """
@@ -332,10 +340,10 @@ class IPlugin(ABC):
 
 ### 4.4 注意事项
 
-- `_create_widget()` 只在首次调用 `get_widget()` 时执行
+- `_create_widget()` 只在首次调用 `get_widget()` 时执行（框架实现提供的能力）
 - 缓存的 Widget 会被隐藏（`hide()`）但不会被销毁
 - Widget 的生命周期与插件实例绑定
-- 如果需要在 Widget 创建时执行额外逻辑，可以重写 `get_widget()` 方法
+- 如果需要在 Widget 创建时执行额外逻辑，可以重写 `get_widget()` 方法（仅在框架实现 `plugin_interface.py` 中有效）
 
 ### 4.5 缓存失效策略
 

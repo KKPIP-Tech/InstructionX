@@ -133,31 +133,36 @@ logger.error("MyPlugin", "连接失败: timeout")
 ### 4.1 在插件中使用
 
 ```python
-from core.interfaces import IPlugin
+from core.plugin.plugin_interface import IPlugin
+from utils.logging_tools import LoggerManager
 
 class MyPlugin(IPlugin):
-    def _create_widget(self, parent=None, services=None):
-        # 通过 services 获取 logger
-        logger = services.logger if services else None
+    def _create_widget(self, parent=None, data_provider=None):
+        # 直接获取 logger 实例（当前所有插件均直接导入单例）
+        logger = LoggerManager()
 
-        if logger:
-            logger.info("MyPlugin", "开始创建 UI")
+        logger.info("MyPlugin", "开始创建 UI")
 
         # ... 创建 UI ...
 
-        if logger:
-            logger.info("MyPlugin", "UI 创建完成")
+        logger.info("MyPlugin", "UI 创建完成")
 ```
 
 ### 4.2 错误记录
 
 ```python
-def some_operation(self):
-    try:
-        result = risky_function()
-        self.services.logger.info("MyPlugin", f"操作成功: {result}")
-    except Exception as e:
-        self.services.logger.error("MyPlugin", f"操作失败: {e}")
+from utils.logging_tools import LoggerManager
+
+class MyPlugin(IPlugin):
+    def __init__(self):
+        self.logger = LoggerManager()
+
+    def some_operation(self):
+        try:
+            result = risky_function()
+            self.logger.info("MyPlugin", f"操作成功: {result}")
+        except Exception as e:
+            self.logger.error("MyPlugin", f"操作失败: {e}")
 ```
 
 ---
@@ -165,7 +170,7 @@ def some_operation(self):
 ## 5. 相关文档
 
 - [接口层概述](overview.md)
-- [PluginServices](overview.md#36-pluginservices)
+- [PluginServices](overview.md#37-pluginservices)
 - [日志工具](../../utils/logging-tools.md)
 
 ---
