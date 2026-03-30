@@ -66,9 +66,14 @@ class BackgroundTaskDemoInfo(IPluginInfo):
 
     @property
     def skill_icon(self) -> PluginIcon:
-        # 使用默认图标
-        return PluginIcon.from_resource("task_icon")
+        # 使用暂停图标 - 代表后台/定时任务的暂停与调度
+        return PluginIcon.builtin("SP_MediaPause")
 
     @property
     def skill_description(self) -> str:
         return "后台任务演示"
+
+    @property
+    def plugin_type_id(self) -> str:
+        """插件类型标识符"""
+        return "background-task-demo"

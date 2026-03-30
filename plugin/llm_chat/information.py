@@ -145,3 +145,8 @@ class LLMChatPluginInfo(IPluginInfo):
     def tags(self) -> list:
         """插件标签"""
         return ["AI", "LLM", "对话", "多模态"]
+
+    @property
+    def plugin_type_id(self) -> str:
+        """插件类型标识符"""
+        return "llm-chat"

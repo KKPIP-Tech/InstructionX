@@ -112,7 +112,7 @@ class CodeFormatterPluginInfo(IPluginInfo):
     
     @property
     def skill_icon(self) -> PluginIcon:
-        return PluginIcon.builtin("SP_DialogApplyButton")
+        return PluginIcon.builtin("SP_ArrowDown")
     
     @property
     def skill_description(self) -> str:
@@ -125,3 +125,8 @@ class CodeFormatterPluginInfo(IPluginInfo):
     @property
     def dependencies(self) -> Optional[Dict[str, str]]:
         return None
+
+    @property
+    def plugin_type_id(self) -> str:
+        """插件类型标识符"""
+        return "code-formatter"

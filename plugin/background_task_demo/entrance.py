@@ -47,7 +47,7 @@ class BackgroundTaskDemoPlugin(IPlugin):
     """后台任务演示器插件"""
 
     def __init__(self):
-        self._cached_widget = None
+        super().__init__()
         self._data_provider = DataProvider()
         self._task_manager = BackgroundTaskManager()
         self._signal_bridge = SignalBridge()

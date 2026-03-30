@@ -279,7 +279,7 @@ class UiDemoPlugin(IPlugin):
             v_slider: 垂直滑块实例
         """
         print("\n" + "=" * 70)
-        print("🔍 滑块尺寸调试信息")
+        print("[DEBUG] 滑块尺寸调试信息")
         print("=" * 70)
         
         # 水平滑块信息

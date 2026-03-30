@@ -16,7 +16,8 @@ class UiDemoPluginInfo(IPluginInfo):
         return PluginVersion.from_string("release.1.0.0")
 
     @property
-    def developer(self) -> str = "InstructionX"
+    def developer(self) -> str:
+        return "InstructionX"
 
     @property
     def developer_email(self) -> str:
@@ -66,3 +67,8 @@ class UiDemoPluginInfo(IPluginInfo):
     @property
     def dependencies(self) -> Optional[Dict[str, str]]:
         return None
+
+    @property
+    def plugin_type_id(self) -> str:
+        """插件类型标识符"""
+        return "ui-demo"

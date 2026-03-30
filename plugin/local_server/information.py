@@ -50,7 +50,7 @@ class LocalServerPluginInfo(IPluginInfo):
     @property
     def skill_icon(self) -> PluginIcon:
         """技能按钮图标"""
-        return PluginIcon.builtin("SP_NetworkServerIcon")
+        return PluginIcon.builtin("SP_ComputerIcon")
 
     @property
     def skill_description(self) -> str:
@@ -61,3 +61,8 @@ class LocalServerPluginInfo(IPluginInfo):
     def tags(self) -> list:
         """插件标签"""
         return ["开发工具", "服务器", "HTTP"]
+
+    @property
+    def plugin_type_id(self) -> str:
+        """插件类型标识符"""
+        return "local-server"
