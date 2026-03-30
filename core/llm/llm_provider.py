@@ -35,6 +35,9 @@ from .config import LLMConfig, ProviderConfig
 from .provider_interface import ILLM, Message, ChatResponse, EmbeddingResponse, ModelInfo
 from .providers import get_provider_class, PROVIDER_REGISTRY
 from .exceptions import ConfigurationError
+# Note: LLMProvider implements ILLMFacade interface via method signatures.
+# Inheritance is not used here to avoid circular imports.
+# Use core.interfaces.ILLMFacade for type hints in plugins.
 
 if TYPE_CHECKING:
     from .provider_interface import ChatResponse

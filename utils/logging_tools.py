@@ -7,8 +7,10 @@ import typing
 from logging.handlers import RotatingFileHandler
 import threading
 
+from utils.i_logger import ILogger
 
-class LoggerManager:
+
+class LoggerManager(ILogger):
     """
     单例模式的日志管理器类，支持按指定格式记录日志到文件
     格式：[YYYY-MM-DD][hh-mm-ss][模块名称][等级][Message:][]

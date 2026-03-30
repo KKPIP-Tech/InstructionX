@@ -11,6 +11,7 @@ from concurrent.futures import ThreadPoolExecutor, Future
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Callable, Any
 
+from core.interfaces.i_task_manager import ITaskManager, TaskType as ITaskType, TaskStatus as ITaskStatus
 from .task_model import (
     BackgroundTask, ScheduledTask, LongRunningTask, TaskType, TaskStatus
 )
@@ -20,7 +21,7 @@ from .scheduler import TaskScheduler, SchedulerCallback
 from utils.logging_tools import LoggerManager, get_name
 
 
-class BackgroundTaskManager:
+class BackgroundTaskManager(ITaskManager):
     """
     后台任务管理器
 
@@ -401,6 +402,10 @@ class BackgroundTaskManager:
                             if factory:
                                 task.func = factory.get("func")
                                 task.callback = factory.get("callback")
+
+                        if task.func is None:
+                            self._logger.warning(get_name(), f'Scheduled task {task.task_id} ({task.name}) has no func - did you forget to register a factory?')
+                            continue
 
                         if self._scheduler_callback.should_run(task):
                             tasks_to_run.append(task)

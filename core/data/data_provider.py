@@ -8,9 +8,10 @@ import os
 import json
 import threading
 from pathlib import Path
-from typing import Dict, Any, Optional, Callable, List, Literal
+from typing import Dict, Any, Optional, Callable, List
 from enum import Enum
 
+from core.interfaces.i_data_provider import IDataProvider, DataNamespace as IDataNamespace
 from utils.logging_tools import LoggerManager, get_name
 
 
@@ -25,7 +26,7 @@ class DataNamespace(Enum):
     PUBLIC = "public"    # 允许其他插件访问
 
 
-class DataProvider:
+class DataProvider(IDataProvider):
     """
     数据提供者 - 单例模式
     
