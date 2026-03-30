@@ -387,7 +387,9 @@ class DataProvider(IDataProvider):
             callback: 回调函数，签名为 callback(target_plugin_id, key, old_value, new_value)
             
         Raises:
-            DataProviderError: 目标插件不存在或尝试订阅 private 数据时抛出
+            DataProviderError: 目标插件不存在时抛出
+
+        注意: 系统不阻止订阅任意 key，仅在 namespace=PUBLIC 时才会触发回调通知。
         """
         data = self.load_data()
         

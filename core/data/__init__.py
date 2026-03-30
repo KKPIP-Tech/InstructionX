@@ -12,10 +12,12 @@
     >>> provider.register_plugin("plugin-001", "VideoEditor")
 """
 
-from .data_provider import DataProvider
+from .data_provider import DataProvider, DataNamespace, DataProviderError
 
 
 __all__ = [
     "DataProvider",
+    "DataNamespace",
+    "DataProviderError",
 ]
 

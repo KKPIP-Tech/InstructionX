@@ -160,3 +160,8 @@ class IDataProvider(ABC):
     def get_plugin_info(self, instance_id: str) -> Optional[Dict[str, Any]]:
         """获取指定插件的信息"""
         pass
+
+    @abstractmethod
+    def reset_all_data(self) -> None:
+        """重置所有数据（慎用！）"""
+        pass
