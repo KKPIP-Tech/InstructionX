@@ -17,7 +17,7 @@ class BackgroundTaskDemoInfo(IPluginInfo):
 
     @property
     def developer(self) -> str:
-        return "InstructionX 官方"
+        return "InstructionX Team"
 
     @property
     def developer_email(self) -> str:
