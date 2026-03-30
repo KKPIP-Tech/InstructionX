@@ -41,6 +41,8 @@ class TaskStatus(Enum):
     CANCELLED = "cancelled"  # 已取消
 ```
 
+> **注意**：`STOPPED` 状态仅存在于 `core/interfaces/i_task_manager.py` 接口定义中，实际数据模型 `core/task/task_model.py` 中的 `TaskStatus` 枚举不包含此值。
+
 ### TaskThreadLocal
 
 ```python
@@ -428,6 +430,8 @@ def update_long_running_task_status(self, task_id: str, status: str) -> bool
 
 **返回**:
 - 是否成功更新
+
+> **注意**：此方法存在于 `BackgroundTaskManager` 实现中，但未在 `ITaskManager` 抽象接口中声明。如需通过接口使用，请直接依赖具体实现。
 
 ---
 
@@ -818,7 +822,7 @@ print("任务管理器已关闭")
 
 ---
 
-## 10. 相关文档
+## 11. 相关文档
 
 - [后台任务概述](overview.md)
 - [插件开发指南](../plugin-system/plugin-development.md)

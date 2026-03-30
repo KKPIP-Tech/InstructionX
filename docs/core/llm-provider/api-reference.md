@@ -251,6 +251,7 @@ def chat(
     temperature: float = 0.7,
     max_tokens: Optional[int] = None,
     tools: Optional[List[Dict]] = None,
+    images: Optional[List[str]] = None,
     **kwargs
 ) -> ChatResponse
 ```
@@ -258,16 +259,33 @@ def chat(
 发送聊天请求（同步）。
 
 **参数**:
-- `messages`: 消息列表
-- `provider`: Provider 名称（"default" 使用第一个启用的 Provider）
-- `model`: 模型名称（可选）
-- `temperature`: 温度参数（0.0-2.0）
-- `max_tokens`: 最大 token 数（可选）
-- `tools`: Function Calling 工具定义列表（可选）
-- `**kwargs`: 其他参数
+- `messages`: 消息列表，支持 Message 对象或字典格式
+- `provider`: Provider 名称（"default" 自动选择第一个启用的 Provider）
+- `model`: 模型名称（可选，默认使用配置中的模型）
+- `temperature`: 温度参数，控制随机性，范围 0-2，默认 0.7
+- `max_tokens`: 最大生成 token 数（可选）
+- `tools`: Function Calling 工具定义列表（可选，格式符合 OpenAI Function Calling 规范）
+- `images`: 图片 base64 列表（可选，用于 Vision 功能，仅部分 Provider 支持）
+- `**kwargs`: 其他 Provider 特定参数
 
 **返回**:
-- `ChatResponse`: 聊天响应（包含 `tool_calls` 属性）
+- `ChatResponse`: 聊天响应对象，包含以下属性：
+  - `content`: 响应内容文本
+  - `model`: 使用的模型名称
+  - `role`: 响应角色（通常为 "assistant"）
+  - `reasoning_content`: 推理内容（如有，部分 Provider 支持）
+  - `tool_calls`: 函数调用列表（Function Calling）
+  - `extra`: 额外信息字典
+
+**Function Calling 说明**:
+- `tools` 参数用于定义可调用的函数工具
+- 响应中的 `tool_calls` 包含模型决定调用的工具和参数
+- 需要两轮对话：第一轮获取工具调用，第二轮传入工具结果
+
+**Vision 说明**:
+- `images` 参数接受 base64 编码的图片列表
+- 仅支持 Vision 的 Provider（如 SiliconFlow、GLM、Ollama）才能使用
+- MiniMax Provider 不支持 Vision 功能
 
 **示例**:
 ```python
@@ -280,7 +298,8 @@ response = provider.chat(
     provider="minimax",
     temperature=0.7
 )
-print(response.content)
+print(f"Model: {response.model}")
+print(f"Response: {response.content}")
 
 # 使用 Function Calling
 tools = [
@@ -288,22 +307,80 @@ tools = [
         "type": "function",
         "function": {
             "name": "get_weather",
-            "description": "获取天气",
+            "description": "获取指定城市的天气信息",
             "parameters": {
                 "type": "object",
-                "properties": {"city": {"type": "string"}},
+                "properties": {
+                    "city": {
+                        "type": "string",
+                        "description": "城市名称"
+                    }
+                },
                 "required": ["city"]
             }
         }
     }
 ]
+
+# 第一次调用：模型决定调用工具
 response = provider.chat(
-    messages=[{"role": "user", "content": "北京天气如何？"}],
+    messages=[{"role": "user", "content": "北京今天天气怎么样？"}],
     provider="minimax",
     tools=tools
 )
+
+print(f"模型回复: {response.content}")
+
+# 检查是否有工具调用
 if response.tool_calls:
-    print(f"调用工具: {response.tool_calls}")
+    tool_call = response.tool_calls[0]
+    func_name = tool_call['function']['name']
+    func_args = tool_call['function']['arguments']
+
+    print(f"调用工具: {func_name}")
+    print(f"参数: {func_args}")
+
+    # 执行工具函数
+    def get_weather(city: str) -> str:
+        return f"{city} 今天天气晴朗，25°C"
+
+    result = get_weather(func_args.get('city', ''))
+
+    # 将工具结果添加到对话
+    messages = [
+        {"role": "user", "content": "北京今天天气怎么样？"},
+        {"role": "assistant", "content": response.content},
+        {
+            "role": "tool",
+            "tool_call_id": tool_call.get('id', ''),
+            "content": result
+        }
+    ]
+
+    # 第二次调用：模型根据工具结果生成最终回复
+    final_response = provider.chat(messages=messages, provider="minimax")
+    print(f"最终回复: {final_response.content}")
+
+# 使用 Vision（仅支持 Vision 的 Provider）
+import base64
+
+# 读取图片并转为 base64
+with open("image.png", "rb") as f:
+    img_base64 = base64.b64encode(f.read()).decode()
+
+# 发送多模态消息
+response = provider.chat(
+    messages=[
+        {
+            "role": "user",
+            "content": "描述这张图片",
+            "images": [img_base64]
+        }
+    ],
+    provider="siliconflow"  # 使用支持 Vision 的 Provider
+)
+
+print(response.content)
 ```
 
 ---
@@ -335,7 +412,7 @@ def stream_chat(
 - `**kwargs`: 其他参数
 
 **返回**:
-- `List[ChatResponse]`: 响应列表
+- 响应生成器（Iterator）或 None，取决于具体 Provider 的实现
 
 **示例**:
 ```python
@@ -380,7 +457,7 @@ def embed(
 ```python
 # 单文本
 response = provider.embed(
-    text="你好世界",
+    texts="你好世界",
     provider="minimax"
 )
 embedding = response[0].embedding
@@ -693,6 +770,8 @@ print(f"Response: {response.content}")
 
 ### 6.2 使用 Vision
 
+> **注意**：MiniMax Provider 不支持 Vision，请使用 SiliconFlow、GLM 或 Ollama。
+
 ```python
 import base64
 
@@ -700,7 +779,7 @@ import base64
 with open("image.png", "rb") as f:
     img_base64 = base64.b64encode(f.read()).decode()
 
-# 发送多模态消息
+# 发送多模态消息（使用支持 Vision 的 Provider）
 response = provider.chat(
     messages=[
         {
@@ -709,7 +788,7 @@ response = provider.chat(
             "images": [img_base64]
         }
     ],
-    provider="minimax"
+    provider="siliconflow"
 )
 
 print(response.content)

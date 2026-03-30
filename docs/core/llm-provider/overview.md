@@ -49,7 +49,7 @@ graph TB
     end
 
     subgraph Providers["各 Provider 实现"]
-        MiniMax["MiniMaxProvider<br/>Chat+Embedding+Vision"]
+        MiniMax["MiniMaxProvider<br/>Chat+Embedding"]
         SiliconFlow["SiliconFlowProvider<br/>Chat+Embedding+Vision"]
         GLM["GLMProvider<br/>Chat+Embedding+Vision"]
         Ollama["OllamaProvider<br/>Chat+Embedding+Vision"]
@@ -78,10 +78,12 @@ graph TB
 
 | Provider | Chat | Streaming | Embedding | Vision | API 协议 |
 |----------|------|-----------|-----------|--------|----------|
-| MiniMax | ✅ | ✅ | ✅ | ✅ | OpenAI 兼容 |
+| MiniMax | ✅ | ✅ | ✅ | ❌ | OpenAI 兼容 |
 | SiliconFlow | ✅ | ✅ | ✅ | ✅ | OpenAI 兼容 |
 | GLM | ✅ | ✅ | ✅ | ✅ | OpenAI 兼容 |
 | Ollama | ✅ | ✅ | ✅ | ✅ | 私有协议 |
+
+> **注意**：MiniMax 官方文档明确说明当前不支持图像和音频类型的输入，因此 `support_vision = False`。
 
 ---
 
@@ -123,6 +125,21 @@ response = provider.chat(
 async def main():
     response = await provider.async_chat(
         messages=[{"role": "user", "content": "你好"}],
+        provider="minimax"
+    )
+
+# 异步流式调用
+async def stream_example():
+    async for chunk in provider.async_stream_chat(
+        messages=[{"role": "user", "content": "写一首诗"}],
+        provider="siliconflow"
+    ):
+        print(chunk.content, end="")
+
+# 异步嵌入
+async def embed_example():
+    results = await provider.async_embed(
+        texts=["要嵌入的文本1", "要嵌入的文本2"],
         provider="minimax"
     )
 
@@ -280,7 +297,7 @@ if response.tool_calls:
             "embedding_model": "embedding-2",
             "enabled_chat": true,
             "enabled_embedding": true,
-            "support_vision": true
+            "support_vision": false
         },
         "siliconflow": {
             "name": "SiliconFlow",

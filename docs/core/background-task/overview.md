@@ -122,6 +122,8 @@ class TaskStatus(Enum):
     CANCELLED = "cancelled"  # 已取消
 ```
 
+> **注意**：`STOPPED` 状态仅存在于接口定义中，实际数据模型不包含此枚举值。
+
 ### 3.2 状态转换图
 
 ```mermaid
