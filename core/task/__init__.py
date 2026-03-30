@@ -24,7 +24,7 @@ Classes:
 """
 
 from .background_task import BackgroundTaskManager
-from .task_model import TaskType, TaskStatus, BackgroundTask, ScheduledTask, LongRunningTask
+from .task_model import TaskType, TaskStatus, BackgroundTask, ScheduledTask, LongRunningTask, TaskThreadLocal
 
 
 __all__ = [
@@ -34,4 +34,5 @@ __all__ = [
     "BackgroundTask",
     "ScheduledTask",
     "LongRunningTask",
+    "TaskThreadLocal",
 ]

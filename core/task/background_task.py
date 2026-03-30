@@ -112,7 +112,12 @@ class BackgroundTaskManager(ITaskManager):
         self._schedule_check_thread.start()
 
     def _restore_all_scheduled_tasks(self) -> None:
-        """从存储恢复所有定时任务（不检查工厂）"""
+        """从存储恢复所有定时任务（不检查工厂）
+
+        注意：此方法在 __init__ 中未被调用。定时任务恢复的实际触发路径为：
+        插件 on_plugin_loaded() → register_scheduled_task_factory() → restore_scheduled_tasks()
+        即任务恢复由各插件的工厂注册自动触发，而非全局一次性恢复。
+        """
         stored_tasks = self._storage.get_all_scheduled_tasks()
 
         for stored_task in stored_tasks:
@@ -296,7 +301,7 @@ class BackgroundTaskManager(ITaskManager):
         注册定时任务工厂函数
 
         用于在应用启动时恢复定时任务。
-        插件应该在 _create_widget 中调用此方法注册工厂。
+        插件应该在 on_plugin_loaded 中调用此方法注册工厂。
 
         Args:
             plugin_id: 插件 UUID

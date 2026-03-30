@@ -153,6 +153,11 @@ class ITaskManager(ABC):
         """获取长期任务列表"""
         pass
 
+    @abstractmethod
+    def update_long_running_task_status(self, task_id: str, status: str) -> bool:
+        """更新长期任务的状态"""
+        pass
+
     # ==================== 任务查询 ====================
 
     @abstractmethod

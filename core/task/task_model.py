@@ -28,6 +28,7 @@ class TaskStatus(Enum):
     COMPLETED = "completed" # 已完成：任务成功执行完毕
     FAILED = "failed"      # 执行失败：任务执行过程中出错
     CANCELLED = "cancelled" # 已取消：任务被用户主动取消
+    STOPPED = "stopped"    # 已停止：长期任务被主动停止
 
 
 @dataclass

@@ -92,10 +92,10 @@ class TaskStorage:
                     return json.load(f)
             except json.JSONDecodeError as e:
                 self._logger.warning(get_name(), f'JSON 解析失败, 返回默认数据: {e}')
-                return {"tasks": {}, "scheduled_tasks": {}}
+                return {"tasks": {}, "scheduled_tasks": {}, "long_running_tasks": {}}
             except Exception as e:
                 self._logger.warning(get_name(), f'读取任务数据失败: {e}')
-                return {"tasks": {}, "scheduled_tasks": {}}
+                return {"tasks": {}, "scheduled_tasks": {}, "long_running_tasks": {}}
 
     def _write_to_disk(self, data: Dict[str, Any]) -> None:
         """

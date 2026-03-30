@@ -65,9 +65,12 @@ class TaskScheduler:
             self._stop_event.wait(self._check_interval)
 
     def _check_and_run_tasks(self) -> None:
-        """检查并执行到期的定时任务"""
-        # 这个方法需要由 BackgroundTaskManager 调用
-        # 因为 ScheduledTask.func 需要从外部注入
+        """检查并执行到期的定时任务
+
+        注意：此方法目前为空实现（pass）。实际的定时任务检查由
+        BackgroundTaskManager 的 _check_scheduled_tasks() daemon 线程执行，
+        该线程使用 SchedulerCallback 类来处理任务执行和回调。
+        """
         pass
 
 
