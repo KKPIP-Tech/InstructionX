@@ -103,22 +103,19 @@
 以下文档需要在后续版本中补充：
 
 1. **Core Interfaces 详细文档**
-   - `docs/core/interfaces/i_plugin.py` - IPlugin 接口定义
-   - `docs/core/interfaces/i_plugin_info.py` - IPluginInfo 接口定义
-   - `docs/core/interfaces/i_data_provider.py` - IDataProvider 接口定义
-   - `docs/core/interfaces/i_task_manager.py` - ITaskManager 接口定义
-   - `docs/core/interfaces/i_llm_facade.py` - ILLMFacade 接口定义
-   - `docs/core/interfaces/i_logger.py` - ILogger 接口定义
-   - `docs/core/interfaces/plugin_services.py` - PluginServices 类定义
+   - `docs/core/interfaces/i_plugin.md` - IPlugin 接口详细文档（目前合并在 overview.md 中）
+   - `docs/core/interfaces/i_plugin_info.md` - IPluginInfo 接口详细文档
+   - `docs/core/interfaces/i_data_provider.md` - IDataProvider 接口详细文档
+   - `docs/core/interfaces/i_task_manager.md` - ITaskManager 接口详细文档
+   - `docs/core/interfaces/i_llm_facade.md` - ILLMFacade 接口详细文档
+   - `docs/core/interfaces/i_logger.md` - ILogger 接口详细文档（已有基础版，可扩展）
+   - `docs/core/interfaces/plugin_services.md` - PluginServices 类详细文档
 
-2. **DataProvider 概述文档**
-   - `docs/core/data-provider/overview.md` - DataProvider 的设计理念和架构
+   > 注：上述接口说明目前综合在 `docs/core/interfaces/overview.md` 中，如需独立文档请使用 .md 后缀。
 
-3. **后台任务概述文档**
-   - `docs/core/background-task/overview.md` - 后台任务系统的设计理念
-
-4. **LLM Provider 概述文档**
-   - `docs/core/llm-provider/overview.md` - LLM Provider 的设计理念和多提供商架构
+2. **插件系统扩展文档**
+   - `docs/core/plugin-system/plugin-manager.md` - PluginManager 详细文档（已有部分内容，可扩展）
+   - `docs/core/plugin-system/plugin-identity.md` - PluginIdentity 详细文档
 
 ### 使用建议
 

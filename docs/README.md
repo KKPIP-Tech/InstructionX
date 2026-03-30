@@ -14,61 +14,62 @@
 
 ```
 docs/
-├── README.md                      # 本文档 - 文档索引和导航
+├── README.md                         # 本文档 - 文档索引和导航
 │
-├── architecture/                  # 架构文档
-│   ├── overview.md               # 系统架构概述
-│   └── module-dependencies.md   # 模块依赖关系
+├── architecture/                     # 架构文档
+│   ├── overview.md                  # 系统架构概述
+│   ├── module-dependencies.md      # 模块依赖关系
+│   └── full-analysis.md            # 完整架构分析
 │
-├── core/                         # 核心模块文档
-│   ├── interfaces/              # 抽象接口层
-│   │   ├── overview.md         # 接口层概述（含各接口详细说明）
-│   │   └── ilogger.md          # ILogger 接口文档
-│   │   # 注：IPlugin/IPluginInfo 详见 plugin-system/iplugin.md
-│   │   # 注：IDataProvider/ITaskManager/ILLMFacade 在 overview.md 中详解
-│   │
-│   ├── plugin-system/           # 插件系统
-│   │   ├── overview.md          # 插件系统概述
-│   │   ├── iplugin.md           # IPlugin 接口
-│   │   ├── plugin-manager.md     # PluginManager
-│   │   ├── plugin-development.md # 插件开发指南
-│   │   ├── plugin-version.md    # PluginVersion 版本管理
-│   │   ├── plugin-icon.md       # PluginIcon 图标管理
-│   │   ├── plugin-identity.md    # PluginIdentity 身份标识
-│   │   └── plugin-config-manager.md  # PluginConfigManager 配置管理
-│   │
-│   ├── data-provider/             # 数据层
-│   │   ├── overview.md           # DataProvider 概述
-│   │   └── api-reference.md      # DataProvider API 参考
-│   │
-│   ├── background-task/          # 后台任务
-│   │   ├── overview.md          # 后台任务概述
-│   │   ├── api-reference.md      # 后台任务 API 参考
-│   │   └── task-storage.md      # TaskStorage 持久化存储
-│   │
-│   └── llm-provider/             # LLM 提供者
-│       ├── overview.md           # LLM Provider 概述
-│       ├── api-reference.md       # LLM Provider API 参考
-│       └── provider-config.md     # ProviderConfig/LLMConfig 配置
-│
-├── ui/                           # UI 模块文档
-│   ├── main-window.md            # 主窗口
-│   ├── skills-panel.md           # 技能面板
-│   ├── skill-button.md           # SkillButton 技能按钮
-│   ├── work-area.md              # 工作区
-│   └── dialogs.md                # 对话框组件
-│
-├── utils/                        # 工具模块文档
-│   ├── logging-tools.md          # 日志工具
-│   └── style-qss.md             # StyleQSS 样式系统
-│
-├── plugins/                      # 插件文档
-│   ├── index.md                 # 插件索引
-│   ├── official-plugins.md      # 官方插件文档
-│   └── thirdparty-plugins.md    # 第三方插件文档
-│
-└── api/                          # API 参考
-    └── full-reference.md         # 完整 API 参考
+└── core/                            # 核心模块文档
+    ├── interfaces/                  # 抽象接口层
+    │   ├── overview.md              # 接口层概述（含各接口详细说明）
+    │   └── ilogger.md              # ILogger 接口文档
+    │   # 注：IPlugin/IPluginInfo 详见 plugin-system/iplugin.md
+    │   # 注：IDataProvider/ITaskManager/ILLMFacade 在 overview.md 中详解
+    │
+    ├── plugin-system/               # 插件系统
+    │   ├── overview.md              # 插件系统概述
+    │   ├── iplugin.md               # IPlugin 接口
+    │   ├── plugin-manager.md        # PluginManager
+    │   ├── plugin-development.md    # 插件开发指南
+    │   ├── plugin-version.md        # PluginVersion 版本管理
+    │   ├── plugin-icon.md          # PluginIcon 图标管理
+    │   ├── plugin-identity.md       # PluginIdentity 身份标识
+    │   └── plugin-config-manager.md # PluginConfigManager 配置管理
+    │
+    ├── data-provider/               # 数据层
+    │   ├── overview.md              # DataProvider 概述
+    │   └── api-reference.md         # DataProvider API 参考
+    │
+    ├── background-task/             # 后台任务
+    │   ├── overview.md             # 后台任务概述
+    │   ├── api-reference.md         # 后台任务 API 参考
+    │   └── task-storage.md         # TaskStorage 持久化存储
+    │
+    └── llm-provider/                # LLM 提供者
+        ├── overview.md              # LLM Provider 概述
+        ├── api-reference.md         # LLM Provider API 参考
+        └── provider-config.md       # ProviderConfig/LLMConfig 配置
+
+ui/                                  # UI 模块文档
+├── main-window.md                   # 主窗口
+├── skills-panel.md                  # 技能面板
+├── skill-button.md                  # SkillButton 技能按钮
+├── work-area.md                     # 工作区
+└── dialogs.md                       # 对话框组件
+
+utils/                               # 工具模块文档
+├── logging-tools.md                 # 日志工具
+└── style-qss.md                     # StyleQSS 样式系统
+
+plugins/                             # 插件文档
+├── index.md                        # 插件索引
+├── official-plugins.md             # 官方插件文档
+└── thirdparty-plugins.md           # 第三方插件文档
+
+api/                                 # API 参考
+└── full-reference.md                # 完整 API 参考
 ```
 
 ---
@@ -96,7 +97,7 @@ docs/
 11. **[后台任务 API 参考](core/background-task/api-reference.md)** - 任务 API
 12. **[LLM Provider 概述](core/llm-provider/overview.md)** - LLM 提供者框架
 13. **[LLM Provider API 参考](core/llm-provider/api-reference.md)** - LLM API
-14. **[UI 模块文档](ui/)** - 界面组件详解
+14. **[UI 模块文档](ui/main-window.md)** - 界面组件详解
 15. **[完整 API 参考](api/full-reference.md)** - 所有 API 索引
 
 ### 插件参考
@@ -113,10 +114,10 @@ docs/
 
 项目核心组件均采用单例模式，确保全局唯一性：
 
-- **PluginManager** - 插件管理器
-- **DataProvider** - 数据提供者
-- **BackgroundTaskManager** - 后台任务管理器
-- **LLMProvider** - LLM 提供者
+- **PluginManager** - 插件管理器（官方插件和第三方插件的加载、注册、排序）
+- **DataProvider** - 数据提供者（数据持久化、发布/订阅、插件间通信）
+- **BackgroundTaskManager** - 后台任务管理器（同步/异步任务、定时任务、长期任务）
+- **LLMProvider** - LLM 提供者（多厂商 LLM 统一访问）
 
 ### 插件系统
 
@@ -168,6 +169,13 @@ from core import BackgroundTaskManager, TaskType, TaskStatus
 
 # LLM 提供者
 from core.llm import get_llm_provider
+
+# 抽象接口层（推荐通过接口而非直接依赖实现）
+from core.interfaces import (
+    IDataProvider, DataNamespace,
+    ITaskManager, TaskType, TaskStatus,
+    ILLMFacade, ILogger, PluginServices
+)
 ```
 
 ### 获取单例实例
