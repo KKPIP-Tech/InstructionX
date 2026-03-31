@@ -301,6 +301,7 @@ class PluginManager:
         self._thirdparty_plugins.clear()
         self._plugin_registry.clear()
         self._plugin_name_to_id.clear()
+        self._api_registry.clear()
         self.load_plugins()
 
     def get_plugin_by_id(self, plugin_id: str) -> Optional[IPlugin]:

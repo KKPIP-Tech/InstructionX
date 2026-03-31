@@ -342,5 +342,5 @@ class ConversationManager:
             stats.by_provider[conv.provider] = (
                 stats.by_provider.get(conv.provider, 0) + conv.total_cost
             )
-        stats.request_count = sum(len(c.messages) // 2 for c in convs)
+        stats.request_count = sum(len(c.messages) for c in convs)
         return stats
