@@ -147,18 +147,18 @@ class UserService:
 ```mermaid
 graph TB
     subgraph LoggerManager [LoggerManager 单例]
-        Instance[_instance<br/>单例实例]
-        Lock[_lock<br/>线程锁]
-        Logger[_logger<br/>日志器实例]
+        Instance[_instance - 单例实例]
+        Lock[_lock - 线程锁]
+        Logger[_logger - 日志器实例]
     end
 
     subgraph Handlers [处理器]
-        FileHandler[RotatingFileHandler<br/>文件处理器<br/>10MB/5备份]
-        ConsoleHandler[StreamHandler<br/>控制台处理器<br/>开发模式启用]
+        FileHandler[RotatingFileHandler - 文件处理器 - 10MB/5备份]
+        ConsoleHandler[StreamHandler - 控制台处理器 - 开发模式启用]
     end
 
     subgraph Format [格式化器]
-        Formatter[Formatter<br/>[时间][模块][级别]<br/>[Message-->][消息]]
+        Formatter[Formatter - 时间-模块-级别-Message-消息]
     end
 
     Instance -->|初始化| Logger

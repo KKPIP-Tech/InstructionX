@@ -9,20 +9,20 @@
 
 ```mermaid
 graph TB
-    subgraph PluginLayer [插件层 (Plugin Layer)]
+    subgraph PluginLayer [插件层 - Plugin Layer]
         P1[第三方插件]
         P2[第三方插件]
     end
 
-    subgraph PluginServiceLayer [LLM 插件服务层 (LLMPluginService)]
-        LPS[LLMPluginService<br/>插件开发者唯一入口]
-        CM[ConversationManager<br/>对话管理]
-        TCE[ToolCallExecutor<br/>工具调用自动化]
-        TR[ToolRegistry<br/>工具注册表]
+    subgraph PluginServiceLayer [LLM 插件服务层 - LLMPluginService]
+        LPS[LLMPluginService - 插件开发者唯一入口]
+        CM[ConversationManager - 对话管理]
+        TCE[ToolCallExecutor - 工具调用自动化]
+        TR[ToolRegistry - 工具注册表]
     end
 
-    subgraph LLMCoreLayer [LLM 核心层 (LLMProvider)]
-        LP[LLMProvider<br/>多提供商门面]
+    subgraph LLMCoreLayer [LLM 核心层 - LLMProvider]
+        LP[LLMProvider - 多提供商门面]
         MiniMax[MiniMax]
         SiliconFlow[SiliconFlow]
         GLM[GLM]
@@ -145,16 +145,16 @@ print(f"请求次数: {stats.request_count}")
 ```mermaid
 flowchart TB
     START[插件开发者]
-    CREATE[create_conversation()<br/>system_prompt=你是一个代码助手]
+    CREATE[create_conversation + system_prompt]
     CONV_ID[返回 conv_id]
-    SEND[send_message(conv_id, 格式化代码)]
-    RESP1[返回 content (str)]
-    STREAM[stream_send_message()<br/>conv_id, 解释代码<br/>callback]
-    RESP2[callback 逐 chunk 调用<br/>流式更新 UI]
-    TOOLS[chat_with_tools()<br/>messages]
-    RESP3[自动处理两轮<br/>返回 final_response]
-    STATS[get_usage_stats(conv_id)]
-    RESP4[UsageStats:<br/>total_tokens, cost, request_count]
+    SEND[send_message - 格式化代码]
+    RESP1[返回 content]
+    STREAM[stream_send_message + callback]
+    RESP2[callback 逐 chunk 调用]
+    TOOLS[chat_with_tools + messages]
+    RESP3[自动处理两轮 + 返回 final_response]
+    STATS[get_usage_stats]
+    RESP4[UsageStats - total_tokens cost request_count]
 
     START --> CREATE
     CREATE --> CONV_ID
@@ -277,21 +277,21 @@ registry.register(
 ```mermaid
 flowchart LR
     subgraph 注册阶段
-        R1[ToolRegistry.register()<br/>name=search<br/>description=搜索网络<br/>parameters={...}<br/>handler=my_search_func]
-        R2[executor.tools.register()<br/>name=calculate<br/>handler=my_calc_func]
+        R1[ToolRegistry.register - name=search - handler=my_search_func]
+        R2[executor.tools.register - name=calculate - handler=my_calc_func]
     end
 
     subgraph 使用阶段
-        U1[svc = get_llm_plugin_service()]
-        U2[executor = svc.get_tool_executor()]
-        U3[executor.chat_with_tools(messages)<br/># 无需传入 tools 参数]
+        U1[svc = get_llm_plugin_service]
+        U2[executor = svc.get_tool_executor]
+        U3[executor.chat_with_tools]
     end
 
     subgraph 工具执行
-        E1[LLM 返回 tool_calls<br/>[{name:search, args:{}}]]
+        E1[LLM 返回 tool_calls]
         E2[executor 自动查找 handler]
-        E3[handler(Python) → 结果]
-        E4[结果追加到 messages<br/>再次调用 LLM]
+        E3[handler执行Python函数]
+        E4[结果追加到 messages]
     end
 
     R1 --> U1

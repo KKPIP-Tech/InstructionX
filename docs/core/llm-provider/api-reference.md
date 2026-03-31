@@ -132,7 +132,7 @@ classDiagram
     class Message {
         +str role
         +str content
-        +List~str~ images
+        +List images
         +Dict extra
         +to_dict() Dict
     }
@@ -142,7 +142,7 @@ classDiagram
         +str model
         +str role
         +str reasoning_content
-        +List~Dict~ tool_calls
+        +List tool_calls
         +Dict extra
         +UsageInfo usage
     }
@@ -161,12 +161,12 @@ classDiagram
         +datetime created_at
         +datetime updated_at
         +str system_prompt
-        +List~Dict~ messages
+        +List messages
         +int total_tokens
         +float total_cost
         +str provider
         +str model
-        +to_llm_format() List~Dict~
+        +to_llm_format() List
         +add_message(role, content, usage)
     }
 
@@ -208,7 +208,7 @@ classDiagram
         +bool done
         +str full_response
         +str reasoning_content
-        +List~Dict~ tool_calls
+        +List tool_calls
         +UsageInfo usage
         +str error
     }
@@ -222,7 +222,7 @@ classDiagram
         +bool supports_function_calling
         +str current_chat_model
         +str current_embedding_model
-        +List~ModelInfo~ models
+        +List models
         +bool is_healthy
         +str last_error
         +int rate_limit_rpm
@@ -272,7 +272,7 @@ classDiagram
         +bool supports_function_calling
         +str current_chat_model
         +str current_embedding_model
-        +List~ModelInfo~ models
+        +List models
         +bool is_healthy
         +str last_error
         +int rate_limit_rpm
@@ -944,24 +944,24 @@ classDiagram
         +chat_with_tools(messages, provider, model, max_turns, ...) Tuple
         +get_tool_executor() ToolCallExecutor
         +get_shared_tool_registry() ToolRegistry
-        +embed(texts, provider, model) List~List~float~~
+        +embed(texts, provider, model) List
         +generate_image(prompt, provider, ...) ImageResult
         +text_to_speech(text, provider, ...) AudioResult
         +load_image_as_base64(file_path) str
-        +get_available_providers() List~ProviderInfo~
+        +get_available_providers() List
         +get_usage_stats(conv_id?) UsageStats
-        +validate_provider(provider) Tuple~bool, str~
+        +validate_provider(provider) Tuple
     }
 
     class ConversationManager {
-        -Dict~str, Conversation~ _conversations
+        -Dict _conversations
         -LLMProvider _llm
         -int _max_context
         +create_conversation(system_prompt?, provider, model, metadata?) str
-        +send_message(conv_id, content, images?, ...) Tuple~str, UsageInfo~~
-        +stream_send_message(conv_id, content, images?, callback?, ...) Tuple~str, UsageInfo~~
+        +send_message(conv_id, content, images?, ...) Tuple
+        +stream_send_message(conv_id, content, images?, callback?, ...) Tuple
         +get_conversation(conv_id) Conversation
-        +list_conversations() List~Conversation~~
+        +list_conversations() List
         +delete_conversation(conv_id) bool
         +get_usage_stats(conv_id?) UsageStats
         -_maybe_truncate_history(conv, messages) void
@@ -976,13 +976,13 @@ classDiagram
     }
 
     class ToolRegistry {
-        -Dict~str, Dict~ _tools
-        -Dict~str, Callable~ _handlers
+        -Dict _tools
+        -Dict _handlers
         +register(name, description, parameters, handler) void
         +unregister(name) bool
-        +get_tools() List~Dict~
+        +get_tools() List
         +get_handler(name) Callable
-        +list_tools() List~str~~
+        +list_tools() List
     }
 
     class LLMProvider {
@@ -990,12 +990,12 @@ classDiagram
         -LLMConfig _config
         +chat(messages, provider?, model?, ...) ChatResponse
         +stream_chat(messages, callback, provider?, ...) void
-        +embed(texts, provider?, model?) List~EmbeddingResponse~~
+        +embed(texts, provider?, model?) List
         +async_chat(messages, ...) ChatResponse
         +async_stream_chat(messages, ...) AsyncIterator
         +get_provider(name) ILLM
-        +get_all_providers() Dict~str, ILLM~~
-        +get_cached_models(provider) List~ModelInfo~~
+        +get_all_providers() Dict
+        +get_cached_models(provider) List
     }
 
     %% 关系
@@ -1055,16 +1055,16 @@ conv_id = svc.create_conversation(
 ```mermaid
 flowchart TB
     START[插件开发者]
-    CREATE[create_conversation()<br/>system_prompt]
+    CREATE[create_conversation&#40;&#41; + system_prompt]
     CONV_ID[返回 conv_id]
-    SEND[send_message(conv_id, 格式化代码)]
-    RESP1[返回 content (str)]
-    STREAM[stream_send_message()<br/>conv_id, 解释代码<br/>callback]
+    SEND[send_message&#40;conv_id, 格式化代码&#41;]
+    RESP1[返回 content &#40;str&#41;]
+    STREAM[stream_send_message&#40;&#41; + conv_id + callback]
     RESP2[callback 逐 chunk 调用]
-    TOOLS[chat_with_tools()<br/>messages]
-    RESP3[自动处理两轮<br/>返回 final_response]
-    STATS[get_usage_stats(conv_id)]
-    RESP4[UsageStats:<br/>total_tokens, cost, request_count]
+    TOOLS[chat_with_tools&#40;&#41; + messages]
+    RESP3[自动处理两轮 + 返回 final_response]
+    STATS[get_usage_stats&#40;conv_id&#41;]
+    RESP4[UsageStats - total_tokens, cost, request_count]
 
     START --> CREATE
     CREATE --> CONV_ID
@@ -1298,21 +1298,21 @@ sequenceDiagram
 ```mermaid
 flowchart LR
     subgraph 注册阶段
-        R1[ToolRegistry.register()<br/>name=search<br/>handler=my_search_func]
-        R2[executor.tools.register()<br/>name=calculate<br/>handler=my_calc_func]
+        R1[ToolRegistry.register - name=search - handler=my_search_func]
+        R2[executor.tools.register - name=calculate - handler=my_calc_func]
     end
 
     subgraph 使用阶段
-        U1[svc = get_llm_plugin_service()]
-        U2[executor = svc.get_tool_executor()]
-        U3[executor.chat_with_tools(messages)]
+        U1[svc = get_llm_plugin_service]
+        U2[executor = svc.get_tool_executor]
+        U3[executor.chat_with_tools]
     end
 
     subgraph 工具执行
-        E1[LLM 返回 tool_calls<br/>[{name:search, args:{}}]]
+        E1[LLM 返回 tool_calls]
         E2[executor 自动查找 handler]
-        E3[handler(Python) → 结果]
-        E4[结果追加到 messages<br/>再次调用 LLM]
+        E3[handler执行Python函数]
+        E4[结果追加到 messages]
     end
 
     R1 --> U1

@@ -46,28 +46,28 @@
 ```mermaid
 graph TB
     subgraph UI [UI Layer / 插件 UI 层]
-        UI1[Qt Widgets (插件 UI)]
+        UI1[Qt Widgets - 插件 UI]
     end
 
     subgraph PL [Plugin Layer / 插件层]
-        P1[Plugin (IPlugin)]
-        PS[PluginServices (DI 容器)]
+        P1[Plugin - IPlugin]
+        PS[PluginServices - DI 容器]
     end
 
-    subgraph LPS [LLM Plugin Service Layer / LLM 插件服务层 (新增)]
-        LPS1[LLMPluginService<br/>插件开发者唯一入口]
-        CM[ConversationManager<br/>对话管理器]
-        TCE[ToolCallExecutor<br/>工具调用自动化]
-        TR[ToolRegistry<br/>工具注册表]
+    subgraph LPS [LLM Plugin Service Layer / LLM 插件服务层]
+        LPS1[LLMPluginService - 插件开发者唯一入口]
+        CM[ConversationManager - 对话管理器]
+        TCE[ToolCallExecutor - 工具调用自动化]
+        TR[ToolRegistry - 工具注册表]
     end
 
     subgraph LCL [LLM Core Layer / LLM 核心层]
-        LLP[LLMProvider<br/>门面单例]
-        LC[LLMConfig<br/>配置管理]
+        LLP[LLMProvider - 门面单例]
+        LC[LLMConfig - 配置管理]
     end
 
     subgraph PRV [Provider Layer / Provider 实现层]
-        BP[BaseProvider<br/>模板基类]
+        BP[BaseProvider - 模板基类]
         MiniMax[MiniMaxProvider]
         SiliconFlow[SiliconFlowProvider]
         GLM[GLMProvider]
@@ -75,8 +75,8 @@ graph TB
     end
 
     subgraph DT [Data Types Layer / 数据类型层]
-        TI[types.py (新增)<br/>Conversation, ToolResult, UsageStats,<br/>StreamChunk, ImageResult, AudioResult,<br/>ProviderInfo]
-        PI[provider_interface.py<br/>Message, ChatResponse, ModelInfo,<br/>EmbeddingResponse, UsageInfo]
+        TI[types.py - Conversation, ToolResult, UsageStats, StreamChunk, ImageResult, AudioResult, ProviderInfo]
+        PI[provider_interface.py - Message, ChatResponse, ModelInfo, EmbeddingResponse, UsageInfo]
     end
 
     UI1 --> P1
@@ -120,7 +120,7 @@ graph TB
         Register[PROVIDER_REGISTRY]
     end
 
-    subgraph Providers [各 Provider 实现]
+    subgraph ProviderImpl [各 Provider 实现]
         MiniMax[MiniMaxProvider<br/>Chat+Embedding]
         SiliconFlow[SiliconFlowProvider<br/>Chat+Embedding+Vision]
         GLM[GLMProvider<br/>Chat+Embedding+Vision]
@@ -183,7 +183,7 @@ flowchart LR
 
     subgraph LS [LLMPluginService]
         CM[ConversationManager]
-        API[LLMPluginService<br/>.chat / .stream]
+        API[LLMPluginService.chat/stream]
     end
 
     subgraph LC [LLM Core]
@@ -392,26 +392,26 @@ LLM Provider 支持 **Function Calling**（函数调用），允许模型调用�
 
 ```mermaid
 flowchart TD
-    START[插件调用<br/>chat_with_tools]
+    START[插件调用 chat_with_tools]
 
     subgraph 注册阶段
-        REG1[ToolRegistry.register()<br/>注册 name + handler]
-        REG2[get_llm_plugin_service()<br/>获取单例]
+        REG1[ToolRegistry.register - 注册 name + handler]
+        REG2[get_llm_plugin_service - 获取单例]
     end
 
     START --> REG2
     REG1 -.->|"可选：注册全局工具"| REG2
 
     subgraph 执行循环
-        TURN[ToolCallExecutor.chat_with_tools()<br/>第 N 轮 (N ≤ max_turns)]
-        LLM1[LLMProvider.chat()<br/>携带 tools=registry.get_tools()]
-        CHECK{tool_calls<br/>是否存在?}
+        TURN[ToolCallExecutor.chat_with_tools - 第 N 轮]
+        LLM1[LLMProvider.chat - 携带 tools]
+        CHECK{tool_calls 是否存在?}
 
-        TC[解析 tool_calls<br/>提取 name + arguments]
-        FIND[ToolRegistry.get_handler(name)<br/>查找 handler]
-        EXEC[handler(**arguments)<br/>执行工具函数]
-        APPEND[追加 tool result<br/>到 messages]
-        LOOP_BACK[⬆️ 回到第 N+1 轮]
+        TC[解析 tool_calls - 提取 name + arguments]
+        FIND[ToolRegistry.get_handler - 查找 handler]
+        EXEC[handler执行 - 执行工具函数]
+        APPEND[追加 tool result 到 messages]
+        LOOP_BACK[回到第 N+1 轮]
         CHECK -.->|"有 tool_calls"| TC
         TC --> FIND
         FIND --> EXEC
@@ -425,7 +425,7 @@ flowchart TD
     LLM1 --> CHECK
 
     subgraph 结束分支
-        END1[追加 assistant 回复<br/>返回 final_response]
+        END1[追加 assistant 回复 - 返回 final_response]
         CHECK -.->|"无 tool_calls"| END1
     end
 

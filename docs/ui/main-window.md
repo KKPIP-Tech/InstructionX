@@ -19,12 +19,12 @@
 ```mermaid
 graph TB
     subgraph Window [InstructionXMainWindow]
-        Container[QWidget#mainContainer<br/>容器（圆角/透明）]
-        CL[_container_layout<br/>垂直布局 (margins: 8,0,8,8)]
-        TitleBar[CustomTitleBar<br/>固定 40px（Logo + 标题 + 菜单栏 + 窗口控制）]
-        Content[content_layout<br/>中间层 VBox (spacing: 5)]
-        SP[SkillsPanel<br/>技能面板 105-115px]
-        WA[WorkArea<br/>工作区]
+        Container[QWidget#mainContainer - 容器 - 圆角/透明]
+        CL[_container_layout - 垂直布局 margins-8,0,8,8]
+        TitleBar[CustomTitleBar - 固定40px - Logo+标题+菜单栏+窗口控制]
+        Content[content_layout - 中间层VBox spacing-5]
+        SP[SkillsPanel - 技能面板 105-115px]
+        WA[WorkArea - 工作区]
     end
 
     Container --> CL
@@ -156,8 +156,8 @@ graph TB
     TW --> Tab2[第三方功能 tab]
     Tab1 --> SA1[QScrollArea]
     Tab2 --> SA2[QScrollArea]
-    SA1 --> C1[container (HBoxLayout)]
-    SA2 --> C2[container (HBoxLayout)]
+    SA1 --> C1[container - HBoxLayout]
+    SA2 --> C2[container - HBoxLayout]
     C1 --> B1[SkillButton × N]
     C2 --> B2[SkillButton × M]
 ```
@@ -174,8 +174,8 @@ graph TB
 
 ```mermaid
 flowchart TD
-    A[__init__] --> B[super().__init__]
-    B --> C[设置窗口属性<br/>FramelessWindow + TranslucentBackground]
+    A[__init__] --> B[super.init]
+    B --> C[设置窗口属性 - FramelessWindow + TranslucentBackground]
     C --> D[设置窗口尺寸]
     D --> E[加载保存的主题]
     E --> F[创建中心容器 _container]
@@ -319,7 +319,7 @@ flowchart TD
     Mouse[鼠标移动] --> Maximized{窗口已最大化?}
     Maximized -->|是| Exit[退出边缘检测]
     Maximized -->|否| Detect{"在8px边缘范围内?"}
-    Detect -->|是| Direction[判断缩放方向<br/>8个方向之一]
+    Detect -->|是| Direction[判断缩放方向 - 8个方向之一]
     Detect -->|否| Exit
     Direction --> Cursor[设置对应光标]
     Cursor --> Pressed{鼠标按下?}

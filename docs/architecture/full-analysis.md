@@ -377,11 +377,11 @@ sequenceDiagram
 
 ```mermaid
 flowchart TD
-    A[IPlugin.get_widget(parent, data_provider)] --> B{cached_widget != None?}
+    A[IPlugin.get_widget] --> B{cached_widget != None?}
     B -->|"parent unchanged"| C[return cached widget]
-    B -->|"parent changed"| D[setParent(parent)]
+    B -->|"parent changed"| D[setParent parent]
     D --> C
-    B -->|"first creation"| E[_create_widget(parent, data_provider)]
+    B -->|"first creation"| E[_create_widget]
     E --> F[cache widget + parent]
     F --> C
 ```
@@ -589,9 +589,9 @@ __init__() → LLMConfig() → _init_providers() → _fetch_all_models()
 
 ```mermaid
 graph LR
-    A[@register_provider] -->|"provider_type = 'glm'"| B[PROVIDER_REGISTRY['glm'] = GLMProvider]
-    C[@register_provider] -->|"provider_type = 'minimax'"| D[PROVIDER_REGISTRY['minimax'] = MiniMaxProvider]
-    E[get_provider_class('glm')] -->|query registry| B
+    A[register_provider装饰器] -->|"provider_type=glm"| B[PROVIDER_REGISTRY-glm-GLMProvider]
+    C[register_provider装饰器] -->|"provider_type=minimax"| D[PROVIDER_REGISTRY-minimax-MiniMaxProvider]
+    E[get_provider_class] -->|query registry| B
 ```
 
 模块导入时（`providers/__init__.py:89-92`）通过装饰器自动注册所有 Provider。
@@ -707,11 +707,11 @@ sequenceDiagram
 
 ```mermaid
 flowchart TD
-    A[set_style_qss_theme(app, theme)] --> B[detect_system_theme<br/>read Windows Registry]
-    B --> C[app.setStyle(Fusion)]
-    C --> D[create_qss_palette(theme)<br/>set QPalette]
-    D --> E[create_qss(theme) = QssRegistry.get_all(theme)]
-    E --> F[app.setStyleSheet(qss)]
+    A[set_style_qss_theme] --> B[detect_system_theme - read Windows Registry]
+    B --> C[app.setStyle - Fusion]
+    C --> D[create_qss_palette - set QPalette]
+    D --> E[create_qss - QssRegistry.get_all]
+    E --> F[app.setStyleSheet - qss]
 ```
 
 ### 9.2 QssRegistry 优先级管理
