@@ -29,7 +29,10 @@
 """
 
 from .llm_provider import LLMProvider, get_llm_provider
-from .provider_interface import ILLM, Message, ChatResponse, EmbeddingResponse, ModelInfo
+from .provider_interface import (
+    ILLM, Message, ChatResponse, EmbeddingResponse, ModelInfo,
+    UsageInfo
+)
 from .config import LLMConfig, ProviderConfig
 from .exceptions import (
     LLMException,
@@ -44,7 +47,24 @@ from .exceptions import (
     StreamingError,
 )
 
+# 新增：插件服务层类型（types.py）
+from .types import (
+    Conversation,
+    ToolResult,
+    UsageStats,
+    ImageResult,
+    AudioResult,
+    ProviderInfo,
+    StreamChunk,
+)
+
+# 新增：插件服务层类
+from .plugin_service import LLMPluginService, get_llm_plugin_service
+from .conversation_manager import ConversationManager
+from .tool_call_executor import ToolCallExecutor, ToolRegistry
+
 __all__ = [
+    # 核心
     "LLMProvider",
     "get_llm_provider",
     "ILLM",
@@ -52,8 +72,10 @@ __all__ = [
     "ChatResponse",
     "EmbeddingResponse",
     "ModelInfo",
+    "UsageInfo",
     "LLMConfig",
     "ProviderConfig",
+    # 异常
     "LLMException",
     "ConfigurationError",
     "AuthenticationError",
@@ -64,4 +86,18 @@ __all__ = [
     "ConnectionError",
     "TimeoutError",
     "StreamingError",
+    # 插件服务层类型
+    "Conversation",
+    "ToolResult",
+    "UsageStats",
+    "ImageResult",
+    "AudioResult",
+    "ProviderInfo",
+    "StreamChunk",
+    # 插件服务层类
+    "LLMPluginService",
+    "get_llm_plugin_service",
+    "ConversationManager",
+    "ToolCallExecutor",
+    "ToolRegistry",
 ]

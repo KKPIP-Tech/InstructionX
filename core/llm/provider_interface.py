@@ -19,7 +19,30 @@
 """
 
 from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
 from typing import Dict, Any, Optional, List, Callable, AsyncIterator, Union
+
+
+@dataclass
+class UsageInfo:
+    """Token 用量与费用信息
+
+    表示一次 LLM API 调用的 token 消耗和费用统计。
+
+    Attributes:
+        input_tokens: 输入 token 数
+        output_tokens: 输出 token 数
+        total_tokens: 总 token 数
+        input_cost: 输入费用
+        output_cost: 输出费用
+        total_cost: 总费用
+    """
+    input_tokens: Optional[int] = None
+    output_tokens: Optional[int] = None
+    total_tokens: Optional[int] = None
+    input_cost: Optional[float] = None
+    output_cost: Optional[float] = None
+    total_cost: Optional[float] = None
 
 
 class Message:
@@ -83,6 +106,7 @@ class ChatResponse:
         reasoning_content: 思考过程内容（部分模型支持）
         tool_calls: 工具调用列表（可选）
         extra: 额外的响应参数
+        usage: Token 用量与费用信息（可选）
     """
 
     def __init__(
@@ -92,6 +116,7 @@ class ChatResponse:
         role: str = "assistant",
         reasoning_content: str = "",
         tool_calls: Optional[List[Dict]] = None,
+        usage: Optional[UsageInfo] = None,
         **kwargs
     ):
         """初始化聊天响应
@@ -102,6 +127,7 @@ class ChatResponse:
             role: 响应角色，默认 "assistant"
             reasoning_content: 思考过程内容
             tool_calls: 工具调用列表
+            usage: Token 用量与费用信息
             **kwargs: 额外的响应参数
         """
         self.content = content
@@ -109,6 +135,7 @@ class ChatResponse:
         self.role = role
         self.reasoning_content = reasoning_content
         self.tool_calls = tool_calls or []
+        self.usage = usage
         self.extra = kwargs
 
 
@@ -156,6 +183,9 @@ class ModelInfo:
         support_function_calling: 是否支持函数调用
         context_length: 上下文窗口大小（token数）
         extra: 额外的模型参数
+        input_price_per_1k: 每千 token 输入价格（元）
+        output_price_per_1k: 每千 token 输出价格（元）
+        provider: 所属提供商名称
     """
 
     def __init__(
@@ -168,6 +198,9 @@ class ModelInfo:
         support_vision: bool = False,
         support_function_calling: bool = False,
         context_length: Optional[int] = None,
+        input_price_per_1k: Optional[float] = None,
+        output_price_per_1k: Optional[float] = None,
+        provider: str = "",
         **kwargs
     ):
         """初始化模型信息
@@ -181,6 +214,9 @@ class ModelInfo:
             support_vision: 是否支持视觉，默认 False
             support_function_calling: 是否支持函数调用，默认 False
             context_length: 上下文窗口大小
+            input_price_per_1k: 每千 token 输入价格（元）
+            output_price_per_1k: 每千 token 输出价格（元）
+            provider: 所属提供商名称
             **kwargs: 额外的模型参数
         """
         self.id = id
@@ -191,6 +227,9 @@ class ModelInfo:
         self.support_vision = support_vision
         self.support_function_calling = support_function_calling
         self.context_length = context_length
+        self.input_price_per_1k = input_price_per_1k
+        self.output_price_per_1k = output_price_per_1k
+        self.provider = provider
         self.extra = kwargs
 
     def to_dict(self) -> Dict[str, Any]:
@@ -208,6 +247,9 @@ class ModelInfo:
             "support_vision": self.support_vision,
             "support_function_calling": self.support_function_calling,
             "context_length": self.context_length,
+            "input_price_per_1k": self.input_price_per_1k,
+            "output_price_per_1k": self.output_price_per_1k,
+            "provider": self.provider,
         }
         result.update(self.extra)
         return result
@@ -229,7 +271,8 @@ class ModelInfo:
         known_fields = {
             "id", "name", "support_chat", "support_streaming",
             "support_embedding", "support_vision",
-            "support_function_calling", "context_length"
+            "support_function_calling", "context_length",
+            "input_price_per_1k", "output_price_per_1k", "provider"
         }
         # 将未知字段保存到 extra 中
         extra = {k: v for k, v in data.items() if k not in known_fields}
@@ -242,6 +285,9 @@ class ModelInfo:
             support_vision=data.get("support_vision", False),
             support_function_calling=data.get("support_function_calling", False),
             context_length=data.get("context_length"),
+            input_price_per_1k=data.get("input_price_per_1k"),
+            output_price_per_1k=data.get("output_price_per_1k"),
+            provider=data.get("provider", ""),
             **extra
         )
 
