@@ -147,22 +147,22 @@ stateDiagram-v2
 
 ```mermaid
 graph TB
-    subgraph BTM["BackgroundTaskManager 单例"]
-        Pool["线程池<br/>ThreadPoolExecutor<br/>max_workers=4"]
-        RunningTasks["运行中的任务<br/>_running_tasks"]
-        ScheduledTasks["定时任务<br/>_running_scheduled_tasks"]
-        LongRunningTasks["长期任务<br/>_running_long_running_tasks"]
-        ScheduledFactories["定时任务工厂<br/>_scheduled_task_factories"]
-        LongRunningFactories["长期任务工厂<br/>_long_running_task_factories"]
-        ScheduleChecker["定时任务检查线程<br/>_check_scheduled_tasks"]
+    subgraph BTM [BackgroundTaskManager 单例]
+        Pool[线程池<br/>ThreadPoolExecutor<br/>max_workers=4]
+        RunningTasks[运行中的任务<br/>_running_tasks]
+        ScheduledTasks[定时任务<br/>_running_scheduled_tasks]
+        LongRunningTasks[长期任务<br/>_running_long_running_tasks]
+        ScheduledFactories[定时任务工厂<br/>_scheduled_task_factories]
+        LongRunningFactories[长期任务工厂<br/>_long_running_task_factories]
+        ScheduleChecker[定时任务检查线程<br/>_check_scheduled_tasks]
     end
 
-    subgraph Storage["存储层"]
-        JSON["data/tasks.json"]
+    subgraph Storage [存储层]
+        JSON[data/tasks.json]
     end
 
-    subgraph Plugin["插件"]
-        Register["注册任务"]
+    subgraph Plugin [插件]
+        Register[注册任务]
     end
 
     Pool -->|执行任务| RunningTasks

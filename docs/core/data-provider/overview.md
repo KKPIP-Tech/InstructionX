@@ -34,19 +34,19 @@
 
 ```mermaid
 graph TB
-    subgraph DP["DataProvider 单例"]
-        Cache["内存缓存<br/>_cache"]
-        Subs["订阅管理器<br/>_subscriptions"]
+    subgraph DP [DataProvider 单例]
+        Cache[内存缓存<br/>_cache]
+        Subs[订阅管理器<br/>_subscriptions]
     end
 
-    subgraph Plugins["插件"]
-        PA["插件 A<br/>PRIVATE 数据"]
-        PB["插件 B<br/>订阅者"]
-        PC["插件 C<br/>PUBLIC 数据"]
+    subgraph Plugins [插件]
+        PA[插件 A<br/>PRIVATE 数据]
+        PB[插件 B<br/>订阅者]
+        PC[插件 C<br/>PUBLIC 数据]
     end
 
-    subgraph Storage["持久化层"]
-        JSON["data/data.json<br/>原子写入"]
+    subgraph Storage [持久化层]
+        JSON[data/data.json<br/>原子写入]
     end
 
     DP -->|读写数据| PA
@@ -220,12 +220,12 @@ assets_dir = provider.get_plugin_assets_dir("plugin-uuid")
 
 ```mermaid
 flowchart TD
-    subgraph Read["读取数据"]
+    subgraph Read [读取数据]
         R1[get_plugin_data] --> R2[load_data 加载缓存]
         R2 --> R3[返回缓存中的值]
     end
 
-    subgraph Write["写入数据"]
+    subgraph Write [写入数据]
         W1[set_plugin_data] --> W2[更新缓存]
         W2 --> W3[save_data 写入磁盘]
         W3 --> W4{PUBLIC & notify?}

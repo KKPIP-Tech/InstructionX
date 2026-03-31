@@ -53,7 +53,23 @@ msg = Message(
 msg.to_dict()
 ```
 
-### 2.2 ChatResponse
+### 2.2 UsageInfo
+
+```python
+from core.llm.provider_interface import UsageInfo
+
+# 属性
+usage.input_tokens   # int | None: 输入 token 数
+usage.output_tokens  # int | None: 输出 token 数
+usage.total_tokens   # int | None: 总 token 数
+usage.input_cost     # float | None: 输入费用（元）
+usage.output_cost    # float | None: 输出费用（元）
+usage.total_cost     # float | None: 总费用（元）
+```
+
+> **注意**: `UsageInfo` 通常作为 `ChatResponse.usage` 字段返回，也可由 `ConversationManager.send_message()` 等方法直接获取。
+
+### 2.3 ChatResponse
 
 ```python
 from core.llm.provider_interface import ChatResponse
@@ -64,6 +80,7 @@ response.model             # str: 使用的模型
 response.role              # str: 响应角色
 response.reasoning_content # str: 推理内容（如有）
 response.tool_calls        # List[Dict]: 函数调用列表
+response.usage             # UsageInfo | None: Token 用量与费用信息
 response.extra             # Dict: 额外信息
 ```
 
@@ -92,6 +109,9 @@ model.support_embedding          # bool: 是否支持 Embedding
 model.support_vision             # bool: 是否支持 Vision
 model.support_function_calling   # bool: 是否支持函数调用
 model.context_length             # int:  上下文窗口大小（token 数）
+model.input_price_per_1k         # float: 每千 token 输入价格（元）
+model.output_price_per_1k        # float: 每千 token 输出价格（元）
+model.provider                   # str:  所属 Provider 名称
 model.extra                      # Dict: 额外信息
 
 # 方法
@@ -101,9 +121,169 @@ ModelInfo.from_dict(d)   # 从字典创建
 
 ---
 
-## 3. LLMProvider 方法
+## 3. 数据类型类图
 
-### 3.1 Provider 管理
+以下类图展示 LLM 层所有数据类型的完整字段和类型关系：
+
+```mermaid
+classDiagram
+    direction TB
+
+    class Message {
+        +str role
+        +str content
+        +List~str~ images
+        +Dict extra
+        +to_dict() Dict
+    }
+
+    class ChatResponse {
+        +str content
+        +str model
+        +str role
+        +str reasoning_content
+        +List~Dict~ tool_calls
+        +Dict extra
+        +UsageInfo usage
+    }
+
+    class UsageInfo {
+        +int input_tokens
+        +int output_tokens
+        +int total_tokens
+        +float input_cost
+        +float output_cost
+        +float total_cost
+    }
+
+    class Conversation {
+        +str id
+        +datetime created_at
+        +datetime updated_at
+        +str system_prompt
+        +List~Dict~ messages
+        +int total_tokens
+        +float total_cost
+        +str provider
+        +str model
+        +to_llm_format() List~Dict~
+        +add_message(role, content, usage)
+    }
+
+    class ToolResult {
+        +str tool_name
+        +Dict arguments
+        +Any result
+        +str error
+        +float duration_ms
+    }
+
+    class UsageStats {
+        +int total_input_tokens
+        +int total_output_tokens
+        +int total_tokens
+        +float total_cost
+        +int request_count
+        +Dict by_provider
+    }
+
+    class ImageResult {
+        +str url
+        +str base64
+        +str revised_prompt
+        +str model
+        +str provider
+    }
+
+    class AudioResult {
+        +bytes audio_data
+        +str url
+        +float duration_seconds
+        +str model
+        +str provider
+    }
+
+    class StreamChunk {
+        +str content
+        +bool done
+        +str full_response
+        +str reasoning_content
+        +List~Dict~ tool_calls
+        +UsageInfo usage
+        +str error
+    }
+
+    class ProviderInfo {
+        +str name
+        +str provider_type
+        +bool enabled_chat
+        +bool enabled_embedding
+        +bool supports_vision
+        +bool supports_function_calling
+        +str current_chat_model
+        +str current_embedding_model
+        +List~ModelInfo~ models
+        +bool is_healthy
+        +str last_error
+        +int rate_limit_rpm
+    }
+
+    class ModelInfo {
+        +str id
+        +str name
+        +bool support_chat
+        +bool support_streaming
+        +bool support_embedding
+        +bool support_vision
+        +bool support_function_calling
+        +int context_length
+        +str description
+        +float input_price_per_1k
+        +float output_price_per_1k
+        +str provider
+        +Dict extra
+    }
+
+    %% 关系
+    ChatResponse --> UsageInfo : contains
+    Conversation --> UsageInfo : tracks via add_message
+    StreamChunk --> UsageInfo : contains
+    ProviderInfo --> ModelInfo : contains
+
+    note for Message "插件构造时使用\n自动转换为 Dict"
+    note for ChatResponse "扩展后包含 usage 字段\n（原仅在 extra 中）"
+    note for Conversation "to_llm_format() 自动拼接\nsystem_prompt + messages"
+    note for ToolResult "工具执行结果，含耗时和错误信息"
+    note for ProviderInfo "Provider 运行时信息\n含健康状态和能力标记"
+```
+
+### 3.1 ProviderInfo 详细
+
+```mermaid
+classDiagram
+    direction TB
+
+    class ProviderInfo {
+        +str name
+        +str provider_type
+        +bool enabled_chat
+        +bool enabled_embedding
+        +bool supports_vision
+        +bool supports_function_calling
+        +str current_chat_model
+        +str current_embedding_model
+        +List~ModelInfo~ models
+        +bool is_healthy
+        +str last_error
+        +int rate_limit_rpm
+    }
+
+    note for ProviderInfo "ProviderInfo 描述一个运行时 Provider 实例\n由 LLMPluginService.get_available_providers() 返回\nis_healthy = 健康 / last_error = 最后错误信息"
+```
+
+## 4. LLMProvider 方法
+
+### 4.1 Provider 管理
 
 #### get_provider()
 
@@ -240,7 +420,7 @@ provider.reload_config()
 
 ---
 
-### 3.2 同步 Chat API
+### 4.2 同步 Chat API
 
 #### chat()
 
@@ -426,7 +606,7 @@ responses = provider.stream_chat(
 
 ---
 
-### 3.3 同步 Embedding API
+### 4.3 同步 Embedding API
 
 #### embed()
 
@@ -470,7 +650,7 @@ embeddings = [r.embedding for r in responses]
 
 ---
 
-### 3.4 异步 Chat API
+### 4.4 异步 Chat API
 
 #### async_chat()
 
@@ -546,7 +726,7 @@ asyncio.run(main())
 
 ---
 
-### 3.5 异步 Embedding API
+### 4.5 异步 Embedding API
 
 #### async_embed()
 
@@ -583,7 +763,7 @@ asyncio.run(main())
 
 ---
 
-### 3.6 模型管理
+### 4.6 模型管理
 
 #### get_models()
 
@@ -683,7 +863,7 @@ print(f"缓存中有 {len(cached)} 个模型")
 
 ---
 
-### 3.7 配置属性
+### 4.7 配置属性
 
 #### config
 
@@ -734,7 +914,625 @@ provider.close()
 
 ---
 
-## 4. 关于 Provider 实现类
+## 5. LLMPluginService（插件开发者主入口）
+
+> **重要**: 第三方插件开发者应使用 `LLMPluginService` 而非直接访问 `LLMProvider`。推荐通过 `PluginServices.llm_facade` 获取实例。
+
+```python
+# 获取单例（插件代码推荐方式）
+from core.llm import get_llm_plugin_service
+
+svc = get_llm_plugin_service()
+```
+
+### 5.1 核心服务类图
+
+```mermaid
+classDiagram
+    direction TB
+
+    class LLMPluginService {
+        -ConversationManager _conversation_mgr
+        -ToolCallExecutor _tool_executor
+        -ToolRegistry _shared_tool_registry
+        -LLMProvider _llm
+        +create_conversation(system_prompt?, provider, model) str
+        +send_message(conv_id, content, images?, ...) str
+        +stream_send_message(conv_id, content, images?, callback?, ...) str
+        +chat(messages, provider, model, ...) Any
+        +stream_chat(messages, callback, provider, ...) void
+        +chat_with_tools(messages, provider, model, max_turns, ...) Tuple
+        +get_tool_executor() ToolCallExecutor
+        +get_shared_tool_registry() ToolRegistry
+        +embed(texts, provider, model) List~List~float~~
+        +generate_image(prompt, provider, ...) ImageResult
+        +text_to_speech(text, provider, ...) AudioResult
+        +load_image_as_base64(file_path) str
+        +get_available_providers() List~ProviderInfo~
+        +get_usage_stats(conv_id?) UsageStats
+        +validate_provider(provider) Tuple~bool, str~
+    }
+
+    class ConversationManager {
+        -Dict~str, Conversation~ _conversations
+        -LLMProvider _llm
+        -int _max_context
+        +create_conversation(system_prompt?, provider, model, metadata?) str
+        +send_message(conv_id, content, images?, ...) Tuple~str, UsageInfo~~
+        +stream_send_message(conv_id, content, images?, callback?, ...) Tuple~str, UsageInfo~~
+        +get_conversation(conv_id) Conversation
+        +list_conversations() List~Conversation~~
+        +delete_conversation(conv_id) bool
+        +get_usage_stats(conv_id?) UsageStats
+        -_maybe_truncate_history(conv, messages) void
+    }
+
+    class ToolCallExecutor {
+        -LLMPluginService _llm
+        -ToolRegistry _registry
+        +tools: ToolRegistry (property)
+        +chat_with_tools(messages, provider, model, max_turns, ...) Tuple
+        +chat_with_tools_stream(messages, callback, ...) Tuple
+    }
+
+    class ToolRegistry {
+        -Dict~str, Dict~ _tools
+        -Dict~str, Callable~ _handlers
+        +register(name, description, parameters, handler) void
+        +unregister(name) bool
+        +get_tools() List~Dict~
+        +get_handler(name) Callable
+        +list_tools() List~str~~
+    }
+
+    class LLMProvider {
+        -Dict _models_cache
+        -LLMConfig _config
+        +chat(messages, provider?, model?, ...) ChatResponse
+        +stream_chat(messages, callback, provider?, ...) void
+        +embed(texts, provider?, model?) List~EmbeddingResponse~~
+        +async_chat(messages, ...) ChatResponse
+        +async_stream_chat(messages, ...) AsyncIterator
+        +get_provider(name) ILLM
+        +get_all_providers() Dict~str, ILLM~~
+        +get_cached_models(provider) List~ModelInfo~~
+    }
+
+    %% 关系
+    LLMPluginService --> ConversationManager : uses
+    LLMPluginService --> ToolCallExecutor : creates / owns
+    LLMPluginService --> ToolRegistry : owns shared registry
+    LLMPluginService --> LLMProvider : delegates to
+    ConversationManager --> LLMProvider : delegates to
+    ToolCallExecutor --> ToolRegistry : uses
+    ToolCallExecutor --> LLMProvider : delegates to
+
+    note for LLMPluginService "插件开发者唯一入口\n① 对话管理器\n② 底层 LLM 的代理"
+    note for ConversationManager "插件无需自行管理：\n• 对话历史\n• 上下文截断\n• token 累计\n• 费用估算"
+    note for ToolRegistry "持有 tools 列表（发给 LLM）\n+ handlers 映射（实际执行）"
+```
+
+### 5.2 获取实例
+
+```python
+def get_llm_plugin_service() -> LLMPluginService
+```
+
+获取 `LLMPluginService` 全局单例。所有方法均为线程安全。
+
+**示例**:
+```python
+from core.llm import get_llm_plugin_service
+
+svc = get_llm_plugin_service()
+```
+
+### 5.2 对话管理
+
+#### create_conversation()
+
+```python
+def create_conversation(
+    system_prompt: Optional[str] = None,
+    provider: str = "default",
+    model: str = "default",
+    metadata: Optional[Dict] = None,
+) -> str
+```
+
+创建一个新对话，返回对话 ID。
+
+**示例**:
+```python
+conv_id = svc.create_conversation(
+    system_prompt="你是一个代码助手",
+    provider="minimax",
+)
+```
+
+**对话管理完整流程**：
+
+```mermaid
+flowchart TB
+    START[插件开发者]
+    CREATE[create_conversation()<br/>system_prompt]
+    CONV_ID[返回 conv_id]
+    SEND[send_message(conv_id, 格式化代码)]
+    RESP1[返回 content (str)]
+    STREAM[stream_send_message()<br/>conv_id, 解释代码<br/>callback]
+    RESP2[callback 逐 chunk 调用]
+    TOOLS[chat_with_tools()<br/>messages]
+    RESP3[自动处理两轮<br/>返回 final_response]
+    STATS[get_usage_stats(conv_id)]
+    RESP4[UsageStats:<br/>total_tokens, cost, request_count]
+
+    START --> CREATE
+    CREATE --> CONV_ID
+    CONV_ID --> SEND
+    SEND --> RESP1
+    RESP1 --> STREAM
+    STREAM --> RESP2
+    RESP2 --> TOOLS
+    TOOLS --> RESP3
+    RESP3 --> STATS
+    STATS --> RESP4
+
+    style START fill:#f96,stroke:#333
+    style CONV_ID fill:#bbf,stroke:#333,stroke-width:2px
+    style RESP1 fill:#bbf,stroke:#333,stroke-width:2px
+    style RESP2 fill:#bbf,stroke:#333,stroke-width:2px
+    style RESP3 fill:#bbf,stroke:#333,stroke-width:2px
+    style RESP4 fill:#bbf,stroke:#333,stroke-width:2px
+```
+
+#### send_message()
+
+```python
+def send_message(
+    conversation_id: str,
+    content: str,
+    images: Optional[List[str]] = None,
+    temperature: Optional[float] = None,
+    max_tokens: Optional[int] = None,
+) -> str
+```
+
+同步发送消息，自动追加到对话历史。返回 LLM 响应内容。
+
+**示例**:
+```python
+reply = svc.send_message(conv_id, "解释这段代码")
+print(reply)
+```
+
+**消息发送序列图**：
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Plugin as "Plugin\n(Qt Widget)"
+    participant LPS as "LLMPluginService"
+    participant CM as "ConversationManager"
+    participant LLP as "LLMProvider"
+    participant BP as "BaseProvider"
+    participant Remote as "LLM API\n(远程)"
+
+    Plugin->>LPS: send_message(conv_id, "帮我格式化这段代码")
+    LPS->>CM: send_message(conv_id, "帮我格式化...")
+
+    CM->>CM: _get_or_raise(conv_id)
+    CM->>CM: conv.to_llm_format()
+    Note over CM: 组装 messages\n追加 user message
+    CM->>CM: _maybe_truncate_history()
+    Note over CM: 检查 token 数\n必要时截断
+
+    CM->>LLP: chat(messages, provider, model, ...)
+    LLP->>BP: chat(messages, tools?)
+
+    opt 有 tools
+        BP->>BP: _prepare_chat_payload(tools=tools)
+    end
+
+    BP->>Remote: POST /v1/chat/completions
+    Remote-->>BP: ChatCompletion Response\n{data, usage: {...}}
+    BP-->>LLP: ChatResponse(content, usage)
+    LLP-->>CM: ChatResponse(content, usage)
+    CM->>CM: conv.add_message("assistant", content, usage)
+    Note over CM: 更新 total_tokens\n更新 total_cost
+
+    CM-->>LPS: (content, usage)
+    LPS-->>Plugin: content (str)
+
+    Note over Plugin,Remote: Plugin 只需 1 行代码即可完成：<br/>llm.send_message(conv_id, "帮我格式化这段代码")
+```
+
+#### stream_send_message()
+
+```python
+def stream_send_message(
+    conversation_id: str,
+    content: str,
+    images: Optional[List[str]] = None,
+    callback: Optional[Callable[[StreamChunk], None]] = None,
+    temperature: Optional[float] = None,
+    max_tokens: Optional[int] = None,
+) -> str
+```
+
+流式发送消息，逐 chunk 调用 callback。返回完整的 LLM 响应内容。
+
+**示例**:
+```python
+def on_chunk(chunk):
+    print(chunk.content, end="")
+
+reply = svc.stream_send_message(
+    conv_id,
+    "写一个快排",
+    callback=on_chunk
+)
+```
+
+#### get_conversation() / list_conversations() / delete_conversation()
+
+```python
+def get_conversation(conversation_id: str) -> Optional[Conversation]
+def list_conversations() -> List[Conversation]
+def delete_conversation(conversation_id: str) -> bool
+```
+
+获取/列出/删除对话。
+
+### 5.3 直接 Chat（无对话状态）
+
+#### chat()
+
+```python
+def chat(
+    messages: List[Dict],
+    provider: str = "default",
+    model: str = "default",
+    temperature: Optional[float] = None,
+    max_tokens: Optional[int] = None,
+    tools: Optional[List[Dict]] = None,
+) -> ChatResponse
+```
+
+直接发起 chat，无对话状态管理。返回 `ChatResponse` 对象（包含 `usage` 字段）。
+
+**示例**:
+```python
+resp = svc.chat([{"role": "user", "content": "hello"}])
+print(resp.content, resp.usage.total_tokens)
+```
+
+#### stream_chat()
+
+```python
+def stream_chat(
+    messages: List[Dict],
+    callback: Callable[[str, bool], None],
+    provider: str = "default",
+    model: str = "default",
+    temperature: Optional[float] = None,
+    max_tokens: Optional[int] = None,
+    tools: Optional[List[Dict]] = None,
+)
+```
+
+流式版本 chat（无对话状态）。callback 签名: `(chunk: str, done: bool) -> None`。
+
+### 5.4 工具调用
+
+#### chat_with_tools()
+
+```python
+def chat_with_tools(
+    messages: List[Dict],
+    provider: str = "default",
+    model: str = "default",
+    max_turns: int = 5,
+    temperature: Optional[float] = None,
+) -> Tuple[List[Dict], List[ToolResult], Any]
+```
+
+自动处理工具调用两轮循环。返回 `(最终消息列表, 工具结果列表, 最终响应)`。
+
+**示例**:
+```python
+executor = svc.get_tool_executor()
+executor.tools.register(
+    "search", "搜索网络",
+    {"type": "object", "properties": {"q": {"type": "string"}}},
+    handler=lambda q: f"关于{q}的结果..."
+)
+msgs, results, final = executor.chat_with_tools(
+    [{"role": "user", "content": "搜索 InstructionX"}],
+    provider="minimax",
+)
+```
+
+**工具调用自动循环（完整序列）**：
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Plugin as "Plugin"
+    participant TCE as "ToolCallExecutor"
+    participant TR as "ToolRegistry"
+    participant LLP as "LLMProvider"
+    participant Remote as "LLM API"
+
+    Plugin->>TCE: chat_with_tools(messages, max_turns=3)
+    Note over TCE: 无需传入 tools 参数\n工具已通过 register() 注册
+
+    loop 每轮工具调用 (最多 max_turns 次)
+        TCE->>TR: get_tools()
+        TR-->>TCE: List[tool_definitions]
+
+        TCE->>LLP: chat(messages + tools)
+        LLP->>Remote: POST /v1/chat/completions
+        Remote-->>LLP: ChatResponse
+        Note over Remote: {content: null,\n tool_calls: [{name:"search", arguments:{}}]}
+        LLP-->>TCE: ChatResponse
+
+        alt 有 tool_calls
+            TCE->>TCE: 解析 tool_calls
+            TCE->>TR: get_handler("search")
+            TR-->>TCE: search_handler
+
+            TCE->>TCE: handler(query="...")
+            Note over TCE: 插件注册的 Python 函数\n在这里被调用
+
+            TCE->>TCE: 追加 2 条消息
+            Note over TCE: 1. assistant (含 tool_calls)\n2. tool (含 result)
+        else 无 tool_calls
+            TCE->>TCE: 追加 assistant 回复
+            TCE-->>Plugin: (messages, tool_results, final_response)
+        end
+    end
+```
+
+**工具注册与使用完整流程**：
+
+```mermaid
+flowchart LR
+    subgraph 注册阶段
+        R1[ToolRegistry.register()<br/>name=search<br/>handler=my_search_func]
+        R2[executor.tools.register()<br/>name=calculate<br/>handler=my_calc_func]
+    end
+
+    subgraph 使用阶段
+        U1[svc = get_llm_plugin_service()]
+        U2[executor = svc.get_tool_executor()]
+        U3[executor.chat_with_tools(messages)]
+    end
+
+    subgraph 工具执行
+        E1[LLM 返回 tool_calls<br/>[{name:search, args:{}}]]
+        E2[executor 自动查找 handler]
+        E3[handler(Python) → 结果]
+        E4[结果追加到 messages<br/>再次调用 LLM]
+    end
+
+    R1 --> U1
+    R2 --> U1
+    U1 --> U2
+    U2 --> U3
+    U3 --> E1
+    E1 --> E2
+    E2 --> E3
+    E3 --> E4
+
+    style R1 fill:#dfb,stroke:#333
+    style R2 fill:#dfb,stroke:#333
+    style E3 fill:#fbe,stroke:#333,stroke-width:2px
+```
+
+#### chat_with_tools_stream()
+
+```python
+def chat_with_tools_stream(
+    messages: List[Dict],
+    callback: Callable[[StreamChunk], None],
+    provider: str = "default",
+    model: str = "default",
+    max_turns: int = 5,
+    temperature: Optional[float] = None,
+) -> Tuple[List[Dict], List[ToolResult], str]
+```
+
+流式版本的 chat_with_tools。
+
+#### get_tool_executor()
+
+```python
+def get_tool_executor() -> ToolCallExecutor
+```
+
+获取工具调用执行器（包含 `tools` 属性）。
+
+#### get_shared_tool_registry()
+
+```python
+def get_shared_tool_registry() -> ToolRegistry
+```
+
+获取共享工具注册表（全局注册，供多个插件共享）。
+
+### 5.5 向量嵌入
+
+#### embed()
+
+```python
+def embed(
+    texts: str | List[str],
+    provider: str = "default",
+    model: str = "default",
+) -> List[List[float]]
+```
+
+文本向量化。返回嵌入向量列表。
+
+### 5.6 多模态
+
+#### generate_image()
+
+```python
+def generate_image(
+    prompt: str,
+    provider: str = "default",
+    model: Optional[str] = None,
+    size: str = "1024x1024",
+    quality: str = "standard",
+) -> ImageResult
+```
+
+图像生成。返回 `ImageResult`（含 `url` / `base64` / `revised_prompt`）。
+
+#### text_to_speech()
+
+```python
+def text_to_speech(
+    text: str,
+    provider: str = "default",
+    model: Optional[str] = None,
+    voice: Optional[str] = None,
+) -> AudioResult
+```
+
+语音合成。返回 `AudioResult`（含 `audio_data` / `url` / `duration_seconds`）。
+
+#### load_image_as_base64()
+
+```python
+def load_image_as_base64(file_path: str) -> str
+```
+
+加载图片文件为 base64 字符串（不含 data URI 前缀）。
+
+### 5.7 辅助方法
+
+#### get_available_providers()
+
+```python
+def get_available_providers() -> List[ProviderInfo]
+```
+
+获取所有可用 Provider 的详细信息列表。
+
+#### get_usage_stats()
+
+```python
+def get_usage_stats(conversation_id: Optional[str] = None) -> UsageStats
+```
+
+获取用量统计。`conversation_id` 为 None 时返回全局统计。
+
+**返回字段**: `total_tokens`, `total_cost`, `request_count`, `by_provider`
+
+#### validate_provider()
+
+```python
+def validate_provider(provider: str) -> Tuple[bool, str]
+```
+
+验证 Provider 配置是否有效。返回 `(是否有效, 错误信息)`。
+
+#### get_raw_provider()
+
+```python
+def get_raw_provider(provider: str = "default") -> ILLM
+```
+
+获取底层 `LLMProvider` 实例（供高级插件使用）。一般插件不应直接使用。
+
+---
+
+## 6. ConversationManager
+
+> **内部组件**: 插件开发者通常通过 `LLMPluginService` 间接使用，详见 Section 5。
+
+`ConversationManager` 管理对话的完整生命周期：
+- 自动上下文截断（保留 system + 最近 2/3 消息，阈值 80%）
+- Token 估算（中文字符按 1:1 计，英文按 4:1 估算）
+- 费用计算（基于 `DEFAULT_PRICING`）
+
+**Conversation 状态机**：
+
+```mermaid
+stateDiagram-v2
+    [*] --> Created : create_conversation()
+
+    Created --> Active : send_message() /\n append user message
+    Active --> Active : send_message() /\n append user + assistant
+    Active --> Active : stream_send_message() /\n streaming
+
+    state Active {
+        [*] --> UserMessageAdded
+        UserMessageAdded --> AwaitingLLM : 调用 LLMProvider.chat()
+        AwaitingLLM --> AssistantMessageAdded : ChatResponse 返回
+        AwaitingLLM --> Error : 异常
+        AssistantMessageAdded --> [*]
+        Error --> [*]
+    }
+
+    Active --> Truncated : _maybe_truncate_history() /\n 上下文超限
+    Truncated --> Active : 截断旧消息
+
+    Active --> Deleted : delete_conversation()
+    Deleted --> [*]
+
+    Created --> Deleted : delete_conversation()
+
+    state Truncated {
+        [*] --> RemoveOldMessages : 保留 system + 最近 2/3 消息
+        RemoveOldMessages --> [*]
+    }
+```
+
+**主要方法**:
+| 方法 | 返回值 | 说明 |
+|---|---|---|
+| `create_conversation()` | `str` | 创建对话 |
+| `send_message()` | `tuple[str, UsageInfo \| None]` | 同步发送，返回内容和用量 |
+| `stream_send_message()` | `tuple[str, UsageInfo \| None]` | 流式发送，返回内容和用量 |
+| `get_conversation()` | `Conversation \| None` | 获取对话 |
+| `list_conversations()` | `List[Conversation]` | 列出所有对话 |
+| `delete_conversation()` | `bool` | 删除对话 |
+| `get_usage_stats()` | `UsageStats` | 用量统计 |
+
+---
+
+## 7. ToolCallExecutor / ToolRegistry
+
+> **内部组件**: 插件开发者通过 `LLMPluginService.get_tool_executor()` 获取，详见 Section 5。
+
+### ToolRegistry
+
+```python
+class ToolRegistry:
+    def register(name, description, parameters, handler)  # 注册工具
+    def unregister(name) -> bool                         # 注销工具
+    def get_tools() -> List[Dict]                       # 获取工具定义列表
+    def get_handler(name) -> Callable | None           # 获取处理器
+    def list_tools() -> List[str]                       # 列出已注册工具名
+```
+
+### ToolCallExecutor
+
+```python
+class ToolCallExecutor:
+    @property
+    def tools(self) -> ToolRegistry          # 工具注册表
+
+    def chat_with_tools(...) -> Tuple        # 工具调用（见 4.4）
+    def chat_with_tools_stream(...) -> Tuple  # 流式版本
+```
+
+---
+
+## 8. 关于 Provider 实现类
 
 > **注意**: 各个 Provider 的实现类（如 `MiniMaxProvider`、`SiliconFlowProvider` 等）为框架内部实现类，不建议开发者直接实例化。所有功能应通过 `get_llm_provider()` 获取的 `LLMProvider` 单例来调用。
 
@@ -742,9 +1540,9 @@ Provider 实现类的细节（如请求格式差异、响应解析逻辑等）�
 
 ---
 
-## 5. 完整示例
+## 9. 完整示例
 
-### 5.1 基础使用
+### 8.1 基础使用
 
 ```python
 from core.llm import get_llm_provider
@@ -766,7 +1564,7 @@ print(f"Model: {response.model}")
 print(f"Response: {response.content}")
 ```
 
-### 5.2 使用 Vision
+### 8.2 使用 Vision
 
 > **注意**：MiniMax Provider 不支持 Vision，请使用 SiliconFlow、GLM 或 Ollama。
 
@@ -792,7 +1590,7 @@ response = provider.chat(
 print(response.content)
 ```
 
-### 5.3 并发调用
+### 8.3 并发调用
 
 ```python
 import asyncio
@@ -827,7 +1625,7 @@ async def concurrent_chat():
 asyncio.run(concurrent_chat())
 ```
 
-### 5.4 Embedding 相似度计算
+### 8.4 Embedding 相似度计算
 
 ```python
 import numpy as np
@@ -849,7 +1647,7 @@ similarity = np.dot(vec1, vec2) / (np.linalg.norm(vec1) * np.linalg.norm(vec2))
 print(f"相似度: {similarity:.4f}")
 ```
 
-### 5.5 Function Calling
+### 8.5 Function Calling
 
 ```python
 from core.llm import get_llm_provider
@@ -917,7 +1715,7 @@ if response.tool_calls:
 
 ---
 
-## 6. 相关文档
+## 10. 相关文档
 
 - [LLM Provider 概述](overview.md)
 - [插件开发指南](../plugin-system/plugin-development.md)

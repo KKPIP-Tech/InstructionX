@@ -23,42 +23,50 @@
 
 ```mermaid
 graph TB
-    subgraph MainWindow["应用主窗口 InstructionXMainWindow"]
+    subgraph MainWindow ["应用主窗口 InstructionXMainWindow"]
         direction TB
-        Menu[菜单栏] --> SP["SkillsPanel<br/>技能面板 最小105px / 最大115px"]
-        SP --> Divider["分割线"]
-        Divider --> WA["WorkArea<br/>工作区"]
+        Menu[菜单栏] --> SP[SkillsPanel<br/>技能面板 最小105px / 最大115px]
+        SP --> Divider[分割线]
+        Divider --> WA[WorkArea<br/>工作区]
     end
 
-    subgraph Plugins["插件层"]
-        PA["插件 A<br/>entrance.py<br/>service.py<br/>information.py"]
-        PB["插件 B<br/>entrance.py<br/>service.py<br/>information.py"]
-        PC["插件 C<br/>entrance.py<br/>service.py<br/>information.py"]
+    subgraph Plugins ["插件层"]
+        PA[插件 A<br/>entrance.py<br/>service.py<br/>information.py]
+        PB[插件 B<br/>entrance.py<br/>service.py<br/>information.py]
+        PC[插件 C<br/>entrance.py<br/>service.py<br/>information.py]
     end
 
-    subgraph Core["核心层"]
-        PM["PluginManager<br/>插件管理器"]
-        DP["DataProvider<br/>数据提供者"]
-        BTM["BackgroundTaskManager<br/>后台任务管理器"]
-        LLM["LLMProvider<br/>LLM提供者"]
+    subgraph Core ["核心层"]
+        PM[PluginManager<br/>插件管理器]
+        DP[DataProvider<br/>数据提供者]
+        BTM[BackgroundTaskManager<br/>后台任务管理器]
     end
 
-    subgraph Storage["持久化层"]
-        DataJSON["data/data.json"]
-        TasksJSON["data/tasks.json"]
-        Assets["data/assets/"]
-        LLMConfig["config/llm_providers.json"]
+    subgraph LLM ["LLM 层"]
+        LLMS[LLMPluginService<br/>插件开发者入口]
+        LLMP[LLMProvider<br/>LLM 核心层]
+        PS[PluginServices<br/>DI 容器]
+    end
+
+    subgraph Storage ["持久化层"]
+        DataJSON[data/data.json]
+        TasksJSON[data/tasks.json]
+        Assets[data/assets/]
+        LLMConfig[config/llm_providers.json]
     end
 
     MainWindow --> Plugins
     Plugins --> PM
     Plugins --> DP
     Plugins --> BTM
-    Plugins --> LLM
+    Plugins --> LLMS
+    PM -.->|创建并注入| PS
+    PS -.->|llm_facade| LLMS
+    LLMS --> LLMP
+    LLMP -->|LLM API| LLMConfig
     PM -->|插件加载| Plugins
     DP -->|数据持久化| Storage
     BTM -->|任务存储| TasksJSON
-    LLM -->|LLM API| LLMConfig
 ```
 
 ---
@@ -102,17 +110,25 @@ graph TB
 
 **单例模式**: 全局任务调度中心
 
-### 3.4 LLMProvider（LLM 提供者）
+### 3.4 LLM 层（LLMProvider + LLMPluginService）
 
-**文件位置**: `core/llm/llm_provider.py`
+**文件位置**:
+- `core/llm/llm_provider.py` — LLM 核心层（底层）
+- `core/llm/plugin_service.py` — LLM 插件服务层（插件开发者入口）
 
-**职责**:
+**LLMProvider（核心层）**:
 - 多提供商管理（MiniMax、SiliconFlow、GLM、Ollama）
 - 统一 API 接口（chat、stream_chat、embed）
 - 模型列表获取与缓存
 - Function Calling 支持
 
-**单例模式**: 全局 LLM 服务入口
+**LLMPluginService（插件服务层）**:
+- 插件开发者唯一入口（推荐使用 `get_llm_plugin_service()`）
+- 对话管理（创建/发送/流式/统计）
+- 工具调用自动化（ToolCallExecutor）
+- 多模态（图片/TTS）
+
+**DI 注入**: `PluginManager` 通过 `PluginServices.llm_facade` 注入到各插件
 
 ### 3.5 PluginVersion（版本管理）
 
@@ -263,8 +279,13 @@ InstructionX/
 │   │   ├── task_storage.py
 │   │   └── scheduler.py
 │   └── llm/                  # LLM 提供者实现
-│       ├── llm_provider.py  # LLMProvider
+│       ├── llm_provider.py  # LLMProvider 核心层
 │       ├── provider_interface.py
+│       ├── plugin_service.py # LLMPluginService 插件服务层
+│       ├── conversation_manager.py  # 对话管理
+│       ├── tool_call_executor.py   # 工具调用自动化
+│       ├── types.py        # 数据类型
+│       ├── pricing.py      # 定价表
 │       ├── config.py
 │       ├── exceptions.py
 │       └── providers/       # Provider 实现
@@ -284,14 +305,16 @@ InstructionX/
 │   ├── work_area/           # 工作区
 │   │   └── work_area.py
 │   └── dialog/              # 对话框
-│       ├── __init__.py      # 导出 PluginOrderDialog
+│       ├── __init__.py
 │       ├── about_dialog.py      # 关于对话框
-│       ├── llm_settings_dialog.py  # LLM 设置对话框
-│       └── plugin_order_dialog.py  # 重导出
+│       ├── llm_settings_dialog.py  # LLM 设置对话框（两栏）
+│       └── llm_model_service_dialog.py  # 模型服务对话框（三栏）
 │
 ├── workers/                  # 预留：多进程工作池
 │
 ├── plugin/                   # 官方插件
+│   ├── llm_chat/
+│   ├── sample_ai_plugin/   # LLM 集成示例
 │   ├── text_formatting/
 │   ├── code_formatter/
 │   └── ...

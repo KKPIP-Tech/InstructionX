@@ -18,6 +18,10 @@
 - GLM (智谱AI)
 - Ollama (本地部署)
 
+**插件开发者入口**: 第三方插件开发者请使用 `LLMPluginService`（`core/llm/plugin_service.py`），通过 `get_llm_plugin_service()` 获取单例。`LLMPluginService` 整合了对话管理、工具调用自动化、多模态等完整能力，是插件开发者的唯一入口。
+
+**历史**: 原架构中插件直接访问 `LLMProvider` 单例。为解决无对话历史管理、Tool Use 门槛高、流式输出复杂等问题，重构新增了 LLM Plugin Service Layer。
+
 ---
 
 ## 2. 核心特性
@@ -37,26 +41,94 @@
 
 ## 3. 架构图
 
+### 3.1 系统分层架构（6 层）
+
 ```mermaid
 graph TB
-    subgraph LLM["LLMProvider 单例"]
-        Config["配置管理<br/>LLMConfig"]
-        Providers["Provider 字典<br/>_providers"]
+    subgraph UI [UI Layer / 插件 UI 层]
+        UI1[Qt Widgets (插件 UI)]
     end
 
-    subgraph Registry["Provider 注册表"]
-        Register["PROVIDER_REGISTRY"]
+    subgraph PL [Plugin Layer / 插件层]
+        P1[Plugin (IPlugin)]
+        PS[PluginServices (DI 容器)]
     end
 
-    subgraph Providers["各 Provider 实现"]
-        MiniMax["MiniMaxProvider<br/>Chat+Embedding"]
-        SiliconFlow["SiliconFlowProvider<br/>Chat+Embedding+Vision"]
-        GLM["GLMProvider<br/>Chat+Embedding+Vision"]
-        Ollama["OllamaProvider<br/>Chat+Embedding+Vision"]
+    subgraph LPS [LLM Plugin Service Layer / LLM 插件服务层 (新增)]
+        LPS1[LLMPluginService<br/>插件开发者唯一入口]
+        CM[ConversationManager<br/>对话管理器]
+        TCE[ToolCallExecutor<br/>工具调用自动化]
+        TR[ToolRegistry<br/>工具注册表]
     end
 
-    subgraph Cache["模型缓存"]
-        ModelsCache["llm_models_cache.json"]
+    subgraph LCL [LLM Core Layer / LLM 核心层]
+        LLP[LLMProvider<br/>门面单例]
+        LC[LLMConfig<br/>配置管理]
+    end
+
+    subgraph PRV [Provider Layer / Provider 实现层]
+        BP[BaseProvider<br/>模板基类]
+        MiniMax[MiniMaxProvider]
+        SiliconFlow[SiliconFlowProvider]
+        GLM[GLMProvider]
+        Ollama[OllamaProvider]
+    end
+
+    subgraph DT [Data Types Layer / 数据类型层]
+        TI[types.py (新增)<br/>Conversation, ToolResult, UsageStats,<br/>StreamChunk, ImageResult, AudioResult,<br/>ProviderInfo]
+        PI[provider_interface.py<br/>Message, ChatResponse, ModelInfo,<br/>EmbeddingResponse, UsageInfo]
+    end
+
+    UI1 --> P1
+    P1 --> PS
+    PS -.->|"services.llm_facade"| LPS1
+    LPS1 --> CM
+    LPS1 --> TCE
+    TCE --> TR
+    TCE --> LLP
+    CM --> LLP
+    LPS1 --> LLP
+    LLP --> BP
+    BP --> MiniMax
+    BP --> SiliconFlow
+    BP --> GLM
+    BP --> Ollama
+    CM --> TI
+    TCE --> TI
+    LPS1 -.->|"types"| TI
+    LLP --> PI
+    CM --> PI
+    TCE --> PI
+
+    style LPS1 fill:#bbf,stroke:#333,stroke-width:3px
+    style CM fill:#bbf,stroke:#333,stroke-width:2px
+    style TCE fill:#bbf,stroke:#333,stroke-width:2px
+    style TR fill:#bbf,stroke:#333,stroke-width:2px
+    style TI fill:#dfb,stroke:#333,stroke-width:2px
+```
+
+### 3.2 LLMProvider 内部架构（核心层）
+
+```mermaid
+graph TB
+    subgraph LLM [LLMProvider 单例]
+        Config[配置管理<br/>LLMConfig]
+        Providers[Provider 字典<br/>_providers]
+    end
+
+    subgraph Registry [Provider 注册表]
+        Register[PROVIDER_REGISTRY]
+    end
+
+    subgraph Providers [各 Provider 实现]
+        MiniMax[MiniMaxProvider<br/>Chat+Embedding]
+        SiliconFlow[SiliconFlowProvider<br/>Chat+Embedding+Vision]
+        GLM[GLMProvider<br/>Chat+Embedding+Vision]
+        Ollama[OllamaProvider<br/>Chat+Embedding+Vision]
+    end
+
+    subgraph Cache [模型缓存]
+        ModelsCache[llm_models_cache.json]
     end
 
     LLM -->|加载配置| Config
@@ -74,7 +146,74 @@ graph TB
 
 ---
 
-## 4. Provider 功能矩阵
+### 3.3 核心设计原则
+
+```mermaid
+graph LR
+    subgraph 五五原则
+        A[① 插件开发者只与 LLMPluginService 交互]
+        B[② ConversationManager 接管所有对话状态]
+        C[③ ToolCallExecutor 自动处理工具调用两轮循环]
+        D[④ PluginServices DI 允许插件独立测试]
+        E[⑤ types.py 与 provider_interface.py 互补]
+    end
+
+    style A fill:#bbf,stroke:#333
+    style B fill:#bbf,stroke:#333
+    style C fill:#bbf,stroke:#333
+    style D fill:#bbf,stroke:#333
+    style E fill:#dfb,stroke:#333
+```
+
+| # | 原则 | 说明 |
+|---|---|---|
+| ① | **单一入口** | 插件开发者只与 `LLMPluginService` 交互，不直接访问 `LLMProvider` |
+| ② | **状态封装** | `ConversationManager` 接管所有对话状态，插件无需管理历史 |
+| ③ | **工具自动化** | `ToolCallExecutor` 自动处理两轮调用循环，插件只需注册工具 |
+| ④ | **可测试性** | `PluginServices` DI 容器允许插件在无 API 环境下完成测试 |
+| ⑤ | **类型分离** | `types.py` 存放新增类型，`provider_interface.py` 存放 LLM 层核心类型 |
+
+### 3.4 对话消息流
+
+```mermaid
+flowchart LR
+    subgraph P1 [Plugin]
+        W[Qt Widget]
+    end
+
+    subgraph LS [LLMPluginService]
+        CM[ConversationManager]
+        API[LLMPluginService<br/>.chat / .stream]
+    end
+
+    subgraph LC [LLM Core]
+        LLP[LLMProvider]
+    end
+
+    subgraph PRV [Provider]
+        BP[BaseProvider]
+        REAL[真实 Provider HTTP 调用]
+    end
+
+    W -->|"send_message 或 stream_send"| API
+    API -->|"创建/追加 Conversation"| CM
+    CM -->|"to_llm_format()"| API
+    API -->|"messages"| LLP
+    LLP -->|"chat"| BP
+    BP -->|"POST /v1/chat/completions"| REAL
+
+    REAL -.->|"ChatResponse + UsageInfo"| BP
+    BP -.->|"ChatResponse"| LLP
+    LLP -.->|"ChatResponse"| API
+    API -.->|"更新 Conversation + token/cost"| CM
+    CM -.->|"Conversation.updated"| API
+    API -.->|"content"| W
+
+    style CM fill:#bbf,stroke:#333,stroke-width:2px
+    style API fill:#bbf,stroke:#333,stroke-width:2px
+```
+
+## 5. Provider 功能矩阵
 
 | Provider | Chat | Streaming | Embedding | Vision | API 协议 |
 |----------|------|-----------|-----------|--------|----------|
@@ -87,9 +226,9 @@ graph TB
 
 ---
 
-## 5. 单例模式与并发
+## 6. 单例模式与并发
 
-### 5.1 单例模式
+### 6.1 单例模式
 
 ```python
 from core.llm import get_llm_provider
@@ -107,7 +246,7 @@ enabled_chat = provider.get_enabled_providers("chat")
 enabled_embedding = provider.get_enabled_providers("embedding")
 ```
 
-### 5.2 并发调用
+### 6.2 并发调用
 
 ```python
 import asyncio
@@ -154,9 +293,9 @@ async def concurrent():
 
 ---
 
-## 6. 模型获取与缓存
+## 7. 模型获取与缓存
 
-### 6.1 获取流程
+### 7.1 获取流程
 
 ```mermaid
 flowchart TD
@@ -168,7 +307,7 @@ flowchart TD
     Save --> ReturnAPI[返回 API 数据]
 ```
 
-### 6.2 缓存机制
+### 7.2 缓存机制
 
 - **缓存位置**: `config/llm_models_cache.json`
 - **缓存策略**: 优先从 API 获取，成功则缓存；失败则尝试加载缓存；缓存也没有则返回空列表
@@ -187,13 +326,162 @@ for model in models:
 
 ---
 
-## 7. Function Calling
+## 8. 对话管理（新增）
 
-### 7.1 概述
+LLM 层重构新增了完整的对话管理能力，通过 `LLMPluginService` 和 `ConversationManager` 提供。
+
+### 8.1 核心能力
+
+| 能力 | 说明 |
+|---|---|
+| **对话 CRUD** | 创建/获取/列出/删除对话，自动管理 conversation_id |
+| **自动历史追加** | send_message / stream_send_message 自动将用户消息和 LLM 回复追加到历史 |
+| **上下文截断** | 超过 max_context (默认 128000 token) 时自动截断，保留 system + 最近 2/3 消息 |
+| **Token 估算** | 中文字符按 1:1 估算，英文按 4:1 估算 |
+| **费用计算** | 基于 `DEFAULT_PRICING` 估算每次请求费用 |
+| **用量统计** | 按对话和全局维度统计 token、总费用、请求次数 |
+
+### 8.2 使用方式
+
+```python
+from core.llm import get_llm_plugin_service
+
+svc = get_llm_plugin_service()
+
+# 创建对话（可选设置 system prompt）
+conv_id = svc.create_conversation(
+    system_prompt="你是一个代码助手",
+    provider="minimax",
+)
+
+# 同步发送
+reply = svc.send_message(conv_id, "解释这段代码")
+
+# 流式发送（逐 chunk 更新 UI）
+def on_chunk(chunk):
+    print(chunk.content, end="")
+svc.stream_send_message(conv_id, "写一个快排", callback=on_chunk)
+
+# 用量统计
+stats = svc.get_usage_stats(conv_id)
+print(f"Token: {stats.total_tokens}, 费用: {stats.total_cost}元")
+```
+
+### 8.3 与旧 API 的区别
+
+| 方面 | 旧 API (LLMProvider.chat) | 新 API (LLMPluginService) |
+|---|---|---|
+| 对话历史 | 插件自行管理 List[Message] | 自动管理，自动截断 |
+| 上下文窗口 | 插件自行计算 token | 自动估算并截断 |
+| 工具调用 | 手动两轮循环 | ToolCallExecutor 自动处理 |
+| 流式输出 | 自行实现 QThread | stream_send_message 一行搞定 |
+| 费用统计 | 无 | 自动累计 |
+
+## 9. Function Calling
+
+### 8.1 概述
 
 LLM Provider 支持 **Function Calling**（函数调用），允许模型调用外部工具或函数，实现与外部系统的集成。
 
-### 7.2 使用方法
+有两种使用方式：
+
+1. **推荐：新方式（ToolCallExecutor）** — 自动处理两轮循环，插件只需注册工具
+2. **旧方式（手动两轮）** — 通过 `LLMProvider.chat()` 手动管理
+
+### 8.2 工具调用自动循环
+
+```mermaid
+flowchart TD
+    START[插件调用<br/>chat_with_tools]
+
+    subgraph 注册阶段
+        REG1[ToolRegistry.register()<br/>注册 name + handler]
+        REG2[get_llm_plugin_service()<br/>获取单例]
+    end
+
+    START --> REG2
+    REG1 -.->|"可选：注册全局工具"| REG2
+
+    subgraph 执行循环
+        TURN[ToolCallExecutor.chat_with_tools()<br/>第 N 轮 (N ≤ max_turns)]
+        LLM1[LLMProvider.chat()<br/>携带 tools=registry.get_tools()]
+        CHECK{tool_calls<br/>是否存在?}
+
+        TC[解析 tool_calls<br/>提取 name + arguments]
+        FIND[ToolRegistry.get_handler(name)<br/>查找 handler]
+        EXEC[handler(**arguments)<br/>执行工具函数]
+        APPEND[追加 tool result<br/>到 messages]
+        LOOP_BACK[⬆️ 回到第 N+1 轮]
+        CHECK -.->|"有 tool_calls"| TC
+        TC --> FIND
+        FIND --> EXEC
+        EXEC --> APPEND
+        APPEND --> TURN
+        TURN -.->|"继续循环"| TURN
+    end
+
+    START --> TURN
+    TURN --> LLM1
+    LLM1 --> CHECK
+
+    subgraph 结束分支
+        END1[追加 assistant 回复<br/>返回 final_response]
+        CHECK -.->|"无 tool_calls"| END1
+    end
+
+    style TURN fill:#bbf,stroke:#333,stroke-width:2px
+    style TC fill:#fbe,stroke:#333,stroke-width:2px
+    style EXEC fill:#fbe,stroke:#333,stroke-width:2px
+```
+
+### 8.3 推荐方式：ToolCallExecutor（自动两轮循环）
+
+```python
+from core.llm import get_llm_plugin_service
+
+svc = get_llm_plugin_service()
+executor = svc.get_tool_executor()
+
+# 注册工具
+def get_weather(city: str) -> str:
+    return f"{city} 天气晴朗，25°C"
+
+executor.tools.register(
+    name="get_weather",
+    description="获取指定城市的天气信息",
+    parameters={
+        "type": "object",
+        "properties": {
+            "city": {"type": "string", "description": "城市名称"}
+        },
+        "required": ["city"]
+    },
+    handler=get_weather,
+)
+
+# 自动完成两轮调用循环
+messages = [{"role": "user", "content": "北京今天天气怎么样？"}]
+final_msgs, tool_results, final_response = executor.chat_with_tools(
+    messages, provider="minimax", max_turns=5
+)
+print(final_response.content)
+
+# 打印工具调用结果
+for tr in tool_results:
+    print(f"工具: {tr.tool_name}, 结果: {tr.result}")
+```
+
+**流式版本**:
+```python
+def on_chunk(chunk):
+    print(chunk.content, end="")
+
+final_msgs, tool_results, final = executor.chat_with_tools_stream(
+    messages, callback=on_chunk, provider="minimax"
+)
+```
+
+### 9.3 旧方式：手动两轮调用
 
 ```python
 from core.llm import get_llm_provider
@@ -237,7 +525,7 @@ if response.tool_calls:
         print(f"参数: {tool_call['function']['arguments']}")
 ```
 
-### 7.3 处理工具结果
+### 9.4 处理工具结果（手动方式）
 
 ```python
 # 1. 执行工具函数
@@ -267,7 +555,7 @@ if response.tool_calls:
     print(final_response.content)
 ```
 
-### 7.4 基类统一支持
+### 9.5 基类统一支持
 
 `BaseProvider` 提供了统一的 Function Calling 支持：
 
@@ -279,9 +567,9 @@ if response.tool_calls:
 
 ---
 
-## 8. 配置管理
+## 10. 配置管理
 
-### 8.1 配置文件
+### 10.1 配置文件
 
 配置文件位置: `config/llm_providers.json`
 
@@ -336,37 +624,51 @@ if response.tool_calls:
 }
 ```
 
-### 8.2 UI 配置
+### 10.2 UI 配置
 
-通过菜单 **编辑 > LLM 设置** (Ctrl+L) 打开配置对话框：
+通过菜单 **AI > LLM 设置...** (Ctrl+L) 打开两栏式配置对话框：
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│  LLM 设置                                    [×]           │
-├─────────────────────────────────────────────────────────────┤
-│  [Provider 列表 (左)]  │  [配置详情 (右)]                   │
-│  ┌─────────────────┐  │  ┌─────────────────────────────┐  │
-│  │ + 添加 Provider │  │  │ 基础设置                     │  │
-│  │ ─────────────── │  │  │ • API Key: [输入框]          │  │
-│  │ ▼ MiniMax      │  │  │ • Base URL: [输入框]         │  │
-│  │   SiliconFlow  │  │  │ • 模型: [下拉选择]            │  │
-│  │   GLM          │  │  │                             │  │
-│  │   Ollama       │  │  │ Chat 设置                    │  │
-│  │                 │  │  │ • 启用 Chat: [√]             │  │
-│  │                 │  │  │                             │  │
-│  │                 │  │  │ Embedding 设置              │  │
-│  │                 │  │  │ • 启用 Embedding: [√]       │  │
-│  │                 │  │  │                             │  │
-│  │                 │  │  │ [测试连接] [保存] [删除]    │  │
-│  └─────────────────┘  │  └─────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────┐
+│  AI 设置                                    [×]                         │
+├──────────────┬──────────────────────────────────────────────────────────┤
+│  AI          │                                                          │
+│  ─────────── │                                                          │
+│  ▼ MiniMax-1 │  [M]  MiniMax-1              [启用 ✓]                    │
+│    SiliconFlow│  ───────────────────────────────────────────────────────│
+│    GLM-1     │  API 密钥                                                │
+│              │  [••••••••••••••••••••] 👁   点击这里获取密钥              │
+│ + 添加供应商 │  ───────────────────────────────────────────────────────│
+│              │  API 地址                                                │
+│              │  [https://api.minimax.chat/v1         ]                  │
+│              │  ───────────────────────────────────────────────────────│
+│              │  [检测供应商有效性 ✓]                                      │
+│              │  ───────────────────────────────────────────────────────│
+│              │  模型列表                                                │
+│              │  (●) 使用本地预设列表   ( ) 从 API 获取                  │
+│              │  ▼ 聊天模型 Chat (5)                                     │
+│              │    ├─ MiniMax-M2.5    [Chat] [Tools]  128K              │
+│              │    └─ ...                                                │
+│              │  ▼ 嵌入模型 Embedding (2)                                │
+│              │    ├─ embedding-2  [Embedding]   32K                    │
+│              │    └─ ...                                                │
+│              │  ───────────────────────────────────────────────────────│
+│              │  当前聊天模型      [MiniMax-M2.5                    ▼]  │
+│              │  当前Embedding模型 [embedding-2                      ▼] │
+│              ├──────────────────────────────────────────────────────────│
+│              │  累计费用: ¥0.0123 | Token 1,234 | 请求 56 次   [取消][保存]│
+└──────────────┴──────────────────────────────────────────────────────────┘
 ```
+
+左侧栏（250px）列出所有 Provider，点击切换；右侧栏显示选中 Provider 的完整配置详情（API 密钥、地址、模型列表、模型选择），底部栏实时显示用量统计。
+
+> **相关文档**: [对话框组件](../../ui/dialogs.md#2-llmsettingsdialog-llm-设置对话框)
 
 ---
 
-## 9. 异常处理
+## 11. 异常处理
 
-### 9.1 异常类型
+### 11.1 异常类型
 
 ```python
 from core.llm.exceptions import (
@@ -404,9 +706,9 @@ except ConnectionError:
 
 ---
 
-## 10. 扩展新的 Provider
+## 12. 扩展新的 Provider
 
-### 10.1 注册机制
+### 12.1 注册机制
 
 ```python
 from core.llm.providers import PROVIDER_REGISTRY
@@ -420,7 +722,7 @@ class CustomProvider(BaseProvider):
     # 实现必要方法...
 ```
 
-### 10.2 实现要求
+### 12.2 实现要求
 
 1. 继承 `BaseProvider`
 2. 实现 `_prepare_chat_payload()` - 准备请求载荷
@@ -431,9 +733,41 @@ class CustomProvider(BaseProvider):
 
 ---
 
-## 11. 相关文档
+## 13. 模块依赖关系图
+
+本次重构涉及的模块变更一览：
+
+```mermaid
+graph LR
+    subgraph ✨ 新增模块
+        TI[types.py<br/>• Conversation<br/>• ToolResult<br/>• UsageStats<br/>• ImageResult<br/>• AudioResult<br/>• StreamChunk<br/>• ProviderInfo]
+        CM[conversation_manager.py<br/>• ConversationManager<br/>• 上下文截断<br/>• token 估算<br/>• 费用计算]
+        TCE[tool_call_executor.py<br/>• ToolRegistry<br/>• ToolCallExecutor<br/>• 自动两轮循环]
+        PS[plugin_service.py<br/>• LLMPluginService<br/>• 对话 + 工具 + 多模态<br/>• 全局单例工厂]
+        PR[pricing.py<br/>• DEFAULT_PRICING<br/>• 默认定价表]
+    end
+
+    subgraph 📝 修改模块
+        PI[provider_interface.py<br/>• ChatResponse + usage 字段<br/>• ModelInfo + price 字段<br/>• UsageInfo 新增]
+        BP[base.py<br/>• 解析 usage from API<br/>• UsageInfo 组装]
+        IF[i_llm_facade.py<br/>• 补全方法声明<br/>• 新增对话/工具/多模态]
+        PL[plugin_services.py<br/>• 文档完善]
+        IP[i_plugin.py<br/>• on_plugin_loaded 增加<br/>  **kwargs 参数<br/>• llm_tools 属性]
+        PM[manager.py<br/>• 注入 PluginServices<br/>• 创建插件时传入]
+    end
+
+    subgraph 📋 示例
+        SA[sample_ai_plugin/<br/>• entrance.py<br/>• tools.py]
+    end
+```
+
+---
+
+## 14. 相关文档
 
 - [LLM Provider API 参考](api-reference.md)
+- [LLM Provider 配置](provider-config.md)
+- [插件 LLM 集成指南](../../plugins/llm-integration-guide.md)
 - [插件开发指南](../plugin-system/plugin-development.md)
 - [系统架构概述](../../architecture/overview.md)
 

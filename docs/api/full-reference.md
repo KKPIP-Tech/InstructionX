@@ -25,7 +25,7 @@ from core import BackgroundTaskManager, TaskType, TaskStatus, BackgroundTask, Sc
 # 抽象接口层（推荐用于插件开发）
 from core.interfaces import IPlugin, IPluginInfo, IDataProvider, ITaskManager
 from core.interfaces import TaskType, TaskStatus
-from core.interfaces import ILLMFacade, Message, ChatResponse, EmbeddingResponse, ModelInfo
+from core.interfaces import ILLMFacade, Message, ChatResponse, EmbeddingResponse, ModelInfo, UsageInfo
 from core.interfaces import ILogger, PluginServices
 ```
 
@@ -40,11 +40,20 @@ from core.data.data_provider import DataProvider, DataNamespace, DataProviderErr
 ### 1.4 从 core.llm 导入
 
 ```python
-# LLM 提供者
+# LLM 核心层
 from core.llm import get_llm_provider
 
+# LLM 插件服务层（推荐插件开发者使用）
+from core.llm import get_llm_plugin_service
+
 # LLM 数据类型（也可从 core.interfaces 导入，推荐方式）
-from core.llm import Message, ChatResponse, EmbeddingResponse, ModelInfo
+from core.llm import Message, ChatResponse, EmbeddingResponse, ModelInfo, UsageInfo
+
+# LLM 服务层数据类型
+from core.llm import (
+    Conversation, ToolResult, UsageStats, StreamChunk,
+    ImageResult, AudioResult, ProviderInfo
+)
 
 # LLM 异常
 from core.llm.exceptions import (

@@ -16,10 +16,10 @@
 
 ```mermaid
 graph TB
-    subgraph WorkArea["WorkArea"]
+    subgraph WorkArea [WorkArea]
         Root[根 Widget<br/>QWidget]
         VL[QVBoxLayout<br/>垂直布局]
-        Placeholder["占位符标签<br/>\"点击上方技能按钮，在此处显示插件功能\""]
+        Placeholder[占位符标签<br/>点击上方技能按钮，在此处显示插件功能]
     end
 
     Root --> VL

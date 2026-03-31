@@ -16,25 +16,25 @@
 
 ```mermaid
 graph TB
-    subgraph SkillsPanel["SkillsPanel"]
+    subgraph SkillsPanel [SkillsPanel]
         TW[QTabWidget<br/>标签页控件]
     end
 
-    subgraph Tab1["官方功能 标签"]
+    subgraph Tab1 [官方功能 标签]
         SA1[ScrollArea<br/>可滚动区域]
-        B1["技能按钮 1"]
-        B2["技能按钮 2"]
-        B3["技能按钮 N"]
+        B1[技能按钮 1]
+        B2[技能按钮 2]
+        B3[技能按钮 N]
         SA1 --> B1
         SA1 --> B2
         SA1 --> B3
     end
 
-    subgraph Tab2["第三方功能 标签"]
+    subgraph Tab2 [第三方功能 标签]
         SA2[ScrollArea<br/>可滚动区域]
-        C1["技能按钮 1"]
-        C2["技能按钮 2"]
-        C3["技能按钮 M"]
+        C1[技能按钮 1]
+        C2[技能按钮 2]
+        C3[技能按钮 M]
         SA2 --> C1
         SA2 --> C2
         SA2 --> C3

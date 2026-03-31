@@ -18,13 +18,13 @@
 
 ```mermaid
 graph TB
-    subgraph Window["InstructionXMainWindow"]
-        Container["QWidget#mainContainer<br/>容器（圆角/透明）"]
-        CL["_container_layout<br/>垂直布局 (margins: 8,0,8,8)"]
-        TitleBar["CustomTitleBar<br/>固定 40px（Logo + 标题 + 菜单栏 + 窗口控制）"]
-        Content["content_layout<br/>中间层 VBox (spacing: 5)"]
-        SP["SkillsPanel<br/>技能面板 105-115px"]
-        WA["WorkArea<br/>工作区"]
+    subgraph Window [InstructionXMainWindow]
+        Container[QWidget#mainContainer<br/>容器（圆角/透明）]
+        CL[_container_layout<br/>垂直布局 (margins: 8,0,8,8)]
+        TitleBar[CustomTitleBar<br/>固定 40px（Logo + 标题 + 菜单栏 + 窗口控制）]
+        Content[content_layout<br/>中间层 VBox (spacing: 5)]
+        SP[SkillsPanel<br/>技能面板 105-115px]
+        WA[WorkArea<br/>工作区]
     end
 
     Container --> CL
@@ -34,13 +34,15 @@ graph TB
     Content --> WA
 ```
 
-> **注意**：菜单栏（编辑、用户中心、帮助）实际嵌入在 `CustomTitleBar` 内部（通过 `set_menu_bar()` 放置在标题和窗口控制按钮之间）。无框架窗口额外设置了 `WA_TranslucentBackground` 属性。
+> **注意**：菜单栏（编辑、用户中心、AI、帮助）实际嵌入在 `CustomTitleBar` 内部（通过 `set_menu_bar()` 放置在标题和窗口控制按钮之间）。无框架窗口额外设置了 `WA_TranslucentBackground` 属性。
 
 ---
 
 ## 3. 核心组件
 
 ### 3.1 菜单栏
+
+菜单栏包含五个菜单：**编辑**、**用户中心**、**AI**、**帮助**。
 
 ```python
 def _create_menus(self) -> None:
@@ -51,27 +53,40 @@ def _create_menus(self) -> None:
 
     # 编辑菜单
     menu_edit = menu_bar.addMenu("编辑")
-    menu_edit_plugin_order_action = QAction("插件排序", self)
-    menu_edit_plugin_order_action.setShortcut("Ctrl+P")
-    menu_edit.addAction(menu_edit_plugin_order_action)
-    menu_edit_llm_settings_action = QAction("LLM 设置", self)
-    menu_edit_llm_settings_action.setShortcut("Ctrl+L")
-    menu_edit.addAction(menu_edit_llm_settings_action)
-
-    # 主题切换（分隔符后）
+    menu_edit.addAction(menu_edit_plugin_order_action)  # 插件排序 (Ctrl+P)
+    menu_edit.addAction(menu_edit_llm_settings_action)  # LLM 设置 (Ctrl+L)
     menu_edit.addSeparator()
-    self._menu_theme_action = QAction("切换主题", self)
-    self._menu_theme_action.setToolTip("浅色 → 深色 → 跟随系统")
-    menu_edit.addAction(self._menu_theme_action)
+    menu_edit.addAction(self._menu_theme_action)  # 切换主题
 
     # 用户中心菜单（预留，目前为空）
     menu_user = menu_bar.addMenu("用户中心")
 
+    # AI 菜单 - 由 _create_ai_menu 创建
+    self._create_ai_menu(menu_bar)
+
     # 帮助菜单
     menu_help = menu_bar.addMenu("帮助")
-    menu_help_about_action = QAction("关于", self)
-    menu_help.addAction(menu_help_about_action)
 ```
+
+**AI 菜单** (`_create_ai_menu`) 目前仅包含一个菜单项：
+
+```python
+def _create_ai_menu(self, menu_bar):
+    self._ai_menu = menu_bar.addMenu("AI")
+
+    # LLM 设置
+    settings_action = QAction("LLM 设置...", self)
+    settings_action.setShortcut("Ctrl+L")
+    settings_action.triggered.connect(self._open_llm_settings_dialog)
+    self._ai_menu.addAction(settings_action)
+```
+
+点击 **LLM 设置...** 调用 `_open_llm_settings_dialog()`，打开 `LLMSettingsDialog`（两栏布局）进行 LLM Provider 配置。
+
+**Provider 快速切换** 由独立的 `_quick_provider_menu`（主工具栏菜单）处理，通过 `_rebuild_quick_provider_menu()` 动态构建，自动为每个启用的 Provider 生成菜单项，并显示能力标记：
+- 👁 - 支持 Vision
+- 🔧 - 支持 Function Calling
+- ⚠️ - Provider 不健康
 
 ### 3.2 自定义标题栏 (CustomTitleBar)
 
@@ -134,17 +149,17 @@ set_style_qss_theme(QApplication.instance(), theme)
 
 ```mermaid
 graph TB
-    subgraph SkillsPanel["SkillsPanel"]
-        TW["QTabWidget"]
+    subgraph SkillsPanel [SkillsPanel]
+        TW[QTabWidget]
     end
-    TW --> Tab1["官方功能 tab"]
-    TW --> Tab2["第三方功能 tab"]
-    Tab1 --> SA1["QScrollArea"]
-    Tab2 --> SA2["QScrollArea"]
-    SA1 --> C1["container (HBoxLayout)"]
-    SA2 --> C2["container (HBoxLayout)"]
-    C1 --> B1["SkillButton × N"]
-    C2 --> B2["SkillButton × M"]
+    TW --> Tab1[官方功能 tab]
+    TW --> Tab2[第三方功能 tab]
+    Tab1 --> SA1[QScrollArea]
+    Tab2 --> SA2[QScrollArea]
+    SA1 --> C1[container (HBoxLayout)]
+    SA2 --> C2[container (HBoxLayout)]
+    C1 --> B1[SkillButton × N]
+    C2 --> B2[SkillButton × M]
 ```
 
 ### 3.5 工作区 (WorkArea)
@@ -301,18 +316,18 @@ def _on_skill_clicked(self, plugin):
 
 ```mermaid
 flowchart TD
-    Mouse["鼠标移动"] --> Maximized{"窗口已最大化?"}
-    Maximized -->|是| Exit["退出边缘检测"]
+    Mouse[鼠标移动] --> Maximized{窗口已最大化?}
+    Maximized -->|是| Exit[退出边缘检测]
     Maximized -->|否| Detect{"在8px边缘范围内?"}
-    Detect -->|是| Direction["判断缩放方向<br/>8个方向之一"]
+    Detect -->|是| Direction[判断缩放方向<br/>8个方向之一]
     Detect -->|否| Exit
-    Direction --> Cursor["设置对应光标"]
-    Cursor --> Pressed{"鼠标按下?"}
-    Pressed -->|左键按下| Resize["计算新尺寸"]
-    Pressed -->|否| Wait["等待用户操作"]
-    Resize --> MinSize{"达到最小尺寸?"}
-    MinSize -->|是| Clamp["限制为800x600"]
-    MinSize -->|否| Apply["应用新尺寸"]
+    Direction --> Cursor[设置对应光标]
+    Cursor --> Pressed{鼠标按下?}
+    Pressed -->|左键按下| Resize[计算新尺寸]
+    Pressed -->|否| Wait[等待用户操作]
+    Resize --> MinSize{达到最小尺寸?}
+    MinSize -->|是| Clamp[限制为800x600]
+    MinSize -->|否| Apply[应用新尺寸]
     Clamp --> Apply
     Apply --> Released{"鼠标释放?"}
     Released -->|否| Resize
@@ -357,7 +372,7 @@ def _open_about_dialog(self):
 
 #### LLM 设置对话框
 
-通过 **编辑 > LLM 设置** (Ctrl+L) 打开，提供 Provider 列表管理，支持添加/删除 Provider、配置 API Key/Base URL/模型参数、测试连接、保存配置。
+通过 **AI > LLM 设置...** (Ctrl+L) 打开，提供两栏式配置界面。左侧为 Provider 列表，右侧为选中 Provider 的配置详情（API 密钥、API 地址、模型选择等）。详细说明见 [对话框组件](dialogs.md#2-llmsettingsdialog-llm-设置对话框)。
 
 ```python
 def _open_llm_settings_dialog(self):

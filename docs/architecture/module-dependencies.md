@@ -8,11 +8,11 @@
 
 ```mermaid
 graph TB
-    subgraph Entry["入口"]
+    subgraph Entry ["入口"]
         MAIN[main.py 应用入口]
     end
 
-    subgraph UI["UI 层"]
+    subgraph UI ["UI 层"]
         MW[ui/main_window.py<br/>InstructionXMainWindow]
         TB[ui/title_bar.py<br/>CustomTitleBar]
         SB[ui/skills_panel/skill_button.py<br/>SkillButton]
@@ -20,19 +20,24 @@ graph TB
         WA[ui/work_area/work_area.py<br/>WorkArea]
     end
 
-    subgraph Core["核心层"]
+    subgraph Core ["核心层"]
         PM[core/plugin/manager.py<br/>PluginManager 单例]
         DP[core/data/data_provider.py<br/>DataProvider 单例]
         BTM[core/task/background_task.py<br/>BackgroundTaskManager 单例]
-        LLM[core/llm/llm_provider.py<br/>LLMProvider 单例]
         IPlugin[core/interfaces/i_plugin.py<br/>IPlugin]
     end
 
-    subgraph Utils["工具层"]
+    subgraph LLM ["LLM 层"]
+        LLMS[core/llm/plugin_service.py<br/>LLMPluginService 单例<br/>插件开发者入口]
+        LLMP[core/llm/llm_provider.py<br/>LLMProvider 单例<br/>LLM 核心层]
+        LLMS --> LLMP
+    end
+
+    subgraph Utils ["工具层"]
         STYLE[utils/style_qss/__init__.py<br/>StyleQSS]
     end
 
-    subgraph Plugins["插件层"]
+    subgraph Plugins ["插件层"]
         PLUGIN[plugin/ + custom_plugin/]
     end
 
@@ -49,6 +54,7 @@ graph TB
     PLUGIN --> PM
     PLUGIN --> DP
     PLUGIN --> BTM
+    PLUGIN --> LLMS
 ```
 
 ---
@@ -127,14 +133,15 @@ self._long_running_task_factories: Dict      # 长期任务工厂
 
 ### 3.1 单例列表
 
-项目中有 **5 个核心单例**（含 1 个内部单例）：
+项目中有 **6 个核心单例**（含 1 个内部单例）：
 
 | 类名 | 文件 | 用途 |
 |------|------|------|
 | **PluginManager** | `core/plugin/manager.py` | 插件管理 |
 | **DataProvider** | `core/data/data_provider.py` | 数据管理 |
 | **BackgroundTaskManager** | `core/task/background_task.py` | 任务调度 |
-| **LLMProvider** | `core/llm/llm_provider.py` | 大语言模型管理 |
+| **LLMProvider** | `core/llm/llm_provider.py` | 大语言模型核心层（底层） |
+| **LLMPluginService** | `core/llm/plugin_service.py` | LLM 插件服务层（插件开发者入口） |
 | **TaskStorage** | `core/task/task_storage.py` | 任务数据持久化（BackgroundTaskManager 内部使用） |
 
 ### 3.2 单例实现模式
@@ -180,7 +187,8 @@ graph LR
     PM[PluginManager] <--> P[插件]
     DP[DataProvider] <--> P
     BTM[BackgroundTaskManager] <--> P
-    LLM[LLMProvider] <--> P  # 插件通过 get_llm_provider() 或 ILLMFacade 调用 LLM
+    LLMS[LLMPluginService] <--> P
+    LLMS --> LLMP[LLMProvider]
 ```
 
 ### 4.2 发布/订阅
@@ -213,18 +221,18 @@ sequenceDiagram
 
 ### 4.4 依赖注入（PluginServices）
 
-> 注意：此设计为框架预留。当前所有插件均直接导入单例（如 `DataProvider()` / `BackgroundTaskManager()`），而非通过 `PluginServices` 注入。此设计为未来插件隔离和测试提供基础。
-
-`core/interfaces/plugin_services.py` 中定义了 `PluginServices` 数据类，通过依赖注入将 `IDataProvider`、`ITaskManager`、`ILLMFacade`、`ILogger` 聚合传递给插件：
+`core/interfaces/plugin_services.py` 中定义了 `PluginServices` 数据类，PluginManager 通过 `_create_plugin_services()` 创建并通过构造器参数注入到各插件中：
 
 ```python
 @dataclass
 class PluginServices:
-    data_provider: IDataProvider
-    task_manager: ITaskManager
-    llm_facade: ILLMFacade = None
+    data_provider: IDataProvider = None
+    task_manager: ITaskManager = None
+    llm_facade: ILLMFacade = None  # LLMPluginService 单例
     logger: ILogger = None
 ```
+
+新版插件通过 `self._services` 访问服务，旧版插件可通过直接导入单例兼容访问。
 
 ---
 
@@ -306,16 +314,20 @@ graph TD
     MW --> SP[SkillsPanel]
     MW --> WA[WorkArea]
     MW --> PM[PluginManager<br/>单例]
-    MW --> LLM[LLMProvider<br/>单例]
-    MW --> DP[DataProvider<br/>单例]    # 主窗口保存/加载主题设置
+    MW --> LLMS[LLMPluginService<br/>单例]
+    MW --> DP[DataProvider<br/>单例]
+    MW --> BTM[BackgroundTaskManager<br/>单例]
 
     SP --> PM
     WA --> PM
 
     PM -.->|插件加载| PL[插件层]
+    PM -.->|创建并注入| PS[PluginServices<br/>DI 容器]
+    PS -.->|llm_facade| LLMS
     DP -.->|数据存储| PL
     BTM -.->|任务调度| PL
-    LLM -.->|LLM 调用| PL  # LLMSettingsDialog 是 LLM 配置的 UI 入口
+    LLMS --> LLP[LLMProvider<br/>单例]
+    LLMS -.->|LLM 调用| PL
 
     PL --> IPlugin[IPlugin 接口]
 ```
@@ -323,7 +335,8 @@ graph TD
 **依赖规则**:
 - UI 层依赖核心层
 - 核心层尽量减少相互依赖，但部分核心模块存在直接依赖关系（如 BackgroundTaskManager 依赖 TaskStorage，PluginManager 依赖 PluginConfigManager）
-- 插件依赖核心层（通过接口或直接调用单例）
+- 插件依赖核心层（通过接口、直接调用单例或通过 PluginServices DI 容器）
+- LLM 层：插件通过 `LLMPluginService` 访问 LLM 能力（推荐），`LLMPluginService` 内部委托 `LLMProvider`
 - 数据通过 DataProvider 存储
 
 ---

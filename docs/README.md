@@ -65,8 +65,9 @@ utils/                               # 工具模块文档
 
 plugins/                             # 插件文档
 ├── index.md                        # 插件索引
-├── official-plugins.md             # 官方插件文档
-└── thirdparty-plugins.md           # 第三方插件文档
+├── official-plugins.md             # 官方插件文档（11个）
+├── thirdparty-plugins.md           # 第三方插件文档（4个）
+└── llm-integration-guide.md       # LLM 集成开发指南
 
 api/                                 # API 参考
 └── full-reference.md                # 完整 API 参考
@@ -97,8 +98,9 @@ api/                                 # API 参考
 11. **[后台任务 API 参考](core/background-task/api-reference.md)** - 任务 API
 12. **[LLM Provider 概述](core/llm-provider/overview.md)** - LLM 提供者框架
 13. **[LLM Provider API 参考](core/llm-provider/api-reference.md)** - LLM API
-14. **[UI 模块文档](ui/main-window.md)** - 界面组件详解
-15. **[完整 API 参考](api/full-reference.md)** - 所有 API 索引
+14. **[LLM 集成开发指南](plugins/llm-integration-guide.md)** - 在插件中使用 LLM 服务
+15. **[UI 模块文档](ui/main-window.md)** - 界面组件详解
+16. **[完整 API 参考](api/full-reference.md)** - 所有 API 索引
 
 ### 插件参考
 
@@ -117,7 +119,8 @@ api/                                 # API 参考
 - **PluginManager** - 插件管理器（官方插件和第三方插件的加载、注册、排序）
 - **DataProvider** - 数据提供者（数据持久化、发布/订阅、插件间通信）
 - **BackgroundTaskManager** - 后台任务管理器（同步/异步任务、定时任务、长期任务）
-- **LLMProvider** - LLM 提供者（多厂商 LLM 统一访问）
+- **LLMProvider** - LLM 核心层（多厂商 LLM 底层管理）
+- **LLMPluginService** - LLM 插件服务层（对话管理、工具调用、多模态，插件开发者入口）
 
 ### 插件系统
 

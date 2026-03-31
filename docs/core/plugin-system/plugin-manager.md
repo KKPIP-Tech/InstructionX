@@ -437,6 +437,50 @@ def unregister_plugin_api(self, plugin_id: str) -> None:
     """
 ```
 
+### 3.9 依赖注入（PluginServices）
+
+#### _create_plugin_services()
+
+```python
+def _create_plugin_services(self) -> PluginServices:
+    """
+    创建插件服务依赖注入容器
+
+    创建包含所有核心服务的 PluginServices 对象，
+    供插件在构造器和 on_plugin_loaded 回调中使用。
+
+    Returns:
+        PluginServices: 服务容器实例
+    """
+```
+
+**服务容器内容**：
+
+| 服务 | 类型 | 说明 |
+|------|------|------|
+| `llm_facade` | `ILLMFacade` | LLM 服务入口（`LLMPluginService` 单例） |
+| `data_provider` | `IDataProvider` | 数据持久化服务（失败时为 `None`） |
+| `task_manager` | `ITaskManager` | 后台任务管理（失败时为 `None`） |
+| `logger` | `ILogger` | 日志服务（`LoggerManager` 实例） |
+
+**使用流程**：
+
+```python
+# 1. PluginManager 在加载插件前创建服务容器
+services = self._create_plugin_services()
+
+# 2. 将 services 注入插件
+plugin = plugin_class(services=services)
+plugin._plugin_id = plugin_id
+plugin._services = services  # 插件自行保存引用
+
+# 3. 调用生命周期回调
+plugin.on_plugin_loaded(plugin_id, **kwargs)
+```
+
+> **注意**：插件通过 `services` 参数接收容器，但应将引用保存到实例属性 `self._services`，
+> 以便在后续方法中访问。旧版插件（不支持 DI）可通过直接导入单例访问服务。
+
 ---
 
 ## 4. 内部结构

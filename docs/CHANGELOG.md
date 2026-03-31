@@ -4,6 +4,24 @@
 
 ---
 
+## 2026-03-31 - LLM 设置对话框全面重构
+
+### LLM 设置对话框 (LLMSettingsDialog)
+- **布局重构**: 从旧版单栏表单改为两栏布局，左栏 Provider 列表（250px），右栏配置详情（滚动区域）
+- **新增组件**: `ProviderLogoLabel`（程序化 Provider 徽标）、`CapabilityBadge`（Vision/Thinking/Tools 徽章）、`CategoryBadge`（Chat/Embedding 徽章）、`ModelFetchedListItem`（模型行，含勾选状态）、增强 `ProviderListItem`（新增 tooltip 参数）
+- **模型列表**: 支持预设分组（minimax/glm 使用 CollapsibleGroup 按类别折叠）和 API 动态获取（ollama/siliconflow）
+- **新增 "AI" 菜单**: 原 "LLM" 菜单改名为 "AI"，整合模型服务、切换 Provider、用量统计、LLM 设置四项功能
+- **Provider 切换菜单**: 自动标记 Vision/Function Calling 能力和健康状态
+- **用量统计**: 对话框底部栏实时显示累计费用、Token 用量、请求次数
+- **新增 LLM 模型服务对话框** (`LLMModelServiceDialog`): 通过 **AI > 模型服务...** 打开，设置默认 Provider 和模型
+
+### 文档更新
+- **docs/ui/main-window.md**: 更新菜单栏说明（编辑、用户中心、AI、帮助），补充 AI 菜单详细结构
+- **docs/ui/dialogs.md**: 重写 LLMSettingsDialog 章节，反映两栏布局、新增组件和模型列表功能
+- **docs/core/llm-provider/overview.md**: 更新 UI 配置说明（AI > LLM 设置...）
+
+---
+
 ## 2026-03-30 - 文档全面升级
 
 ### 新增文档

@@ -8,20 +8,20 @@
 
 ```mermaid
 graph TB
-    subgraph PM["PluginManager 单例"]
-        Registry["插件注册表<br/>_plugin_registry"]
-        APIReg["API 注册表<br/>_api_registry"]
+    subgraph PM [PluginManager 单例]
+        Registry[插件注册表<br/>_plugin_registry]
+        APIReg[API 注册表<br/>_api_registry]
     end
 
-    subgraph Plugins["插件目录"]
-        Official["plugin/ 官方插件"]
-        ThirdParty["custom_plugin/ 第三方插件"]
+    subgraph Plugins [插件目录]
+        Official[plugin/ 官方插件]
+        ThirdParty[custom_plugin/ 第三方插件]
     end
 
-    subgraph PluginFiles["插件文件结构"]
-        Entrance["entrance.py"]
-        Service["service.py"]
-        Info["information.py"]
+    subgraph PluginFiles [插件文件结构]
+        Entrance[entrance.py]
+        Service[service.py]
+        Info[information.py]
     end
 
     Registry -->|加载| Official

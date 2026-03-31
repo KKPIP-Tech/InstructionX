@@ -19,27 +19,27 @@
 
 ```mermaid
 graph TB
-    subgraph Plugin["插件层"]
-        A["插件 A"]
-        B["插件 B"]
+    subgraph Plugin [插件层]
+        A[插件 A]
+        B[插件 B]
     end
 
-    subgraph Interfaces["接口层 core/interfaces/"]
-        I1["IPlugin"]
-        I2["IPluginInfo"]
-        I3["IDataProvider"]
-        I4["ITaskManager"]
-        I5["ILLMFacade"]
-        I6["ILogger"]
-        I7["PluginServices"]
+    subgraph Interfaces [接口层 core/interfaces/]
+        I1[IPlugin]
+        I2[IPluginInfo]
+        I3[IDataProvider]
+        I4[ITaskManager]
+        I5[ILLMFacade]
+        I6[ILogger]
+        I7[PluginServices]
     end
 
-    subgraph CoreImpl["核心实现层"]
-        C1["PluginManager"]
-        C2["DataProvider"]
-        C3["BackgroundTaskManager"]
-        C4["LLMProvider"]
-        C5["LoggerManager"]
+    subgraph CoreImpl [核心实现层]
+        C1[PluginManager]
+        C2[DataProvider]
+        C3[BackgroundTaskManager]
+        C4[LLMProvider]
+        C5[LoggerManager]
     end
 
     A -->|依赖| I1
@@ -411,7 +411,7 @@ class MyPlugin(IPlugin):
 
 **设计模式**: 依赖注入（Dependency Injection）
 
-> **预留设计**: `PluginServices` 是框架预留的依赖注入设计。**当前所有插件均直接导入单例**（`DataProvider()`、`BackgroundTaskManager()`、`get_llm_provider()` 等），而非通过 `PluginServices` 注入。此设计为未来插件隔离和测试提供基础，尚未实际启用。
+> `PluginServices` 通过 `PluginManager._create_plugin_services()` 创建，并在插件加载时通过构造器参数注入。新版插件通过 `self._services` 访问，旧版插件可通过直接导入单例兼容访问。
 
 **推荐 IPlugin 基类**: 使用 `from core.plugin.plugin_interface import IPlugin`（含控件缓存等框架实现），而非 `core.interfaces` 中的纯抽象接口。
 
@@ -546,25 +546,18 @@ def my_function(data_provider: DataProvider):
 
 ### 6.2 依赖注入模式
 
-`PluginServices` 描述了插件可以通过依赖注入获取哪些服务。在实际使用中，`data_provider` 等服务通过 `_create_widget(parent, data_provider)` 参数传入：
+`PluginServices` 描述了插件可以通过依赖注入获取哪些服务。PluginManager 在加载插件时创建服务容器，并通过构造器参数注入：
 
 ```python
 class MyPlugin(IPlugin):
-    def __init__(self):
-        # 插件初始化（无参数，PluginManager 负责实例化）
-        self.data_provider = None
-        self.task_manager = None
+    def __init__(self, services: PluginServices | None = None):
+        # 通过 services 参数接收注入的服务容器
+        self._services = services
+        self._llm = services.llm_facade if services else None
 
-    def _create_widget(self, parent=None, data_provider=None):
-        # 通过 data_provider 参数接收注入的服务
-        self.data_provider = data_provider
-        if data_provider:
-            self.data_provider.register_plugin(self.plugin_id, "MyPlugin")
-
-        # 使用注入的服务构建 UI
-        widget = QWidget(parent)
-        # ...
-        return widget
+    def on_plugin_loaded(self, plugin_id=None, **kwargs):
+        # 通过 self._services 访问 llm_facade、data_provider 等
+        pass
 ```
 
 ### 6.3 错误处理

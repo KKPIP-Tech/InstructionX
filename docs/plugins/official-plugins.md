@@ -1,6 +1,6 @@
 # 官方插件
 
-> InstructionX 内置的 10 个官方插件详细文档
+> InstructionX 内置的 11 个官方插件详细文档
 
 ---
 
@@ -46,7 +46,60 @@
 
 ---
 
-## 2. 文本格式化 {#文本格式化}
+## 2. 示例 AI 插件 {#示例-ai-插件}
+
+**文件位置**: `plugin/sample_ai_plugin/`
+
+**类型 ID**: `sample-ai-plugin`
+
+**版本**: `release.1.0.0`
+
+**开发者**: InstructionX Team
+
+### 功能描述
+
+展示 `LLMPluginService` 完整能力的示例插件，涵盖对话管理、流式输出、工具调用、多模态等核心功能。
+
+### 核心特性
+
+- 对话管理（创建、发送消息、流式接收）
+- 工具注册（私有注册表 + 共享注册表两种方式）
+- 工具调用循环（自动两轮调用）
+- 多模态（图片加载、TTS）
+- 用量统计
+
+### service_api
+
+| 方法 | 功能 |
+|------|------|
+| `create_conversation` | 创建新对话，返回 conv_id |
+| `send_message` | 同步发送消息，返回回复内容 |
+| `stream_chat` | 无状态对话（流式） |
+
+### LLM 集成方式
+
+采用依赖注入（DI）方式访问 LLM 服务：
+
+```python
+from core.interfaces import IPlugin
+
+class SampleAIPlugin(IPlugin):
+    def __init__(self, services=None):
+        super().__init__()
+        self._llm = (services.llm_facade
+                     if services
+                     else get_llm_plugin_service())
+```
+
+详见 [LLM 集成开发指南](llm-integration-guide.md)。
+
+### 界面布局
+
+垂直分割面板：对话历史列表 + 聊天区域，输入区（多行输入框），发送按钮。
+
+---
+
+## 3. 文本格式化 {#文本格式化}
 
 **文件位置**: `plugin/text_formatting/`
 
@@ -73,7 +126,7 @@
 
 ---
 
-## 3. 代码格式化 {#代码格式化}
+## 4. 代码格式化 {#代码格式化}
 
 **文件位置**: `plugin/code_formatter/`
 
@@ -102,7 +155,7 @@
 
 ---
 
-## 4. 字符串工具 {#字符串工具}
+## 5. 字符串工具 {#字符串工具}
 
 **文件位置**: `plugin/string_tools/`
 
@@ -134,7 +187,7 @@
 
 ---
 
-## 5. 任务管理器 {#任务管理器}
+## 6. 任务管理器 {#任务管理器}
 
 **文件位置**: `plugin/task_manager/`
 
@@ -171,7 +224,7 @@
 
 ---
 
-## 6. 任务报告器 {#任务报告器}
+## 7. 任务报告器 {#任务报告器}
 
 **文件位置**: `plugin/task_reporter/`
 
@@ -206,7 +259,7 @@ TaskManager ID 列表（双击编辑）、订阅/取消订阅按钮、统计信�
 
 ---
 
-## 7. 图片压缩 {#图片压缩}
+## 8. 图片压缩 {#图片压缩}
 
 **文件位置**: `plugin/image_compressor/`
 
@@ -233,7 +286,7 @@ TaskManager ID 列表（双击编辑）、订阅/取消订阅按钮、统计信�
 
 ---
 
-## 8. 后台任务演示 {#后台任务演示}
+## 9. 后台任务演示 {#后台任务演示}
 
 **文件位置**: `plugin/background_task_demo/`
 
@@ -272,7 +325,7 @@ TaskManager ID 列表（双击编辑）、订阅/取消订阅按钮、统计信�
 
 ---
 
-## 9. 本地服务器 {#本地服务器}
+## 10. 本地服务器 {#本地服务器}
 
 **文件位置**: `plugin/local_server/`
 
@@ -310,7 +363,7 @@ TaskManager ID 列表（双击编辑）、订阅/取消订阅按钮、统计信�
 
 ---
 
-## 10. UI 演示 {#ui-演示}
+## 11. UI 演示 {#ui-演示}
 
 **文件位置**: `plugin/ui_demo/`
 
@@ -322,7 +375,7 @@ TaskManager ID 列表（双击编辑）、订阅/取消订阅按钮、统计信�
 
 ### 功能描述
 
-展示 InstructionX 所使用的 FluentUI3 风格控件效果。
+展示 InstructionX 所使用的控件效果。
 
 ### service_api
 

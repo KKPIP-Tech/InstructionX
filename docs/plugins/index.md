@@ -8,24 +8,26 @@
 
 ```
 plugins/
-├── index.md                # 本文档 - 插件索引
-├── official-plugins.md     # 官方插件文档（10个）
-└── thirdparty-plugins.md   # 第三方插件文档（4个）
+├── index.md                    # 本文档 - 插件索引
+├── official-plugins.md         # 官方插件文档（11个）
+├── thirdparty-plugins.md       # 第三方插件文档（4个）
+└── llm-integration-guide.md    # LLM 集成开发指南
 ```
 
 ---
 
 ## 插件总览
 
-InstructionX 内置了 **14 个插件**，分为官方插件和第三方插件两类。
+InstructionX 内置了 **15 个插件**，分为官方插件和第三方插件两类。
 
-### 官方插件（10个）
+### 官方插件（11个）
 
 位于项目根目录下的 `plugin/` 目录：
 
 | 插件 | 类型 ID | 功能描述 |
 |------|---------|---------|
 | [LLM Chat](official-plugins.md#llm-chat) | `llm-chat` | 多提供商 LLM 对话，支持流式输出 |
+| [示例 AI 插件](official-plugins.md#示例-ai-插件) | `sample-ai-plugin` | LLM 工具调用、流式对话、多模态示例 |
 | [文本格式化](official-plugins.md#文本格式化) | `text-formatting` | 文本大小写转换 |
 | [代码格式化](official-plugins.md#代码格式化) | `code-formatter` | JSON/XML 格式化、注释移除 |
 | [字符串工具](official-plugins.md#字符串工具) | `string-tools` | 文本反转、单词统计等 |
@@ -34,7 +36,7 @@ InstructionX 内置了 **14 个插件**，分为官方插件和第三方插件�
 | [图片压缩](official-plugins.md#图片压缩) | `image-compressor` | 图片压缩与信息查看 |
 | [后台任务演示](official-plugins.md#后台任务演示) | `background-task-demo` | 四种后台任务演示 |
 | [本地服务器](official-plugins.md#本地服务器) | `local-server` | 本地 HTTP 服务器 |
-| [UI 演示](official-plugins.md#ui-演示) | `ui-demo` | FluentUI3 风格控件展示 |
+| [UI 演示](official-plugins.md#ui-演示) | `ui-demo` | 控件展示 |
 
 ### 第三方插件（4个）
 
@@ -53,7 +55,8 @@ InstructionX 内置了 **14 个插件**，分为官方插件和第三方插件�
 
 1. **[官方插件文档](official-plugins.md)** - 了解所有内置插件的功能和使用方式
 2. **[第三方插件文档](thirdparty-plugins.md)** - 了解示例插件的实现方式
-3. **[插件开发指南](../core/plugin-system/plugin-development.md)** - 学习如何开发自己的插件
+3. **[LLM 集成开发指南](llm-integration-guide.md)** - 学习如何在插件中使用 LLM 服务（对话、工具调用、多模态）
+4. **[插件开发指南](../core/plugin-system/plugin-development.md)** - 学习如何开发自己的插件
 
 ---
 

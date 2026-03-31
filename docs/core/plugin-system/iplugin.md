@@ -245,33 +245,55 @@ def get_widget(self, parent=None, data_provider=None) -> QWidget:
 ### 3.3 on_plugin_loaded()
 
 ```python
-def on_plugin_loaded(self) -> None:
+def on_plugin_loaded(self, plugin_id: Optional[str] = None, **kwargs) -> None:
     """
     插件加载完成回调
 
     在插件被加载且 plugin_id 已设置后调用。
     可用于注册定时任务工厂等初始化操作。
 
+    新版插件通过依赖注入（DI）接收 `services` 参数，通过 `self._services` 访问
+    `llm_facade`（LLMPluginService）、`data_provider` 等服务。
+    旧版插件可通过直接导入单例访问 LLM 服务。
+
     注意：此时插件的 UI 尚未创建，不要在此方法中创建 QWidget。
 
+    Args:
+        plugin_id: 插件唯一标识符
+        **kwargs: 预留参数（services 等通过实例属性 `self._services` 访问）
+
     Example:
-        def on_plugin_loaded(self):
-            # 注册定时任务工厂
-            task_manager = BackgroundTaskManager()
-            task_manager.register_scheduled_task_factory(
-                self.plugin_id,
-                self.my_task_func,
-                self.my_callback
-            )
+        def on_plugin_loaded(self, plugin_id=None, **kwargs):
+            # 新版插件（DI 注入）
+            # self._services 在 __init__ 中通过 services 参数注入
+            # self._llm = self._services.llm_facade
+            pass
     """
     pass
 ```
 
+### 3.4 llm_tools
+
+```python
+@property
+def llm_tools(self) -> List[Dict[str, Any]]:
+    """
+    获取插件暴露的 LLM 工具列表
+
+    返回符合 OpenAI function calling 规范的工具定义列表。
+    插件可通过重写此属性来声明自己暴露的工具。
+
+    Returns:
+        工具定义列表，每项包含 name、description、parameters 字段
+    """
+    return []
+```
+
 ---
 
-## 4. Widget 缓存机制
+## 5. Widget 缓存机制
 
-### 4.1 原理
+### 5.1 原理
 
 ```
 用户点击技能按钮
@@ -292,7 +314,7 @@ get_widget(parent, data_provider)
                 └── 缓存并返回
 ```
 
-### 4.2 实现细节
+### 5.2 实现细节
 
 缓存机制在 `core/plugin/plugin_interface.py` 中实现（**框架实现，非抽象接口**）：
 
@@ -331,21 +353,21 @@ class IPlugin(ABC):
         return widget
 ```
 
-### 4.3 优势
+### 5.3 优势
 
 1. **状态保持**: 切换插件再回来时，UI 状态（如输入框内容、选中的选项等）不会丢失
 2. **性能优化**: 无需重复创建 Widget，节省内存和 CPU 资源
 3. **开发者透明**: 框架自动管理缓存，开发者无需编写额外代码
 4. **内存可控**: Widget 在插件卸载时会被清理，不会永久占用内存
 
-### 4.4 注意事项
+### 5.4 注意事项
 
 - `_create_widget()` 只在首次调用 `get_widget()` 时执行（框架实现提供的能力）
 - 缓存的 Widget 会被隐藏（`hide()`）但不会被销毁
 - Widget 的生命周期与插件实例绑定
 - 如果需要在 Widget 创建时执行额外逻辑，可以重写 `get_widget()` 方法（仅在框架实现 `plugin_interface.py` 中有效）
 
-### 4.5 缓存失效策略
+### 5.5 缓存失效策略
 
 当前实现的缓存策略是**永久缓存**（直到插件卸载），适用于大多数场景。如果需要实现更复杂的缓存策略，可以考虑：
 
@@ -353,7 +375,7 @@ class IPlugin(ABC):
 2. **基于内存压力的缓存**: 当内存不足时自动清理
 3. **手动清除**: 提供方法让开发者手动清除缓存
 
-### 4.6 自定义缓存行为示例
+### 5.6 自定义缓存行为示例
 
 ```python
 class CustomPlugin(IPlugin):
@@ -380,9 +402,9 @@ class CustomPlugin(IPlugin):
 
 ---
 
-## 5. 完整示例
+## 6. 完整示例
 
-### 5.1 entrance.py
+### 6.1 entrance.py
 
 ```python
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel, QPushButton
@@ -447,14 +469,14 @@ class TextFormattingPlugin(IPlugin):
         self.output_edit.setPlainText(result)
         self.text_formatted.emit(result)
 
-    def on_plugin_loaded(self):
+    def on_plugin_loaded(self, plugin_id=None, **kwargs):
         """插件加载完成回调"""
         print(f"插件已加载: {self.plugin_name}")
 ```
 
 ---
 
-## 6. 相关文档
+## 7. 相关文档
 
 - [插件系统概述](overview.md)
 - [PluginManager](plugin-manager.md)

@@ -43,7 +43,8 @@
 
 ### 1.3 核心设计原则
 
-- **单例模式**：4 个核心服务（PluginManager、DataProvider、BackgroundTaskManager、LLMProvider）全部以单例形式运行
+- **单例模式**：5 个核心服务（PluginManager、DataProvider、BackgroundTaskManager、LLMProvider、LLMPluginService）全部以单例形式运行
+- **LLM 双重入口**：`LLMProvider` 为底层核心，`LLMPluginService` 为插件开发者入口，两者通过 `get_llm_provider()` / `get_llm_plugin_service()` 获取
 - **接口契约优于实现**：`core/interfaces/` 定义所有核心接口，插件通过接口与框架交互
 - **Widget 缓存复用**：IPlugin 的 `get_widget()` 实现控件缓存，避免重复创建
 - **原子写入**：所有 JSON 持久化使用 temp-file + `os.replace()` 保证数据不损坏
@@ -69,57 +70,59 @@
 
 ```mermaid
 graph TB
-    subgraph UI["UI Layer"]
-        MW["InstructionXMainWindow"]
-        TB["CustomTitleBar"]
-        SP["SkillsPanel"]
-        WA["WorkArea"]
-        DL["Dialog"]
+    subgraph UI ["UI Layer"]
+        MW[InstructionXMainWindow]
+        TB[CustomTitleBar]
+        SP[SkillsPanel]
+        WA[WorkArea]
+        DL[Dialog]
     end
 
-    subgraph Core["Core Layer"]
-        subgraph Core.Plugin["Plugin System"]
-            PM["PluginManager"]
-            IPlugin["IPlugin"]
+    subgraph Core ["Core Layer"]
+        subgraph CorePlugin ["Plugin System"]
+            PM[PluginManager]
+            IPlugin[IPlugin]
         end
-        subgraph Core.Data["Data Layer"]
-            DP["DataProvider"]
-            TS["TaskStorage"]
+        subgraph CoreData ["Data Layer"]
+            DP[DataProvider]
+            TS[TaskStorage]
         end
-        subgraph Core.Task["Task System"]
-            BTM["BackgroundTaskManager"]
+        subgraph CoreTask ["Task System"]
+            BTM[BackgroundTaskManager]
         end
-        subgraph Core.LLM["LLM Layer"]
-            LLMP["LLMProvider"]
-            subgraph Core.LLM.Providers["Providers"]
-                MINIMAX["MiniMaxProvider"]
-                GLM["GLMProvider"]
-                SF["SiliconFlowProvider"]
-                OLLAMA["OllamaProvider"]
+        subgraph CoreLLM ["LLM Layer"]
+            LLMS[LLMPluginService<br/>插件开发者入口]
+            LLMP[LLMProvider<br/>LLM 核心层]
+            subgraph CoreLLMProv ["Providers"]
+                MINIMAX[MiniMaxProvider]
+                GLM[GLMProvider]
+                SF[SiliconFlowProvider]
+                OLLAMA[OllamaProvider]
             end
         end
     end
 
-    subgraph Interfaces["Interface Layer"]
-        IPlugin_IF["IPlugin"]
-        IPluginInfo_IF["IPluginInfo"]
-        IDataProvider_IF["IDataProvider"]
-        ITaskManager_IF["ITaskManager"]
-        ILLMFacade_IF["ILLMFacade"]
-        ILogger_IF["ILogger"]
-        PS["PluginServices"]
+    subgraph Interfaces ["Interface Layer"]
+        IPlugin_IF[IPlugin]
+        IPluginInfo_IF[IPluginInfo]
+        IDataProvider_IF[IDataProvider]
+        ITaskManager_IF[ITaskManager]
+        ILLMFacade_IF[ILLMFacade]
+        ILogger_IF[ILogger]
+        PS[PluginServices<br/>DI 容器]
     end
 
-    subgraph Plugins["Plugins"]
-        LLM_CHAT["llm_chat"]
-        STRING_TOOLS["string_tools"]
-        API_DEMO["api_demo"]
+    subgraph Plugins ["Plugins"]
+        LLM_CHAT[llm_chat]
+        SAMPLE_AI[sample_ai_plugin]
+        STRING_TOOLS[string_tools]
+        API_DEMO[api_demo]
     end
 
-    subgraph Utils["Utils"]
-        STYLEQSS["StyleQSS"]
-        LOGGING["LoggerManager"]
-        THEMES["themes"]
+    subgraph Utils ["Utils"]
+        STYLEQSS[StyleQSS]
+        LOGGING[LoggerManager]
+        THEMES[themes]
     end
 
     MW --> TB
@@ -130,6 +133,8 @@ graph TB
     SP -->|skill_clicked| MW
     MW -->|activate| WA
 
+    PM -.->|创建并注入| PS
+    PS -.->|llm_facade| LLMS
     PM -->|load/manage| Plugins
     PM -->|API registry| IPlugin_IF
 
@@ -138,12 +143,13 @@ graph TB
 
     BTM -->|task scheduling| TS
 
-    LLMP -->|route| Core.LLM.Providers
-    LLMP -->|config| Core.LLM.Config
+    LLMS --> LLMP
+    LLMP -->|route| CoreLLMProv
+    LLMP -->|config| CoreLLM
 
-    UI -->|access| Core.Plugin
-    UI -->|access| Core.Data
-    UI -->|access| Core.LLM
+    UI -->|access| CorePlugin
+    UI -->|access| CoreData
+    UI -->|access| CoreLLM
 
     Plugins -->|inherit| IPlugin
     Plugins -->|depend on| IDataProvider_IF
@@ -158,17 +164,16 @@ graph TB
 
 ```mermaid
 graph LR
-    PM["PluginManager"] -->|lifecycle| DP["DataProvider"]
-    PM -->|lifecycle| BTM["BackgroundTaskManager"]
-    PM -->|lifecycle| LLMP["LLMProvider"]
+    PM[PluginManager] -->|lifecycle| DP[DataProvider]
+    PM -->|lifecycle| BTM[BackgroundTaskManager]
+    PM -->|lifecycle| LLMP[LLMProvider]
+    PM -->|lifecycle| LLMS[LLMPluginService]
 
-    DP -.->|persist| storage["data/data.json"]
-
+    DP -.->|persist| storage[data/data.json]
     BTM -.->|persist| storage
-
-    LLMP -.->|config| llmcfg["llm_providers.json"]
-
-    PM -.->|order| porder["plugin_order.json"]
+    LLMP -.->|config| llmcfg[llm_providers.json]
+    LLMS --> LLMP
+    PM -.->|order| porder[plugin_order.json]
 ```
 
 | 核心服务 | 职责 | 单例获取方式 |
@@ -186,7 +191,8 @@ graph LR
 | DataProvider | `core/data/data_provider.py` | 数据中枢与通信 |
 | TaskStorage | `core/task/task_storage.py` | 任务状态持久化 |
 | BackgroundTaskManager | `core/task/background_task.py` | 任务调度执行 |
-| LLMProvider | `core/llm/llm_provider.py` | LLM 统一访问 |
+| LLMProvider | `core/llm/llm_provider.py` | LLM 核心层（底层） |
+| LLMPluginService | `core/llm/plugin_service.py` | LLM 插件服务层（开发者入口） |
 | LoggerManager | `utils/logging_tools.py` | 日志记录 |
 | StyleQSS | `utils/style_qss/__init__.py` | 样式管理 |
 
@@ -217,7 +223,7 @@ graph LR
 | `skill_description` (property) | 技能描述 |
 | `skill_tooltip` (property) | 悬浮提示 |
 | `plugin_id` (property) | UUID 标识符 |
-| `on_plugin_loaded()` | 加载完成回调（可重写） |
+| `on_plugin_loaded(plugin_id=None, **kwargs)` | 加载完成回调（可重写，services 通过 self._services 访问） |
 | `plugin_info` (property) | 获取 IPluginInfo 实例 |
 
 **我依赖谁**：
@@ -280,13 +286,18 @@ class IDataProvider(ABC):
 
 **文件**：`core/interfaces/i_llm_facade.py`
 
-定义 LLM 统一访问契约：
+定义 LLM 统一访问契约，对应 `LLMPluginService` 实现：
 
 ```python
-def chat(messages, provider="default", model=None, ...) -> ChatResponse
-def stream_chat(messages, provider="default", model=None, callback=None, ...) -> Generator
-def embed(texts, provider="default", model=None, ...) -> List[EmbeddingResponse]
-def get_models(provider=None) -> Dict[str, List[ModelInfo]]
+def chat(messages, provider="default", ...) -> ChatResponse
+def stream_chat(messages, provider="default", callback=None, ...) -> Generator
+def embed(texts, provider="default", ...) -> List[EmbeddingResponse]
+def get_available_providers() -> List[ProviderInfo]
+def validate_provider(provider: str) -> tuple[bool, str]
+def create_conversation(system_prompt=None, provider="default", model=None) -> str
+def send_message(conv_id: str, content: str, images=None) -> str
+def get_conversation(conv_id: str) -> Optional[Conversation]
+def get_usage_stats(conv_id: str = None) -> UsageStats
 ```
 
 ### 3.7 PluginServices（依赖注入容器）
@@ -296,13 +307,13 @@ def get_models(provider=None) -> Dict[str, List[ModelInfo]]
 ```python
 @dataclass
 class PluginServices:
-    data_provider: 'IDataProvider'
-    task_manager: 'ITaskManager'
+    data_provider: 'IDataProvider' = None
+    task_manager: 'ITaskManager' = None
     llm_facade: 'ILLMFacade' = None
     logger: 'ILogger' = None
 ```
 
-**⚠️ 设计存在但未使用**：PluginServices 定义了完整的 DI 容器，但所有插件均直接 import 单例，未使用此容器。这是架构上的一个**未完成迁移**。
+**使用方式**：PluginManager 通过 `_create_plugin_services()` 创建容器实例，在加载插件时通过 `services` 参数注入。详见 [PluginManager](docs/core/plugin-system/plugin-manager.md#39-依赖注入pluginservices)。
 
 ---
 
@@ -366,12 +377,12 @@ sequenceDiagram
 
 ```mermaid
 flowchart TD
-    A["IPlugin.get_widget(parent, data_provider)"] --> B{"cached_widget\n!= None?"}
-    B -->|"parent unchanged"| C["return cached widget"]
-    B -->|"parent changed"| D["setParent(parent)"]
+    A[IPlugin.get_widget(parent, data_provider)] --> B{cached_widget != None?}
+    B -->|"parent unchanged"| C[return cached widget]
+    B -->|"parent changed"| D[setParent(parent)]
     D --> C
-    B -->|"first creation"| E["_create_widget(parent, data_provider)"]
-    E --> F["cache widget + parent"]
+    B -->|"first creation"| E[_create_widget(parent, data_provider)]
+    E --> F[cache widget + parent]
     F --> C
 ```
 
@@ -381,18 +392,18 @@ flowchart TD
 
 ```mermaid
 flowchart LR
-    subgraph AutoRegister["auto_register_plugin_api"]
-        A1["scan information.py"] --> A2["find IPluginInfo subclass"]
-        A2 --> A3["read service_api dict"]
-        A3 --> A4["scan service.py"]
-        A4 --> A5["find class named Service"]
-        A5 --> A6["register_plugin_api"]
+    subgraph AutoRegister [auto_register_plugin_api]
+        A1[scan information.py] --> A2[find IPluginInfo subclass]
+        A2 --> A3[read service_api dict]
+        A3 --> A4[scan service.py]
+        A4 --> A5[find class named Service]
+        A5 --> A6[register_plugin_api]
     end
 
-    subgraph CrossPlugin["call_plugin_method"]
-        B1["Plugin A calls"] --> B2["find api_registry entry"]
-        B2 --> B3["find api_methods key"]
-        B3 --> B4["execute method"]
+    subgraph CrossPlugin [call_plugin_method]
+        B1[Plugin A calls] --> B2[find api_registry entry]
+        B2 --> B3[find api_methods key]
+        B3 --> B4[execute method]
     end
 ```
 
@@ -578,9 +589,9 @@ __init__() → LLMConfig() → _init_providers() → _fetch_all_models()
 
 ```mermaid
 graph LR
-    A["@register_provider"] -->|"provider_type = 'glm'"| B["PROVIDER_REGISTRY['glm'] = GLMProvider"]
-    C["@register_provider"] -->|"provider_type = 'minimax'"| D["PROVIDER_REGISTRY['minimax'] = MiniMaxProvider"]
-    E["get_provider_class('glm')"] -->|query registry| B
+    A[@register_provider] -->|"provider_type = 'glm'"| B[PROVIDER_REGISTRY['glm'] = GLMProvider]
+    C[@register_provider] -->|"provider_type = 'minimax'"| D[PROVIDER_REGISTRY['minimax'] = MiniMaxProvider]
+    E[get_provider_class('glm')] -->|query registry| B
 ```
 
 模块导入时（`providers/__init__.py:89-92`）通过装饰器自动注册所有 Provider。
@@ -696,11 +707,11 @@ sequenceDiagram
 
 ```mermaid
 flowchart TD
-    A["set_style_qss_theme(app, theme)"] --> B["detect_system_theme()\nread Windows Registry"]
-    B --> C["app.setStyle(Fusion)"]
-    C --> D["create_qss_palette(theme)\nset QPalette"]
-    D --> E["create_qss(theme) = QssRegistry.get_all(theme)"]
-    E --> F["app.setStyleSheet(qss)"]
+    A[set_style_qss_theme(app, theme)] --> B[detect_system_theme<br/>read Windows Registry]
+    B --> C[app.setStyle(Fusion)]
+    C --> D[create_qss_palette(theme)<br/>set QPalette]
+    D --> E[create_qss(theme) = QssRegistry.get_all(theme)]
+    E --> F[app.setStyleSheet(qss)]
 ```
 
 ### 9.2 QssRegistry 优先级管理
@@ -819,9 +830,9 @@ sequenceDiagram
 
 `background_task.py:114` 定义了 `_restore_all_scheduled_tasks()` 方法，但 `__init__` 中从未调用。定时任务恢复通过 `register_scheduled_task_factory()` 自动触发（`background_task.py:312`）。
 
-### 12.4 PluginServices DI 未使用
+### 12.4 PluginServices DI 容器
 
-所有插件均直接 `from core import DataProvider` / `from core.task import BackgroundTaskManager`，未使用 `core.interfaces.plugin_services.PluginServices` 依赖注入容器。
+PluginManager 通过 `_create_plugin_services()` 创建 `PluginServices` 容器，并通过构造器参数注入到各插件中。新版插件通过 `self._services` 访问服务，旧版插件可通过直接导入单例兼容访问。
 
 ### 12.5 API 注册硬编码类名
 
@@ -922,7 +933,7 @@ class Service:
 | `i_task_manager.py` | ITaskManager 接口 + TaskType/TaskStatus 枚举 |
 | `i_llm_facade.py` | ILLMFacade 接口 + Message/ChatResponse 等 DTO |
 | `i_logger.py` | ILogger 接口 |
-| `plugin_services.py` | PluginServices DI 容器（未使用） |
+| `plugin_services.py` | PluginServices DI 容器 |
 
 #### 插件系统 (`core/plugin/`)
 
@@ -1014,7 +1025,7 @@ class Service:
 | 1 | ~~TaskStatus.STOPPED 存在于接口但不在实现枚举~~ | ~~已修复~~ | `task_model.py` 已添加 STOPPED 枚举 | ✅ 已修复 |
 | 2 | TaskScheduler 是死代码 | 低 | `scheduler.py` 含空方法，实际由 daemon 线程执行 | 📝 已文档化 |
 | 3 | _restore_all_scheduled_tasks() 从未被调用 | 低 | 恢复由工厂注册自动触发，非全局恢复 | 📝 已文档化 |
-| 4 | PluginServices DI 设计存在但未使用 | 低 | 预留设计，各插件直接导入单例 | 📝 已文档化 |
+| 4 | PluginServices DI 已启用 | 低 | PluginManager._create_plugin_services() 已实现 DI 注入 | 📝 已完成 |
 | 5 | API 注册必须使用 'Service' 硬编码类名 | 低 | `manager.py:482` 含注释说明 | 📝 已文档化 |
 | 6 | DAO/database 模块为占位桩 | 低 | 预留待 SQLite 迁移 | 📝 已知限制 |
 

@@ -117,22 +117,22 @@ app.setPalette(palette)
 
 ```mermaid
 graph TB
-    subgraph StyleQSS["StyleQSS 样式系统"]
-        Init["__init__.py<br/>主入口"]
-        Colors["colors.py<br/>颜色定义"]
-        Palette["palette.py<br/>调色板"]
-        Registry["registry.py<br/>QSS 注册"]
-        Styles["styles/<br/>27个QSS文件"]
+    subgraph StyleQSS [StyleQSS 样式系统]
+        Init[__init__.py<br/>主入口]
+        Colors[colors.py<br/>颜色定义]
+        Palette[palette.py<br/>调色板]
+        Registry[registry.py<br/>QSS 注册]
+        Styles[styles/<br/>27个QSS文件]
     end
 
-    subgraph Theme["主题层"]
-        Detect["detect_system_theme<br/>系统主题检测"]
-        Global["StyleQSS<br/>全局实例"]
+    subgraph Theme [主题层]
+        Detect[detect_system_theme<br/>系统主题检测]
+        Global[StyleQSS<br/>全局实例]
     end
 
-    subgraph Output["输出"]
-        Qss["QSS 样式表"]
-        QPalette["QPalette 调色板"]
+    subgraph Output [输出]
+        Qss[QSS 样式表]
+        QPalette[QPalette 调色板]
     end
 
     Init --> Colors
