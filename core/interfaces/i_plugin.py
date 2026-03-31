@@ -7,15 +7,17 @@ Plugin 插件抽象基类接口
 - 缓存机制
 - 技能图标和描述获取
 - 生命周期回调
+- LLM 工具注册
 """
 
 from abc import ABC, abstractmethod
-from typing import Optional, TYPE_CHECKING
+from typing import Optional, Dict, Any, List, TYPE_CHECKING
 from PySide6.QtWidgets import QWidget
 from PySide6.QtGui import QIcon
 
 if TYPE_CHECKING:
     from .i_plugin_info import IPluginInfo
+    from .plugin_services import PluginServices
 
 
 class IPlugin(ABC):
@@ -72,12 +74,19 @@ class IPlugin(ABC):
         """获取插件唯一标识符"""
         return None
 
-    def on_plugin_loaded(self) -> None:
+    def on_plugin_loaded(self, plugin_id: Optional[str] = None, **kwargs) -> None:
         """
         插件加载完成回调钩子
 
         在插件被框架加载且唯一标识符（plugin_id）已设置后调用。
         子类可重写此方法执行初始化逻辑。
+
+        新版插件可通过 self._services 访问注入的服务容器，
+        包括 self._services.llm_facade、self._services.data_provider 等。
+
+        Args:
+            plugin_id: 插件唯一标识符
+            **kwargs: 预留参数（services 等通过实例属性 self._services 访问）
         """
         pass
 
@@ -85,3 +94,12 @@ class IPlugin(ABC):
     def plugin_info(self) -> Optional['IPluginInfo']:
         """获取插件信息对象"""
         return None
+
+    @property
+    def llm_tools(self) -> List[Dict[str, Any]]:
+        """获取插件暴露的 LLM 工具列表
+
+        返回符合 OpenAI function calling 规范的工具定义列表。
+        插件可通过重写此属性来声明自己暴露的工具。
+        """
+        return []

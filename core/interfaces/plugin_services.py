@@ -4,42 +4,44 @@
 将插件所需的所有核心服务聚合到一个对象中，
 通过依赖注入传递给插件。
 
-注意：这是框架预留的依赖注入设计。当前所有插件均直接导入单例
-（如 DataProvider() / BackgroundTaskManager()），而非通过 PluginServices 注入。
-此设计为未来插件隔离和测试提供基础。
+插件开发者应通过 services.llm_facade 访问 LLM 能力，
+而不是直接 import get_llm_provider()。
 """
 
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from .i_data_provider import IDataProvider
-    from .i_task_manager import ITaskManager
-    from .i_llm_facade import ILLMFacade
-    from .i_logger import ILogger
+    from core.llm.plugin_service import LLMPluginService
+    from core.data import DataProvider
+    from core.task import BackgroundTaskManager
+    from core.interfaces.ilogger import LoggerManager
 
 
 @dataclass
 class PluginServices:
     """
-    插件服务聚合对象
+    插件服务依赖注入容器
 
-    通过依赖注入传递给插件，包含所有插件可能需要访问的核心服务。
-    插件通过 services.data_provider、services.task_manager 等访问服务，
-    而非直接实例化或访问全局单例。
+    框架在创建插件实例时会自动注入。
+    插件开发者应通过 services.llm_facade 访问 LLM 能力，
+    而不是直接 import get_llm_provider()。
 
-    当前状态：此设计为预留架构。当前所有插件均直接导入单例，
-    未使用 PluginServices 进行依赖注入。
+    用法：
 
-    Example:
         class MyPlugin(IPlugin):
-            def _create_widget(self, parent=None, data_provider=None):
-                dp = data_provider if data_provider else DataProvider()
-                tm = BackgroundTaskManager()
+            def __init__(self, services: PluginServices | None = None):
+                super().__init__()
+                self._llm = (services.llm_facade
+                             if services
+                             else get_llm_plugin_service())
+
+            def on_plugin_loaded(self, plugin_id, services=None):
+                # services.logger 可用于日志记录
                 ...
     """
 
-    data_provider: 'IDataProvider'
-    task_manager: 'ITaskManager'
-    llm_facade: 'ILLMFacade' = None
-    logger: 'ILogger' = None
+    llm_facade: "LLMPluginService"
+    data_provider: "DataProvider"
+    task_manager: "BackgroundTaskManager"
+    logger: "LoggerManager"
