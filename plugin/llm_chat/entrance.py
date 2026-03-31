@@ -268,6 +268,7 @@ class LLMChatPlugin(IPlugin):
         self._chat_worker = None
         self._images = []  # 存储图片 base64
 
+        self.widget = widget
         # 连接主窗口的 LLM Provider 切换 Signal
         main_window = self._find_main_window()
         if main_window and hasattr(main_window, 'llm_provider_changed'):
