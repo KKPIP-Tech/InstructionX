@@ -28,7 +28,7 @@ from typing import Dict, Any, Optional, List, Union, Callable, AsyncIterator
 from abc import ABC
 
 from ..provider_interface import (
-    ILLM, Message, ChatResponse, EmbeddingResponse, ModelInfo
+    ILLM, Message, ChatResponse, EmbeddingResponse, ModelInfo, UsageInfo
 )
 from ..exceptions import (
     APIError, AuthenticationError, RateLimitError,
@@ -509,7 +509,7 @@ class BaseProvider(ILLM):
     def _parse_chat_response(self, response: Dict[str, Any]) -> ChatResponse:
         """解析聊天响应（基类统一实现）
 
-        从 API 响应中提取 content 和 tool_calls。
+        从 API 响应中提取 content、tool_calls 和 usage 信息。
 
         Args:
             response: API 响应字典
@@ -536,38 +536,26 @@ class BaseProvider(ILLM):
             role=message.get("role", "assistant"),
             reasoning_content=message.get("reasoning_content", ""),
             tool_calls=tool_calls,
+            usage=self._parse_usage(response),
             extra=response
         )
 
-    def _parse_stream_response(self, data: Dict) -> ChatResponse:
-        """解析流式响应（基类统一实现）
-
-        从流式数据块中提取 content 和 tool_calls。
+    def _parse_usage(self, response: Dict[str, Any]) -> Optional[UsageInfo]:
+        """从 API 响应中提取 usage 信息
 
         Args:
-            data: 流式数据块
+            response: API 响应字典
 
         Returns:
-            ChatResponse: 聊天响应对象
+            Optional[UsageInfo]: 用量信息，如果 API 未返回则返回 None
         """
-        # 处理 message 格式（可能是 delta 或 message）
-        message = data.get("delta", data.get("message", {}))
-
-        # 提取 tool_calls（Function Calling）
-        tool_calls = message.get("tool_calls", [])
-
-        # 流式结束标记
-        if data.get("finish_reason") == "tool_calls":
-            # Tool calling 完成
-            pass
-
-        return ChatResponse(
-            content=message.get("content", ""),
-            model=data.get("model", ""),
-            role=message.get("role", "assistant"),
-            reasoning_content=message.get("reasoning_content", ""),
-            tool_calls=tool_calls,
-            extra=data
+        usage = response.get("usage")
+        if not usage:
+            return None
+        return UsageInfo(
+            input_tokens=usage.get("prompt_tokens"),
+            output_tokens=usage.get("completion_tokens"),
+            total_tokens=usage.get("total_tokens"),
         )
 
     def _parse_models_response(self, response: Dict[str, Any]) -> List[ModelInfo]:
@@ -903,17 +891,32 @@ class BaseProvider(ILLM):
         """解析流式响应
 
         子类需要重写此方法以适配特定的流式响应格式。
+        基类提供统一实现，子类可按需重写。
 
         Args:
             data: 流式数据块
 
         Returns:
             ChatResponse: 聊天响应对象
-
-        Raises:
-            NotImplementedError: 子类未重写时抛出
         """
-        raise NotImplementedError("Subclass must implement _parse_stream_response")
+        # 处理 message 格式（可能是 delta 或 message）
+        message = data.get("delta", data.get("message", {}))
+
+        # 提取 tool_calls（Function Calling）
+        tool_calls = message.get("tool_calls", [])
+
+        # 尝试从 chunk 中提取 usage（部分 API 在流式结束时返回）
+        usage = self._parse_usage(data)
+
+        return ChatResponse(
+            content=message.get("content", ""),
+            model=data.get("model", ""),
+            role=message.get("role", "assistant"),
+            reasoning_content=message.get("reasoning_content", ""),
+            tool_calls=tool_calls,
+            usage=usage,
+            extra=data
+        )
 
     # ==================== 抽象方法实现 ====================
 

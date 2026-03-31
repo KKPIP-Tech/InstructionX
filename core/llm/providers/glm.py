@@ -504,6 +504,7 @@ class GLMProvider(BaseProvider):
             content=message.get("content", ""),
             model=response.get("model", ""),
             role=message.get("role", "assistant"),
+            usage=self._parse_usage(response),
             extra=response
         )
 
@@ -527,11 +528,13 @@ class GLMProvider(BaseProvider):
                     content=delta.get("content", ""),
                     model=data.get("model", ""),
                     role=delta.get("role", "assistant"),
+                    usage=self._parse_usage(data),
                     extra=data
                 )
         return ChatResponse(
             content="",
             model=data.get("model", ""),
+            usage=self._parse_usage(data),
             extra=data
         )
 

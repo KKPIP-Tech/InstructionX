@@ -252,6 +252,7 @@ class MiniMaxProvider(BaseProvider):
             model=response.get("model", ""),
             role=message.get("role", "assistant"),
             reasoning_content=message.get("reasoning_content", ""),
+            usage=self._parse_usage(response),
             extra=response
         )
 
@@ -281,6 +282,7 @@ class MiniMaxProvider(BaseProvider):
             model=data.get("model", ""),
             role=delta.get("role", "assistant"),
             reasoning_content=delta.get("reasoning_content", ""),
+            usage=self._parse_usage(data),
             extra=data
         )
 
