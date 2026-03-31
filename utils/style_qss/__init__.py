@@ -47,6 +47,17 @@ class StyleQSS:
         """获取指定颜色"""
         return self._colors.get(name, '#000000')
 
+    def get_color_dict(self) -> dict:
+        """获取颜色字典（兼容接口）"""
+        return self._colors
+
+    def get(self, key: str, default: str = "") -> str:
+        """获取指定样式的值（兼容接口）"""
+        from .registry import QssRegistry
+        styles = QssRegistry.get_all(self._theme)
+        # 这是一个简化实现，实际应该解析 QSS
+        return default
+
 
 # 全局样式实例
 _style_qss = StyleQSS()

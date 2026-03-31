@@ -14,7 +14,7 @@ SkillsPanel {
     border-bottom: 1px solid {borderLight};
 }
 
-/* SkillsPanel Tab 样式 - Office 风格 */
+/* SkillsPanel Tab 样式 */
 SkillsPanel QTabWidget::pane {
     border: none;
     background: {skillPanel};
@@ -59,7 +59,7 @@ SkillsPanel QWidget#skillsContainer {
 }
 
 /* ═════════════════════════════════════════════════════════════════════════════
- * 技能按钮 (SkillButton) - MS Office 风格
+ * 技能按钮 (SkillButton)
  * ═════════════════════════════════════════════════════════════════════════════ */
 
 /* 非激活状态 */
