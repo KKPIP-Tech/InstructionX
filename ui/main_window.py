@@ -19,14 +19,14 @@ from PySide6.QtWidgets import (
     QMainWindow, QWidget, QSplitter,
     QHBoxLayout, QVBoxLayout, QLayoutItem,
     QFileDialog, QMessageBox, QDialog, QPushButton, QLabel,
-    QApplication
+    QApplication, QMenu
 )
 from PySide6.QtGui import (
     QAction, QIcon, QCursor, QMouseEvent
 )
 from PySide6.QtCore import (
     Qt, QDateTime, QThread,
-    Signal, Slot
+    Signal, Slot, QObject
 )
 
 # ===================================================================
@@ -51,6 +51,11 @@ class InstructionXMainWindow(QMainWindow):
 
     负责初始化插件系统、响应技能点击、管理工作区内容。
     """
+
+    # LLM Provider 切换 Signal，供其他组件监听
+    llm_provider_changed = Signal(str, str)  # (provider_name, model_name)
+
+    _LLM_PREF_KEY = "__app_llm__"
 
     def __init__(self):
         """
@@ -132,14 +137,7 @@ class InstructionXMainWindow(QMainWindow):
         menu_edit_plugin_order_action.triggered.connect(self._open_plugin_order_dialog)
         menu_edit.addAction(menu_edit_plugin_order_action)
 
-        # LLM 设置
-        menu_edit_llm_settings_action = QAction("LLM 设置", self)
-        menu_edit_llm_settings_action.setShortcut("Ctrl+L")
-        menu_edit_llm_settings_action.triggered.connect(self._open_llm_settings_dialog)
-        menu_edit.addAction(menu_edit_llm_settings_action)
-
         # 主题切换
-        menu_edit.addSeparator()
         self._menu_theme_action = QAction("切换主题", self)
         self._menu_theme_action.setToolTip("浅色 → 深色 → 跟随系统")
         self._menu_theme_action.triggered.connect(self._cycle_theme)
@@ -149,6 +147,10 @@ class InstructionXMainWindow(QMainWindow):
         # -------------------------------------------------
         # 用户中心
         menu_user = menu_bar.addMenu("用户中心")
+
+        # -------------------------------------------------
+        # AI 菜单
+        self._create_ai_menu(menu_bar)
 
         # -------------------------------------------------
         # 帮助
@@ -313,6 +315,146 @@ class InstructionXMainWindow(QMainWindow):
             # 用户点击了保存，重新加载 LLM Provider
             from core.llm.llm_provider import get_llm_provider
             get_llm_provider().reload_config()
+
+    # ===============================================================
+    # AI 菜单
+    # ===============================================================
+
+    def _create_ai_menu(self, menu_bar):
+        """创建 AI 菜单"""
+        self._ai_menu = menu_bar.addMenu("AI")
+
+        # LLM 设置
+        settings_action = QAction("LLM 设置...", self)
+        settings_action.setShortcut("Ctrl+L")
+        settings_action.triggered.connect(self._open_llm_settings_dialog)
+        self._ai_menu.addAction(settings_action)
+
+    def _rebuild_quick_provider_menu(self):
+        """动态构建快速切换 Provider 子菜单"""
+        from core.llm import get_llm_plugin_service
+        svc = get_llm_plugin_service()
+        providers = svc.get_available_providers()
+        saved_provider, _ = self._load_llm_preference()
+
+        self._quick_provider_menu.clear()
+        self._quick_provider_actions.clear()
+
+        if not providers:
+            a = QAction("无可用 Provider", self)
+            a.setEnabled(False)
+            self._quick_provider_menu.addAction(a)
+            return
+
+        for p in providers:
+            if not p.enabled_chat:
+                continue
+            action = QAction(p.name, self)
+            action.setCheckable(True)
+            action.setChecked(p.name == saved_provider)
+            action.setData(p.name)
+
+            # 能力标记
+            flags = []
+            if p.supports_vision:
+                flags.append("👁")
+            if p.supports_function_calling:
+                flags.append("🔧")
+            display_name = p.name
+            if flags:
+                display_name = f"{p.name} ({' '.join(flags)})"
+            if not p.is_healthy:
+                display_name += " ⚠️"
+            action.setText(display_name)
+
+            action.triggered.connect(
+                lambda checked, name=p.name: self._on_quick_switch_provider(name)
+            )
+            self._quick_provider_menu.addAction(action)
+            self._quick_provider_actions[p.name] = action
+
+    def _on_quick_switch_provider(self, provider_name: str):
+        """快速切换 Provider"""
+        for name, action in self._quick_provider_actions.items():
+            action.setChecked(name == provider_name)
+
+        _, saved_model = self._load_llm_preference()
+        self._save_llm_preference(provider_name, saved_model)
+        self.llm_provider_changed.emit(provider_name, saved_model)
+
+    def _open_llm_model_service_dialog(self):
+        """打开模型服务对话框"""
+        from ui.dialog.llm_model_service_dialog import LLMModelServiceDialog
+
+        dialog = LLMModelServiceDialog(self)
+        dialog.default_changed.connect(self._on_llm_default_changed)
+        dialog.exec()
+
+        # 刷新菜单
+        self._rebuild_quick_provider_menu()
+        # 重新加载配置
+        from core.llm.llm_provider import get_llm_provider
+        get_llm_provider().reload_config()
+
+    def _on_llm_default_changed(self, provider: str, model: str):
+        """响应模型服务对话框中的默认 Provider 变更"""
+        self._save_llm_preference(provider, model)
+        self.llm_provider_changed.emit(provider, model)
+        self._rebuild_quick_provider_menu()
+
+    def _show_llm_usage_stats(self):
+        """显示用量统计对话框"""
+        from core.llm import get_llm_plugin_service
+        from PySide6.QtWidgets import QDialog, QVBoxLayout, QLabel
+
+        svc = get_llm_plugin_service()
+        stats = svc.get_usage_stats()
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle("LLM 用量统计")
+        dialog.setMinimumWidth(320)
+        layout = QVBoxLayout(dialog)
+        layout.addWidget(QLabel(f"总 Token: {stats.total_tokens:,}"))
+        layout.addWidget(QLabel(f"总费用: ¥{stats.total_cost:.4f}"))
+        layout.addWidget(QLabel(f"请求次数: {stats.request_count}"))
+        if stats.by_provider:
+            layout.addWidget(QLabel("─── 按 Provider ───"))
+            for p, cost in stats.by_provider.items():
+                layout.addWidget(QLabel(f"  {p}: ¥{cost:.4f}"))
+        dialog.exec()
+
+    # ===============================================================
+    # LLM Preference 管理
+    # ===============================================================
+
+    def _load_llm_preference(self) -> tuple:
+        """加载上次选中的 provider 和 model"""
+        dp = DataProvider()
+        try:
+            dp.register_plugin(self._LLM_PREF_KEY, "LLMPrefs")
+        except:
+            pass  # 已存在则忽略
+        provider = dp.get_plugin_data(
+            self._LLM_PREF_KEY, "provider", DataNamespace.PRIVATE, ""
+        )
+        model = dp.get_plugin_data(
+            self._LLM_PREF_KEY, "model", DataNamespace.PRIVATE, ""
+        )
+        return provider, model
+
+    def _save_llm_preference(self, provider: str, model: str):
+        """保存选中的 provider 和 model"""
+        dp = DataProvider()
+        try:
+            dp.register_plugin(self._LLM_PREF_KEY, "LLMPrefs")
+        except:
+            pass  # 已存在则忽略
+        dp.set_plugin_data(
+            self._LLM_PREF_KEY, "provider", provider, DataNamespace.PRIVATE
+        )
+        dp.set_plugin_data(
+            self._LLM_PREF_KEY, "model", model, DataNamespace.PRIVATE
+        )
 
     def _update_container_style(self):
         """更新容器样式（圆角/最大化状态），适配当前主题"""
