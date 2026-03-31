@@ -128,25 +128,40 @@ class LLMProvider:
                 self._logger.error(get_name(), f'Failed to initialize provider {name}: {e}')
 
     def _fetch_all_models(self) -> None:
-        """启动时自动获取所有提供商的模型列表
+        """启动时加载所有提供商的模型列表
 
-        遍历所有已初始化的提供商，尝试从 API 实时获取模型列表。
-        如果获取失败，自动回退到缓存数据，避免因网络问题导致启动失败。
+        流程：
+        1. 先从本地缓存文件加载，确保插件立即可用
+        2. 再尝试从远程 API 刷新（静默失败，不覆盖已有缓存）
+        3. 刷新成功时同步更新本地缓存文件
 
-        缓存逻辑:
-            - 优先尝试从 API 获取
-            - 获取失败时使用空列表
-            - 可通过 refresh_all_models() 强制刷新
+        这样插件在启动后即可获取本地缓存的模型列表，无需等待网络请求。
         """
         for name, provider in self._providers.items():
+            # 1. 加载本地缓存
+            cached = self._config.load_models_cache(name)
+            if cached:
+                models = [ModelInfo.from_dict(m) for m in cached]
+                self._models_cache[name] = models
+                self._logger.info(get_name(), f'Loaded {len(models)} models for {name} from cache')
+
+            # 2. 尝试从远程刷新（静默，不覆盖已有缓存）
             try:
-                # 强制从 API 拉取，失败则使用缓存
                 models = provider.refresh_models(force=True)
                 self._models_cache[name] = models
-                self._logger.info(get_name(), f'Loaded {len(models)} models for {name}')
+                # 同步写回本地缓存文件
+                self._config.save_models_cache(
+                    name,
+                    [m.to_dict() for m in models]
+                )
+                self._logger.info(get_name(), f'Refreshed {len(models)} models for {name}')
             except Exception as e:
-                self._logger.error(get_name(), f'Failed to fetch models for {name}: {e}')
-                self._models_cache[name] = []
+                # 刷新失败但已有本地缓存，不覆盖
+                if name not in self._models_cache or not self._models_cache[name]:
+                    self._models_cache[name] = []
+                    self._logger.warning(get_name(), f'No cache for {name}, network unavailable')
+                else:
+                    self._logger.info(get_name(), f'Using cached models for {name}, remote fetch failed: {e}')
 
     def refresh_provider_models(self, provider_name: str, force: bool = False) -> List[ModelInfo]:
         """刷新指定提供商的模型列表
@@ -167,6 +182,11 @@ class LLMProvider:
         try:
             models = provider.refresh_models(force=force)
             self._models_cache[provider_name] = models
+            # 同步保存到本地缓存文件
+            self._config.save_models_cache(
+                provider_name,
+                [m.to_dict() for m in models]
+            )
             return models
         except Exception as e:
             self._logger.error(get_name(), f'Failed to refresh models for {provider_name}: {e}')
