@@ -75,7 +75,7 @@ Plugins can call each other's APIs to achieve functional collaboration:
 
 ### 🎨 StyleQSS Theme System
 
-Built-in complete StyleQSS styling system with FluentUI3-inspired modern interface appearance:
+Built-in complete StyleQSS styling system with modern interface appearance:
 - **Auto Theme Detection**: Automatically switch between dark/light mode based on OS settings
 - **Complete Control Styles**: 26 QSS style files covering common Qt controls
 - **Dynamic Loading**: Dynamically load and apply QSS styles through style registry
@@ -128,7 +128,7 @@ python main.py
 | **task_manager** | Task management: view and manage background tasks |
 | **task_reporter** | Task reporting: generate task execution reports |
 | **local_server** | Local server: quickly start local HTTP services |
-| **ui_demo** | UI demo: showcase FluentUI3 control effects |
+| **ui_demo** | UI demo: showcase control effects |
 | **background_task_demo** | Background task demo: showcase various task types |
 
 ### Example Plugins (4)

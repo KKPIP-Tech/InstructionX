@@ -76,7 +76,7 @@ InstructionX 是一个功能强大的**插件集成框架**，允许你根据实
 
 ### 🎨 StyleQSS 主题系统
 
-内置完整的 StyleQSS 样式系统，提供 FluentUI3 风格的现代化界面外观：
+内置完整的 StyleQSS 样式系统，提供现代化界面外观：
 - **自动主题检测**：根据操作系统设置自动切换深色/浅色模式
 - **完整控件样式**：26 个 QSS 样式文件覆盖常用 Qt 控件
 - **动态加载**：通过样式注册表动态加载和应用 QSS 样式
@@ -129,7 +129,7 @@ python main.py
 | **task_manager** | 任务管理：查看和管理后台任务 |
 | **task_reporter** | 任务报告：生成任务执行报告 |
 | **local_server** | 本地服务器：快速启动本地 HTTP 服务 |
-| **ui_demo** | UI 演示：展示 FluentUI3 控件效果 |
+| **ui_demo** | UI 演示：展示控件效果 |
 | **background_task_demo** | 后台任务演示：展示各类任务类型 |
 
 ### 示例插件（4个）
