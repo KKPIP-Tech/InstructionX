@@ -3,13 +3,17 @@ LLM Facade 接口
 
 定义大语言模型统一访问的抽象接口。
 插件通过此接口访问 LLM 能力，而非直接依赖 LLMProvider 实现。
+
+此接口已扩展为包含对话管理、工具调用、多模态等完整能力。
 """
 
 from abc import ABC, abstractmethod
-from typing import Dict, Any, Optional, List, Union, Callable
+from typing import Dict, Any, Optional, List, Union, Callable, Tuple
 
-# 复用现有的数据类型（这些是纯数据结构，不依赖具体实现）
-from core.llm.provider_interface import Message, ChatResponse, EmbeddingResponse, ModelInfo
+# 复用现有的数据类型
+from core.llm.provider_interface import (
+    Message, ChatResponse, EmbeddingResponse, ModelInfo, UsageInfo
+)
 
 
 class ILLMFacade(ABC):
@@ -17,8 +21,10 @@ class ILLMFacade(ABC):
     LLM 统一门面接口
 
     定义大语言模型统一访问的抽象接口。
-    插件通过此接口访问聊天、嵌入、模型列表等 LLM 能力。
+    插件通过此接口访问聊天、嵌入、模型列表、对话管理、工具调用等 LLM 能力。
     """
+
+    # ==================== 底层 LLM 代理 ====================
 
     @abstractmethod
     def chat(
@@ -76,4 +82,108 @@ class ILLMFacade(ABC):
     @abstractmethod
     def get_cached_models(self, provider_name: str) -> List[ModelInfo]:
         """获取指定提供商的缓存模型列表"""
+        pass
+
+    # ==================== 对话管理 ====================
+
+    @abstractmethod
+    def create_conversation(
+        self,
+        system_prompt: Optional[str] = None,
+        provider: str = "default",
+        model: str = "default",
+        metadata: Optional[Dict] = None,
+    ) -> str:
+        """创建一个新对话，返回对话 ID"""
+        pass
+
+    @abstractmethod
+    def send_message(
+        self,
+        conversation_id: str,
+        content: str,
+        images: Optional[List[str]] = None,
+        temperature: Optional[float] = None,
+        max_tokens: Optional[int] = None,
+    ) -> str:
+        """同步发送消息，自动追加到对话历史"""
+        pass
+
+    @abstractmethod
+    def stream_send_message(
+        self,
+        conversation_id: str,
+        content: str,
+        images: Optional[List[str]] = None,
+        callback: Optional[Callable[[Any], None]] = None,
+        temperature: Optional[float] = None,
+        max_tokens: Optional[int] = None,
+    ) -> str:
+        """流式发送消息"""
+        pass
+
+    @abstractmethod
+    def get_conversation(self, conversation_id: str) -> Optional[Any]:
+        """获取对话对象"""
+        pass
+
+    @abstractmethod
+    def list_conversations(self) -> List[Any]:
+        """列出所有对话"""
+        pass
+
+    @abstractmethod
+    def delete_conversation(self, conversation_id: str) -> bool:
+        """删除对话"""
+        pass
+
+    # ==================== 工具调用 ====================
+
+    @abstractmethod
+    def get_tool_executor(self) -> Any:
+        """获取工具调用执行器"""
+        pass
+
+    @abstractmethod
+    def get_shared_tool_registry(self) -> Any:
+        """获取共享工具注册表"""
+        pass
+
+    @abstractmethod
+    def chat_with_tools(
+        self,
+        messages: List[Dict],
+        provider: str = "default",
+        model: str = "default",
+        max_turns: int = 5,
+        temperature: Optional[float] = None,
+    ) -> Tuple[List[Dict], List[Any], Any]:
+        """带有工具调用的对话"""
+        pass
+
+    # ==================== 辅助方法 ====================
+
+    @abstractmethod
+    def get_available_providers(self) -> List[Any]:
+        """获取所有可用的 Provider 信息"""
+        pass
+
+    @abstractmethod
+    def get_usage_stats(self, conversation_id: Optional[str] = None) -> Any:
+        """获取用量统计"""
+        pass
+
+    @abstractmethod
+    def validate_provider(self, provider: str) -> Tuple[bool, str]:
+        """验证 Provider 配置是否有效"""
+        pass
+
+    @abstractmethod
+    def load_image_as_base64(self, file_path: str) -> str:
+        """加载图片文件为 base64 字符串"""
+        pass
+
+    @abstractmethod
+    def get_raw_provider(self, provider: str = "default") -> Any:
+        """获取底层 LLM Provider（供高级插件使用）"""
         pass
