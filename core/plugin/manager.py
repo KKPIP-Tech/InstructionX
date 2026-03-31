@@ -17,6 +17,7 @@ from abc import ABC, abstractmethod
 from .plugin_interface import IPlugin
 from .config_manager import PluginConfigManager
 from .plugin_identity import PluginIdentity
+from core.interfaces.plugin_services import PluginServices
 
 from utils.logging_tools import LoggerManager, get_name
 
@@ -77,7 +78,44 @@ class PluginManager:
 
         # 日志管理器
         self._logger = LoggerManager()
-    
+
+    def _create_plugin_services(self) -> PluginServices:
+        """创建插件服务依赖注入容器
+
+        创建包含所有核心服务的 PluginServices 对象，
+        供插件在构造器和 on_plugin_loaded 回调中使用。
+
+        Returns:
+            PluginServices: 服务容器实例
+        """
+        from core.llm import get_llm_plugin_service
+        try:
+            from core.data import DataProvider
+            data_provider = DataProvider()
+        except Exception:
+            from core.interfaces.i_data_provider import IDataProvider
+            data_provider = None
+
+        try:
+            from core.task import BackgroundTaskManager
+            task_manager = BackgroundTaskManager()
+        except Exception:
+            from core.interfaces.i_task_manager import ITaskManager
+            task_manager = None
+
+        try:
+            from core.interfaces.i_logger import ILogger
+            logger = LoggerManager()
+        except Exception:
+            logger = None
+
+        return PluginServices(
+            llm_facade=get_llm_plugin_service(),
+            data_provider=data_provider,
+            task_manager=task_manager,
+            logger=logger,
+        )
+
     def load_plugins(self):
         """加载所有插件（包括官方插件和第三方插件）"""
         self.load_official_plugins()
@@ -193,16 +231,27 @@ class PluginManager:
                 self._logger.warning(get_name(), f'No IPlugin subclass found in {entrance_file}')
                 return None
 
-            # 实例化插件
-            plugin_instance = plugin_class()
-            plugin_instance._plugin_dir = plugin_dir  # 用于 _load_plugin_info() 直接定位文件
-
             # 生成或加载唯一标识符
             identity = PluginIdentity(plugin_dir)
             plugin_id = identity.load_or_create_id()
-            plugin_instance._plugin_id = plugin_id
 
-            # 调用插件加载完成回调
+            # 创建插件服务依赖注入容器
+            services = self._create_plugin_services()
+
+            # 实例化插件（尝试注入 services）
+            import inspect
+            sig = inspect.signature(plugin_class)
+            params = [p.name for p in sig.parameters.values()]
+            if 'services' in params:
+                plugin_instance = plugin_class(services=services)
+            else:
+                plugin_instance = plugin_class()
+
+            plugin_instance._plugin_dir = plugin_dir  # 用于 _load_plugin_info() 直接定位文件
+            plugin_instance._plugin_id = plugin_id
+            plugin_instance._services = services  # 注入 services 以实例属性方式访问
+
+            # 调用插件加载完成回调（不传参数保证向后兼容旧插件）
             plugin_instance.on_plugin_loaded()
 
             # 维护注册表映射
