@@ -1,7 +1,7 @@
 """
-UI 控件演示插件 - 最终修复方案（不干扰 FluentUI3 样式）
+UI 控件演示插件 - 最终修复方案（不干扰样式）
 
-展示 FluentUI3 风格的所有控件效果
+展示所有控件效果
 """
 
 from PySide6.QtWidgets import (
@@ -87,7 +87,7 @@ class UiDemoPlugin(IPlugin):
 
         # 状态栏
         status_bar = QStatusBar()
-        status_bar.showMessage("就绪 - FluentUI3 控件演示")
+        status_bar.showMessage("就绪 - 控件演示")
         scroll_content_layout.addWidget(status_bar)
 
         # 设置滚动区域的内容
@@ -193,7 +193,7 @@ class UiDemoPlugin(IPlugin):
         layout.addWidget(checkbox_group)
 
         # ═══════════════════════════════════════════════════════════════════════
-        # 滑块和进度条 - 【最终方案：不设置尺寸，让 FluentUI3 完全控制】
+        # 滑块和进度条 - 【最终方案：不设置尺寸，让样式完全控制】
         # ═══════════════════════════════════════════════════════════════════════
         slider_group = QGroupBox("滑块 (QSlider) 和 进度条 (QProgressBar)")
         slider_layout = QGridLayout()
@@ -211,7 +211,7 @@ class UiDemoPlugin(IPlugin):
         h_slider.setValue(50)
         # ❌ 删除所有 setMinimumHeight/setMaximumHeight
         # ❌ 删除 setSizePolicy
-        # ✅ 让 FluentUI3 样式完全控制
+        # ✅ 让样式完全控制
         slider_layout.addWidget(QLabel("水平滑块:"), 0, 0)
         slider_layout.addWidget(h_slider, 0, 1)
 

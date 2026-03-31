@@ -34,7 +34,7 @@ class UiDemoPluginInfo(IPluginInfo):
     @property
     def description(self) -> str:
         return """
-        UI 控件演示插件用于展示 FluentUI3 风格的所有控件效果。
+        UI 控件演示插件用于展示所有控件效果。
         包含按钮、输入框、复选框、单选按钮、滑块、进度条、
         菜单、工具栏、标签页、列表、表格等常用控件的演示。
         """
@@ -58,11 +58,11 @@ class UiDemoPluginInfo(IPluginInfo):
 
     @property
     def skill_description(self) -> str:
-        return "展示 FluentUI3 风格的所有控件"
+        return "展示所有控件"
 
     @property
     def tags(self) -> Optional[list[str]]:
-        return ["ui", "demo", "fluentui", "controls"]
+        return ["ui", "demo", "controls"]
 
     @property
     def dependencies(self) -> Optional[Dict[str, str]]:

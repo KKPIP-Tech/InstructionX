@@ -443,3 +443,19 @@ class LLMChatService:
     def load_chat_history(self) -> List[Dict[str, Any]]:
         """加载对话历史"""
         return self.load_preference("chat_history", [])
+
+    def get_current_llm_preference(self) -> tuple:
+        """获取当前全局 LLM 选择（供其他插件使用）
+
+        从 DataProvider 读取系统级 LLM Provider/Model 选择。
+
+        Returns:
+            tuple: (provider_name, model_name)
+        """
+        provider = self.data_provider.get_plugin_data(
+            "__app_llm__", "provider", DataNamespace.PRIVATE, ""
+        )
+        model = self.data_provider.get_plugin_data(
+            "__app_llm__", "model", DataNamespace.PRIVATE, ""
+        )
+        return provider, model

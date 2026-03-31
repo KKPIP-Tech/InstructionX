@@ -268,7 +268,39 @@ class LLMChatPlugin(IPlugin):
         self._chat_worker = None
         self._images = []  # 存储图片 base64
 
+        # 连接主窗口的 LLM Provider 切换 Signal
+        main_window = self._find_main_window()
+        if main_window and hasattr(main_window, 'llm_provider_changed'):
+            main_window.llm_provider_changed.connect(self._on_global_llm_changed)
+
         return widget
+
+    def _find_main_window(self):
+        """向上查找 MainWindow"""
+        parent = self.widget.parent()
+        while parent:
+            try:
+                from ui.main_window import InstructionXMainWindow
+                if isinstance(parent, InstructionXMainWindow):
+                    return parent
+            except ImportError:
+                pass
+            parent = parent.parent()
+        return None
+
+    def _on_global_llm_changed(self, provider: str, model: str):
+        """响应全局 LLM Provider 切换"""
+        # 切换 Provider combo
+        idx = self.provider_combo.findText(provider)
+        if idx >= 0 and idx != self.provider_combo.currentIndex():
+            self.provider_combo.setCurrentIndex(idx)
+        # 切换 Model combo
+        if model:
+            idx = self.model_combo.findText(model)
+            if idx >= 0 and idx != self.model_combo.currentIndex():
+                self.model_combo.setCurrentIndex(idx)
+        # 保存偏好
+        self.service.save_preference("last_provider", provider)
 
     def _init_providers(self):
         """初始化 Provider 列表"""
