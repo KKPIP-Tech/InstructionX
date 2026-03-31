@@ -83,30 +83,81 @@ class SiliconFlowProvider(BaseProvider):
         self._embedding_endpoint = "/embeddings"
         self._models_endpoint = "/models"
 
+    # ==================== 模型能力推断 ====================
+
+    VISION_KEYWORDS = ["vision", "vl", "4v", "qwen2-vl", "cogview", "llava", "internvl"]
+    FC_KEYWORDS = ["function", "fc", "tool", "deepseek"]
+    RERANK_KEYWORDS = ["rerank"]
+
+    def _infer_capabilities(self, model_id: str) -> Dict[str, Any]:
+        """从模型 ID 推断模型能力
+
+        根据模型 ID 中的关键词判断视觉、函数调用等能力。
+
+        Args:
+            model_id: 模型 ID
+
+        Returns:
+            Dict[str, Any]: 能力字典
+        """
+        mid = model_id.lower()
+        return {
+            "support_vision": any(k in mid for k in self.VISION_KEYWORDS),
+            "support_function_calling": any(k in mid for k in self.FC_KEYWORDS),
+            "context_length": self._estimate_context_length(model_id),
+        }
+
+    def _estimate_context_length(self, model_id: str) -> Optional[int]:
+        """根据模型名称估算上下文窗口大小
+
+        Args:
+            model_id: 模型 ID
+
+        Returns:
+            Optional[int]: 估算的上下文长度，不知道则返回 None
+        """
+        KNOWN_CONTEXTS = {
+            "deepseek-v3": 64000,
+            "deepseek-chat": 64000,
+            "qwen3": 32000,
+            "qwen-turbo": 8000,
+            "qwen-plus": 32000,
+            "qwen2.5-72b": 32000,
+            "qwen2.5-32b": 32000,
+            "qwen2.5-14b": 32000,
+            "qwen2.5-7b": 8000,
+            "glm-4": 128000,
+            "kimi": 128000,
+            "moonshot": 128000,
+            "gpt-4o": 128000,
+            "gpt-4o-mini": 128000,
+            "claude-3": 200000,
+            "claude-3.5": 200000,
+            "yi-light": 16000,
+            "yi-spark": 32000,
+            "yi-large": 32000,
+            "llama-3.1-70b": 128000,
+            "llama-3.1-8b": 128000,
+            "llama-3-70b": 8000,
+            "llama-3-8b": 8000,
+        }
+        mid = model_id.lower()
+        for name, ctx in KNOWN_CONTEXTS.items():
+            if name in mid:
+                return ctx
+        return None
+
     # ==================== 模型列表解析 ====================
 
     def _parse_models_response(self, response: Dict[str, Any]) -> List[ModelInfo]:
         """解析 SiliconFlow API 返回的模型列表
 
-        从 SiliconFlow API 响应中提取模型信息，并根据模型 ID 判断模型类型。
+        从 SiliconFlow API 响应中提取模型信息，并根据模型 ID 判断模型类型和上下文长度。
 
         模型类型判断规则:
             - 嵌入模型：模型 ID 包含 "embedding" 或 "bge-"
             - 视觉模型：模型 ID 包含 "vision", "vl", "4v", "cogview", "qwen2-vl"
             - 重排序模型：模型 ID 包含 "rerank"
-
-        API 响应格式:
-            {
-                "object": "list",
-                "data": [
-                    {
-                        "id": "Qwen/Qwen2.5-72B-Instruct",
-                        "object": "model",
-                        "created": 1677610602,
-                        "owned_by": "Qwen"
-                    }
-                ]
-            }
 
         Args:
             response: API 响应字典
@@ -122,13 +173,12 @@ class SiliconFlowProvider(BaseProvider):
             if not model_id:
                 continue
 
+            # 推断能力
+            caps = self._infer_capabilities(model_id)
+
             # 根据模型 ID 判断类型
-            # Embedding 模型: 包含 embedding 或 bge-
             is_embedding = "embedding" in model_id.lower() or "bge-" in model_id.lower()
-            # Vision 模型: 包含 vision, vl, 4v, qwen2-vl, cogview 等
-            is_vision = any(x in model_id.lower() for x in ["vision", "vl", "4v", "cogview", "qwen2-vl"])
-            # Rerank 模型: 包含 rerank
-            is_rerank = "rerank" in model_id.lower()
+            is_rerank = any(x in model_id.lower() for x in self.RERANK_KEYWORDS)
 
             if is_embedding:
                 models.append(ModelInfo(
@@ -138,10 +188,12 @@ class SiliconFlowProvider(BaseProvider):
                     support_streaming=False,
                     support_embedding=True,
                     support_vision=False,
+                    support_function_calling=False,
+                    context_length=caps["context_length"],
+                    provider="siliconflow",
                     extra=model_data
                 ))
             elif is_rerank:
-                # Rerank 模型作为 chat 模型处理（实际支持情况取决于具体模型）
                 models.append(ModelInfo(
                     id=model_id,
                     name=model_id,
@@ -149,6 +201,9 @@ class SiliconFlowProvider(BaseProvider):
                     support_streaming=False,
                     support_embedding=False,
                     support_vision=False,
+                    support_function_calling=False,
+                    context_length=caps["context_length"],
+                    provider="siliconflow",
                     extra=model_data
                 ))
             else:
@@ -158,7 +213,10 @@ class SiliconFlowProvider(BaseProvider):
                     support_chat=True,
                     support_streaming=True,
                     support_embedding=False,
-                    support_vision=is_vision,
+                    support_vision=caps["support_vision"],
+                    support_function_calling=caps["support_function_calling"],
+                    context_length=caps["context_length"],
+                    provider="siliconflow",
                     extra=model_data
                 ))
 
@@ -233,6 +291,8 @@ class SiliconFlowProvider(BaseProvider):
             model=response.get("model", ""),
             role=message.get("role", "assistant"),
             reasoning_content=message.get("reasoning_content", ""),
+            tool_calls=message.get("tool_calls", []),
+            usage=self._parse_usage(response),
             extra=response
         )
 
@@ -257,11 +317,15 @@ class SiliconFlowProvider(BaseProvider):
                     model=data.get("model", ""),
                     role=delta.get("role", "assistant"),
                     reasoning_content=delta.get("reasoning_content", ""),
+                    tool_calls=delta.get("tool_calls", []),
+                    usage=self._parse_usage(data),
                     extra=data
                 )
         return ChatResponse(
             content="",
             model=data.get("model", ""),
+            tool_calls=[],
+            usage=self._parse_usage(data),
             extra=data
         )
 
