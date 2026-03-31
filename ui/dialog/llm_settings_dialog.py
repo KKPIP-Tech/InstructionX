@@ -1,15 +1,16 @@
 """
-LLM Provider 设置对话框
-允许用户管理 LLM Provider 配置，包括 API Key、模型选择等功能
+LLM 设置对话框 - 两栏布局版本
+左侧：Provider 列表；右侧：Provider 配置详情
 """
-from typing import Optional, Dict, Any, List
+
+from pathlib import Path
+from typing import Optional, Dict, List
 
 from PySide6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout,
-    QLabel, QListWidget, QListWidgetItem,
-    QPushButton, QFrame, QLineEdit, QComboBox,
-    QCheckBox, QGroupBox, QFormLayout, QMessageBox,
-    QTextEdit, QScrollArea, QWidget, QToolTip
+    QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
+    QFrame, QLineEdit, QComboBox, QCheckBox, QMessageBox,
+    QScrollArea, QWidget, QInputDialog, QRadioButton,
+    QToolButton, QStackedWidget, QSizePolicy
 )
 from PySide6.QtCore import Qt, Signal, QTimer
 from PySide6.QtGui import QFont
@@ -17,612 +18,1220 @@ from PySide6.QtGui import QFont
 from core.llm.config import LLMConfig, ProviderConfig
 from core.llm.providers import get_all_provider_types
 from core.llm.provider_interface import ModelInfo
+from core.llm import get_llm_provider, get_llm_plugin_service
+from utils.style_qss import get_style_qss
+from ui.dialog.llm_settings_components import (
+    ProviderListItem, CollapsibleGroup, ActionButton, ModelDetailItem
+)
 
 
 class LLMSettingsDialog(QDialog):
-    """LLM Provider 设置对话框"""
-
-    # 信号：当配置更改时发出
-    config_changed = Signal()
+    """LLM 设置对话框 - 两栏布局"""
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.llm_config = LLMConfig()
-        self.current_provider = None
-        self.provider_widgets = {}  # 存储各 provider 的控件引用
-
         self.setWindowTitle("LLM 设置")
-        self.setMinimumSize(800, 550)
+        self.setObjectName("llmSettingsDialog")
+        self.setMinimumSize(900, 600)
+        self.resize(1050, 700)
+
+        self._llm_config = LLMConfig()
+        self._llm_provider = get_llm_provider()
+        self._current_provider_name: Optional[str] = None
+        self._provider_items: Dict[str, ProviderListItem] = {}
+        self._fetched_models: Dict[str, List[ModelInfo]] = {}
+        self._is_dirty = False
+
+        # Key widget references
+        self._api_key_edit: QLineEdit = None
+        self._api_url_edit: QLineEdit = None
+        self._enable_toggle: QCheckBox = None
+        self._chat_model_combo: QComboBox = None
+        self._emb_model_combo: QComboBox = None
+        self._preset_view: QWidget = None
+        self._api_view: QWidget = None
+        self._preset_radio: QRadioButton = None
+        self._api_radio: QRadioButton = None
+        self._save_btn: QPushButton = None
+        self._fetch_btn: QPushButton = None
+        self._fetched_list_layout: QVBoxLayout = None
+        self._fetched_list_scroll: QScrollArea = None
+        self._model_stack: QStackedWidget = None
+
         self._init_ui()
-        self._load_providers()
+        self._load_styles()
+        self._load_data()
+
+    # ------------------------------------------------------------------ #
+    # UI Construction                                                       #
+    # ------------------------------------------------------------------ #
 
     def _init_ui(self):
-        """初始化界面"""
-        layout = QHBoxLayout(self)
-        layout.setSpacing(15)
-        layout.setContentsMargins(20, 20, 20, 20)
+        main_layout = QHBoxLayout(self)
+        main_layout.setSpacing(0)
+        main_layout.setContentsMargins(0, 0, 0, 0)
 
-        # 左侧：Provider 列表
-        left_panel = self._create_left_panel()
-        layout.addWidget(left_panel, stretch=1)
+        left = self._create_left_panel()
+        right = self._create_right_panel()
 
-        # 右侧：配置详情
-        self.right_panel = self._create_right_panel()
-        layout.addWidget(self.right_panel, stretch=2)
+        main_layout.addWidget(left)
+        main_layout.addWidget(right, 1)
 
     def _create_left_panel(self) -> QWidget:
-        """创建左侧面板"""
+        """左侧面板：Provider 列表"""
+        qss = get_style_qss().get_color_dict()
         widget = QWidget()
+        widget.setObjectName("leftPanel")
+        widget.setFixedWidth(250)
+        widget.setStyleSheet(f"""
+            QWidget#leftPanel {{
+                background-color: {qss['window']};
+                border-right: 1px solid {qss['borderLight']};
+            }}
+        """)
+
         layout = QVBoxLayout(widget)
-        layout.setSpacing(10)
+        layout.setSpacing(0)
         layout.setContentsMargins(0, 0, 0, 0)
 
-        # 标题
-        title_label = QLabel("Provider 列表")
+        # Header
+        header = QWidget()
+        header.setFixedHeight(52)
+        header_layout = QVBoxLayout(header)
+        header_layout.setContentsMargins(16, 0, 16, 0)
+
         title_font = QFont()
-        title_font.setPointSize(10)
+        title_font.setPointSize(18)
         title_font.setBold(True)
+        title_label = QLabel("模型服务")
         title_label.setFont(title_font)
-        layout.addWidget(title_label)
+        title_label.setStyleSheet(f"color: {qss['textPrimary']};")
+        header_layout.addWidget(title_label)
 
-        # Provider 列表
-        self.provider_list = QListWidget()
-        self.provider_list.setProperty("class", "dialog")
-        self.provider_list.style().unpolish(self.provider_list)
-        self.provider_list.style().polish(self.provider_list)
-        self.provider_list.itemClicked.connect(self._on_provider_selected)
-        layout.addWidget(self.provider_list)
+        divider = QFrame()
+        divider.setFrameShape(QFrame.Shape.HLine)
+        divider.setStyleSheet(f"background-color: {qss['borderLight']}; max-height: 1px;")
+        header_layout.addWidget(divider)
 
-        # 添加/删除按钮
-        button_layout = QHBoxLayout()
+        layout.addWidget(header)
 
-        self.add_button = QPushButton("添加")
-        self.add_button.setMinimumWidth(60)
-        self.add_button.clicked.connect(self._on_add_provider)
-        button_layout.addWidget(self.add_button)
+        # Scroll area for provider list
+        scroll = QScrollArea()
+        scroll.setObjectName("providerListScrollArea")
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setStyleSheet(f"""
+            QScrollArea#providerListScrollArea {{
+                border: none;
+                background-color: transparent;
+            }}
+        """)
 
-        self.remove_button = QPushButton("删除")
-        self.remove_button.setMinimumWidth(60)
-        self.remove_button.clicked.connect(self._on_remove_provider)
-        self.remove_button.setEnabled(False)
-        button_layout.addWidget(self.remove_button)
+        container = QWidget()
+        self._provider_list_container = container
+        self._provider_list_scroll = scroll
+        self._provider_list_layout = QVBoxLayout(container)
+        self._provider_list_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+        self._provider_list_layout.setSpacing(2)
+        self._provider_list_layout.setContentsMargins(8, 8, 8, 8)
 
-        layout.addLayout(button_layout)
+        scroll.setWidget(container)
+        layout.addWidget(scroll, 1)
+
+        # Add provider button
+        add_btn = QPushButton("+ 添加供应商")
+        add_btn.setObjectName("addProviderButton")
+        add_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        add_btn.clicked.connect(self._on_add_provider)
+        add_btn.setStyleSheet(f"""
+            QPushButton#addProviderButton {{
+                background-color: transparent;
+                border: 1px dashed {qss['border']};
+                border-radius: 8px;
+                color: {qss['accent']};
+                font-size: 13px;
+                padding: 10px;
+                margin: 8px;
+            }}
+            QPushButton#addProviderButton:hover {{
+                background-color: {qss['controlFillHover']};
+                border-style: solid;
+            }}
+        """)
+        layout.addWidget(add_btn)
 
         return widget
 
     def _create_right_panel(self) -> QWidget:
-        """创建右侧面板"""
+        """右侧面板：Provider 配置详情"""
+        qss = get_style_qss().get_color_dict()
+
         widget = QWidget()
         layout = QVBoxLayout(widget)
-        layout.setSpacing(15)
-        layout.setContentsMargins(10, 0, 0, 0)
+        layout.setSpacing(0)
+        layout.setContentsMargins(0, 0, 0, 0)
 
-        # 滚动区域（用于配置表单）
+        # Scroll area for detail content
         scroll = QScrollArea()
+        scroll.setObjectName("detailScrollArea")
         scroll.setWidgetResizable(True)
-        scroll.setStyleSheet("QScrollArea { border: none; }")
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setStyleSheet(f"""
+            QScrollArea#detailScrollArea {{
+                border: none;
+                background-color: transparent;
+            }}
+        """)
 
-        scroll_content = QWidget()
-        self.config_layout = QFormLayout(scroll_content)
-        self.config_layout.setSpacing(12)
-        self.config_layout.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
+        content = QWidget()
+        self._detail_layout = QVBoxLayout(content)
+        self._detail_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+        self._detail_layout.setSpacing(20)
+        self._detail_layout.setContentsMargins(24, 24, 24, 24)
 
-        # Provider 名称（只读）
-        self.name_edit = QLineEdit()
-        self.name_edit.setReadOnly(True)
-        self.config_layout.addRow("名称:", self.name_edit)
+        scroll.setWidget(content)
+        layout.addWidget(scroll, 1)
 
-        # Provider 类型（只读）
-        self.type_edit = QLineEdit()
-        self.type_edit.setReadOnly(True)
-        self.config_layout.addRow("类型:", self.type_edit)
-
-        # API Key
-        self.api_key_edit = QLineEdit()
-        self.api_key_edit.setEchoMode(QLineEdit.EchoMode.Password)
-        self.api_key_edit.setPlaceholderText("请输入 API Key，填写后点击刷新模型")
-        self.api_key_edit.textChanged.connect(self._on_api_key_changed)
-        self.config_layout.addRow("API Key:", self.api_key_edit)
-
-        # Base URL
-        self.base_url_edit = QLineEdit()
-        self.base_url_edit.setPlaceholderText("例如: https://api.example.com/v1")
-        self.base_url_edit.textChanged.connect(self._on_config_changed)
-        self.config_layout.addRow("Base URL:", self.base_url_edit)
-
-        # Chat 模型
-        self.chat_model_combo = QComboBox()
-        self.chat_model_combo.setEditable(True)
-        self.chat_model_combo.currentTextChanged.connect(self._on_config_changed)
-        self.config_layout.addRow("Chat 模型:", self.chat_model_combo)
-
-        # Embedding 模型
-        self.embedding_model_combo = QComboBox()
-        self.embedding_model_combo.setEditable(True)
-        self.embedding_model_combo.currentTextChanged.connect(self._on_config_changed)
-        self.config_layout.addRow("Embedding 模型:", self.embedding_model_combo)
-
-        # Chat 启用开关
-        self.chat_enabled_checkbox = QCheckBox("启用 Chat 功能")
-        self.chat_enabled_checkbox.stateChanged.connect(self._on_config_changed)
-        self.config_layout.addRow("", self.chat_enabled_checkbox)
-
-        # Embedding 启用开关
-        self.embedding_enabled_checkbox = QCheckBox("启用 Embedding 功能")
-        self.embedding_enabled_checkbox.stateChanged.connect(self._on_config_changed)
-        self.config_layout.addRow("", self.embedding_enabled_checkbox)
-
-        # Vision 支持（显示）
-        self.vision_label = QLabel("未知")
-        self.vision_label.setProperty("muted", "true")
-        self.vision_label.style().unpolish(self.vision_label)
-        self.vision_label.style().polish(self.vision_label)
-        self.config_layout.addRow("多模态:", self.vision_label)
-
-        # Function Calling 支持（显示）
-        self.function_calling_label = QLabel("未知")
-        self.function_calling_label.setProperty("muted", "true")
-        self.function_calling_label.style().unpolish(self.function_calling_label)
-        self.function_calling_label.style().polish(self.function_calling_label)
-        self.config_layout.addRow("Function Calling:", self.function_calling_label)
-
-        # 上下文长度（显示）
-        self.context_length_label = QLabel("未知")
-        self.context_length_label.setProperty("muted", "true")
-        self.context_length_label.style().unpolish(self.context_length_label)
-        self.context_length_label.style().polish(self.context_length_label)
-        self.config_layout.addRow("上下文长度:", self.context_length_label)
-
-        scroll.setWidget(scroll_content)
-        layout.addWidget(scroll, stretch=1)
-
-        # 按钮区域
-        button_layout = QHBoxLayout()
-
-        # 刷新模型列表按钮
-        self.refresh_button = QPushButton("刷新模型")
-        self.refresh_button.setMinimumWidth(100)
-        self.refresh_button.clicked.connect(self._on_refresh_models)
-        button_layout.addWidget(self.refresh_button)
-
-        # 测试连接按钮
-        self.test_button = QPushButton("测试连接")
-        self.test_button.setMinimumWidth(80)
-        self.test_button.clicked.connect(self._on_test_connection)
-        button_layout.addWidget(self.test_button)
-
-        button_layout.addStretch()
-
-        # 保存按钮
-        self.save_button = QPushButton("保存")
-        self.save_button.setMinimumWidth(80)
-        self.save_button.setProperty("class", "accentSave")
-        self.save_button.style().unpolish(self.save_button)
-        self.save_button.style().polish(self.save_button)
-        self.save_button.clicked.connect(self._on_save)
-        self.save_button.setEnabled(False)
-        button_layout.addWidget(self.save_button)
-
-        button_layout.addSpacing(10)
-
-        # 取消按钮
-        self.cancel_button = QPushButton("取消")
-        self.cancel_button.setMinimumWidth(80)
-        self.cancel_button.clicked.connect(self.reject)
-        button_layout.addWidget(self.cancel_button)
-
-        layout.addLayout(button_layout)
-
-        # 初始状态：禁用所有控件
-        self._set_controls_enabled(False)
+        # Bottom bar
+        bottom = self._create_bottom_bar()
+        layout.addWidget(bottom)
 
         return widget
 
-    def _set_controls_enabled(self, enabled: bool):
-        """设置控件启用状态"""
-        self.api_key_edit.setEnabled(enabled)
-        self.base_url_edit.setEnabled(enabled)
-        self.chat_model_combo.setEnabled(enabled)
-        self.embedding_model_combo.setEnabled(enabled)
-        self.chat_enabled_checkbox.setEnabled(enabled)
-        self.embedding_enabled_checkbox.setEnabled(enabled)
-        # Vision/Function Calling 是显示信息，不是编辑控件
-        self.test_button.setEnabled(enabled)
-        self.save_button.setEnabled(enabled and self._has_changes())
+    def _create_bottom_bar(self) -> QWidget:
+        """底部栏：使用统计 + 保存/取消按钮"""
+        qss = get_style_qss().get_color_dict()
 
-    def _load_providers(self):
-        """加载已配置的 Provider"""
-        self.provider_list.clear()
-        providers = self.llm_config.get_all_providers()
+        widget = QWidget()
+        widget.setFixedHeight(52)
+        widget.setStyleSheet(f"""
+            QWidget {{
+                background-color: {qss['window']};
+                border-top: 1px solid {qss['borderLight']};
+            }}
+        """)
+        layout = QHBoxLayout(widget)
+        layout.setContentsMargins(24, 0, 24, 0)
 
+        # Usage stats
+        usage_text = "加载中..."
+        try:
+            svc = get_llm_plugin_service()
+            stats = svc.get_usage_stats()
+            total = stats.total_cost
+            usage_text = f"累计使用: ${total:.4f}"
+        except Exception:
+            usage_text = "累计使用: --"
+
+        usage_label = QLabel(usage_text)
+        usage_label.setObjectName("usageLabel")
+        usage_label.setStyleSheet(f"color: {qss['textSecondary']}; font-size: 12px;")
+        layout.addWidget(usage_label)
+
+        layout.addStretch()
+
+        # Cancel
+        cancel_btn = QPushButton("取消")
+        cancel_btn.setFixedHeight(30)
+        cancel_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {qss['controlFill']};
+                border: 1px solid {qss['borderLight']};
+                border-radius: 6px;
+                padding: 0px 16px;
+                color: {qss['textPrimary']};
+                font-size: 13px;
+                min-height: 30px;
+            }}
+            QPushButton:hover {{
+                background-color: {qss['controlFillHover']};
+            }}
+        """)
+        cancel_btn.clicked.connect(self.reject)
+        layout.addWidget(cancel_btn)
+
+        # Save
+        save_btn = QPushButton("保存")
+        save_btn.setObjectName("accentSave")
+        save_btn.setFixedHeight(30)
+        save_btn.setEnabled(False)
+        save_btn.setStyleSheet(f"""
+            QPushButton#accentSave {{
+                background-color: {qss['accent']};
+                color: white;
+                border: none;
+                border-radius: 6px;
+                padding: 0px 16px;
+                font-size: 13px;
+                min-height: 30px;
+            }}
+            QPushButton#accentSave:hover {{
+                background-color: {qss['accentLight']};
+            }}
+            QPushButton#accentSave:disabled {{
+                background-color: {qss['controlFill']};
+                color: {qss['textSecondary']};
+            }}
+        """)
+        save_btn.clicked.connect(self._on_save)
+        self._save_btn = save_btn
+        layout.addWidget(save_btn)
+
+        return widget
+
+    # ------------------------------------------------------------------ #
+    # Data Loading                                                          #
+    # ------------------------------------------------------------------ #
+
+    def _load_data(self):
+        """加载 Provider 列表并选中第一个"""
+        self._refresh_provider_list()
+        # 从本地缓存恢复已获取的模型列表
+        for name in self._llm_config.get_all_providers():
+            cached = self._llm_config.load_models_cache(name)
+            if cached:
+                self._fetched_models[name] = [ModelInfo.from_dict(m) for m in cached]
+        providers = self._llm_config.get_all_providers()
+        if providers:
+            first_name = next(iter(providers))
+            self._on_provider_clicked(first_name)
+
+    def _refresh_provider_list(self):
+        """重建左侧 Provider 列表"""
+        layout = self._provider_list_layout
+        # Clear all widgets from layout
+        while layout.count():
+            item = layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+        self._provider_items.clear()
+
+        providers = self._llm_config.get_all_providers()
         for name, config in providers.items():
-            item = QListWidgetItem(config.name or name)
-            item.setData(Qt.ItemDataRole.UserRole, name)
-            self.provider_list.addItem(item)
-
-    def _on_provider_selected(self, item: QListWidgetItem):
-        """Provider 选择事件"""
-        # 如果有未保存的更改，提示用户
-        if self._has_changes():
-            reply = QMessageBox.question(
-                self,
-                "未保存的更改",
-                "当前配置有未保存的更改，是否保存？",
-                QMessageBox.StandardButton.Save | QMessageBox.StandardButton.Discard | QMessageBox.StandardButton.Cancel
+            is_active = config.enabled_chat
+            logo_path = str(Path(__file__).resolve().parent.parent.parent / "core" / "llm" / "providers" / f"{config.provider_type}.png")
+            item = ProviderListItem(
+                provider_name=name,
+                provider_type=config.provider_type,
+                is_active=is_active,
+                display_name=config.name,
+                icon_path=logo_path,
             )
+            item.setObjectName(f"providerListItem_{name}")
+            item.clicked.connect(self._on_provider_clicked)
+            layout.addWidget(item)
+            self._provider_items[name] = item
 
-            if reply == QMessageBox.StandardButton.Save:
-                self._on_save()
-            elif reply == QMessageBox.StandardButton.Cancel:
-                return
+        layout.addStretch()
 
-        provider_name = item.data(Qt.ItemDataRole.UserRole)
-        self.current_provider = provider_name
-        self._load_provider_config(provider_name)
+    def _on_provider_clicked(self, provider_name: str):
+        """Provider 点击事件"""
+        # Save current provider if dirty (在清空详情前保存)
+        if self._is_dirty and self._current_provider_name:
+            self._save_current_provider()
 
-        self.remove_button.setEnabled(True)
+        # Update selection state
+        for name, item in self._provider_items.items():
+            item.set_selected(name == provider_name)
 
-    def _load_provider_config(self, provider_name: str):
-        """加载 Provider 配置到表单"""
-        config = self.llm_config.get_provider(provider_name)
+        self._current_provider_name = provider_name
+        self._show_provider_detail(provider_name)
+        self._is_dirty = False
+        if self._save_btn:
+            self._save_btn.setEnabled(False)
+
+    # ------------------------------------------------------------------ #
+    # Provider Detail View                                                 #
+    # ------------------------------------------------------------------ #
+
+    def _show_provider_detail(self, provider_name: str):
+        """显示 Provider 配置详情"""
+        # Clear detail layout
+        while self._detail_layout.count():
+            item = self._detail_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+
+        config = self._llm_config.get_provider(provider_name)
         if not config:
             return
 
-        self.name_edit.setText(config.name)
-        self.type_edit.setText(config.provider_type)
-        self.api_key_edit.setText(config.api_key)
-        self.base_url_edit.setText(config.base_url)
+        qss = get_style_qss().get_color_dict()
 
-        # 加载 Chat 模型（通过 API，无预设）
-        self.chat_model_combo.clear()
-        chat_models = self._get_chat_models(provider_name)
-        chat_model_ids = [m.id for m in chat_models]
-        self.chat_model_combo.addItems(chat_model_ids)
-        if config.chat_model and config.chat_model in chat_model_ids:
-            self.chat_model_combo.setCurrentText(config.chat_model)
-        elif chat_model_ids:
-            # 默认选择第一个
-            self.chat_model_combo.setCurrentIndex(0)
+        # --- Header ---
+        self._build_header_section(config, qss)
+        self._add_divider()
 
-        # 加载 Embedding 模型（通过 API，无预设）
-        self.embedding_model_combo.clear()
-        embedding_models = self._get_embedding_models(provider_name)
-        embedding_model_ids = [m.id for m in embedding_models]
-        self.embedding_model_combo.addItems(embedding_model_ids)
-        if config.embedding_model and config.embedding_model in embedding_model_ids:
-            self.embedding_model_combo.setCurrentText(config.embedding_model)
+        # --- API Key ---
+        self._build_api_key_section(config, qss)
+        self._add_divider()
 
-        # 设置复选框状态
-        self.chat_enabled_checkbox.setChecked(config.enabled_chat)
-        self.embedding_enabled_checkbox.setChecked(config.enabled_embedding)
+        # --- API URL ---
+        self._build_api_url_section(config, qss)
+        self._add_divider()
 
-        # 更新模型能力显示（根据选中的模型）
-        self._update_model_capabilities()
+        # --- Validate ---
+        self._build_validate_section(qss)
+        self._add_divider()
 
-        # 监听模型选择变化
-        self.chat_model_combo.currentIndexChanged.connect(self._update_model_capabilities)
-        self.embedding_model_combo.currentIndexChanged.connect(self._update_model_capabilities)
+        # --- Model List ---
+        self._build_model_list_section(provider_name, config, qss)
+        self._add_divider()
 
-        self._set_controls_enabled(True)
-        self.save_button.setEnabled(False)
+        # --- Model Selection ---
+        self._build_model_selection_section(config, qss)
 
-    def _update_model_capabilities(self):
-        """更新模型能力显示"""
-        # 获取当前选中的 Chat 模型
-        chat_model_id = self.chat_model_combo.currentText()
-        chat_models = self._get_chat_models(self.current_provider)
-        chat_model = next((m for m in chat_models if m.id == chat_model_id), None)
+        # Populate comboboxes
+        self._populate_model_combos(provider_name, config)
 
-        if chat_model:
-            # Vision 支持
-            vision_support = "支持" if chat_model.support_vision else "不支持"
-            self.vision_label.setText(vision_support)
-            self.vision_label.setStyleSheet(
-                "color: green;" if chat_model.support_vision else "color: #999;"
-            )
+    def _build_header_section(self, config: ProviderConfig, qss: dict):
+        """Header: logo + name + enable toggle"""
+        header_widget = QWidget()
+        header_layout = QHBoxLayout(header_widget)
+        header_layout.setContentsMargins(0, 0, 0, 0)
+        header_layout.setSpacing(16)
 
-            # Function Calling 支持
-            fc_support = "支持" if chat_model.support_function_calling else "不支持"
-            self.function_calling_label.setText(fc_support)
-            self.function_calling_label.setStyleSheet(
-                "color: green;" if chat_model.support_function_calling else "color: #999;"
-            )
+        # Logo placeholder
+        logo_label = QLabel()
+        logo_label.setFixedSize(64, 64)
+        logo_label.setStyleSheet(f"""
+            QLabel {{
+                background-color: {qss['accent']};
+                border-radius: 12px;
+                color: white;
+                font-size: 28px;
+                font-weight: bold;
+            }}
+        """)
+        logo_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        logo_label.setText(config.name[:1].upper() if config.name else "?")
+        header_layout.addWidget(logo_label)
 
-            # 上下文长度
-            if chat_model.context_length:
-                ctx_len = chat_model.context_length
-                if ctx_len >= 1000000:
-                    self.context_length_label.setText(f"{ctx_len / 1000000:.1f}M")
-                else:
-                    self.context_length_label.setText(f"{ctx_len // 1000}K")
-            else:
-                self.context_length_label.setText("未知")
+        # Name + subtitle
+        name_layout = QVBoxLayout()
+        name_layout.setSpacing(4)
+
+        name_label = QLabel(config.name or "")
+        name_label.setObjectName("providerName")
+        name_label.setStyleSheet(f"color: {qss['textPrimary']}; font-size: 20px; font-weight: bold;")
+        name_layout.addWidget(name_label)
+
+        type_label = QLabel(config.provider_type)
+        type_label.setStyleSheet(f"color: {qss['textSecondary']}; font-size: 13px;")
+        name_layout.addWidget(type_label)
+
+        name_layout.addStretch()
+        header_layout.addLayout(name_layout, 1)
+
+        # Enable toggle
+        self._enable_toggle = QCheckBox("启用")
+        self._enable_toggle.setChecked(config.enabled_chat)
+        self._enable_toggle.setStyleSheet(f"""
+            QCheckBox {{
+                color: {qss['textPrimary']};
+                font-size: 14px;
+            }}
+        """)
+        self._enable_toggle.stateChanged.connect(self._mark_dirty)
+        header_layout.addWidget(self._enable_toggle)
+
+        self._detail_layout.addWidget(header_widget)
+
+    def _build_api_key_section(self, config: ProviderConfig, qss: dict):
+        """API Key 输入区"""
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+        layout.setSpacing(8)
+        layout.setContentsMargins(0, 0, 0, 0)
+
+        label = QLabel("API 密钥")
+        label.setObjectName("formLabelBold")
+        label.setStyleSheet(f"color: {qss['textPrimary']}; font-size: 13px; font-weight: bold;")
+        layout.addWidget(label)
+
+        row = QHBoxLayout()
+        row.setSpacing(8)
+
+        self._api_key_edit = QLineEdit()
+        self._api_key_edit.setEchoMode(QLineEdit.EchoMode.Password)
+        self._api_key_edit.setPlaceholderText("请输入 API 密钥")
+        self._api_key_edit.setText(config.api_key or "")
+        self._api_key_edit.setStyleSheet(f"""
+            QLineEdit {{
+                background-color: {qss['controlFill']};
+                border: 1px solid {qss['borderLight']};
+                border-radius: 8px;
+                padding: 8px 12px;
+                color: {qss['textPrimary']};
+                font-size: 13px;
+            }}
+            QLineEdit:hover {{ border-color: {qss['accent']}; }}
+            QLineEdit:focus {{ border-color: {qss['accent']}; background-color: {qss['base']}; }}
+        """)
+        self._api_key_edit.textChanged.connect(self._mark_dirty)
+        row.addWidget(self._api_key_edit, 1)
+
+        # Eye toggle button
+        eye_btn = QToolButton()
+        eye_btn.setText("👁")
+        eye_btn.setFixedSize(36, 36)
+        eye_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        eye_btn.setStyleSheet(f"""
+            QToolButton {{
+                background-color: {qss['controlFill']};
+                border: 1px solid {qss['borderLight']};
+                border-radius: 8px;
+            }}
+        """)
+        eye_btn.clicked.connect(self._toggle_api_key_visibility)
+        row.addWidget(eye_btn)
+
+        layout.addLayout(row)
+
+        # Link label
+        link_label = QLabel("点击这里获取密钥")
+        link_label.setObjectName("linkLabel")
+        link_label.setStyleSheet(f"color: {qss['accent']}; font-size: 13px;")
+        link_label.setCursor(Qt.CursorShape.PointingHandCursor)
+        link_label.mousePressEvent = lambda e: self._open_provider_link(config.provider_type)
+        layout.addWidget(link_label)
+
+        self._detail_layout.addWidget(widget)
+
+    def _build_api_url_section(self, config: ProviderConfig, qss: dict):
+        """API URL 输入区"""
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+        layout.setSpacing(8)
+        layout.setContentsMargins(0, 0, 0, 0)
+
+        label = QLabel("API 地址")
+        label.setObjectName("formLabelBold")
+        label.setStyleSheet(f"color: {qss['textPrimary']}; font-size: 13px; font-weight: bold;")
+        layout.addWidget(label)
+
+        self._api_url_edit = QLineEdit()
+        self._api_url_edit.setPlaceholderText("例如: https://api.example.com/v1")
+        self._api_url_edit.setText(config.base_url or "")
+        self._api_url_edit.setStyleSheet(f"""
+            QLineEdit {{
+                background-color: {qss['controlFill']};
+                border: 1px solid {qss['borderLight']};
+                border-radius: 8px;
+                padding: 8px 12px;
+                color: {qss['textPrimary']};
+                font-size: 13px;
+            }}
+            QLineEdit:hover {{ border-color: {qss['accent']}; }}
+            QLineEdit:focus {{ border-color: {qss['accent']}; background-color: {qss['base']}; }}
+        """)
+        self._api_url_edit.textChanged.connect(self._mark_dirty)
+        layout.addWidget(self._api_url_edit)
+
+        preview_label = QLabel("请求将发送至此地址")
+        preview_label.setStyleSheet(f"color: {qss['textSecondary']}; font-size: 12px;")
+        layout.addWidget(preview_label)
+
+        self._detail_layout.addWidget(widget)
+
+    def _build_validate_section(self, qss: dict):
+        """检测供应商有效性按钮"""
+        widget = QWidget()
+        layout = QHBoxLayout(widget)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(12)
+
+        validate_btn = ActionButton("检测供应商有效性", "✓")
+        validate_btn.setStyleSheet(f"""
+            QPushButton#actionButton {{
+                background-color: {qss['controlFill']};
+                border: 1px solid {qss['borderLight']};
+                border-radius: 8px;
+                color: {qss['textPrimary']};
+                font-size: 13px;
+                padding: 6px 16px;
+                min-height: 30px;
+            }}
+            QPushButton#actionButton:hover {{
+                background-color: {qss['controlFillHover']};
+            }}
+        """)
+        validate_btn.clicked.connect(self._on_validate_provider)
+        layout.addWidget(validate_btn)
+
+        layout.addStretch()
+        self._detail_layout.addWidget(widget)
+
+    def _build_model_list_section(self, provider_name: str, config: ProviderConfig, qss: dict):
+        """模型列表区：预设 / API 切换"""
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+        layout.setSpacing(8)
+        layout.setContentsMargins(0, 0, 0, 0)
+
+        label = QLabel("模型列表")
+        label.setObjectName("formLabelBold")
+        label.setStyleSheet(f"color: {qss['textPrimary']}; font-size: 13px; font-weight: bold;")
+        layout.addWidget(label)
+
+        # Radio buttons for source
+        radio_layout = QHBoxLayout()
+        radio_layout.setSpacing(16)
+
+        self._preset_radio = QRadioButton("使用本地预设列表")
+        self._preset_radio.setObjectName("modelSourceToggle")
+        self._preset_radio.setStyleSheet(f"color: {qss['textPrimary']}; font-size: 13px;")
+        self._api_radio = QRadioButton("从 API 获取")
+        self._api_radio.setObjectName("modelSourceToggle")
+        self._api_radio.setStyleSheet(f"color: {qss['textPrimary']}; font-size: 13px;")
+
+        radio_layout.addWidget(self._preset_radio)
+        radio_layout.addWidget(self._api_radio)
+        radio_layout.addStretch()
+        layout.addLayout(radio_layout)
+
+        # Force preset for minimax/glm
+        force_preset = provider_name in ("minimax", "glm")
+        if force_preset:
+            self._preset_radio.setChecked(True)
+            self._preset_radio.setEnabled(False)
+            self._api_radio.setEnabled(False)
         else:
-            self.vision_label.setText("无模型")
-            self.function_calling_label.setText("无模型")
-            self.context_length_label.setText("无模型")
-
-    def _get_chat_models(self, provider_name: str) -> List[ModelInfo]:
-        """获取 Chat 模型列表（通过 API 获取，无预设）"""
-        from core.llm.llm_provider import get_llm_provider
-
-        try:
-            provider = get_llm_provider().get_provider(provider_name)
-            if provider:
-                models = provider.get_models()
-                # 过滤出支持 Chat 的模型
-                return [m for m in models if m.support_chat]
-        except Exception:
-            pass
-
-        # 无预设列表，返回空列表
-        return []
-
-    def _get_embedding_models(self, provider_name: str) -> List[ModelInfo]:
-        """获取 Embedding 模型列表（通过 API 获取，无预设）"""
-        from core.llm.llm_provider import get_llm_provider
-
-        try:
-            provider = get_llm_provider().get_provider(provider_name)
-            if provider:
-                models = provider.get_models()
-                # 过滤出支持 Embedding 的模型
-                return [m for m in models if m.support_embedding]
-        except Exception:
-            pass
-
-        # 无预设列表，返回空列表
-        return []
-
-    def _on_add_provider(self):
-        """添加 Provider"""
-        # 显示可用 Provider 类型供选择
-        available_types = get_all_provider_types()
-
-        # 创建选择对话框
-        from PySide6.QtWidgets import QInputDialog
-        provider_type, ok = QInputDialog.getItem(
-            self,
-            "添加 Provider",
-            "选择 Provider 类型:",
-            available_types,
-            0,
-            False
-        )
-
-        if ok and provider_type:
-            # 生成唯一的名称
-            base_name = provider_type
-            name = base_name
-            counter = 1
-            while self.llm_config.get_provider(name):
-                name = f"{base_name}_{counter}"
-                counter += 1
-
-            # 创建新配置
-            new_config = ProviderConfig(
-                name=name.capitalize(),
-                provider_type=provider_type,
-                api_key="",
-                base_url="",
-                chat_model="",
-                embedding_model="",
-                enabled_chat=True,
-                enabled_embedding=False,
-                support_vision=True
-            )
-
-            self.llm_config.add_provider(name, new_config)
-            self._load_providers()
-
-            # 选中新添加的 Provider
-            for i in range(self.provider_list.count()):
-                item = self.provider_list.item(i)
-                if item.data(Qt.ItemDataRole.UserRole) == name:
-                    self.provider_list.setCurrentItem(item)
-                    break
-
-    def _on_remove_provider(self):
-        """删除 Provider"""
-        if not self.current_provider:
-            return
-
-        reply = QMessageBox.question(
-            self,
-            "确认删除",
-            f"确定要删除 Provider \"{self.name_edit.text()}\" 吗？",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-        )
-
-        if reply == QMessageBox.StandardButton.Yes:
-            self.llm_config.remove_provider(self.current_provider)
-            self.current_provider = None
-            self._load_providers()
-            self._set_controls_enabled(False)
-            self.remove_button.setEnabled(False)
-
-    def _on_api_key_changed(self, text: str):
-        """API Key 更改事件 - 提示刷新模型"""
-        if self.current_provider and text:
-            # 提示用户刷新模型
-            self.refresh_button.setText("待刷新")
-            self.refresh_button.setProperty("class", "warning")
-            self.refresh_button.style().unpolish(self.refresh_button)
-            self.refresh_button.style().polish(self.refresh_button)
-        self._on_config_changed()
-
-    def _on_config_changed(self):
-        """配置更改事件"""
-        if self.current_provider:
-            self.save_button.setEnabled(self._has_changes())
-
-    def _has_changes(self) -> bool:
-        """检查是否有未保存的更改"""
-        if not self.current_provider:
-            return False
-
-        config = self.llm_config.get_provider(self.current_provider)
-        if not config:
-            return False
-
-        return (
-            self.api_key_edit.text() != config.api_key or
-            self.base_url_edit.text() != config.base_url or
-            self.chat_model_combo.currentText() != config.chat_model or
-            self.embedding_model_combo.currentText() != config.embedding_model or
-            self.chat_enabled_checkbox.isChecked() != config.enabled_chat or
-            self.embedding_enabled_checkbox.isChecked() != config.enabled_embedding
-        )
-
-    def _on_refresh_models(self):
-        """刷新模型列表"""
-        if not self.current_provider:
-            return
-
-        self.refresh_button.setEnabled(False)
-        self.refresh_button.setText("刷新中...")
-
-        try:
-            from core.llm.llm_provider import get_llm_provider
-
-            # 强制从 API 刷新模型列表
-            get_llm_provider().refresh_provider_models(self.current_provider, force=True)
-
-            # 重新加载模型列表
-            chat_models = self._get_chat_models(self.current_provider)
-            embedding_models = self._get_embedding_models(self.current_provider)
-
-            # 更新下拉框（需要转换为 ID 列表）
-            current_chat_model = self.chat_model_combo.currentText()
-            current_embedding_model = self.embedding_model_combo.currentText()
-
-            chat_model_ids = [m.id for m in chat_models]
-            embedding_model_ids = [m.id for m in embedding_models]
-
-            self.chat_model_combo.blockSignals(True)
-            self.chat_model_combo.clear()
-            self.chat_model_combo.addItems(chat_model_ids)
-            if current_chat_model in chat_model_ids:
-                self.chat_model_combo.setCurrentText(current_chat_model)
-            elif chat_model_ids:
-                self.chat_model_combo.setCurrentIndex(0)
-            self.chat_model_combo.blockSignals(False)
-
-            self.embedding_model_combo.blockSignals(True)
-            self.embedding_model_combo.clear()
-            self.embedding_model_combo.addItems(embedding_model_ids)
-            if current_embedding_model in embedding_model_ids:
-                self.embedding_model_combo.setCurrentText(current_embedding_model)
-            elif embedding_model_ids:
-                self.embedding_model_combo.setCurrentIndex(0)
-            self.embedding_model_combo.blockSignals(False)
-
-            # 更新模型能力显示
-            self._update_model_capabilities()
-
-            # 重置刷新按钮样式
-            self.refresh_button.setText("刷新模型")
-            self.refresh_button.setProperty("class", "accentSave")
-            self.refresh_button.style().unpolish(self.refresh_button)
-            self.refresh_button.style().polish(self.refresh_button)
-
-            if chat_models or embedding_models:
-                QMessageBox.information(
-                    self,
-                    "刷新成功",
-                    f"Chat 模型: {len(chat_models)}\nEmbedding 模型: {len(embedding_models)}"
-                )
+            presets = self._get_preset_models(provider_name)
+            self._preset_radio.toggled.connect(self._on_model_source_changed)
+            self._api_radio.toggled.connect(self._on_model_source_changed)
+            if presets:
+                self._preset_radio.setChecked(True)
             else:
-                QMessageBox.warning(
-                    self,
-                    "无可用模型",
-                    "未能获取到任何模型，请检查 API Key 是否正确。"
-                )
-        except Exception as e:
-            QMessageBox.warning(
-                self,
-                "刷新失败",
-                f"无法刷新模型列表：{str(e)}"
-            )
-        finally:
-            self.refresh_button.setEnabled(True)
+                self._api_radio.setChecked(True)
 
-    def _on_test_connection(self):
-        """测试连接"""
-        if not self.current_provider:
+        # Stacked widget: preset view vs API view
+        self._model_stack = QStackedWidget()
+        self._model_stack.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+
+        # Preset view
+        self._preset_view = QWidget()
+        preset_layout = QVBoxLayout(self._preset_view)
+        preset_layout.setSpacing(4)
+        preset_layout.setContentsMargins(0, 0, 0, 0)
+
+        # Build preset groups by category
+        presets = self._get_preset_models(provider_name)
+        chat_models = [m for m in presets if m.support_chat]
+        emb_models = [m for m in presets if m.support_embedding]
+        vision_models = [m for m in presets if m.support_vision]
+        other_models = [m for m in presets if not (m.support_chat or m.support_embedding or m.support_vision)]
+
+        categories = []
+        if chat_models:
+            categories.append(("聊天模型 Chat", chat_models))
+        if emb_models:
+            categories.append(("嵌入模型 Embedding", emb_models))
+        if vision_models:
+            categories.append(("视觉模型 Vision", vision_models))
+        if other_models:
+            categories.append(("其他模型", other_models))
+
+        if categories:
+            for cat_name, models in categories:
+                group = CollapsibleGroup(cat_name, len(models))
+                group.setStyleSheet(f"""
+                    QPushButton#collapsibleHeader {{
+                        background-color: {qss['controlFill']};
+                        border: none;
+                        border-radius: 8px;
+                        color: {qss['textPrimary']};
+                        font-size: 12px;
+                        font-weight: bold;
+                        text-align: left;
+                        padding: 8px 12px;
+                    }}
+                    QPushButton#collapsibleHeader:hover {{
+                        background-color: {qss['controlFillHover']};
+                    }}
+                """)
+                for m in models:
+                    model_widget = self._make_preset_model_widget(m, qss)
+                    group.add_widget(model_widget)
+                preset_layout.addWidget(group)
+        else:
+            empty_label = QLabel("该供应商暂无预设模型列表，请使用「从 API 获取」")
+            empty_label.setStyleSheet(f"color: {qss['textSecondary']}; font-size: 13px; padding: 8px;")
+            preset_layout.addWidget(empty_label)
+
+        preset_layout.addStretch()
+        self._model_stack.addWidget(self._preset_view)
+
+        # API view
+        self._api_view = QWidget()
+        api_layout = QVBoxLayout(self._api_view)
+        api_layout.setSpacing(8)
+        api_layout.setContentsMargins(0, 0, 0, 0)
+
+        fetch_row = QHBoxLayout()
+        self._fetch_btn = QPushButton("从 API 获取模型列表")
+        self._fetch_btn.setObjectName("fetchModelsButton")
+        self._fetch_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._fetch_btn.setStyleSheet(f"""
+            QPushButton#fetchModelsButton {{
+                background-color: {qss['accent']};
+                border: none;
+                border-radius: 16px;
+                color: white;
+                font-size: 13px;
+                padding: 6px 16px;
+                min-height: 30px;
+            }}
+            QPushButton#fetchModelsButton:hover {{
+                background-color: {qss['accentLight']};
+            }}
+            QPushButton#fetchModelsButton:disabled {{
+                background-color: {qss['controlFill']};
+                color: {qss['textSecondary']};
+            }}
+        """)
+        self._fetch_btn.clicked.connect(lambda: self._on_fetch_models(provider_name))
+        fetch_row.addWidget(self._fetch_btn)
+        fetch_row.addStretch()
+        api_layout.addLayout(fetch_row)
+
+        # Fetched models scroll area
+        self._fetched_list_scroll = QScrollArea()
+        self._fetched_list_scroll.setFixedHeight(300)
+        self._fetched_list_scroll.setWidgetResizable(True)
+        self._fetched_list_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._fetched_list_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self._fetched_list_scroll.setStyleSheet(f"""
+            QScrollArea {{
+                border: 1px solid {qss['borderLight']};
+                border-radius: 8px;
+                background-color: {qss['controlFill']};
+            }}
+        """)
+        fetched_container = QWidget()
+        self._fetched_list_layout = QVBoxLayout(fetched_container)
+        self._fetched_list_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+        self._fetched_list_layout.setSpacing(2)
+        self._fetched_list_layout.setContentsMargins(4, 4, 4, 4)
+        self._fetched_list_scroll.setWidget(fetched_container)
+        api_layout.addWidget(self._fetched_list_scroll)
+
+        # If already fetched, populate
+        if provider_name in self._fetched_models:
+            self._populate_fetched_list(provider_name)
+
+        self._model_stack.addWidget(self._api_view)
+
+        # Set initial visibility
+        if force_preset or (not force_preset and self._preset_radio.isChecked()):
+            self._model_stack.setCurrentWidget(self._preset_view)
+        else:
+            self._model_stack.setCurrentWidget(self._api_view)
+
+        layout.addWidget(self._model_stack)
+        self._detail_layout.addWidget(widget)
+
+    def _build_model_selection_section(self, config: ProviderConfig, qss: dict):
+        """模型选择区：当前聊天模型 + 当前 Embedding 模型"""
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+        layout.setSpacing(12)
+        layout.setContentsMargins(0, 0, 0, 0)
+
+        # Chat model row
+        chat_row = QHBoxLayout()
+        chat_label = QLabel("当前聊天模型")
+        chat_label.setFixedWidth(120)
+        chat_label.setObjectName("formLabelBold")
+        chat_label.setStyleSheet(f"color: {qss['textPrimary']}; font-size: 13px; font-weight: bold;")
+
+        self._chat_model_combo = QComboBox()
+        self._chat_model_combo.setObjectName("modelSelectCombo")
+        self._chat_model_combo.setMinimumWidth(300)
+        self._chat_model_combo.setStyleSheet(f"""
+            QComboBox#modelSelectCombo {{
+                background-color: {qss['controlFill']};
+                border: 1px solid {qss['borderLight']};
+                border-radius: 8px;
+                padding: 8px 12px;
+                color: {qss['textPrimary']};
+                font-size: 13px;
+                min-height: 20px;
+            }}
+            QComboBox#modelSelectCombo:hover {{
+                border-color: {qss['accent']};
+            }}
+            QComboBox#modelSelectCombo:focus {{
+                border-color: {qss['accent']};
+                background-color: {qss['base']};
+            }}
+        """)
+        self._chat_model_combo.currentTextChanged.connect(self._mark_dirty)
+
+        chat_row.addWidget(chat_label)
+        chat_row.addWidget(self._chat_model_combo, 1)
+        layout.addLayout(chat_row)
+
+        # Embedding model row
+        emb_row = QHBoxLayout()
+        emb_label = QLabel("当前 Embedding 模型")
+        emb_label.setFixedWidth(120)
+        emb_label.setObjectName("formLabelBold")
+        emb_label.setStyleSheet(f"color: {qss['textPrimary']}; font-size: 13px; font-weight: bold;")
+
+        self._emb_model_combo = QComboBox()
+        self._emb_model_combo.setObjectName("modelSelectCombo")
+        self._emb_model_combo.setMinimumWidth(300)
+        self._emb_model_combo.setStyleSheet(f"""
+            QComboBox#modelSelectCombo {{
+                background-color: {qss['controlFill']};
+                border: 1px solid {qss['borderLight']};
+                border-radius: 8px;
+                padding: 8px 12px;
+                color: {qss['textPrimary']};
+                font-size: 13px;
+                min-height: 20px;
+            }}
+            QComboBox#modelSelectCombo:hover {{
+                border-color: {qss['accent']};
+            }}
+            QComboBox#modelSelectCombo:focus {{
+                border-color: {qss['accent']};
+                background-color: {qss['base']};
+            }}
+        """)
+        self._emb_model_combo.currentTextChanged.connect(self._mark_dirty)
+
+        emb_row.addWidget(emb_label)
+        emb_row.addWidget(self._emb_model_combo, 1)
+        layout.addLayout(emb_row)
+
+        self._detail_layout.addWidget(widget)
+
+    # ------------------------------------------------------------------ #
+    # Helpers                                                               #
+    # ------------------------------------------------------------------ #
+
+    def _add_divider(self):
+        """添加分隔线"""
+        qss = get_style_qss().get_color_dict()
+        div = QFrame()
+        div.setFrameShape(QFrame.Shape.HLine)
+        div.setStyleSheet(f"background-color: {qss['borderLight']}; max-height: 1px; margin: 4px 0;")
+        self._detail_layout.addWidget(div)
+
+    def _make_preset_model_widget(self, model: ModelInfo, qss: dict) -> QWidget:
+        """创建预设模型列表项 - 使用 ModelDetailItem"""
+        # 使用新的 ModelDetailItem 组件显示完整的模型信息
+        item = ModelDetailItem(
+            model_id=model.id,
+            model_name=model.name or model.id,
+            context_length=model.context_length,
+            support_chat=model.support_chat,
+            support_embedding=model.support_embedding,
+            support_vision=model.support_vision,
+            support_thinking=getattr(model, 'support_thinking', False) or 'thinking' in model.id.lower(),
+            support_tools=model.support_function_calling
+        )
+        return item
+
+    def _get_preset_models(self, provider_name: str) -> List[ModelInfo]:
+        """获取预设模型列表"""
+        models: List[ModelInfo] = []
+
+        if provider_name == "minimax":
+            try:
+                from core.llm.providers.minimax import MiniMaxProvider
+                details = getattr(MiniMaxProvider, "MODEL_DETAILS", {})
+
+                for model_id in getattr(MiniMaxProvider, "CHAT_MODELS", []):
+                    info = details.get(model_id, {})
+                    models.append(ModelInfo(
+                        id=model_id,
+                        name=info.get("name", model_id),
+                        support_chat=True,
+                        support_embedding=False,
+                        support_vision=False,
+                        support_function_calling=info.get("support_function_calling", False),
+                        context_length=info.get("context_length", 0),
+                    ))
+
+                for model_id in getattr(MiniMaxProvider, "EMBEDDING_MODELS", []):
+                    info = details.get(model_id, {})
+                    models.append(ModelInfo(
+                        id=model_id,
+                        name=info.get("name", model_id),
+                        support_chat=False,
+                        support_embedding=True,
+                        support_vision=False,
+                        support_function_calling=False,
+                        context_length=info.get("context_length", 0),
+                    ))
+            except Exception:
+                pass
+
+        elif provider_name == "glm":
+            try:
+                from core.llm.providers.glm import GLMProvider
+                details = getattr(GLMProvider, "MODEL_DETAILS", {})
+
+                for model_id in getattr(GLMProvider, "CHAT_MODELS", []):
+                    info = details.get(model_id, {})
+                    models.append(ModelInfo(
+                        id=model_id,
+                        name=info.get("name", model_id),
+                        support_chat=True,
+                        support_embedding=False,
+                        support_vision=False,
+                        support_function_calling=info.get("support_function_calling", False),
+                        context_length=info.get("context_length", 0),
+                    ))
+
+                for model_id in getattr(GLMProvider, "EMBEDDING_MODELS", []):
+                    info = details.get(model_id, {})
+                    models.append(ModelInfo(
+                        id=model_id,
+                        name=info.get("name", model_id),
+                        support_chat=False,
+                        support_embedding=True,
+                        support_vision=False,
+                        support_function_calling=False,
+                        context_length=info.get("context_length", 0),
+                    ))
+
+                for model_id in getattr(GLMProvider, "VISION_MODELS", []):
+                    info = details.get(model_id, {})
+                    models.append(ModelInfo(
+                        id=model_id,
+                        name=info.get("name", model_id),
+                        support_chat=False,
+                        support_embedding=False,
+                        support_vision=True,
+                        support_function_calling=False,
+                        context_length=info.get("context_length", 0),
+                    ))
+            except Exception:
+                pass
+
+        # ollama / siliconflow have no preset lists - return empty
+        return models
+
+    def _populate_model_combos(self, provider_name: str, config: ProviderConfig):
+        """填充模型下拉框"""
+        if not self._chat_model_combo or not self._emb_model_combo:
             return
 
-        self.test_button.setEnabled(False)
-        self.test_button.setText("测试中...")
+        preset_models = self._get_preset_models(provider_name)
+        fetched_models = self._fetched_models.get(provider_name, [])
 
-        # TODO: 实现实际的连接测试
-        # 这里先模拟一个简单的测试
+        # Merge and deduplicate
+        seen_ids = set()
+        all_models: List[ModelInfo] = []
+        for m in preset_models + fetched_models:
+            if m.id not in seen_ids:
+                seen_ids.add(m.id)
+                all_models.append(m)
+
+        chat_ids = [m.id for m in all_models if m.support_chat]
+        emb_ids = [m.id for m in all_models if m.support_embedding]
+
+        self._chat_model_combo.blockSignals(True)
+        self._chat_model_combo.clear()
+        self._chat_model_combo.addItems(chat_ids)
+        if config.chat_model and config.chat_model in chat_ids:
+            self._chat_model_combo.setCurrentText(config.chat_model)
+        self._chat_model_combo.blockSignals(False)
+
+        self._emb_model_combo.blockSignals(True)
+        self._emb_model_combo.clear()
+        self._emb_model_combo.addItems(emb_ids)
+        if config.embedding_model and config.embedding_model in emb_ids:
+            self._emb_model_combo.setCurrentText(config.embedding_model)
+        self._emb_model_combo.blockSignals(False)
+
+    def _populate_fetched_list(self, provider_name: str):
+        """填充 API 获取的模型列表"""
+        models = self._fetched_models.get(provider_name, [])
+        qss = get_style_qss().get_color_dict()
+
+        # Clear existing
+        while self._fetched_list_layout.count():
+            item = self._fetched_list_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+
+        if not models:
+            empty = QLabel("暂无模型，请点击上方按钮获取")
+            empty.setStyleSheet(f"color: {qss['textSecondary']}; font-size: 13px; padding: 8px;")
+            self._fetched_list_layout.addWidget(empty)
+            return
+
+        for model in models:
+            item_widget = self._make_preset_model_widget(model, qss)
+            self._fetched_list_layout.addWidget(item_widget)
+
+    def _on_model_source_changed(self, checked: bool):
+        """切换预设/API 视图"""
+        if not checked:
+            return
+        if self._preset_radio.isChecked():
+            self._model_stack.setCurrentWidget(self._preset_view)
+        else:
+            self._model_stack.setCurrentWidget(self._api_view)
+
+    def _on_fetch_models(self, provider_name: str):
+        """触发从 API 获取模型列表"""
+        self._fetch_btn.setEnabled(False)
+        self._fetch_btn.setText("获取中...")
+        QTimer.singleShot(0, lambda: self._do_fetch_models(provider_name))
+
+    def _do_fetch_models(self, provider_name: str):
+        """实际执行从 API 获取模型列表"""
         try:
-            from core.llm.llm_provider import get_llm_provider
-            provider = get_llm_provider().get_provider(self.current_provider)
+            models = self._llm_provider.refresh_provider_models(provider_name, force=True)
+            self._fetched_models[provider_name] = models
+            self._populate_fetched_list(provider_name)
+            # Re-populate combos
+            if self._current_provider_name == provider_name:
+                config = self._llm_config.get_provider(provider_name)
+                if config:
+                    self._populate_model_combos(provider_name, config)
+        except Exception as e:
+            QMessageBox.warning(self, "获取失败", f"无法获取模型列表：{str(e)}")
+        finally:
+            self._fetch_btn.setEnabled(True)
+            self._fetch_btn.setText("从 API 获取模型列表")
 
+    def _on_validate_provider(self):
+        """验证 Provider 配置"""
+        if not self._current_provider_name:
+            return
+        try:
+            provider = self._llm_provider.get_provider(self._current_provider_name)
             if provider:
-                # 尝试获取模型列表
-                models = provider.get_models()
-                if models:
-                    QMessageBox.information(
-                        self,
-                        "测试成功",
-                        f"连接成功！\n\n可用模型数量: {len(models)}"
-                    )
+                result = provider.validate_config()
+                if result:
+                    QMessageBox.information(self, "验证成功", "供应商配置有效。")
                 else:
-                    QMessageBox.warning(
-                        self,
-                        "测试失败",
-                        "无法获取模型列表，请检查 API Key 和网络连接。"
-                    )
+                    QMessageBox.warning(self, "验证失败", "供应商配置无效，请检查 API Key 和 API 地址。")
             else:
-                QMessageBox.warning(
-                    self,
-                    "测试失败",
-                    "Provider 未正确初始化。"
-                )
+                QMessageBox.warning(self, "验证失败", "Provider 未初始化。")
         except Exception as e:
-            QMessageBox.critical(
-                self,
-                "测试失败",
-                f"连接失败：{str(e)}"
-            )
-        finally:
-            self.test_button.setEnabled(True)
-            self.test_button.setText("测试连接")
+            QMessageBox.warning(self, "验证失败", f"验证时出错：{str(e)}")
+
+    def _mark_dirty(self):
+        """标记为已修改"""
+        self._is_dirty = True
+        if self._save_btn:
+            self._save_btn.setEnabled(True)
+
+    def _save_current_provider(self):
+        """保存当前 Provider 配置"""
+        if not self._current_provider_name:
+            return
+
+        config = self._llm_config.get_provider(self._current_provider_name)
+        if not config:
+            return
+
+        if self._api_key_edit:
+            config.api_key = self._api_key_edit.text()
+        if self._api_url_edit:
+            config.base_url = self._api_url_edit.text()
+        if self._chat_model_combo:
+            config.chat_model = self._chat_model_combo.currentText()
+        if self._emb_model_combo:
+            config.embedding_model = self._emb_model_combo.currentText()
+        if self._enable_toggle:
+            config.enabled_chat = self._enable_toggle.isChecked()
+
+        self._llm_config.add_provider(self._current_provider_name, config)
 
     def _on_save(self):
-        """保存配置"""
-        if not self.current_provider:
+        """保存并关闭"""
+        self._save_current_provider()
+        try:
+            self._llm_config.save_config()
+            self._llm_provider.reload_config()
+        except Exception as e:
+            QMessageBox.warning(self, "保存失败", f"保存配置时出错：{str(e)}")
+            return
+        self.accept()
+
+    def _on_add_provider(self):
+        """添加新 Provider"""
+        available_types = get_all_provider_types()
+        if not available_types:
+            QMessageBox.warning(self, "无可用供应商", "当前没有可用的供应商类型。")
             return
 
-        config = self.llm_config.get_provider(self.current_provider)
-        if not config:
-            return
-
-        # 更新配置
-        config.api_key = self.api_key_edit.text()
-        config.base_url = self.base_url_edit.text()
-        config.chat_model = self.chat_model_combo.currentText()
-        config.embedding_model = self.embedding_model_combo.currentText()
-        config.enabled_chat = self.chat_enabled_checkbox.isChecked()
-        config.enabled_embedding = self.embedding_enabled_checkbox.isChecked()
-        # support_vision 从模型信息动态获取，不需要保存
-
-        # 保存到文件
-        self.llm_config.add_provider(self.current_provider, config)
-
-        # 刷新模型列表
-        from core.llm.llm_provider import get_llm_provider
-        get_llm_provider().refresh_provider_models(self.current_provider, force=True)
-
-        self.save_button.setEnabled(False)
-        self.config_changed.emit()
-
-        QMessageBox.information(
-            self,
-            "保存成功",
-            "配置已保存！模型列表已刷新。"
+        provider_type, ok = QInputDialog.getItem(
+            self, "添加供应商", "选择供应商类型:", available_types, 0, False
         )
+        if not ok or not provider_type:
+            return
+
+        # Generate unique name
+        base_name = provider_type.capitalize()
+        name = base_name
+        counter = 1
+        while self._llm_config.get_provider(name):
+            name = f"{base_name}_{counter}"
+            counter += 1
+
+        # Create default config
+        new_config = ProviderConfig(
+            name=name,
+            provider_type=provider_type,
+            api_key="",
+            base_url="",
+            chat_model="",
+            embedding_model="",
+            enabled_chat=True,
+            enabled_embedding=False,
+        )
+        self._llm_config.add_provider(name, new_config)
+        self._refresh_provider_list()
+        self._on_provider_clicked(name)
+
+    def _toggle_api_key_visibility(self):
+        """切换 API Key 可见性"""
+        if self._api_key_edit:
+            if self._api_key_edit.echoMode() == QLineEdit.EchoMode.Password:
+                self._api_key_edit.setEchoMode(QLineEdit.EchoMode.Normal)
+            else:
+                self._api_key_edit.setEchoMode(QLineEdit.EchoMode.Password)
+
+    def _open_provider_link(self, provider_type: str):
+        """打开供应商密钥获取链接"""
+        import webbrowser
+        links = {
+            "openai": "https://platform.openai.com/api-keys",
+            "anthropic": "https://console.anthropic.com/settings/keys",
+            "minimax": "https://platform.minimaxi.com",
+            "glm": "https://open.bigmodel.cn",
+            "siliconflow": "https://www.siliconflow.cn",
+            "ollama": "https://ollama.com",
+        }
+        url = links.get(provider_type.lower(), "https://www.google.com")
+        webbrowser.open(url)
+
+    def _load_styles(self):
+        """加载样式表"""
+        qss = get_style_qss()
+        colors = qss.get_color_dict()
+
+        self.setStyleSheet(f"""
+            QDialog#llmSettingsDialog {{
+                background-color: {colors['window']};
+            }}
+            QLabel#providerName {{
+                color: {colors['textPrimary']};
+                font-size: 20px;
+                font-weight: bold;
+            }}
+            QLabel#formLabel {{
+                color: {colors['textSecondary']};
+                font-size: 13px;
+            }}
+            QLabel#formLabelBold {{
+                color: {colors['textPrimary']};
+                font-size: 13px;
+                font-weight: bold;
+            }}
+            QLabel#linkLabel {{
+                color: {colors['accent']};
+                font-size: 13px;
+            }}
+            QLabel#linkLabel:hover {{
+                text-decoration: underline;
+            }}
+            QLabel#contextLengthLabel {{
+                color: {colors['textSecondary']};
+                font-size: 12px;
+            }}
+            QLabel#usageLabel {{
+                color: {colors['textSecondary']};
+                font-size: 12px;
+            }}
+            QComboBox#modelSelectCombo {{
+                background-color: {colors['controlFill']};
+                border: 1px solid {colors['borderLight']};
+                border-radius: 8px;
+                padding: 8px 12px;
+                color: {colors['textPrimary']};
+                font-size: 13px;
+                min-height: 20px;
+            }}
+            QComboBox#modelSelectCombo:hover {{
+                border-color: {colors['accent']};
+            }}
+            QComboBox#modelSelectCombo:focus {{
+                border-color: {colors['accent']};
+                background-color: {colors['base']};
+            }}
+            QPushButton#accentSave {{
+                background-color: {colors['accent']};
+                color: white;
+                border: none;
+                border-radius: 6px;
+                padding: 6px 16px;
+                font-size: 13px;
+                min-height: 30px;
+            }}
+            QPushButton#accentSave:hover {{
+                background-color: {colors['accentLight']};
+            }}
+            QPushButton#accentSave:disabled {{
+                background-color: {colors['controlFill']};
+                color: {colors['textSecondary']};
+            }}
+            #fetchModelsButton {{
+                background-color: {colors['accent']};
+                border: none;
+                border-radius: 16px;
+                color: white;
+                font-size: 13px;
+                padding: 6px 16px;
+                min-height: 30px;
+            }}
+            #fetchModelsButton:hover {{
+                background-color: {colors['accentLight']};
+            }}
+            #fetchModelsButton:disabled {{
+                background-color: {colors['controlFill']};
+                color: {colors['textSecondary']};
+            }}
+            QRadioButton#modelSourceToggle {{
+                color: {colors['textPrimary']};
+                font-size: 13px;
+            }}
+            QWidget#modelFetchedItem {{
+                background-color: transparent;
+                border-radius: 8px;
+                margin: 2px 0;
+            }}
+            #addProviderButton {{
+                background-color: transparent;
+                border: 1px dashed {colors['border']};
+                border-radius: 8px;
+                color: {colors['accent']};
+                font-size: 13px;
+                padding: 10px;
+                margin: 8px;
+            }}
+            #addProviderButton:hover {{
+                background-color: {colors['controlFillHover']};
+                border-style: solid;
+            }}
+            QScrollArea#detailScrollArea {{
+                border: none;
+                background-color: transparent;
+            }}
+            QScrollArea#providerListScrollArea {{
+                border: none;
+                background-color: transparent;
+            }}
+        """ + "\n" + qss.get("llm_settings", ""))
