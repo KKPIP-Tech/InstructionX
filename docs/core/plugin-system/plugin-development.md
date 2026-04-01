@@ -447,8 +447,8 @@ class Service:
             callback=self._on_status_changed
         )
 
-    def _on_status_changed(self, plugin_id, key, old_value, new_value):
-        print(f"状态变更: {old_value} -> {new_value}")
+    def _on_status_changed(self, target_plugin_id, key, old_value, new_value):
+        print(f"插件 {target_plugin_id} 的 {key} 从 {old_value} 变更为 {new_value}")
 ```
 
 ---
@@ -479,7 +479,8 @@ manager = PluginManager()
 api = manager.get_plugin_api("plugin-uuid")
 print("可用方法:", api["methods"])
 
-# 调用方法
+# 调用方法（method_name 为目标方法名，其余关键字参数应与目标方法的
+# 实际参数名对应，此处假设目标方法声明了 param 参数）
 result = manager.call_plugin_method(
     caller_id="test",
     plugin_id="plugin-uuid",

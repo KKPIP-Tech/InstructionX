@@ -124,7 +124,7 @@ v2 = PluginVersion.from_string("release.1.0.1")
 v3 = PluginVersion.from_string("beta.1.0.0")
 
 print(v2 > v1)   # True（修订号更大）
-print(v1 > v3)   # True（正式版 > 测试版）
+print(v1 > v3)   # False（版本号完全相同时，即使类型优先级不同，> 仍返回 False）
 print(v1 == v1)  # True
 print(v3 < v1)   # True
 print(v1 != v2)  # True
@@ -146,6 +146,7 @@ print(repr(v))       # "PluginVersion('release.1.0.0')"（通过 __repr__）
 ## 6. 使用示例
 
 ```python
+from core.interfaces import IPluginInfo
 from core.plugin.plugin_version import PluginVersion
 
 # 定义插件版本

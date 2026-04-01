@@ -101,6 +101,7 @@ conv_id = svc.create_conversation(
     system_prompt="你是一个代码助手",
     provider="siliconflow",  # 可选，默认 "default"
     model="Pro/deepseek-ai/DeepSeek-V3",  # 可选
+    metadata=None,  # 可选，额外元数据字典
 )
 ```
 
@@ -185,9 +186,20 @@ flowchart TB
 resp = svc.chat([
     {"role": "system", "content": "你是一个助手"},
     {"role": "user", "content": "你好"},
-])
+], tools=[...])  # 可选，显式传入工具定义（也可通过 executor.tools.register() 预先注册）
 print(resp.content)
 print(f"Token: {resp.usage.total_tokens}")  # Token 用量信息
+```
+
+### 发送消息（流式，无状态）
+
+```python
+def callback(chunk):
+    print(chunk.content, end="", flush=True)
+
+content = svc.stream_chat([
+    {"role": "user", "content": "写一个快排"},
+], callback=callback, provider="minimax")
 ```
 
 ---

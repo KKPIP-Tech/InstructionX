@@ -79,7 +79,7 @@ def skill_icon(self) -> Optional[QIcon]:
     技能按钮图标
 
     从 information.py 中的 PluginInfo 动态加载。
-    如果未定义，返回默认系统图标。
+    如果未定义或加载失败，返回系统默认文件图标（`QStyle.StandardPixmap.SP_FileIcon`）。
 
     Returns:
         QIcon 对象
@@ -149,8 +149,8 @@ def plugin_info(self) -> Optional['IPluginInfo']:
 > 注意: 抽象接口 `core/interfaces/i_plugin.py` 中该属性直接返回 `None`。
 > 动态加载行为由框架实现 `core/plugin/plugin_interface.py` 提供（通过 `_load_plugin_info()` 内部方法）。
 
-> 注意：`tags` 不是 `IPlugin` 的属性，而是 `IPluginInfo` 的可选属性。
-> 插件开发者应在 `information.py` 的 `PluginInfo` 类中覆盖 `tags` 属性，而非在插件入口类中实现。
+> 注意：`tags` 不是 `IPlugin` 的属性，而是 `IPluginInfo` 的可选属性（默认返回 `None`）。
+> 如需使用标签功能，可在 `information.py` 的 `PluginInfo` 类中覆盖 `tags` 属性。
 
 ---
 
@@ -245,29 +245,32 @@ def get_widget(self, parent=None, data_provider=None) -> QWidget:
 ### 3.3 on_plugin_loaded()
 
 ```python
-def on_plugin_loaded(self, plugin_id: Optional[str] = None, **kwargs) -> None:
+def on_plugin_loaded(self) -> None:
     """
     插件加载完成回调
 
-    在插件被加载且 plugin_id 已设置后调用。
-    可用于注册定时任务工厂等初始化操作。
+    在插件被框架加载且 plugin_id 已设置后调用。
+    子类可重写此方法执行初始化逻辑，例如：
+    - 注册定时任务工厂
+    - 初始化后台服务
+    - 订阅其他插件的数据
 
-    新版插件通过依赖注入（DI）接收 `services` 参数，通过 `self._services` 访问
-    `llm_facade`（LLMPluginService）、`data_provider` 等服务。
-    旧版插件可通过直接导入单例访问 LLM 服务。
-
-    注意：此时插件的 UI 尚未创建，不要在此方法中创建 QWidget。
-
-    Args:
-        plugin_id: 插件唯一标识符
-        **kwargs: 预留参数（services 等通过实例属性 `self._services` 访问）
+    注意：
+    - 框架调用此方法时**不传任何参数**。
+    - plugin_id 通过 `self.plugin_id` 访问（而非通过形参）。
+    - services 已通过 `self._services` 实例属性注入（由 PluginManager 设置）。
+    - 此时插件的 UI 尚未创建，禁止在此方法中实例化 QWidget。
 
     Example:
-        def on_plugin_loaded(self, plugin_id=None, **kwargs):
-            # 新版插件（DI 注入）
-            # self._services 在 __init__ 中通过 services 参数注入
-            # self._llm = self._services.llm_facade
-            pass
+        def __init__(self, services=None):
+            # 在 __init__ 中通过 services 参数注入
+            super().__init__()
+            self._llm = services.llm_facade if services else None
+
+        def on_plugin_loaded(self):
+            # plugin_id 通过 self.plugin_id 访问
+            # services 已通过 self._services 访问
+            print(f"插件 {self.plugin_id} 已加载")
     """
     pass
 ```
@@ -288,6 +291,35 @@ def llm_tools(self) -> List[Dict[str, Any]]:
     """
     return []
 ```
+
+---
+
+## 4. 插件生命周期
+
+### 4.1 加载流程
+
+插件加载由 `PluginManager` 触发，完整流程详见 [PluginManager](plugin-manager.md)。
+
+主要阶段：
+1. 动态导入 `entrance.py` 模块，查找 `IPlugin` 子类
+2. 实例化插件（尝试注入 `services`）
+3. 由 PluginManager 设置 `_plugin_id` 和 `_services` 实例属性
+4. 调用 `on_plugin_loaded()` 回调
+5. 注册到插件注册表
+
+### 4.2 实例属性注入
+
+PluginManager 在加载完成后会直接设置以下实例属性（无需插件接收形参）：
+
+| 属性 | 来源 | 访问方式 |
+|------|------|---------|
+| `self._plugin_id` | PluginManager 生成/读取 | `self.plugin_id` |
+| `self._services` | PluginManager 创建并注入 | `self._services.llm_facade` 等 |
+| `self._plugin_dir` | PluginManager 设置 | 用于 `_load_plugin_info()` |
+
+### 4.3 卸载
+
+当前框架不提供显式的插件卸载回调。若需清理资源，可在 Python 对象销毁时依赖 `__del__`（不推荐用于关键逻辑）。
 
 ---
 
@@ -469,8 +501,8 @@ class TextFormattingPlugin(IPlugin):
         self.output_edit.setPlainText(result)
         self.text_formatted.emit(result)
 
-    def on_plugin_loaded(self, plugin_id=None, **kwargs):
-        """插件加载完成回调"""
+    def on_plugin_loaded(self):
+        """插件加载完成回调（plugin_id 通过 self.plugin_id 访问）"""
         print(f"插件已加载: {self.plugin_name}")
 ```
 
