@@ -337,7 +337,7 @@ LLM 层重构新增了完整的对话管理能力，通过 `LLMPluginService` �
 | **对话 CRUD** | 创建/获取/列出/删除对话，自动管理 conversation_id |
 | **自动历史追加** | send_message / stream_send_message 自动将用户消息和 LLM 回复追加到历史 |
 | **上下文截断** | 超过 max_context (默认 128000 token) 时自动截断，保留 system + 最近 2/3 消息 |
-| **Token 估算** | 中文字符按 1:1 估算，英文按 4:1 估算 |
+| **Token 估算** | 中文字符按 1:1 估算，英文按 4:1 估算（4 个字符 ≈ 1 token） |
 | **费用计算** | 基于 `DEFAULT_PRICING` 估算每次请求费用 |
 | **用量统计** | 按对话和全局维度统计 token、总费用、请求次数 |
 
