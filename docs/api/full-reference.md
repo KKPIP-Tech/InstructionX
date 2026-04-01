@@ -25,7 +25,8 @@ from core import BackgroundTaskManager, TaskType, TaskStatus, BackgroundTask, Sc
 # 抽象接口层（推荐用于插件开发）
 from core.interfaces import IPlugin, IPluginInfo, IDataProvider, ITaskManager
 from core.interfaces import TaskType, TaskStatus
-from core.interfaces import ILLMFacade, Message, ChatResponse, EmbeddingResponse, ModelInfo, UsageInfo
+from core.interfaces import ILLMFacade, Message, ChatResponse, EmbeddingResponse, ModelInfo
+from core.llm import UsageInfo  # UsageInfo 不在 core.interfaces.__all__ 中，需从 core.llm 导入
 from core.interfaces import ILogger, PluginServices
 ```
 
@@ -110,9 +111,10 @@ from core.llm.exceptions import (
 | `skill_description` | property | 技能描述 |
 | `skill_tooltip` | property | 工具提示 |
 | `plugin_info` | property | 插件信息对象 |
+| `llm_tools` | property | LLM 工具列表（用于 MCP/Function Calling） |
 | `_create_widget(parent, data_provider)` | method (abstract) | 创建 UI |
 | `get_widget(parent=None, data_provider=None)` | method | 获取 Widget（带缓存） |
-| `on_plugin_loaded()` | method | 加载完成回调 |
+| `on_plugin_loaded()` | method | 加载完成回调（PluginManager 调用时不传参数，向后兼容旧插件） |
 
 ### 2.3 IPluginInfo
 
@@ -486,6 +488,21 @@ task_id = task_manager.register_scheduled_task(
 | `get_provider(name)` | 获取 Provider 实例 |
 | `get_all_providers()` | 获取所有 Provider |
 | `get_cached_models(provider_name)` | 获取缓存模型 |
+| `create_conversation(system_prompt, provider, model)` | 创建新对话 |
+| `send_message(conv_id, content, images, temperature, max_tokens)` | 同步发送消息 |
+| `stream_send_message(...)` | 流式发送消息 |
+| `get_conversation(conv_id)` | 获取对话对象 |
+| `list_conversations()` | 列出所有对话 |
+| `delete_conversation(conv_id)` | 删除对话 |
+| `get_tool_executor()` | 获取工具执行器 |
+| `get_shared_tool_registry()` | 获取共享工具注册表 |
+| `chat_with_tools(...)` | 带工具调用的对话 |
+| `chat_with_tools_stream(...)` | 流式工具调用对话 |
+| `get_available_providers()` | 获取可用 Provider 信息 |
+| `get_usage_stats(conv_id)` | 获取用量统计 |
+| `validate_provider(provider)` | 验证 Provider 配置 |
+| `load_image_as_base64(path)` | 加载图片为 base64 |
+| `get_raw_provider(provider)` | 获取底层 Provider 实例 |
 
 ### 7.7 PluginServices（插件服务封装）
 
@@ -497,10 +514,10 @@ task_id = task_manager.register_scheduled_task(
 
 | 属性 | 类型 | 说明 |
 |------|------|------|
-| `data_provider` | `IDataProvider` | 数据提供者实例 |
-| `task_manager` | `ITaskManager` | 后台任务管理器实例 |
-| `llm_facade` | `ILLMFacade` | LLM 外观接口（可选） |
-| `logger` | `ILogger` | 日志接口（可选） |
+| `data_provider` | `DataProvider` | 数据提供者实例（失败时为 `None`） |
+| `task_manager` | `BackgroundTaskManager` | 后台任务管理器实例（失败时为 `None`） |
+| `llm_facade` | `LLMPluginService` | LLM 服务实例 |
+| `logger` | `LoggerManager` | 日志管理器实例 |
 
 ### 7.8 ILogger（日志接口）
 

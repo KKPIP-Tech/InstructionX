@@ -24,7 +24,7 @@
 | ZenDots | 1 | .otf |
 | SmileySans（得意黑） | 1 | .otf |
 | AlimamaDongFangDaKai（阿里妈妈东方大楷） | 1 | .otf |
-| AlibabaPuHuiTi-3（阿里巴巴普惠体 3.0） | 19 | .otf |
+| AlibabaPuHuiTi-3（阿里巴巴普惠体 3.0） | 18 | .otf |
 
 ---
 

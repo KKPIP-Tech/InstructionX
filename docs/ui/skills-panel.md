@@ -22,22 +22,26 @@ graph TB
 
     subgraph Tab1 [官方功能 标签]
         SA1[ScrollArea<br/>可滚动区域]
+        CT1["QWidget#skillsContainer<br/>水平布局容器"]
         B1[技能按钮 1]
         B2[技能按钮 2]
         B3[技能按钮 N]
-        SA1 --> B1
-        SA1 --> B2
-        SA1 --> B3
+        SA1 --> CT1
+        CT1 --> B1
+        CT1 --> B2
+        CT1 --> B3
     end
 
     subgraph Tab2 [第三方功能 标签]
         SA2[ScrollArea<br/>可滚动区域]
+        CT2["QWidget#skillsContainer<br/>水平布局容器"]
         C1[技能按钮 1]
         C2[技能按钮 2]
         C3[技能按钮 M]
-        SA2 --> C1
-        SA2 --> C2
-        SA2 --> C3
+        SA2 --> CT2
+        CT2 --> C1
+        CT2 --> C2
+        CT2 --> C3
     end
 
     TW --> Tab1
@@ -55,15 +59,15 @@ graph TB
 ### 3.1 SkillButton
 
 每个技能按钮代表一个插件，包含：
-- **图标**: 从插件的 `information.py` 加载
-- **名称**: 插件的 `plugin_name` 属性
-- **描述**: 插件的 `skill_description` 属性
-- **提示**: 鼠标悬停时显示的名称和描述
+- **图标**: 通过 `IPlugin.skill_icon` 属性动态加载（从插件的 `information.py` 读取，带文件 mtime 缓存）
+- **名称**: `IPlugin.plugin_name` 属性
+- **描述**: 通过 `IPlugin.skill_description` 属性动态加载（从 `information.py` 读取，失败时回退为插件名称）
+- **提示**: 鼠标悬停时显示的名称和描述（格式为 `plugin_name\nskill_description`）
 
 **文本自动处理**:
 - 允许插件设计者自行决定换行位置（使用 `\n`）
-- 如果文本不含 `\n` 且长度超过 5 个字符，自动在中点处换行（midpoint split）
-- 每行最多 5 个字符，超出部分末尾自动添加省略号（...）
+- 如果文本不含 `\n` 且长度大于 5 个字符，在 `len(text) // 2` 处分割（midpoint split，非 Unicode 感知）
+- 每行最多 5 个字符，超出部分末尾自动添加省略号（`...`）
 - 最多显示 2 行
 - 避免按钮因文本过长而破坏布局
 
@@ -71,9 +75,9 @@ graph TB
 
 | 状态 | 说明 |
 |------|------|
-| 正常 | 默认显示 |
-| 悬停 | 鼠标悬停时高亮（背景变亮、边框显现） |
-| 选中/活跃 | 当前正在使用的插件（accent 色边框高亮） |
+| 正常 | 默认透明背景，`transparent` 边框，`windowText` 颜色 |
+| 悬停 | 背景变为 `{controlFillHover}`，`border` 变为 1px `{borderLight}` |
+| 选中/活跃 | `2px` `{accent}` 边框，`{controlFillSelected}` 背景，`{accent}` 文字颜色，`font-weight: 500` |
 
 ---
 
@@ -302,7 +306,7 @@ SkillsPanel 与工作区保持色彩层次区分：
 
 ### 8.3 样式文件
 
-SkillsPanel 的样式定义在 `utils/style_qss/styles/custom.qss`：
+SkillsPanel 和 SkillButton 的样式定义在 `utils/style_qss/styles/custom.qss`（由 QssRegistry 按优先级 20 加载）：
 
 ```css
 /* SkillsPanel 容器 */
@@ -310,20 +314,51 @@ SkillsPanel {
     background-color: {skillPanel};
     border-bottom: 1px solid {borderLight};
 }
+SkillsPanel QTabWidget::pane {
+    border: none;
+    background: {skillPanel};
+}
 
 /* Tab 样式 */
 SkillsPanel QTabBar::tab {
     background: {skillPanelTab};
     color: {windowText};
+    padding: 2px 10px;
+    margin-right: 1px;
+    border-top-left-radius: 3px;
+    border-top-right-radius: 3px;
+    min-height: 16px;
+    font-size: 11px;
+    border: none;
 }
 SkillsPanel QTabBar::tab:selected {
     background: {skillPanel};
     border-bottom: 2px solid {accent};
 }
+SkillsPanel QTabBar::tab:hover:!selected {
+    background: {controlFillHover};
+}
 
-/* 技能按钮 */
+/* 滚动区域样式 */
+SkillsPanel QScrollArea {
+    border: none;
+    background: {skillPanel};
+}
+
+/* 技能按钮容器 */
+SkillsPanel QWidget#skillsContainer {
+    background-color: {skillPanel};
+}
+
+/* 非激活状态的技能按钮 */
 SkillButton {
+    border: 1px solid transparent;
+    border-radius: 6px;
+    padding: 3px;
+    background-color: transparent;
     color: {windowText};
+    text-align: top;
+    font-size: 10px;
 }
 SkillButton:hover {
     background-color: {controlFillHover};
@@ -333,6 +368,8 @@ SkillButton:pressed {
     background-color: {controlFillPressed};
     border: 1px solid {border};
 }
+
+/* 激活状态的技能按钮（通过 setProperty("active", "true") 触发） */
 SkillButton[active="true"] {
     border: 2px solid {accent};
     border-radius: 6px;

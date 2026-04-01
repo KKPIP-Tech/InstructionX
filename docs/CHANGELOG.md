@@ -8,12 +8,12 @@
 
 ### LLM 设置对话框 (LLMSettingsDialog)
 - **布局重构**: 从旧版单栏表单改为两栏布局，左栏 Provider 列表（250px），右栏配置详情（滚动区域）
-- **新增组件**: `ProviderLogoLabel`（程序化 Provider 徽标）、`CapabilityBadge`（Vision/Thinking/Tools 徽章）、`CategoryBadge`（Chat/Embedding 徽章）、`ModelFetchedListItem`（模型行，含勾选状态）、增强 `ProviderListItem`（新增 tooltip 参数）
-- **模型列表**: 支持预设分组（minimax/glm 使用 CollapsibleGroup 按类别折叠）和 API 动态获取（ollama/siliconflow）
-- **新增 "AI" 菜单**: 原 "LLM" 菜单改名为 "AI"，整合模型服务、切换 Provider、用量统计、LLM 设置四项功能
-- **Provider 切换菜单**: 自动标记 Vision/Function Calling 能力和健康状态
-- **用量统计**: 对话框底部栏实时显示累计费用、Token 用量、请求次数
-- **新增 LLM 模型服务对话框** (`LLMModelServiceDialog`): 通过 **AI > 模型服务...** 打开，设置默认 Provider 和模型
+- **新增组件**: `ProviderListItemWidget`（Provider 列表项，含徽标、启用状态）、`IconLineEdit`（图标输入框）、`ModelListItem`（模型列表项）、`ActionButton`（操作按钮）
+- **模型列表**: 支持预设分组（deepseek-ai/pro/其他 使用 CollapsibleGroup 按类别折叠）和 API 动态获取（ollama/siliconflow）
+- **新增 "AI" 菜单**: 原 "LLM" 菜单改名为 "AI"，目前已实现 LLM 设置功能入口，Provider 切换、用量统计、模型服务入口已预埋代码待进一步集成
+- **Provider 切换菜单**: `_quick_provider_menu` 方法已实现，通过 `_rebuild_quick_provider_menu()` 动态构建，自动标记 Vision/Function Calling 能力
+- **用量统计**: `LLMModelServiceDialog` 底部栏显示累计 Token、用量费用、请求次数；`LLMSettingsDialog` 仅显示累计费用
+- **新增 LLM 模型服务对话框** (`LLMModelServiceDialog`): 三栏布局（170px/260px/弹性），支持默认 Provider 和模型设置，方法已预埋待菜单集成
 
 ### 文档更新
 - **docs/ui/main-window.md**: 更新菜单栏说明（编辑、用户中心、AI、帮助），补充 AI 菜单详细结构

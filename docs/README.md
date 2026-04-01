@@ -52,7 +52,8 @@ docs/
         ├── api-reference.md         # LLM Provider API 参考
         └── provider-config.md       # ProviderConfig/LLMConfig 配置
 
-ui/                                  # UI 模块文档
+api/                                 # API 参考文档
+├── full-reference.md                # 完整 API 参考
 ├── main-window.md                   # 主窗口
 ├── skills-panel.md                  # 技能面板
 ├── skill-button.md                  # SkillButton 技能按钮
@@ -68,9 +69,6 @@ plugins/                             # 插件文档
 ├── official-plugins.md             # 官方插件文档（11个）
 ├── thirdparty-plugins.md           # 第三方插件文档（4个）
 └── llm-integration-guide.md       # LLM 集成开发指南
-
-api/                                 # API 参考
-└── full-reference.md                # 完整 API 参考
 ```
 
 ---
@@ -104,9 +102,9 @@ api/                                 # API 参考
 
 ### 插件参考
 
-16. **[插件文档索引](plugins/index.md)** - 所有插件总览
-17. **[官方插件文档](plugins/official-plugins.md)** - 10 个官方插件详解
-18. **[第三方插件文档](plugins/thirdparty-plugins.md)** - 4 个示例插件详解
+17. **[插件文档索引](plugins/index.md)** - 所有插件总览
+18. **[官方插件文档](plugins/official-plugins.md)** - 11 个官方插件详解
+19. **[第三方插件文档](plugins/thirdparty-plugins.md)** - 4 个示例插件详解
 
 ---
 
@@ -119,7 +117,7 @@ api/                                 # API 参考
 - **PluginManager** - 插件管理器（官方插件和第三方插件的加载、注册、排序）
 - **DataProvider** - 数据提供者（数据持久化、发布/订阅、插件间通信）
 - **BackgroundTaskManager** - 后台任务管理器（同步/异步任务、定时任务、长期任务）
-- **LLMProvider** - LLM 核心层（多厂商 LLM 底层管理）
+- **LLMProvider** - LLM 核心层（多厂商 LLM 底层管理，通过 get_llm_provider() 获取）
 - **LLMPluginService** - LLM 插件服务层（对话管理、工具调用、多模态，插件开发者入口）
 
 ### 插件系统
@@ -177,8 +175,10 @@ from core.llm import get_llm_provider
 from core.interfaces import (
     IDataProvider, DataNamespace,
     ITaskManager, TaskType, TaskStatus,
-    ILLMFacade, ILogger, PluginServices
+    ILLMFacade, PluginServices
 )
+# 注意：ILogger 位于 utils.i_logger，不在 core.interfaces
+from utils.i_logger import ILogger
 ```
 
 ### 获取单例实例
