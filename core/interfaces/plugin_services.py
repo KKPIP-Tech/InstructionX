@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     from core.llm.plugin_service import LLMPluginService
     from core.data import DataProvider
     from core.task import BackgroundTaskManager
-    from core.interfaces.ilogger import LoggerManager
+    from utils.i_logger import ILogger
 
 
 @dataclass
@@ -36,12 +36,14 @@ class PluginServices:
                              if services
                              else get_llm_plugin_service())
 
-            def on_plugin_loaded(self, plugin_id, services=None):
-                # services.logger 可用于日志记录
+            def on_plugin_loaded(self):
+                # self._services 已由 PluginManager 注入（通过实例属性）
+                # self.plugin_id 已由 PluginManager 设置
+                # self._services.logger 可用于日志记录（类型为 ILogger，实际为 LoggerManager 单例）
                 ...
     """
 
     llm_facade: "LLMPluginService"
     data_provider: "DataProvider"
     task_manager: "BackgroundTaskManager"
-    logger: "LoggerManager"
+    logger: "ILogger"
