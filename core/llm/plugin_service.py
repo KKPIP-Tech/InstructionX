@@ -31,8 +31,8 @@
     executor = svc.get_tool_executor()
     executor.tools.register("search", "搜索网络", {...}, handler=my_search)
     msgs, results, final = executor.chat_with_tools(
-        messages, tools=executor.tools.get_tools()
-    )
+        messages, max_turns=5
+    )  # 工具从已注册的注册表中自动获取
 """
 
 import base64
@@ -472,8 +472,10 @@ class LLMPluginService:
             Tuple[bool, str]: (是否有效, 错误信息)
         """
         try:
-            self._llm.validate_config(provider)
-            return True, ""
+            p = self._llm.get_provider(provider)
+            if not p:
+                return False, f"Provider '{provider}' not found"
+            return p.validate_config(), ""
         except Exception as e:
             return False, str(e)
 
