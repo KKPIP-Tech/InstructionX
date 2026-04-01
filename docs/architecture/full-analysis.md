@@ -44,6 +44,8 @@
 ### 1.3 核心设计原则
 
 - **单例模式**：5 个核心服务（PluginManager、DataProvider、BackgroundTaskManager、LLMProvider、LLMPluginService）全部以单例形式运行
+  - `DataProvider`、`BackgroundTaskManager`、`LLMProvider`、`LLMPluginService` 使用 `__new__` + `threading.Lock` 双重检查锁定
+  - `PluginManager` 使用 `__new__` + `_initialized` 标志简化模式（无独立 `_lock`）
 - **LLM 双重入口**：`LLMProvider` 为底层核心，`LLMPluginService` 为插件开发者入口，两者通过 `get_llm_provider()` / `get_llm_plugin_service()` 获取
 - **接口契约优于实现**：`core/interfaces/` 定义所有核心接口，插件通过接口与框架交互
 - **Widget 缓存复用**：IPlugin 的 `get_widget()` 实现控件缓存，避免重复创建
@@ -93,7 +95,7 @@ graph TB
         subgraph CoreLLM ["LLM Layer"]
             LLMS[LLMPluginService<br/>插件开发者入口]
             LLMP[LLMProvider<br/>LLM 核心层]
-            subgraph CoreLLMProv ["Providers"]
+            subgraph CoreLLMProv ["Providers (全部4家)"]
                 MINIMAX[MiniMaxProvider]
                 GLM[GLMProvider]
                 SF[SiliconFlowProvider]
@@ -286,19 +288,37 @@ class IDataProvider(ABC):
 
 **文件**：`core/interfaces/i_llm_facade.py`
 
-定义 LLM 统一访问契约，对应 `LLMPluginService` 实现：
+定义 LLM 统一访问契约，对应 `LLMPluginService` 实现类（通过 Duck Typing 对齐）。
+
+**注意**：`ILLMFacade` 接口本身仅定义核心契约方法，以下方法签名均以代码为准：
 
 ```python
-def chat(messages, provider="default", ...) -> ChatResponse
-def stream_chat(messages, provider="default", callback=None, ...) -> Generator
-def embed(texts, provider="default", ...) -> List[EmbeddingResponse]
-def get_available_providers() -> List[ProviderInfo]
-def validate_provider(provider: str) -> tuple[bool, str]
-def create_conversation(system_prompt=None, provider="default", model=None) -> str
-def send_message(conv_id: str, content: str, images=None) -> str
-def get_conversation(conv_id: str) -> Optional[Conversation]
-def get_usage_stats(conv_id: str = None) -> UsageStats
+def chat(messages, provider="default", ...) -> ChatResponse          # core/interfaces/i_llm_facade.py:30
+def stream_chat(messages, provider="default", callback=None, ...)     # core/interfaces/i_llm_facade.py:43
+def embed(texts, provider="default", ...) -> List[EmbeddingResponse] # core/interfaces/i_llm_facade.py:57
+def get_models(provider=None) -> Dict[str, List[ModelInfo]]         # core/interfaces/i_llm_facade.py:68
+def get_provider(name) -> Optional[Any]                             # core/interfaces/i_llm_facade.py:73
+def get_all_providers() -> Dict[str, Any]                           # core/interfaces/i_llm_facade.py:78
+def get_cached_models(provider_name) -> List[ModelInfo]             # core/interfaces/i_llm_facade.py:83
+def get_conversation(conv_id) -> Optional[Any]                     # core/interfaces/i_llm_facade.py:126
+def list_conversations() -> List[Any]                               # core/interfaces/i_llm_facade.py:131
+def delete_conversation(conv_id) -> bool                           # core/interfaces/i_llm_facade.py:136
+def get_tool_executor() -> Any                                      # core/interfaces/i_llm_facade.py:143
+def get_shared_tool_registry() -> Any                              # core/interfaces/i_llm_facade.py:148
+def chat_with_tools(messages, provider="default", ...)             # core/interfaces/i_llm_facade.py:153
+def get_available_providers() -> List[Any]                          # core/interfaces/i_llm_facade.py:167
+def load_image_as_base64(file_path) -> str                         # core/interfaces/i_llm_facade.py:182
 ```
+
+**扩展方法**（仅在 `LLMPluginService` 实现类中可用，不在接口层定义）：
+- `validate_provider(provider)` — `core/llm/plugin_service.py:465`
+- `create_conversation(...)` — `core/llm/plugin_service.py:93`
+- `send_message(...)` — `core/llm/plugin_service.py:118`
+- `stream_send_message(...)` — `core/llm/plugin_service.py:147`
+- `get_usage_stats(conv_id)` — `core/llm/plugin_service.py:454`
+- `get_raw_provider(provider)` — `core/llm/plugin_service.py:480`
+- `generate_image(...)` — `core/llm/plugin_service.py:346`
+- `text_to_speech(...)` — `core/llm/plugin_service.py:381`
 
 ### 3.7 PluginServices（依赖注入容器）
 
@@ -407,7 +427,7 @@ flowchart LR
     end
 ```
 
-**⚠️ API 注册硬编码限制**：`service.py` 中 Service 类必须**严格命名为 `Service`**（`manager.py:482` 的 `attr.__name__ == 'Service'` 判断）。
+**⚠️ API 注册硬编码限制**：`service.py` 中 Service 类必须**严格命名为 `Service`**（`manager.py:532` 的 `attr.__name__ == 'Service'` 判断）。
 
 ### 4.5 MCP 函数工具导出
 
@@ -836,7 +856,7 @@ PluginManager 通过 `_create_plugin_services()` 创建 `PluginServices` 容器�
 
 ### 12.5 API 注册硬编码类名
 
-`core/plugin/manager.py:482`：
+`core/plugin/manager.py:532`：
 ```python
 if isinstance(attr, type) and attr.__name__ == 'Service':
 ```
@@ -956,7 +976,7 @@ class Service:
 | `dao.py` | **占位桩**，待 SQLite 迁移 |
 | `database_connection.py` | **占位桩** |
 | `database_manager.py` | **占位桩** |
-| `sql_map.py` | **占位桩** |
+| `sql_map.py` | **预留框架**（`SQLMap` 类骨架，待 SQLite 迁移） |
 
 #### 任务系统 (`core/task/`)
 

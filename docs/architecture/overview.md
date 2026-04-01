@@ -381,7 +381,7 @@ class PluginManager:
 
 ### 7.2 线程安全
 
-- DataProvider 使用 `RLock`（可重入锁）
+- DataProvider 使用 `Lock`（文件写入锁）和 `RLock`（订阅管理锁）双重锁机制（`core/data/data_provider.py:75-76`）
 - BackgroundTaskManager 使用线程池
 
 ### 7.3 原子写入
