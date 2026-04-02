@@ -68,6 +68,7 @@ class ProviderConfig:
         enabled_chat: bool = True,
         enabled_embedding: bool = False,
         support_vision: bool = True,
+        cache_fields: Optional[Dict[str, Any]] = None,
         **kwargs
     ):
         """初始化提供商配置
@@ -82,6 +83,7 @@ class ProviderConfig:
             enabled_chat: 是否启用聊天功能，默认 True
             enabled_embedding: 是否启用嵌入功能，默认 False
             support_vision: 是否支持视觉（多模态），默认 True
+            cache_fields: 缓存字段配置（可选）
             **kwargs: 额外的配置参数
         """
         self.name = name
@@ -93,6 +95,7 @@ class ProviderConfig:
         self.enabled_chat = enabled_chat
         self.enabled_embedding = enabled_embedding
         self.support_vision = support_vision
+        self.cache_fields = cache_fields or {}
         self.extra = kwargs
 
     def to_dict(self) -> Dict[str, Any]:
@@ -111,6 +114,7 @@ class ProviderConfig:
             "enabled_chat": self.enabled_chat,
             "enabled_embedding": self.enabled_embedding,
             "support_vision": self.support_vision,
+            "cache_fields": self.cache_fields,
             **self.extra
         }
 
@@ -131,7 +135,7 @@ class ProviderConfig:
         known_fields = {
             "name", "provider_type", "api_key", "base_url",
             "chat_model", "embedding_model", "enabled_chat",
-            "enabled_embedding", "support_vision"
+            "enabled_embedding", "support_vision", "cache_fields"
         }
         # 将未知字段保存到 extra 中
         extra = {k: v for k, v in data.items() if k not in known_fields}
@@ -145,6 +149,7 @@ class ProviderConfig:
             enabled_chat=data.get("enabled_chat", True),
             enabled_embedding=data.get("enabled_embedding", False),
             support_vision=data.get("support_vision", True),
+            cache_fields=data.get("cache_fields"),
             **extra
         )
 

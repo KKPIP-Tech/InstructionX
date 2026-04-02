@@ -43,6 +43,8 @@ class UsageInfo:
     input_cost: Optional[float] = None
     output_cost: Optional[float] = None
     total_cost: Optional[float] = None
+    cache_read_tokens: Optional[int] = None       # 从缓存读取的 token 数
+    cache_creation_tokens: Optional[int] = None   # 写入缓存的 token 数
 
 
 class Message:

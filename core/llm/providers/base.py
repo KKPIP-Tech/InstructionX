@@ -34,6 +34,8 @@ from ..exceptions import (
     APIError, AuthenticationError, RateLimitError,
     InvalidRequestError, ConnectionError, TimeoutError
 )
+from ..cache_adapter import get_cache_adapter, CacheAdapter
+from ..types_cache import CacheInfo
 
 
 class BaseProvider(ILLM):
@@ -90,6 +92,22 @@ class BaseProvider(ILLM):
         self._session = None
         self._async_session = None
         self._provider_name = provider_name  # 用于缓存标识
+        self._cache_adapter: Optional[CacheAdapter] = None
+        self._init_cache_adapter()
+
+    def _init_cache_adapter(self) -> None:
+        """初始化缓存适配器"""
+        if self.config:
+            cache_cfg = getattr(self.config, "cache_fields", None)
+            self._cache_adapter = get_cache_adapter(self.provider_type, cache_cfg)
+        else:
+            self._cache_adapter = get_cache_adapter(self.provider_type)
+
+    def _parse_cache_info(self, response: Dict) -> CacheInfo:
+        """从响应中提取缓存信息"""
+        if self._cache_adapter:
+            return self._cache_adapter.extract_cache_info(response)
+        return CacheInfo()
 
     # ==================== 模型获取与缓存 ====================
 
@@ -541,7 +559,7 @@ class BaseProvider(ILLM):
         )
 
     def _parse_usage(self, response: Dict[str, Any]) -> Optional[UsageInfo]:
-        """从 API 响应中提取 usage 信息
+        """从 API 响应中提取 usage 信息，包含缓存字段
 
         Args:
             response: API 响应字典
@@ -549,13 +567,24 @@ class BaseProvider(ILLM):
         Returns:
             Optional[UsageInfo]: 用量信息，如果 API 未返回则返回 None
         """
-        usage = response.get("usage")
+        usage = response.get("usage", response.get("usageMetadata", {}))
         if not usage:
             return None
+
+        # 标准 token 计数（兼容不同字段名）
+        input_tokens = usage.get("prompt_tokens", usage.get("input_tokens"))
+        output_tokens = usage.get("completion_tokens", usage.get("output_tokens"))
+        total_tokens = usage.get("total_tokens")
+
+        # 通过适配器提取缓存信息
+        cache_info = self._parse_cache_info(response)
+
         return UsageInfo(
-            input_tokens=usage.get("prompt_tokens"),
-            output_tokens=usage.get("completion_tokens"),
-            total_tokens=usage.get("total_tokens"),
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            total_tokens=total_tokens,
+            cache_read_tokens=cache_info.cached_tokens if cache_info else None,
+            cache_creation_tokens=None,
         )
 
     def _parse_models_response(self, response: Dict[str, Any]) -> List[ModelInfo]:

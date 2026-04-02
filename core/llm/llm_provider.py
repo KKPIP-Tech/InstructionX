@@ -29,12 +29,16 @@ Functions:
 """
 
 import threading
+import time
+from datetime import datetime
 from typing import Dict, Any, Optional, List, Union, Callable, AsyncIterator, TYPE_CHECKING
 
 from .config import LLMConfig, ProviderConfig
 from .provider_interface import ILLM, Message, ChatResponse, EmbeddingResponse, ModelInfo
 from .providers import get_provider_class, PROVIDER_REGISTRY
 from .exceptions import ConfigurationError
+from .usage_record_store import get_usage_record_store
+from .types import UsageRecord
 # Note: LLMProvider implements ILLMFacade interface via method signatures.
 # Inheritance is not used here to avoid circular imports.
 # Use core.interfaces.ILLMFacade for type hints in plugins.
@@ -110,6 +114,7 @@ class LLMProvider:
         self._providers: Dict[str, ILLM] = {}
         self._models_cache: Dict[str, List[ModelInfo]] = {}  # 模型缓存
         self._logger = LoggerManager()
+        self._usage_store = get_usage_record_store()
         self._init_providers()
         self._fetch_all_models()  # 启动时自动拉取模型列表
 
@@ -314,6 +319,35 @@ class LLMProvider:
 
         return self._config.remove_provider(name)
 
+    def _record_usage(
+        self,
+        response: ChatResponse,
+        provider: str,
+        model: str,
+        is_stream: bool,
+        duration_ms: float,
+    ) -> None:
+        """记录 API 用量到持久化存储"""
+        usage = getattr(response, "usage", None)
+        if usage is None:
+            return
+        cached_tokens = getattr(usage, "cache_read_tokens", 0) or 0
+        record = UsageRecord(
+            id="",
+            timestamp=datetime.now(),
+            conversation_id="",
+            provider=provider,
+            model=model,
+            input_tokens=usage.input_tokens or 0,
+            output_tokens=usage.output_tokens or 0,
+            total_tokens=usage.total_tokens or 0,
+            cached_tokens=cached_tokens,
+            cache_hit=cached_tokens > 0,
+            is_stream=is_stream,
+            duration_ms=round(duration_ms, 2),
+        )
+        self._usage_store.record(record)
+
     def reload_config(self) -> None:
         """重新加载 LLM 提供商配置
 
@@ -368,13 +402,26 @@ class LLMProvider:
         if not provider_instance:
             raise ConfigurationError(f"Provider not found: {provider}")
 
-        return provider_instance.chat(
+        t0 = time.perf_counter()
+        response = provider_instance.chat(
             messages=messages,
             model=model,
             temperature=temperature,
             max_tokens=max_tokens,
             **kwargs
         )
+        duration_ms = (time.perf_counter() - t0) * 1000
+
+        # 记录用量
+        self._record_usage(
+            response=response,
+            provider=provider,
+            model=model or provider_instance.chat_model or "",
+            is_stream=False,
+            duration_ms=duration_ms,
+        )
+
+        return response
 
     def stream_chat(
         self,
@@ -417,7 +464,8 @@ class LLMProvider:
         if not provider_instance:
             raise ConfigurationError(f"Provider not found: {provider}")
 
-        return provider_instance.stream_chat(
+        t0 = time.perf_counter()
+        response_gen = provider_instance.stream_chat(
             messages=messages,
             model=model,
             temperature=temperature,
@@ -425,6 +473,29 @@ class LLMProvider:
             callback=callback,
             **kwargs
         )
+
+        # 包装生成器：记录流结束后的 usage
+        last_response = None
+
+        def _wrapped():
+            nonlocal last_response
+            nonlocal t0
+            try:
+                for r in response_gen:
+                    last_response = r
+                    yield r
+            finally:
+                duration_ms = (time.perf_counter() - t0) * 1000
+                if last_response is not None:
+                    self._record_usage(
+                        response=last_response,
+                        provider=provider,
+                        model=model or provider_instance.chat_model or "",
+                        is_stream=True,
+                        duration_ms=duration_ms,
+                    )
+
+        return _wrapped()
 
     def embed(
         self,
