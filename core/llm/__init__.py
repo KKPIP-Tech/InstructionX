@@ -56,7 +56,15 @@ from .types import (
     AudioResult,
     ProviderInfo,
     StreamChunk,
+    UsageRecord,
 )
+
+# 新增：用量记录持久化
+from .usage_record_store import UsageRecordStore, get_usage_record_store
+
+# 新增：缓存相关
+from .types_cache import CacheInfo, CacheType
+from .cache_adapter import CacheAdapter, get_cache_adapter, DEFAULT_CACHE_CONFIG
 
 # 新增：插件服务层类
 from .plugin_service import LLMPluginService, get_llm_plugin_service
@@ -94,6 +102,16 @@ __all__ = [
     "AudioResult",
     "ProviderInfo",
     "StreamChunk",
+    "UsageRecord",
+    # 用量记录持久化
+    "UsageRecordStore",
+    "get_usage_record_store",
+    # 缓存相关
+    "CacheInfo",
+    "CacheType",
+    "CacheAdapter",
+    "get_cache_adapter",
+    "DEFAULT_CACHE_CONFIG",
     # 插件服务层类
     "LLMPluginService",
     "get_llm_plugin_service",
