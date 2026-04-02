@@ -53,13 +53,15 @@ docs/
         └── provider-config.md       # ProviderConfig/LLMConfig 配置
 
 api/                                 # API 参考文档
-├── full-reference.md                # 完整 API 参考
+└── full-reference.md                # 完整 API 参考
+
+ui/                                  # UI 组件文档
 ├── main-window.md                   # 主窗口
 ├── skills-panel.md                  # 技能面板
 ├── skill-button.md                  # SkillButton 技能按钮
 ├── work-area.md                     # 工作区
-├── dialogs.md                       # 对话框组件
-└── usage_panel.md                  # 用量查询面板（UI/usage_panel.py）
+└── dialogs.md                       # 对话框组件
+    # 注：UsagePanel（用量查询面板）源码位于 ui/usage_panel.py
 
 utils/                               # 工具模块文档
 ├── logging-tools.md                 # 日志工具
