@@ -226,3 +226,73 @@ class StreamChunk:
     tool_calls: List[Dict] = field(default_factory=list)
     usage: Optional[UsageInfo] = None
     error: Optional[str] = None
+
+
+@dataclass
+class UsageRecord:
+    """A single LLM API request record with timestamp.
+
+    Stored persistently in data/llm_usage.json via UsageRecordStore.
+
+    Attributes:
+        id: Unique record ID (UUID4 hex string)
+        timestamp: Precise UTC time of the request
+        conversation_id: Associated conversation ID, "" if no conversation
+        provider: Provider name (e.g. "minimax", "glm")
+        model: Model ID used for this request
+        input_tokens: Prompt token count
+        output_tokens: Completion token count
+        total_tokens: Sum of input+output tokens
+        cached_tokens: Tokens served from prompt cache (0 if none)
+        cache_hit: True if at least some tokens were cached
+        is_stream: True for streaming requests
+        duration_ms: Request duration in milliseconds
+    """
+    id: str
+    timestamp: datetime
+    conversation_id: str
+    provider: str
+    model: str
+    input_tokens: int
+    output_tokens: int
+    total_tokens: int
+    cached_tokens: int
+    cache_hit: bool
+    is_stream: bool
+    duration_ms: float
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "id": self.id,
+            "timestamp": self.timestamp.isoformat(),
+            "conversation_id": self.conversation_id,
+            "provider": self.provider,
+            "model": self.model,
+            "input_tokens": self.input_tokens,
+            "output_tokens": self.output_tokens,
+            "total_tokens": self.total_tokens,
+            "cached_tokens": self.cached_tokens,
+            "cache_hit": self.cache_hit,
+            "is_stream": self.is_stream,
+            "duration_ms": self.duration_ms,
+        }
+
+    @classmethod
+    def from_dict(cls, d: Dict[str, Any]) -> "UsageRecord":
+        ts = d["timestamp"]
+        if isinstance(ts, str):
+            ts = datetime.fromisoformat(ts)
+        return cls(
+            id=d["id"],
+            timestamp=ts,
+            conversation_id=d.get("conversation_id", ""),
+            provider=d["provider"],
+            model=d["model"],
+            input_tokens=d.get("input_tokens", 0),
+            output_tokens=d.get("output_tokens", 0),
+            total_tokens=d.get("total_tokens", 0),
+            cached_tokens=d.get("cached_tokens", 0),
+            cache_hit=d.get("cache_hit", False),
+            is_stream=d.get("is_stream", False),
+            duration_ms=d.get("duration_ms", 0.0),
+        )
