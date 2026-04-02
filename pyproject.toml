@@ -4,7 +4,9 @@ version = "0.1.0"
 description = "基于 PySide6 的插件式桌面应用框架，支持 LLM 集成、MCP Function Calling 和热插拔插件系统"
 readme = "README.md"
 requires-python = ">=3.14"
-dependencies = []
+dependencies = [
+    "mcp>=1.0.0",
+]
 
 [project.optional-dependencies]
 test = [
