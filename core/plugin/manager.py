@@ -114,7 +114,28 @@ class PluginManager:
             data_provider=data_provider,
             task_manager=task_manager,
             logger=logger,
+            mcp_manager=self._get_mcp_manager(),
+            mcp_client=self._get_mcp_client(),
         )
+
+    def _get_mcp_manager(self) -> Any:
+        """获取 MCPManager 单例"""
+        try:
+            from core.mcp import get_mcp_manager
+            return get_mcp_manager()
+        except Exception:
+            return None
+
+    def _get_mcp_client(self) -> Any:
+        """获取 MCPClientManager 实例"""
+        try:
+            from core.mcp import get_mcp_manager
+            from core.llm import get_llm_plugin_service
+            mcp_mgr = get_mcp_manager()
+            tool_registry = get_llm_plugin_service().get_shared_tool_registry()
+            return mcp_mgr.get_client_manager(tool_registry)
+        except Exception:
+            return None
 
     def load_plugins(self):
         """加载所有插件（包括官方插件和第三方插件）"""
@@ -581,6 +602,39 @@ class PluginManager:
 
         # 存入注册表
         self._api_registry[plugin_id] = plugin_api
+
+        # 通知 MCP 系统有新工具注册
+        self._notify_mcp_new_tools(plugin_id, api_descriptions)
+
+    def _notify_mcp_new_tools(
+        self,
+        plugin_id: str,
+        api_descriptions: Dict[str, Dict[str, Any]],
+    ) -> None:
+        """通知 MCP 系统有新插件工具注册"""
+        try:
+            mcp_mgr = self._get_mcp_manager()
+            if mcp_mgr is None:
+                return
+            for method_name, desc in api_descriptions.items():
+                mcp_mgr.sync_plugin_tool(
+                    plugin_id=plugin_id,
+                    method_name=method_name,
+                    description=desc.get("description", ""),
+                    parameters={
+                        "type": "object",
+                        "properties": {
+                            k: {"type": v.get("type", "string")}
+                            for k, v in desc.get("parameters", {}).items()
+                        },
+                        "required": [
+                            k for k, v in desc.get("parameters", {}).items()
+                            if v.get("required", False)
+                        ],
+                    },
+                )
+        except Exception:
+            pass  # MCP 系统可能未初始化，忽略错误
             
     def unregister_plugin_api(self, plugin_id: str) -> None:
         """
@@ -590,7 +644,21 @@ class PluginManager:
             plugin_id: 插件唯一标识符
         """
         if plugin_id in self._api_registry:
+            # 通知 MCP 系统注销工具
+            self._notify_mcp_remove_tools(plugin_id)
             del self._api_registry[plugin_id]
+
+    def _notify_mcp_remove_tools(self, plugin_id: str) -> None:
+        """通知 MCP 系统移除插件工具"""
+        try:
+            mcp_mgr = self._get_mcp_manager()
+            if mcp_mgr is None:
+                return
+            if plugin_id in self._api_registry:
+                for method_name in self._api_registry[plugin_id].api_methods:
+                    mcp_mgr.remove_plugin_tool(plugin_id, method_name)
+        except Exception:
+            pass
 
     def get_plugin_api(self, plugin_id: str) -> Optional[Dict[str, Any]]:
         """
