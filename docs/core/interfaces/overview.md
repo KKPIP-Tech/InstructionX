@@ -416,6 +416,54 @@ class MyPlugin(IPlugin):
 
 ---
 
+#### 3.5.1 LLMPluginService（LLM 完整实现）
+
+**文件**: `core/llm/plugin_service.py`
+
+**作用**: `ILLMFacade` 接口的完整实现，是插件开发者使用 LLM 能力的唯一入口。整合了对话管理、工具调用自动化、向量嵌入、多模态和用量统计。
+
+**核心组件**:
+- `ConversationManager`: 对话生命周期管理
+- `ToolCallExecutor` / `ToolRegistry`: 工具调用自动化
+- `LLMProvider`: 底层 LLM 调用
+
+**获取方式**:
+
+```python
+# 推荐：通过 DI 注入（插件构造器参数）
+def __init__(self, services: PluginServices | None = None):
+    self._llm = services.llm_facade if services else get_llm_plugin_service()
+
+# 备选：直接导入单例
+from core.llm import get_llm_plugin_service
+svc = get_llm_plugin_service()
+```
+
+**主要方法**:
+
+| 方法 | 说明 |
+|------|------|
+| `create_conversation(system_prompt?, provider?, model?)` | 创建对话，返回 conv_id |
+| `send_message(conv_id, content, images?, ...)` | 同步发送消息 |
+| `stream_send_message(conv_id, content, ...)` | 流式发送消息 |
+| `chat(messages, ...)` | 直接 chat（无对话状态） |
+| `stream_chat(messages, callback, ...)` | 流式 chat（无对话状态） |
+| `chat_with_tools(messages, max_turns=5)` | 工具调用循环（返回消息列表、工具结果、最终响应） |
+| `chat_with_tools_stream(messages, callback, ...)` | 流式工具调用 |
+| `get_tool_executor()` | 获取 `ToolCallExecutor` 实例 |
+| `get_shared_tool_registry()` | 获取共享 `ToolRegistry`（所有插件的工具） |
+| `get_raw_provider(provider?)` | 获取底层 `ILLM` Provider（高级插件用） |
+| `embed(texts, provider?, model?)` | 向量嵌入 |
+| `generate_image(prompt, provider?)` | 图像生成 |
+| `text_to_speech(text, provider?)` | 文本转语音 |
+| `get_available_providers()` | 获取所有可用 Provider 信息 |
+| `get_usage_stats(conv_id?)` | 获取用量统计 |
+| `validate_provider(provider)` | 验证 Provider 配置 |
+
+**详细文档**: [LLM Provider API 参考](../llm-provider/api-reference.md#section-5)
+
+---
+
 ### 3.6 ILogger（日志接口）
 
 **文件**: `utils/i_logger.py`（通过 `core/interfaces/__init__.py` 重导出）

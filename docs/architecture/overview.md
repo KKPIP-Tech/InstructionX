@@ -130,6 +130,31 @@ graph TB
 
 **DI 注入**: `PluginManager` 通过 `PluginServices.llm_facade` 注入到各插件
 
+#### 3.4.1 ConversationManager
+
+**文件位置**: `core/llm/conversation_manager.py`
+
+**职责**:
+- 对话生命周期管理（创建、更新、查询）
+- 自动上下文截断（保留 system + 最近 2/3 消息，超阈值 80% 自动截断）
+- Token 估算（中文字符按 1:1 计，英文按 4:1 估算）
+- 费用计算（基于 `DEFAULT_PRICING` 定价表）
+
+#### 3.4.2 ToolCallExecutor / ToolRegistry
+
+**文件位置**: `core/llm/tool_call_executor.py`
+
+**职责**:
+- `ToolRegistry`: 集中管理所有可用工具（`register_tool()` / `unregister_tool()` / `get_tool()`）
+- `ToolCallExecutor`: 自动工具调用循环（`chat_with_tools()`），支持流式版本
+
+**数据文件**:
+- `core/llm/types.py` — 集中管理 LLMPluginService 相关数据类型（Conversation、ToolResult、UsageStats 等）
+- `core/llm/pricing.py` — 提供 `DEFAULT_PRICING` 定价表
+- `core/llm/types_cache.py` — 统一缓存信息类型（CacheInfo、CacheType）
+- `core/llm/cache_adapter.py` — 各 Provider 缓存适配器
+- `core/llm/usage_record_store.py` — 用量记录持久化（`data/llm_usage.json`）
+
 ### 3.5 PluginVersion（版本管理）
 
 **文件位置**: `core/plugin/plugin_version.py`

@@ -284,6 +284,18 @@ registry.register(
 )
 ```
 
+### 获取底层 Provider（高级用法）
+
+大多数插件应通过 `LLMPluginService` 使用 LLM 能力。如需直接访问底层 `ILLM` Provider 实例（例如调用某些 `LLMPluginService` 未封装的高级方法），可使用：
+
+```python
+provider = svc.get_raw_provider(provider="default")
+# provider 是 ILLM 接口的实例（通常是某个具体的 Provider 类）
+response = provider.chat([...])
+```
+
+> **警告**：直接使用底层 Provider 会绕过 `LLMPluginService` 的对话管理、用量记录和错误处理逻辑。仅在需要 `LLMPluginService` 未提供的能力时才使用。
+
 **工具注册与使用完整流程**：
 
 ```mermaid

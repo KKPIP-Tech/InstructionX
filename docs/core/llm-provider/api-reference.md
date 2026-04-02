@@ -32,6 +32,46 @@ from core.llm.exceptions import (
 )
 ```
 
+### 1.3 插件服务层新增类型
+
+```python
+from core.llm.types import (
+    Conversation,
+    ToolResult,
+    UsageStats,
+    ImageResult,
+    AudioResult,
+    ProviderInfo,
+    StreamChunk,
+    UsageRecord,           # 新增
+)
+from core.llm.types_cache import (
+    CacheInfo,             # 新增
+    CacheType,             # 新增
+)
+from core.llm.cache_adapter import (
+    CacheAdapter,          # 新增
+    get_cache_adapter,     # 新增
+    DEFAULT_CACHE_CONFIG,  # 新增
+)
+from core.llm.usage_record_store import (
+    UsageRecordStore,      # 新增
+    get_usage_record_store, # 新增
+)
+```
+
+### 1.4 插件服务层类
+
+```python
+from core.llm import (
+    LLMPluginService,
+    get_llm_plugin_service,
+    ConversationManager,
+    ToolCallExecutor,
+    ToolRegistry,
+)
+```
+
 ---
 
 ## 2. 数据类型
@@ -118,6 +158,151 @@ model.extra                      # Dict: 额外信息
 model.to_dict()          # 转换为字典
 ModelInfo.from_dict(d)   # 从字典创建
 ```
+
+---
+
+### 2.5 UsageRecord
+
+```python
+from core.llm.types import UsageRecord
+
+# 属性
+record.id               # str: 唯一记录 ID（UUID4）
+record.timestamp         # datetime: 请求 UTC 时间
+record.conversation_id   # str: 关联对话 ID，无对话则为空
+record.provider          # str: Provider 名称
+record.model             # str: 模型 ID
+record.input_tokens      # int: 输入 token 数
+record.output_tokens      # int: 输出 token 数
+record.total_tokens       # int: 总 token 数（input + output）
+record.cached_tokens      # int: 来自 Prompt Cache 的 token 数
+record.cache_hit          # bool: 是否命中缓存
+record.is_stream          # bool: 是否为流式请求
+record.duration_ms        # float: 请求耗时（毫秒）
+
+# 方法
+record.to_dict()         # 转换为字典（用于持久化）
+UsageRecord.from_dict(d) # 从字典创建
+```
+
+存储位置: `data/llm_usage.json`，由 `UsageRecordStore` 管理。
+
+---
+
+### 2.6 CacheType
+
+```python
+from core.llm.types_cache import CacheType
+
+class CacheType(Enum):
+    NONE              # 无缓存
+    PROMPT_CACHE      # MiniMax 被动缓存
+    ANTHROPIC_CACHE   # Anthropic 主动缓存
+    KV_CACHE          # OpenAI 自动 KV Cache
+    CONTEXT_CACHE     # Gemini 上下文缓存
+    SPECULATIVE       # 推测解码
+```
+
+---
+
+### 2.7 CacheInfo
+
+```python
+from core.llm.types_cache import CacheInfo
+
+# 属性
+info.enabled           # bool: 是否启用缓存
+info.cache_type        # str: 缓存类型（CacheType.value）
+info.cached_tokens     # int: 命中缓存的 token 数
+info.new_tokens        # int: 新增的 token 数（非缓存）
+info.cache_hit         # bool: 是否命中缓存
+info.cache_hit_rate    # float: 缓存命中率（0.0 ~ 1.0）
+info.ttl_seconds      # Optional[int]: 缓存过期时间（秒）
+info.raw_data         # Dict: 供应商原始信息
+
+# 属性
+info.total_input_tokens  # int: cached_tokens + new_tokens
+info.efficiency         # float: 缓存效率（cached_tokens / total_input_tokens）
+```
+
+由 `CacheAdapter.extract_cache_info()` 从 API 响应中提取。
+
+---
+
+### 2.8 CacheAdapter
+
+```python
+from core.llm.cache_adapter import CacheAdapter, get_cache_adapter, DEFAULT_CACHE_CONFIG
+
+# 缓存配置常量
+DEFAULT_CACHE_CONFIG  # Dict[str, Dict]: 各 Provider 默认缓存字段路径配置
+
+# 方法
+adapter.extract_cache_info(response: Dict) -> CacheInfo
+    # 从 API 响应字典中提取缓存信息
+
+adapter.is_cache_available(model: Optional[str] = None) -> bool
+    # 检查模型是否支持缓存
+
+adapter.prepare_cache_params(config: Dict) -> Dict
+    # 准备缓存相关请求参数（供将来扩展）
+```
+
+`get_cache_adapter(provider_type, cache_config?)` 返回 `ConfigurableCacheAdapter` 实例。`cache_config` 可覆盖 `DEFAULT_CACHE_CONFIG` 中的字段路径映射。
+
+支持的 Provider 缓存类型:
+
+| Provider | 缓存类型 | TTL |
+|----------|---------|-----|
+| minimax | prompt_cache | - |
+| openai | kv_cache | - |
+| anthropic | anthropic_cache | 300s |
+| gemini | context_cache | 3600s |
+| glm | prompt_cache | - |
+| siliconflow | kv_cache | - |
+| ollama | none | - |
+
+---
+
+### 2.9 UsageRecordStore
+
+```python
+from core.llm.usage_record_store import UsageRecordStore, get_usage_record_store
+
+store = get_usage_record_store()  # 单例
+
+# 记录请求
+store.record(usage_record: UsageRecord) -> None
+
+# 查询记录
+store.get_records(
+    start_time: Optional[datetime] = None,
+    end_time: Optional[datetime] = None,
+    provider: Optional[str] = None,
+    model: Optional[str] = None,
+    conversation_id: Optional[str] = None,
+    limit: Optional[int] = None,
+    offset: int = 0,
+) -> List[UsageRecord]
+
+# 聚合统计
+store.aggregate(
+    start_time: Optional[datetime] = None,
+    end_time: Optional[datetime] = None,
+    group_by: str = "provider",  # "provider" | "model" | "day"
+) -> Dict[str, Any]
+
+# 总计统计
+store.get_total_stats(
+    start_time: Optional[datetime] = None,
+    end_time: Optional[datetime] = None,
+) -> Dict[str, Any]
+
+# 清理旧记录
+store.prune(before: datetime) -> int  # 返回删除的记录数
+```
+
+存储文件: `data/llm_usage.json`。采用原子写入（临时文件 + `os.replace`），线程安全，后台异步保存。
 
 ---
 

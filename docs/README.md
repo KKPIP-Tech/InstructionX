@@ -58,11 +58,13 @@ api/                                 # API 参考文档
 ├── skills-panel.md                  # 技能面板
 ├── skill-button.md                  # SkillButton 技能按钮
 ├── work-area.md                     # 工作区
-└── dialogs.md                       # 对话框组件
+├── dialogs.md                       # 对话框组件
+└── usage_panel.md                  # 用量查询面板（UI/usage_panel.py）
 
 utils/                               # 工具模块文档
 ├── logging-tools.md                 # 日志工具
-└── style-qss.md                     # StyleQSS 样式系统
+├── style-qss.md                     # StyleQSS 样式系统
+└── font-map.md                      # 字体映射模块
 
 plugins/                             # 插件文档
 ├── index.md                        # 插件索引
@@ -171,6 +173,10 @@ from core import BackgroundTaskManager, TaskType, TaskStatus
 # LLM 提供者
 from core.llm import get_llm_provider
 
+# LLM 插件服务层（推荐插件开发者使用）
+from core.llm import get_llm_plugin_service, LLMPluginService
+from core.llm.types import Conversation, ToolResult, UsageStats
+
 # 抽象接口层（推荐通过接口而非直接依赖实现）
 from core.interfaces import (
     IDataProvider, DataNamespace,
@@ -195,6 +201,9 @@ task_manager = BackgroundTaskManager()
 
 # LLM 提供者
 llm_provider = get_llm_provider()
+
+# LLM 插件服务层（推荐）
+llm_service = get_llm_plugin_service()
 ```
 
 ---

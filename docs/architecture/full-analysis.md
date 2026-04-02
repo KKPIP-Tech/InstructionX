@@ -992,9 +992,17 @@ class Service:
 | 文件 | 核心职责 |
 |------|---------|
 | `llm_provider.py` | LLMProvider 单例，多提供商门面 |
-| `provider_interface.py` | ILLM 抽象基类 + 数据类型 |
+| `provider_interface.py` | ILLM 抽象基类 + 数据类型（Message、ChatResponse 等） |
 | `config.py` | LLMConfig / ProviderConfig 配置管理 |
 | `exceptions.py` | LLM 异常体系（9 类） |
+| `types.py` | LLM 服务层数据类型（Conversation、ToolResult、UsageStats、UsageRecord 等） |
+| `pricing.py` | DEFAULT_PRICING 定价表 |
+| `conversation_manager.py` | ConversationManager 对话生命周期管理 |
+| `tool_call_executor.py` | ToolCallExecutor / ToolRegistry 工具调用自动化 |
+| `plugin_service.py` | LLMPluginService 插件开发者主入口 |
+| `types_cache.py` | CacheInfo / CacheType 缓存信息类型 |
+| `cache_adapter.py` | CacheAdapter 缓存适配器 + DEFAULT_CACHE_CONFIG |
+| `usage_record_store.py` | UsageRecordStore 用量记录持久化（data/llm_usage.json） |
 | `providers/__init__.py` | PROVIDER_REGISTRY + 装饰器注册 |
 | `providers/base.py` | BaseProvider 模板方法基类 |
 | `providers/minimax.py` | MiniMaxProvider 实现 |

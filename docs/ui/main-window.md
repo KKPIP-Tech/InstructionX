@@ -79,6 +79,16 @@ def _create_ai_menu(self, menu_bar):
     settings_action.triggered.connect(self._open_llm_settings_dialog)
     self._ai_menu.addAction(settings_action)
 
+    # 模型服务设置
+    service_action = QAction("模型服务设置...", self)
+    service_action.triggered.connect(self._open_llm_model_service_dialog)
+    self._ai_menu.addAction(service_action)
+
+    # 用量查询
+    usage_action = QAction("用量查询", self)
+    usage_action.triggered.connect(self._open_usage_panel)
+    self._ai_menu.addAction(usage_action)
+
     # Provider 快速切换子菜单 (_quick_provider_menu)
     self._quick_provider_menu = QMenu("切换模型服务", self._ai_menu)
     self._ai_menu.addMenu(self._quick_provider_menu)
@@ -87,6 +97,10 @@ def _create_ai_menu(self, menu_bar):
 ```
 
 点击 **LLM 设置...** 调用 `_open_llm_settings_dialog()`，打开 `LLMSettingsDialog`（两栏布局）进行 LLM Provider 配置。
+
+点击 **模型服务设置...** 调用 `_open_llm_model_service_dialog()`，打开 `LLMModelServiceDialog`（三栏布局：左侧分类、中间 Provider 列表、右侧详情），支持新增、编辑、删除 Provider 及设置默认模型。变更默认 Provider 时触发 `default_changed(provider, model)` 信号。
+
+点击 **用量查询** 调用 `_open_usage_panel()`，打开 `UsagePanel` 对话框查看 token 用量和费用统计。
 
 **Provider 快速切换** 由 `_quick_provider_menu`（AI 菜单子菜单）处理，通过 `_rebuild_quick_provider_menu()` 动态构建，自动为每个启用的 Provider 生成菜单项，并显示能力标记：
 - 👁 - 支持 Vision

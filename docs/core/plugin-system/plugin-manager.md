@@ -464,13 +464,13 @@ def _create_plugin_services(self) -> PluginServices:
 | `task_manager` | `BackgroundTaskManager` | 后台任务管理（失败时为 `None`） |
 | `logger` | `LoggerManager` | 日志服务（`LoggerManager` 实例） |
 
-**使用流程**：
+**使用流程**（见 `manager.py` 的 `_load_plugin_from_directory()` 方法，第 238-252 行）：
 
 ```python
 # 1. PluginManager 在加载插件前创建服务容器
 services = self._create_plugin_services()
 
-# 2. 将 services 注入插件
+# 2. 将 services 注入插件（通过构造器参数 + 实例属性双重注入）
 plugin = plugin_class(services=services)
 plugin._plugin_id = plugin_id  # 框架内部赋值
 plugin._services = services  # 框架内部赋值
@@ -478,6 +478,8 @@ plugin._services = services  # 框架内部赋值
 # 3. 调用生命周期回调（不传参数，向后兼容旧插件）
 plugin.on_plugin_loaded()
 ```
+
+**注入时机说明**: `_create_plugin_services()` 在 `_load_plugin_from_directory()` 遍历每个插件时调用，而非全局一次性创建。这意味着每个插件加载时共享同一个 `PluginServices` 实例（DI 容器），因此旧版插件即便不使用 DI 也能通过 `get_llm_plugin_service()` 等单例函数访问服务。
 
 > **注意**：插件通过 `services` 参数接收容器，但应将引用保存到实例属性 `self._services`，
 > 以便在后续方法中访问。旧版插件（不支持 DI）可通过直接导入单例访问服务。

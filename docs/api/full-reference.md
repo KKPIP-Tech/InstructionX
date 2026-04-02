@@ -282,6 +282,59 @@ from core.llm.exceptions import (
 | `TimeoutError` | 超时错误 |
 | `StreamingError` | 流式输出错误 |
 
+### 5.3 LLMPluginService（插件开发者主入口）
+
+**文件**: `core/llm/plugin_service.py`
+
+推荐通过 `PluginServices.llm_facade`（DI 注入）或 `get_llm_plugin_service()` 获取。
+
+| 方法 | 说明 | 返回值 |
+|------|------|--------|
+| `create_conversation(system_prompt?, provider?, model?)` | 创建对话 | str (conv_id) |
+| `send_message(conv_id, content, images?, ...)` | 同步发送消息 | str (回复内容) |
+| `stream_send_message(conv_id, content, callback?, ...)` | 流式发送消息 | str (回复内容) |
+| `chat(messages, provider?, model?, ...)` | 直接 chat（无对话状态） | Any |
+| `stream_chat(messages, callback, provider?, ...)` | 流式 chat（无对话状态） | None |
+| `chat_with_tools(messages, provider?, model?, max_turns?, ...)` | 工具调用循环 | Tuple[List, List, Any] |
+| `chat_with_tools_stream(messages, callback, provider?, ...)` | 流式工具调用 | Tuple[List, List, str] |
+| `get_tool_executor()` | 获取工具调用执行器 | ToolCallExecutor |
+| `get_shared_tool_registry()` | 获取共享工具注册表 | ToolRegistry |
+| `get_raw_provider(provider?)` | 获取底层 ILLM Provider（高级用） | ILLM |
+| `embed(texts, provider?, model?)` | 向量嵌入 | List |
+| `generate_image(prompt, provider?, ...)` | 图像生成 | ImageResult |
+| `text_to_speech(text, provider?, ...)` | 文本转语音 | AudioResult |
+| `load_image_as_base64(file_path)` | 图片文件转 base64 | str |
+| `get_available_providers()` | 获取所有 Provider 信息 | List[ProviderInfo] |
+| `get_usage_stats(conversation_id?)` | 获取用量统计 | UsageStats |
+| `validate_provider(provider)` | 验证 Provider 配置 | Tuple[bool, str] |
+
+详细文档: [LLM Provider API 参考](../core/llm-provider/api-reference.md#section-5)
+
+### 5.4 ConversationManager
+
+**文件**: `core/llm/conversation_manager.py`
+
+| 方法 | 说明 | 返回值 |
+|------|------|--------|
+| `create_conversation(system_prompt?, provider?, model?)` | 创建对话 | str (conv_id) |
+| `get_conversation(conv_id)` | 获取对话 | Optional[Conversation] |
+| `list_conversations()` | 列出所有对话 | List[Conversation] |
+| `delete_conversation(conv_id)` | 删除对话 | None |
+| `get_usage_stats(conv_id?)` | 获取用量统计 | UsageStats |
+
+### 5.5 ToolCallExecutor / ToolRegistry
+
+**文件**: `core/llm/tool_call_executor.py`
+
+| 组件 | 方法/属性 | 说明 |
+|------|---------|------|
+| `ToolRegistry` | `register(name, description, parameters, handler)` | 注册工具 |
+| `ToolRegistry` | `unregister(name)` | 注销工具 |
+| `ToolRegistry` | `get_tool(name)` | 获取工具 |
+| `ToolRegistry` | `get_all_tools()` | 获取所有工具 |
+| `ToolCallExecutor` | `chat_with_tools(messages, provider?, model?, max_turns?, ...)` | 工具调用循环 |
+| `ToolCallExecutor` | `chat_with_tools(..., stream, stream_callback)` | 流式工具调用 |
+
 ---
 
 ## 6. 常用代码片段
