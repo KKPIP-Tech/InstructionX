@@ -431,6 +431,7 @@ os.replace(temp_file, data_file)
 - [DataProvider 概述](../core/data-provider/overview.md)
 - [后台任务概述](../core/background-task/overview.md)
 - [LLM Provider 概述](../core/llm-provider/overview.md)
+- [MCP 协议模块概述](../core/mcp/overview.md)
 
 ---
 

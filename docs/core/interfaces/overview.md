@@ -702,6 +702,7 @@ except Exception as e:
 - [DataProvider 概述](../data-provider/overview.md)
 - [后台任务概述](../background-task/overview.md)
 - [LLM Provider 概述](../llm-provider/overview.md)
+- [MCP 协议模块概述](../mcp/overview.md)
 - [完整 API 参考](../../api/full-reference.md)
 
 ---

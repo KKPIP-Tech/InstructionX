@@ -502,6 +502,7 @@ print("结果:", result)
 - [DataProvider 概述](../data-provider/overview.md)
 - [后台任务概述](../background-task/overview.md)
 - [后台任务 API 参考](../background-task/api-reference.md)
+- [MCP 协议模块概述](../mcp/overview.md)
 
 ---
 

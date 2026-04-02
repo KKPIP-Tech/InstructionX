@@ -27,10 +27,24 @@ graph TB
         IPlugin[core/interfaces/i_plugin.py<br/>IPlugin]
     end
 
+    subgraph MCP ["MCP 层"]
+        MCPM[MCPManager 单例<br/>core/mcp/manager.py]
+        MCPH[MCPHostServer<br/>core/mcp/server.py]
+        MCPC[MCPClientManager<br/>core/mcp/client.py]
+        MCPB[MCPBridge<br/>core/mcp/bridge.py]
+        MCPM --> MCPH
+        MCPM --> MCPC
+        MCPB --> MCPH
+        MCPB --> PM
+        MCPC --> TR
+    end
+
     subgraph LLM ["LLM 层"]
         LLMS[core/llm/plugin_service.py<br/>LLMPluginService 单例<br/>插件开发者入口]
         LLMP[core/llm/llm_provider.py<br/>LLMProvider 单例<br/>LLM 核心层]
+        TR[ToolRegistry<br/>core/llm/tool_call_executor.py]
         LLMS --> LLMP
+        LLMS --> TR
     end
 
     subgraph Utils ["工具层"]
@@ -55,6 +69,7 @@ graph TB
     PLUGIN --> DP
     PLUGIN --> BTM
     PLUGIN --> LLMS
+    PLUGIN --> MCPM
 ```
 
 ---
@@ -144,7 +159,7 @@ shutdown()                         # 安全关闭任务管理器
 
 ### 3.1 单例列表
 
-项目中有 **7 个核心单例**（含 2 个内部单例）：
+项目中有 **8 个核心单例**（含 2 个内部单例）：
 
 | 类名 | 文件 | 用途 |
 |------|------|------|
@@ -153,6 +168,7 @@ shutdown()                         # 安全关闭任务管理器
 | **BackgroundTaskManager** | `core/task/background_task.py` | 任务调度 |
 | **LLMProvider** | `core/llm/llm_provider.py` | 大语言模型核心层（底层） |
 | **LLMPluginService** | `core/llm/plugin_service.py` | LLM 插件服务层（插件开发者入口） |
+| **MCPManager** | `core/mcp/manager.py` | MCP 协议协调器（Server + Client 管理） |
 | **TaskStorage** | `core/task/task_storage.py` | 任务数据持久化（BackgroundTaskManager 内部使用，内部单例） |
 | **LoggerManager** | `utils/logging_tools.py` | 日志管理（框架内部使用，内部单例） |
 
@@ -202,6 +218,8 @@ graph LR
     BTM[BackgroundTaskManager] <--> P
     LLMS[LLMPluginService] <--> P
     LLMS --> LLMP[LLMProvider]
+    MCPM[MCPManager] <--> P
+    MCPM --> LLMS
 ```
 
 ### 4.2 发布/订阅
@@ -241,8 +259,10 @@ sequenceDiagram
 class PluginServices:
     data_provider: IDataProvider = None
     task_manager: ITaskManager = None
-    llm_facade: ILLMFacade = None  # LLMPluginService 单例
+    llm_facade: ILLMFacade = None      # LLMPluginService 单例
     logger: LoggerManager = None
+    mcp_manager: MCPManager = None      # MCP 单例协调器
+    mcp_client: MCPClientManager = None # MCP Client 管理器
 ```
 
 新版插件通过 `self._services` 访问服务，旧版插件可通过直接导入单例兼容访问。
@@ -344,6 +364,13 @@ graph TD
     LLMS -.->|LLM 调用| PL
 
     PL --> IPlugin[IPlugin 接口]
+    MCPM[MCPManager<br/>core/mcp/manager.py<br/>单例] --> MCPH[MCPHostServer<br/>core/mcp/server.py]
+    MCPM[MCPManager] --> MCPC[MCPClientManager<br/>core/mcp/client.py]
+    MCPC[MCPClientManager] --> TR[ToolRegistry<br/>tool_call_executor.py]
+    MCPC[MCPClientManager] --> LLMS2[LLMPluginService<br/>单例]
+    PM2[PluginManager<br/>单例] -.->|创建并注入| PS2[PluginServices<br/>DI 容器]
+    PS2 -.->|"mcp_manager"| MCPM
+    PS2 -.->|"mcp_client"| MCPC
 ```
 
 **依赖规则**:
@@ -366,6 +393,7 @@ graph TD
 - [后台任务概述](../core/background-task/overview.md)
 - [后台任务 API 参考](../core/background-task/api-reference.md)
 - [后台任务存储](../core/background-task/task-storage.md)
+- [MCP 协议模块概述](../core/mcp/overview.md)
 - [完整 API 参考](../api/full-reference.md)
 
 ---

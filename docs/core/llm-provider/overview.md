@@ -767,6 +767,7 @@ graph LR
 
 - [LLM Provider API 参考](api-reference.md)
 - [LLM Provider 配置](provider-config.md)
+- [MCP 协议模块概述](../mcp/overview.md)
 - [插件 LLM 集成指南](../../plugins/llm-integration-guide.md)
 - [插件开发指南](../plugin-system/plugin-development.md)
 - [系统架构概述](../../architecture/overview.md)

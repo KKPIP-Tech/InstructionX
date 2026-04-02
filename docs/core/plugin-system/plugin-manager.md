@@ -584,6 +584,7 @@ tools = manager.get_all_function_tools()
 - [插件系统概述](overview.md)
 - [IPlugin 接口](iplugin.md)
 - [插件开发指南](plugin-development.md)
+- [MCP 协议模块概述](../mcp/overview.md)
 
 ---
 

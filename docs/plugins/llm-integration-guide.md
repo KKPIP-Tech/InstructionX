@@ -430,5 +430,6 @@ if not ok:
 
 - [LLM Provider API 参考](../core/llm-provider/api-reference.md) — LLMPluginService、ConversationManager、ToolCallExecutor 完整 API 清单
 - [LLM Provider 概述](../core/llm-provider/overview.md) — Provider 底层实现细节
+- [MCP 协议模块概述](../core/mcp/overview.md) — MCP Server 和 MCP Client 完整指南
 - [插件开发指南](../core/plugin-system/plugin-development.md)
 - [PluginManager 架构](../core/plugin-system/plugin-manager.md)

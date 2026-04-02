@@ -288,6 +288,7 @@ stateDiagram-v2
 - [IPlugin 接口](iplugin.md)
 - [PluginManager](plugin-manager.md)
 - [插件开发指南](plugin-development.md)
+- [MCP 协议模块概述](../mcp/overview.md)
 
 ---
 

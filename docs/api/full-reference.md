@@ -335,6 +335,37 @@ from core.llm.exceptions import (
 | `ToolCallExecutor` | `chat_with_tools(messages, provider?, model?, max_turns?, ...)` | 工具调用循环 |
 | `ToolCallExecutor` | `chat_with_tools(..., stream, stream_callback)` | 流式工具调用 |
 
+### 5.6 MCPManager
+
+**文件**: `core/mcp/manager.py`
+
+| 方法 | 说明 |
+|------|------|
+| `get_mcp_manager()` | 获取 MCPManager 全局单例 |
+| `start_server(transport="stdio")` | 启动 MCP Server |
+| `stop_server()` | 停止 MCP Server |
+| `is_server_running()` | Server 是否运行中 |
+| `get_server_url()` | 返回 HTTP Server 地址 |
+| `update_server_config(config)` | 更新 Server 配置 |
+| `get_client_manager(tool_registry)` | 获取 MCPClientManager |
+| `connect(config, tool_registry)` | 连接外部 MCP Server |
+| `disconnect(server_id)` | 断开外部 MCP Server |
+| `list_connected_servers()` | 已连接 server_id 列表 |
+| `list_remote_tools(server_id)` | 列出外部 Server 工具 |
+| `shutdown()` | 关闭所有资源 |
+
+### 5.7 MCPClientManager
+
+**文件**: `core/mcp/client.py`
+
+| 方法 | 说明 |
+|------|------|
+| `connect(config)` | 同步连接外部 MCP Server |
+| `disconnect(server_id)` | 断开连接 |
+| `list_connected_servers()` | 列出已连接 server_id |
+| `list_tools(server_id)` | 列出指定 Server 工具（带命名空间前缀 `mcp:{server_id}:{tool}`） |
+| `shutdown()` | 关闭所有连接 |
+
 ---
 
 ## 6. 常用代码片段
@@ -353,6 +384,9 @@ task_manager = BackgroundTaskManager()
 
 # LLM 提供者
 llm_provider = get_llm_provider()
+
+# MCP 管理器
+mcp_manager = get_mcp_manager()
 ```
 
 ### 6.2 创建插件 Widget
