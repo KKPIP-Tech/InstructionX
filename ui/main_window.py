@@ -161,6 +161,11 @@ class InstructionXMainWindow(QMainWindow):
         menu_help_about_action.triggered.connect(self._open_about_dialog)
         menu_help.addAction(menu_help_about_action)
 
+        # 许可信息
+        menu_help_license_action = QAction("许可信息", self)
+        menu_help_license_action.triggered.connect(self._open_license_dialog)
+        menu_help.addAction(menu_help_license_action)
+
 
     def _create_main_layout(self) -> None:
         """
@@ -242,6 +247,12 @@ class InstructionXMainWindow(QMainWindow):
         """打开关于对话框"""
         from ui.dialog.about_dialog import AboutDialog
         dialog = AboutDialog(self)
+        dialog.exec()
+
+    def _open_license_dialog(self):
+        """打开开源许可对话框"""
+        from ui.dialog.license_dialog import LicenseDialog
+        dialog = LicenseDialog(self)
         dialog.exec()
 
     def _load_saved_theme(self):
@@ -344,11 +355,6 @@ class InstructionXMainWindow(QMainWindow):
         settings_action.triggered.connect(self._open_llm_settings_dialog)
         self._ai_menu.addAction(settings_action)
 
-        # 模型服务设置
-        service_action = QAction("模型服务设置...", self)
-        service_action.triggered.connect(self._open_llm_model_service_dialog)
-        self._ai_menu.addAction(service_action)
-
         # 用量查询
         usage_action = QAction("用量查询", self)
         usage_action.triggered.connect(self._open_usage_panel)
@@ -406,25 +412,6 @@ class InstructionXMainWindow(QMainWindow):
         self._save_llm_preference(provider_name, saved_model)
         self.llm_provider_changed.emit(provider_name, saved_model)
 
-    def _open_llm_model_service_dialog(self):
-        """打开模型服务对话框"""
-        from ui.dialog.llm_model_service_dialog import LLMModelServiceDialog
-
-        dialog = LLMModelServiceDialog(self)
-        dialog.default_changed.connect(self._on_llm_default_changed)
-        dialog.exec()
-
-        # 刷新菜单
-        self._rebuild_quick_provider_menu()
-        # 重新加载配置
-        from core.llm.llm_provider import get_llm_provider
-        get_llm_provider().reload_config()
-
-    def _on_llm_default_changed(self, provider: str, model: str):
-        """响应模型服务对话框中的默认 Provider 变更"""
-        self._save_llm_preference(provider, model)
-        self.llm_provider_changed.emit(provider, model)
-        self._rebuild_quick_provider_menu()
 
     def _show_llm_usage_stats(self):
         """显示用量统计对话框"""
