@@ -188,7 +188,7 @@ def reload_plugins(self):
     """
     重新加载所有插件
 
-    清空当前注册的插件，然后重新扫描并加载所有插件。
+    清空当前注册的插件（包括 _api_registry），然后重新扫描并加载所有插件。
     """
 ```
 
@@ -226,6 +226,7 @@ def apply_custom_order(self):
     """应用自定义插件顺序（从配置文件加载）"""
     # 从 config/plugin_order.json 读取配置
     # 按照配置的 UUID 顺序排列插件
+    # 未在配置中的新插件自动追加到列表末尾
 ```
 
 #### save_plugin_order()
@@ -458,25 +459,27 @@ def _create_plugin_services(self) -> PluginServices:
 
 | 服务 | 类型 | 说明 |
 |------|------|------|
-| `llm_facade` | `ILLMFacade` | LLM 服务入口（`LLMPluginService` 单例） |
-| `data_provider` | `IDataProvider` | 数据持久化服务（失败时为 `None`） |
-| `task_manager` | `ITaskManager` | 后台任务管理（失败时为 `None`） |
-| `logger` | `ILogger` | 日志服务（`LoggerManager` 实例） |
+| `llm_facade` | `LLMPluginService` | LLM 服务入口（单例） |
+| `data_provider` | `DataProvider` | 数据持久化服务（失败时为 `None`） |
+| `task_manager` | `BackgroundTaskManager` | 后台任务管理（失败时为 `None`） |
+| `logger` | `LoggerManager` | 日志服务（`LoggerManager` 实例） |
 
-**使用流程**：
+**使用流程**（见 `manager.py` 的 `_load_plugin_from_directory()` 方法，第 238-252 行）：
 
 ```python
 # 1. PluginManager 在加载插件前创建服务容器
 services = self._create_plugin_services()
 
-# 2. 将 services 注入插件
+# 2. 将 services 注入插件（通过构造器参数 + 实例属性双重注入）
 plugin = plugin_class(services=services)
-plugin._plugin_id = plugin_id
-plugin._services = services  # 插件自行保存引用
+plugin._plugin_id = plugin_id  # 框架内部赋值
+plugin._services = services  # 框架内部赋值
 
-# 3. 调用生命周期回调
-plugin.on_plugin_loaded(plugin_id, **kwargs)
+# 3. 调用生命周期回调（不传参数，向后兼容旧插件）
+plugin.on_plugin_loaded()
 ```
+
+**注入时机说明**: `_create_plugin_services()` 在 `_load_plugin_from_directory()` 遍历每个插件时调用，而非全局一次性创建。这意味着每个插件加载时共享同一个 `PluginServices` 实例（DI 容器），因此旧版插件即便不使用 DI 也能通过 `get_llm_plugin_service()` 等单例函数访问服务。
 
 > **注意**：插件通过 `services` 参数接收容器，但应将引用保存到实例属性 `self._services`，
 > 以便在后续方法中访问。旧版插件（不支持 DI）可通过直接导入单例访问服务。
@@ -581,6 +584,7 @@ tools = manager.get_all_function_tools()
 - [插件系统概述](overview.md)
 - [IPlugin 接口](iplugin.md)
 - [插件开发指南](plugin-development.md)
+- [MCP 协议模块概述](../mcp/overview.md)
 
 ---
 

@@ -155,7 +155,6 @@ class ToolCallExecutor:
                 (最终消息列表, 工具调用结果列表, 最终响应内容)
         """
         if not self._registry.list_tools():
-            # 无工具时退化为普通 chat
             if stream:
                 return messages, [], self._llm.stream_chat(
                     messages, callback=stream_callback,
@@ -228,11 +227,18 @@ class ToolCallExecutor:
                 else:
                     try:
                         sig = inspect.signature(handler)
-                        filtered_kwargs = {
-                            k: v for k, v in arguments.items()
-                            if k in sig.parameters
-                        }
-                        result = handler(**filtered_kwargs)
+                        has_var_keyword = any(
+                            p.kind == inspect.Parameter.VAR_KEYWORD
+                            for p in sig.parameters.values()
+                        )
+                        if has_var_keyword:
+                            result = handler(**arguments)
+                        else:
+                            filtered_kwargs = {
+                                k: v for k, v in arguments.items()
+                                if k in sig.parameters
+                            }
+                            result = handler(**filtered_kwargs)
                     except Exception as e:
                         result = f"Error executing {tool_name}: {e}"
                         logger.error(result)

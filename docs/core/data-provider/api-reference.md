@@ -7,11 +7,16 @@
 ## 1. 类定义
 
 ```python
-from core.data.data_provider import DataProvider, DataNamespace, DataProviderError
+# 推荐导入方式
+from core.data import DataProvider, DataNamespace, DataProviderError
 
 # 获取单例实例
 provider = DataProvider()
 ```
+
+> **导入说明**：`core/__init__.py` 导出了 `DataProvider` 和 `DataNamespace`，但**未导出 `DataProviderError`**。如需使用异常类，请从 `core.data` 导入。
+
+> **DataNamespace 来源**：`core/interfaces/i_data_provider.py`（第 12-16 行）为规范定义位置；`core/data/data_provider.py` 中包含同名枚举，与接口定义一致。
 
 ---
 
@@ -418,9 +423,9 @@ def get_asset_path(self, relative_path: str) -> str
 - 绝对路径
 
 **异常**:
-- `DataProviderError`: 路径无效或文件不存在时抛出
+- `DataProviderError`: 路径无效、文件不存在或读取失败时抛出
 
-**注意**: 会检查路径是否包含危险的路径遍历（如 `..`）。
+**注意**: 会检查路径是否包含危险的路径遍历（如 `..`）。其他异常也会被统一包装为 `DataProviderError` 后抛出。
 
 **示例**:
 ```python
@@ -580,6 +585,8 @@ def reset_all_data(self) -> None
 重置所有数据（**慎用！**）
 
 **警告**: 此操作会删除所有插件数据和订阅关系，不可恢复！
+
+> **注意**：此方法为 `DataProvider` 实现类扩展方法，**不属于 `IDataProvider` 接口契约**。依赖此方法的插件无法无缝切换到其他 `IDataProvider` 实现。
 
 **示例**:
 ```python

@@ -25,7 +25,8 @@ from core import BackgroundTaskManager, TaskType, TaskStatus, BackgroundTask, Sc
 # 抽象接口层（推荐用于插件开发）
 from core.interfaces import IPlugin, IPluginInfo, IDataProvider, ITaskManager
 from core.interfaces import TaskType, TaskStatus
-from core.interfaces import ILLMFacade, Message, ChatResponse, EmbeddingResponse, ModelInfo, UsageInfo
+from core.interfaces import ILLMFacade, Message, ChatResponse, EmbeddingResponse, ModelInfo
+from core.llm import UsageInfo  # UsageInfo 不在 core.interfaces.__all__ 中，需从 core.llm 导入
 from core.interfaces import ILogger, PluginServices
 ```
 
@@ -110,9 +111,10 @@ from core.llm.exceptions import (
 | `skill_description` | property | 技能描述 |
 | `skill_tooltip` | property | 工具提示 |
 | `plugin_info` | property | 插件信息对象 |
+| `llm_tools` | property | LLM 工具列表（用于 MCP/Function Calling） |
 | `_create_widget(parent, data_provider)` | method (abstract) | 创建 UI |
 | `get_widget(parent=None, data_provider=None)` | method | 获取 Widget（带缓存） |
-| `on_plugin_loaded()` | method | 加载完成回调 |
+| `on_plugin_loaded()` | method | 加载完成回调（PluginManager 调用时不传参数，向后兼容旧插件） |
 
 ### 2.3 IPluginInfo
 
@@ -280,6 +282,90 @@ from core.llm.exceptions import (
 | `TimeoutError` | 超时错误 |
 | `StreamingError` | 流式输出错误 |
 
+### 5.3 LLMPluginService（插件开发者主入口）
+
+**文件**: `core/llm/plugin_service.py`
+
+推荐通过 `PluginServices.llm_facade`（DI 注入）或 `get_llm_plugin_service()` 获取。
+
+| 方法 | 说明 | 返回值 |
+|------|------|--------|
+| `create_conversation(system_prompt?, provider?, model?)` | 创建对话 | str (conv_id) |
+| `send_message(conv_id, content, images?, ...)` | 同步发送消息 | str (回复内容) |
+| `stream_send_message(conv_id, content, callback?, ...)` | 流式发送消息 | str (回复内容) |
+| `chat(messages, provider?, model?, ...)` | 直接 chat（无对话状态） | Any |
+| `stream_chat(messages, callback, provider?, ...)` | 流式 chat（无对话状态） | None |
+| `chat_with_tools(messages, provider?, model?, max_turns?, ...)` | 工具调用循环 | Tuple[List, List, Any] |
+| `chat_with_tools_stream(messages, callback, provider?, ...)` | 流式工具调用 | Tuple[List, List, str] |
+| `get_tool_executor()` | 获取工具调用执行器 | ToolCallExecutor |
+| `get_shared_tool_registry()` | 获取共享工具注册表 | ToolRegistry |
+| `get_raw_provider(provider?)` | 获取底层 ILLM Provider（高级用） | ILLM |
+| `embed(texts, provider?, model?)` | 向量嵌入 | List |
+| `generate_image(prompt, provider?, ...)` | 图像生成 | ImageResult |
+| `text_to_speech(text, provider?, ...)` | 文本转语音 | AudioResult |
+| `load_image_as_base64(file_path)` | 图片文件转 base64 | str |
+| `get_available_providers()` | 获取所有 Provider 信息 | List[ProviderInfo] |
+| `get_usage_stats(conversation_id?)` | 获取用量统计 | UsageStats |
+| `validate_provider(provider)` | 验证 Provider 配置 | Tuple[bool, str] |
+
+详细文档: [LLM Provider API 参考](../core/llm-provider/api-reference.md#section-5)
+
+### 5.4 ConversationManager
+
+**文件**: `core/llm/conversation_manager.py`
+
+| 方法 | 说明 | 返回值 |
+|------|------|--------|
+| `create_conversation(system_prompt?, provider?, model?)` | 创建对话 | str (conv_id) |
+| `get_conversation(conv_id)` | 获取对话 | Optional[Conversation] |
+| `list_conversations()` | 列出所有对话 | List[Conversation] |
+| `delete_conversation(conv_id)` | 删除对话 | None |
+| `get_usage_stats(conv_id?)` | 获取用量统计 | UsageStats |
+
+### 5.5 ToolCallExecutor / ToolRegistry
+
+**文件**: `core/llm/tool_call_executor.py`
+
+| 组件 | 方法/属性 | 说明 |
+|------|---------|------|
+| `ToolRegistry` | `register(name, description, parameters, handler)` | 注册工具 |
+| `ToolRegistry` | `unregister(name)` | 注销工具 |
+| `ToolRegistry` | `get_tool(name)` | 获取工具 |
+| `ToolRegistry` | `get_all_tools()` | 获取所有工具 |
+| `ToolCallExecutor` | `chat_with_tools(messages, provider?, model?, max_turns?, ...)` | 工具调用循环 |
+| `ToolCallExecutor` | `chat_with_tools(..., stream, stream_callback)` | 流式工具调用 |
+
+### 5.6 MCPManager
+
+**文件**: `core/mcp/manager.py`
+
+| 方法 | 说明 |
+|------|------|
+| `get_mcp_manager()` | 获取 MCPManager 全局单例 |
+| `start_server(transport="stdio")` | 启动 MCP Server |
+| `stop_server()` | 停止 MCP Server |
+| `is_server_running()` | Server 是否运行中 |
+| `get_server_url()` | 返回 HTTP Server 地址 |
+| `update_server_config(config)` | 更新 Server 配置 |
+| `get_client_manager(tool_registry)` | 获取 MCPClientManager |
+| `connect(config, tool_registry)` | 连接外部 MCP Server |
+| `disconnect(server_id)` | 断开外部 MCP Server |
+| `list_connected_servers()` | 已连接 server_id 列表 |
+| `list_remote_tools(server_id)` | 列出外部 Server 工具 |
+| `shutdown()` | 关闭所有资源 |
+
+### 5.7 MCPClientManager
+
+**文件**: `core/mcp/client.py`
+
+| 方法 | 说明 |
+|------|------|
+| `connect(config)` | 同步连接外部 MCP Server |
+| `disconnect(server_id)` | 断开连接 |
+| `list_connected_servers()` | 列出已连接 server_id |
+| `list_tools(server_id)` | 列出指定 Server 工具（带命名空间前缀 `mcp:{server_id}:{tool}`） |
+| `shutdown()` | 关闭所有连接 |
+
 ---
 
 ## 6. 常用代码片段
@@ -298,6 +384,9 @@ task_manager = BackgroundTaskManager()
 
 # LLM 提供者
 llm_provider = get_llm_provider()
+
+# MCP 管理器
+mcp_manager = get_mcp_manager()
 ```
 
 ### 6.2 创建插件 Widget
@@ -486,6 +575,21 @@ task_id = task_manager.register_scheduled_task(
 | `get_provider(name)` | 获取 Provider 实例 |
 | `get_all_providers()` | 获取所有 Provider |
 | `get_cached_models(provider_name)` | 获取缓存模型 |
+| `create_conversation(system_prompt, provider, model)` | 创建新对话 |
+| `send_message(conv_id, content, images, temperature, max_tokens)` | 同步发送消息 |
+| `stream_send_message(...)` | 流式发送消息 |
+| `get_conversation(conv_id)` | 获取对话对象 |
+| `list_conversations()` | 列出所有对话 |
+| `delete_conversation(conv_id)` | 删除对话 |
+| `get_tool_executor()` | 获取工具执行器 |
+| `get_shared_tool_registry()` | 获取共享工具注册表 |
+| `chat_with_tools(...)` | 带工具调用的对话 |
+| `chat_with_tools_stream(...)` | 流式工具调用对话 |
+| `get_available_providers()` | 获取可用 Provider 信息 |
+| `get_usage_stats(conv_id)` | 获取用量统计 |
+| `validate_provider(provider)` | 验证 Provider 配置 |
+| `load_image_as_base64(path)` | 加载图片为 base64 |
+| `get_raw_provider(provider)` | 获取底层 Provider 实例 |
 
 ### 7.7 PluginServices（插件服务封装）
 
@@ -497,10 +601,10 @@ task_id = task_manager.register_scheduled_task(
 
 | 属性 | 类型 | 说明 |
 |------|------|------|
-| `data_provider` | `IDataProvider` | 数据提供者实例 |
-| `task_manager` | `ITaskManager` | 后台任务管理器实例 |
-| `llm_facade` | `ILLMFacade` | LLM 外观接口（可选） |
-| `logger` | `ILogger` | 日志接口（可选） |
+| `data_provider` | `DataProvider` | 数据提供者实例（失败时为 `None`） |
+| `task_manager` | `BackgroundTaskManager` | 后台任务管理器实例（失败时为 `None`） |
+| `llm_facade` | `LLMPluginService` | LLM 服务实例 |
+| `logger` | `LoggerManager` | 日志管理器实例 |
 
 ### 7.8 ILogger（日志接口）
 

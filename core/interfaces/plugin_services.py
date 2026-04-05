@@ -5,7 +5,8 @@
 通过依赖注入传递给插件。
 
 插件开发者应通过 services.llm_facade 访问 LLM 能力，
-而不是直接 import get_llm_provider()。
+通过 services.mcp_manager 管理 MCP Server，
+通过 services.mcp_client 连接外部 MCP Server。
 """
 
 from dataclasses import dataclass, field
@@ -15,7 +16,9 @@ if TYPE_CHECKING:
     from core.llm.plugin_service import LLMPluginService
     from core.data import DataProvider
     from core.task import BackgroundTaskManager
-    from core.interfaces.ilogger import LoggerManager
+    from utils.i_logger import ILogger
+    from core.mcp.manager import MCPManager
+    from core.mcp.client import MCPClientManager
 
 
 @dataclass
@@ -25,7 +28,8 @@ class PluginServices:
 
     框架在创建插件实例时会自动注入。
     插件开发者应通过 services.llm_facade 访问 LLM 能力，
-    而不是直接 import get_llm_provider()。
+    通过 services.mcp_manager 管理 MCP Server，
+    通过 services.mcp_client 连接外部 MCP Server。
 
     用法：
 
@@ -35,13 +39,18 @@ class PluginServices:
                 self._llm = (services.llm_facade
                              if services
                              else get_llm_plugin_service())
+                self._mcp_manager = services.mcp_manager if services else None
 
-            def on_plugin_loaded(self, plugin_id, services=None):
-                # services.logger 可用于日志记录
+            def on_plugin_loaded(self):
+                # self._services 已由 PluginManager 注入（通过实例属性）
+                # self.plugin_id 已由 PluginManager 设置
+                # self._services.logger 可用于日志记录（类型为 ILogger，实际为 LoggerManager 单例）
                 ...
     """
 
     llm_facade: "LLMPluginService"
     data_provider: "DataProvider"
     task_manager: "BackgroundTaskManager"
-    logger: "LoggerManager"
+    logger: "ILogger"
+    mcp_manager: "MCPManager" = field(default=None)
+    mcp_client: "MCPClientManager" = field(default=None)

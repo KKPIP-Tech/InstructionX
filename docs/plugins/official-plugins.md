@@ -30,11 +30,12 @@
 
 | 方法 | 功能 |
 |------|------|
-| `stream_send_message` | 流式发送消息（生成器，UI 主要使用此方法），返回 Dict 含 chunk/done/error 字段 |
-| `send_message` | 发送非流式消息，返回 Dict 含 success/response/model/reasoning/tool_calls/error/error_type 字段 |
-| `get_providers` | 获取可用 Provider 列表 |
+| `stream_send_message` | 流式发送消息（生成器，UI 主要使用此方法），逐条 yield Dict，含 `chunk`/`done`/`model`（正常块），最终块含 `full_response`，错误块含 `error`/`error_type` |
+| `send_message` | 发送非流式消息，成功返回 Dict 含 `success`/`response`/`model`/`reasoning`/`tool_calls`，失败返回 Dict 含 `success`/`error`/`error_type` |
+| `get_all_providers` | 获取所有可用 Provider（含名称、类型、启用状态） |
 | `get_models` | 获取指定 Provider 的模型列表 |
-| `validate_provider` | 验证 Provider 配置是否正确，返回 Dict 含 valid/message/supports_vision 字段 |
+| `validate_provider` | 验证 Provider 配置是否正确，返回 Dict 含 `valid/message/supports_vision` 字段 |
+| `load_image_as_base64` | 将本地图片路径转换为 base64 字符串（用于 Vision） |
 
 ### 界面布局
 
@@ -74,7 +75,7 @@
 |------|------|
 | `create_conversation` | 创建新对话，返回 conv_id |
 | `send_message` | 同步发送消息，返回回复内容 |
-| `stream_chat` | 无状态对话（流式） |
+| `stream_chat` | 对话（流式，内部维护 `_conv_id` 有状态） |
 
 ### LLM 集成方式
 
@@ -146,7 +147,7 @@ class SampleAIPlugin(IPlugin):
 |------|------|
 | `format_json` | JSON 格式化（美化输出） |
 | `format_xml` | XML 格式化（方法存在，但 UI 中未提供入口） |
-| `remove_comments` | 移除代码注释（Python/JavaScript） |
+| `remove_comments` | 移除代码注释，支持 language 参数（默认 python） |
 | `compress_code` | 压缩代码（移除空行和多余空格） |
 
 ### 界面布局
@@ -183,7 +184,7 @@ class SampleAIPlugin(IPlugin):
 
 ### 界面布局
 
-输入/输出两个 `QTextEdit` + 6 个操作按钮（转大写、转小写、反转文本、首字母大写、移除空白、统计信息）。
+输入/输出两个 `QTextEdit` + 7 个操作按钮（转大写、转小写、反转文本、首字母大写、移除空白、统计信息）
 
 ---
 
@@ -242,7 +243,7 @@ class SampleAIPlugin(IPlugin):
 
 | 方法 | 功能 |
 |------|------|
-| `subscribe_to_task_manager` | 订阅指定 TaskManager 的数据 |
+| `subscribe_to_task_manager` | 订阅 TaskManager 的数据（task_manager_id 可选，为 None 时自动查找活跃实例） |
 | `unsubscribe_from_task_manager` | 取消订阅 |
 | `get_statistics_report` | 获取统计数据报告 |
 | `get_event_history` | 获取事件历史 |
@@ -302,16 +303,19 @@ TaskManager ID 列表（双击编辑）、订阅/取消订阅按钮、统计信�
 
 ### service_api
 
-> 此插件没有独立的 service.py，所有任务创建逻辑内嵌于 entrance.py 中。
-> information.py 中的 service_api 定义在 `methods` 键下，仅作为 API 文档用途，
-> 不通过框架的跨插件 API 调用机制暴露。
-
 | 方法 | 功能 |
 |------|------|
-| `get_tasks` | 获取任务列表（内嵌实现） |
-| `get_scheduled_tasks` | 获取定时任务列表（内嵌实现） |
-| `create_sync_task` | 创建同步任务（内嵌实现） |
-| `create_async_task` | 创建异步任务（内嵌实现） |
+| `get_tasks` | 获取所有任务列表 |
+| `get_tasks_by_plugin` | 按插件 ID 获取任务列表 |
+| `get_scheduled_tasks` | 获取定时任务列表（可选按 plugin_id 过滤） |
+| `get_task_status` | 获取单个任务状态 |
+| `create_sync_task` | 创建同步任务 |
+| `create_async_task` | 创建异步任务 |
+| `create_scheduled_task` | 创建定时任务 |
+| `cancel_task` | 取消指定任务 |
+| `clear_completed_tasks` | 清除已完成任务（可选按 plugin_id 过滤） |
+| `enable_scheduled_task` | 启用定时任务 |
+| `disable_scheduled_task` | 禁用定时任务 |
 
 ### 核心概念
 

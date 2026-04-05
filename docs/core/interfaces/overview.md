@@ -79,8 +79,8 @@ graph TB
 | **IPluginInfo** | `i_plugin_info.py` | 插件信息抽象基类 | `core/plugin/plugin_info_interface.py` |
 | **IDataProvider** | `i_data_provider.py` | 数据提供者接口 | `core/data/data_provider.py` |
 | **ITaskManager** | `i_task_manager.py` | 后台任务管理器接口 | `core/task/background_task.py` |
-| **ILLMFacade** | `i_llm_facade.py` | LLM 外观接口 | `core/llm/llm_provider.py` |
-| **ILogger** | `i_logger.py` | 日志接口 | `utils/logging_tools.py` |
+| **ILLMFacade** | `i_llm_facade.py` | LLM 统一门面接口 | `core/llm/plugin_service.py`（`LLMPluginService` 完整实现所有方法，`LLMProvider` 仅通过签名 duck-type 实现部分方法） |
+| **ILogger** | `core/interfaces/i_logger.py`（定义）/ `utils/i_logger.py`（原始定义，通过重导出）| 日志接口 | `utils/logging_tools.py`（`LoggerManager` 实现）|
 
 ### 2.2 辅助类
 
@@ -103,17 +103,18 @@ graph TB
 **作用**: 定义所有插件必须实现的标准接口
 
 **核心属性**:
-- `plugin_name`: 插件名称（抽象属性）
-- `plugin_id`: 插件 UUID
-- `skill_icon`: 技能按钮图标
-- `skill_description`: 技能描述
-- `skill_tooltip`: 工具提示
-- `plugin_info`: 插件信息对象
+- `plugin_name`: 插件名称（抽象属性，必须实现）
+- `plugin_id`: 插件唯一标识符 UUID（由框架设置）
+- `skill_icon`: 技能按钮图标（带缓存的属性，默认返回 None）
+- `skill_description`: 技能描述（带缓存的属性，默认返回 plugin_name）
+- `skill_tooltip`: 工具提示（带缓存的属性，默认格式为"名称\n描述"）
+- `plugin_info`: 插件信息对象（从 information.py 加载，带缓存）
+- `llm_tools`: 插件暴露给 LLM 的工具列表（返回符合 OpenAI function calling 规范的字典列表）
 
 **核心方法**:
-- `_create_widget(parent, data_provider)`: 创建 UI（抽象方法）
+- `_create_widget(parent, data_provider)`: 创建 UI（抽象方法，必须实现）
 - `get_widget(parent, data_provider)`: 获取 Widget（带缓存，自动复用已创建的控件实例）
-- `on_plugin_loaded()`: 加载完成回调
+- `on_plugin_loaded(plugin_id, **kwargs)`: 加载完成回调（可通过 `self._services` 访问注入的服务容器）
 
 **使用示例**:
 ```python
@@ -211,9 +212,12 @@ class MyPluginInfo(IPluginInfo):
 - `unsubscribe(subscriber_id, target_plugin_id)`: 取消订阅
 - `publish(publisher_id, key, value, namespace)`: 发布数据
 - `save_asset(plugin_id, filename, content)`: 保存资源文件
+- `get_asset_path(relative_path)`: 获取资源文件的绝对路径
+- `load_asset(relative_path)`: 加载资源文件内容（返回 bytes）
+- `get_plugin_assets_dir(plugin_id)`: 获取插件资源目录路径
 - `get_plugin_info(instance_id)`: 获取插件信息
-- `reset_all_data()`: 重置所有数据
-- `get_asset_path(relative_path)`: 获取资源路径
+- `get_all_plugins()`: 获取所有插件信息
+- `reset_all_data()`: 重置所有数据（慎用）
 
 **使用示例**:
 ```python
@@ -264,15 +268,35 @@ class MyPlugin(IPlugin):
 - 任务状态查询
 
 **核心方法**:
-- `register_sync_task(plugin_id, name, func, callback, args, kwargs)`: 注册同步任务
+
+*同步/异步任务*:
+- `register_sync_task(plugin_id, name, func, callback, args, kwargs)`: 注册并立即执行同步任务
 - `register_async_task(plugin_id, name, func, callback, args, kwargs)`: 注册异步任务
+- `cancel_task(task_id)`: 取消任务（仅限普通任务）
+- `clear_completed_tasks(plugin_id)`: 清理已完成的任务
+
+*定时任务*:
 - `register_scheduled_task(plugin_id, name, func, interval, callback, args, kwargs)`: 注册定时任务
+- `register_scheduled_task_factory(plugin_id, func, callback)`: 注册定时任务工厂（用于重启后恢复）
+- `restore_scheduled_tasks(plugin_id)`: 恢复指定插件的定时任务
+- `unregister_scheduled_task(task_id)`: 注销定时任务
+- `enable_scheduled_task(task_id)`: 启用定时任务
+- `disable_scheduled_task(task_id)`: 禁用定时任务
+- `get_scheduled_tasks(plugin_id)`: 获取定时任务列表
+
+*长期任务*:
 - `register_long_running_task(plugin_id, name, func, callback, stop_callback, status_callback, auto_restart, args, kwargs)`: 注册长期任务
-- `get_task(task_id)`: 获取任务
-- `get_tasks_by_plugin(plugin_id)`: 获取插件任务
-- `get_task_status(task_id)`: 获取任务状态
-- `cancel_task(task_id)`: 取消任务
+- `register_long_running_task_factory(plugin_id, func, callback, stop_callback, status_callback, restore_callback)`: 注册长期任务工厂
+- `restore_long_running_tasks(plugin_id)`: 恢复指定插件的长期任务
+- `stop_long_running_task(task_id, delete_from_storage)`: 停止长期任务
+- `get_long_running_tasks(plugin_id)`: 获取长期任务列表
 - `update_long_running_task_status(task_id, status)`: 更新长期任务的状态
+
+*任务查询*:
+- `get_task(task_id)`: 获取指定任务
+- `get_tasks_by_plugin(plugin_id)`: 获取插件所有普通任务
+- `get_all_tasks()`: 获取所有任务
+- `get_task_status(task_id)`: 获取任务状态
 
 **任务类型**:
 - `TaskType.SYNC`: 同步任务（在主线程执行）
@@ -310,19 +334,26 @@ class MyPlugin(IPlugin):
 
 ---
 
-### 3.5 ILLMFacade（LLM 外观接口）
+### 3.5 ILLMFacade（LLM 统一门面接口）
 
 **文件**: `core/interfaces/i_llm_facade.py`
 
-**作用**: 定义大语言模型统一访问的抽象接口
+**作用**: 定义大语言模型统一访问的抽象接口，由 `LLMPluginService`（`core/llm/plugin_service.py`）完整实现
 
 **核心功能**:
 - 同步/异步聊天
 - 流式输出
 - 文本嵌入
+- 对话管理（创建、发送、列表、删除）
+- 工具调用（Function Calling）
 - 模型列表查询
+- Provider 配置验证
+
+> **注意**：实际注入到插件的是 `LLMPluginService`（通过 `PluginServices.llm_facade`），插件开发者应通过 `services.llm_facade` 访问所有 LLM 能力。
 
 **核心方法**:
+
+*底层 LLM 代理*:
 - `chat(messages, provider, model, temperature, max_tokens, **kwargs)`: 同步聊天
 - `stream_chat(messages, provider, model, temperature, max_tokens, callback, **kwargs)`: 流式聊天
 - `embed(texts, provider, model, **kwargs)`: 文本嵌入
@@ -330,34 +361,106 @@ class MyPlugin(IPlugin):
 - `get_provider(name)`: 获取 Provider 实例
 - `get_all_providers()`: 获取所有 Provider
 - `get_cached_models(provider_name)`: 获取缓存模型
+- `get_raw_provider(provider)`: 获取底层 LLM Provider（高级插件用）
 
-> **注意**：`ILLMFacade` 接口定义的是**同步 API**。异步方法（如 `async_chat`、`async_stream_chat`）存在于 `LLM` 基类（`core/llm/provider_interface.py`）和 `LLMProvider` 实现中，但未在 `ILLMFacade` 接口层面声明。插件应使用 `ILLMFacade` 接口进行类型标注。
+*对话管理*:
+- `create_conversation(system_prompt, provider, model, metadata)`: 创建新对话，返回对话 ID
+- `send_message(conversation_id, content, images, temperature, max_tokens)`: 同步发送消息
+- `stream_send_message(conversation_id, content, images, callback, temperature, max_tokens)`: 流式发送消息
+- `get_conversation(conversation_id)`: 获取对话对象
+- `list_conversations()`: 列出所有对话
+- `delete_conversation(conversation_id)`: 删除对话
+
+*工具调用*:
+- `chat_with_tools(messages, provider, model, max_turns, temperature)`: 带工具调用的对话
+- `get_tool_executor()`: 获取工具调用执行器
+- `get_shared_tool_registry()`: 获取共享工具注册表
+
+*辅助方法*:
+- `get_available_providers()`: 获取所有可用的 Provider 信息
+- `get_usage_stats(conversation_id)`: 获取用量统计
+- `validate_provider(provider)`: 验证 Provider 配置是否有效
+- `load_image_as_base64(file_path)`: 加载图片文件为 base64 字符串
 
 **使用示例**:
 ```python
 from core.interfaces import ILLMFacade, Message
 
 class MyPlugin(IPlugin):
-    def __init__(self):
-        self.llm = get_llm_provider()
+    def __init__(self, services=None):
+        self._services = services
+        # 推荐：通过 services 访问
+        # 或直接使用单例：from core.llm import get_llm_plugin_service
+        # self.llm = get_llm_plugin_service()
 
     def ask_question(self, question: str) -> str:
-        response = self.llm.chat(
+        llm = self._services.llm_facade
+        response = llm.chat(
             messages=[Message(role="user", content=question)],
             provider="minimax",
             temperature=0.7
         )
         return response.content
+
+    def use_conversation(self) -> str:
+        llm = self._services.llm_facade
+        conv_id = llm.create_conversation(
+            system_prompt="你是一个代码助手",
+            provider="minimax",
+            model="abab6.5s-chat"
+        )
+        return llm.send_message(conv_id, "解释这段代码")
 ```
 
-**补充说明**：`LLMProvider` 实现类还支持以下异步方法和配置管理方法：
-- `async_chat(...)`: 异步聊天
-- `async_stream_chat(...)`: 异步流式聊天
-- `async_embed(...)`: 异步嵌入
-- `refresh_all_models(force)`: 刷新所有模型
-- `get_enabled_providers(feature)`: 获取已启用的提供商
-
 **详细文档**: [LLM Provider 概述](../llm-provider/overview.md)
+
+---
+
+#### 3.5.1 LLMPluginService（LLM 完整实现）
+
+**文件**: `core/llm/plugin_service.py`
+
+**作用**: `ILLMFacade` 接口的完整实现，是插件开发者使用 LLM 能力的唯一入口。整合了对话管理、工具调用自动化、向量嵌入、多模态和用量统计。
+
+**核心组件**:
+- `ConversationManager`: 对话生命周期管理
+- `ToolCallExecutor` / `ToolRegistry`: 工具调用自动化
+- `LLMProvider`: 底层 LLM 调用
+
+**获取方式**:
+
+```python
+# 推荐：通过 DI 注入（插件构造器参数）
+def __init__(self, services: PluginServices | None = None):
+    self._llm = services.llm_facade if services else get_llm_plugin_service()
+
+# 备选：直接导入单例
+from core.llm import get_llm_plugin_service
+svc = get_llm_plugin_service()
+```
+
+**主要方法**:
+
+| 方法 | 说明 |
+|------|------|
+| `create_conversation(system_prompt?, provider?, model?)` | 创建对话，返回 conv_id |
+| `send_message(conv_id, content, images?, ...)` | 同步发送消息 |
+| `stream_send_message(conv_id, content, ...)` | 流式发送消息 |
+| `chat(messages, ...)` | 直接 chat（无对话状态） |
+| `stream_chat(messages, callback, ...)` | 流式 chat（无对话状态） |
+| `chat_with_tools(messages, max_turns=5)` | 工具调用循环（返回消息列表、工具结果、最终响应） |
+| `chat_with_tools_stream(messages, callback, ...)` | 流式工具调用 |
+| `get_tool_executor()` | 获取 `ToolCallExecutor` 实例 |
+| `get_shared_tool_registry()` | 获取共享 `ToolRegistry`（所有插件的工具） |
+| `get_raw_provider(provider?)` | 获取底层 `ILLM` Provider（高级插件用） |
+| `embed(texts, provider?, model?)` | 向量嵌入 |
+| `generate_image(prompt, provider?)` | 图像生成 |
+| `text_to_speech(text, provider?)` | 文本转语音 |
+| `get_available_providers()` | 获取所有可用 Provider 信息 |
+| `get_usage_stats(conv_id?)` | 获取用量统计 |
+| `validate_provider(provider)` | 验证 Provider 配置 |
+
+**详细文档**: [LLM Provider API 参考](../llm-provider/api-reference.md#section-5)
 
 ---
 
@@ -404,10 +507,10 @@ class MyPlugin(IPlugin):
 **作用**: 将插件所需的核心服务聚合到一个对象中，通过依赖注入传递给插件
 
 **属性**:
-- `data_provider`: `IDataProvider` - 数据提供者实例
-- `task_manager`: `ITaskManager` - 后台任务管理器实例
-- `llm_facade`: `ILLMFacade` - LLM 外观接口（可选）
-- `logger`: `ILogger` - 日志接口（可选）
+- `data_provider`: `DataProvider` - 数据提供者实例
+- `task_manager`: `BackgroundTaskManager` - 后台任务管理器实例
+- `llm_facade`: `LLMPluginService` - LLM 统一门面接口（`ILLMFacade` 的完整实现）
+- `logger`: `LoggerManager` - 日志接口
 
 **设计模式**: 依赖注入（Dependency Injection）
 
@@ -417,39 +520,47 @@ class MyPlugin(IPlugin):
 
 **使用示例**:
 ```python
+from PySide6.QtWidgets import QWidget
 from core.plugin.plugin_interface import IPlugin
-from core.data.data_provider import DataProvider, DataNamespace
-from core.task.background_task import BackgroundTaskManager
-from core.llm.llm_provider import get_llm_provider
-from utils.logging_tools import LoggerManager
+from core.interfaces.plugin_services import PluginServices
+from core.llm import get_llm_plugin_service
 
 class MyPlugin(IPlugin):
-    def __init__(self):
-        # 直接访问单例（当前所有插件的实际做法）
-        self.data_provider = DataProvider()
-        self.task_manager = BackgroundTaskManager()
-        self.llm = get_llm_provider()
-        self.logger = LoggerManager()
+    def __init__(self, services: PluginServices | None = None):
+        super().__init__()
+        self._services = services
+        # 推荐：通过 services 访问（DI 模式）
+        # 旧插件兼容：直接使用单例
+        self._llm = (services.llm_facade
+                     if services
+                     else get_llm_plugin_service())
 
     def _create_widget(self, parent=None, data_provider=None):
         # 通过 data_provider 参数接收可选的注入数据提供者
-        dp = data_provider if data_provider else DataProvider()
+        dp = data_provider if data_provider else (self._services.data_provider if self._services else None)
 
-        widget = QWidget(parent)
-        dp.set_plugin_data(
-            self.plugin_id,
-            "initialized",
-            True
-        )
+        if dp:
+            dp.set_plugin_data(
+                self.plugin_id,
+                "initialized",
+                True
+            )
 
-        # 注册任务
-        self.task_manager.register_async_task(
+        # 注册任务（通过 services 或直接使用单例）
+        if self._services and self._services.task_manager:
+            tm = self._services.task_manager
+        else:
+            from core.task import BackgroundTaskManager
+            tm = BackgroundTaskManager()
+        tm.register_async_task(
             self.plugin_id,
             "初始化任务",
             self._init_data,
             None
         )
 
+        # 返回插件的 UI 控件
+        widget = QWidget(parent)
         return widget
 ```
 
@@ -471,11 +582,15 @@ from core.interfaces import (
     PluginServices,
     TaskType,
     TaskStatus,
-    DataNamespace
+    DataNamespace,
+    Message,
+    ChatResponse,
+    EmbeddingResponse,
+    ModelInfo,
 )
 
-# 从 core.interfaces 导入 LLM 数据类型
-from core.interfaces import Message, ChatResponse, EmbeddingResponse, ModelInfo
+# 从 core.llm 导入 LLMPluginService（ILLMFacade 的完整实现）
+from core.llm import get_llm_plugin_service, LLMPluginService
 ```
 
 ### 4.2 向后兼容的导入路径
@@ -501,7 +616,7 @@ from core.interfaces import IPlugin, IPluginInfo
 | `IPluginInfo` | `IPluginInfo` | `core/plugin/plugin_info_interface.py` |
 | `IDataProvider` | `DataProvider` | `core/data/data_provider.py` |
 | `ITaskManager` | `BackgroundTaskManager` | `core/task/background_task.py` |
-| `ILLMFacade` | `LLMProvider` | `core/llm/llm_provider.py` |（通过方法签名实现，避免循环导入）|
+| `ILLMFacade` | `LLMPluginService` | `core/llm/plugin_service.py` | `PluginServices` 注入的是 `LLMPluginService`（完整实现所有 `ILLMFacade` 方法） |
 | `ILogger` | `LoggerManager` | `utils/logging_tools.py` |
 
 ### 5.2 访问单例实例
@@ -520,8 +635,10 @@ from core.task.background_task import BackgroundTaskManager
 task_manager = BackgroundTaskManager()
 
 # LLM 提供者（通过工厂函数访问）
-from core.llm import get_llm_provider
-llm = get_llm_provider()
+# 推荐：通过 PluginServices.llm_facade 访问（由框架注入）
+# 或使用插件服务层（推荐）
+from core.llm import get_llm_plugin_service
+llm = get_llm_plugin_service()
 
 # 日志管理器（通过 LoggerManager 类直接访问）
 from utils.logging_tools import LoggerManager
@@ -585,6 +702,7 @@ except Exception as e:
 - [DataProvider 概述](../data-provider/overview.md)
 - [后台任务概述](../background-task/overview.md)
 - [LLM Provider 概述](../llm-provider/overview.md)
+- [MCP 协议模块概述](../mcp/overview.md)
 - [完整 API 参考](../../api/full-reference.md)
 
 ---

@@ -32,7 +32,7 @@
 
 ---
 
-## 3. 核心 API
+## 3. 配置文件读写 API
 
 ### load_plugin_order()
 
@@ -136,7 +136,7 @@ manager.save_plugin_order(
 
 ### apply_custom_order()
 
-此方法由 `PluginManager` 调用（非 `PluginConfigManager`），用于将持久化的顺序配置应用到运行时。
+> ⚠️ 此方法由 `PluginManager` 调用，不属于 `PluginConfigManager`。定义在 `PluginManager` 中。
 
 ```python
 def apply_custom_order(self):
@@ -147,6 +147,8 @@ def apply_custom_order(self):
 1. 按 `plugin_order.json` 中记录的 UUID 顺序排列插件
 2. 配置中存在但当前未加载的插件会被跳过
 3. **新安装的插件（UUID 不在配置中）自动追加到列表末尾**，而非插入到特定位置
+
+> 详细说明参见 [PluginManager.apply_custom_order()](./plugin-manager.md#apply_custom_order)
 
 ### 重置顺序
 
@@ -160,29 +162,11 @@ config_manager.save_plugin_order([], [])  # 清空两个列表
 
 ---
 
-## 6. 核心 API（补充）
+## 6. 跨模块 API 说明
 
-### get_official_plugin_ids()
-
-```python
-def get_official_plugin_ids(self) -> List[str]
-```
-
-获取当前顺序下所有官方插件的 UUID 列表。
-
-**返回**:
-- 官方插件 UUID 列表（按当前排列顺序）
-
-### get_thirdparty_plugin_ids()
-
-```python
-def get_thirdparty_plugin_ids(self) -> List[str]
-```
-
-获取当前顺序下所有第三方插件的 UUID 列表。
-
-**返回**:
-- 第三方插件 UUID 列表（按当前排列顺序）
+> ⚠️ 以下两个方法不属于 `PluginConfigManager`，属于 `PluginManager`：
+> - `get_official_plugin_ids()` — 见 [PluginManager.get_official_plugin_ids()](./plugin-manager.md#get_official_plugin_ids)
+> - `get_thirdparty_plugin_ids()` — 见 [PluginManager.get_thirdparty_plugin_ids()](./plugin-manager.md#get_thirdparty_plugin_ids)
 
 ---
 

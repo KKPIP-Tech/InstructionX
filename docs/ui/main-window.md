@@ -42,7 +42,7 @@ graph TB
 
 ### 3.1 菜单栏
 
-菜单栏包含五个菜单：**编辑**、**用户中心**、**AI**、**帮助**。
+菜单栏包含四个菜单：**编辑**、**用户中心**、**AI**、**帮助**。
 
 ```python
 def _create_menus(self) -> None:
@@ -54,7 +54,6 @@ def _create_menus(self) -> None:
     # 编辑菜单
     menu_edit = menu_bar.addMenu("编辑")
     menu_edit.addAction(menu_edit_plugin_order_action)  # 插件排序 (Ctrl+P)
-    menu_edit.addAction(menu_edit_llm_settings_action)  # LLM 设置 (Ctrl+L)
     menu_edit.addSeparator()
     menu_edit.addAction(self._menu_theme_action)  # 切换主题
 
@@ -68,25 +67,47 @@ def _create_menus(self) -> None:
     menu_help = menu_bar.addMenu("帮助")
 ```
 
-**AI 菜单** (`_create_ai_menu`) 目前仅包含一个菜单项：
+**AI 菜单** (`_create_ai_menu`) 包含以下菜单项：
 
 ```python
 def _create_ai_menu(self, menu_bar):
     self._ai_menu = menu_bar.addMenu("AI")
 
-    # LLM 设置
+    # LLM 设置 (Ctrl+L)
     settings_action = QAction("LLM 设置...", self)
     settings_action.setShortcut("Ctrl+L")
     settings_action.triggered.connect(self._open_llm_settings_dialog)
     self._ai_menu.addAction(settings_action)
+
+    # 模型服务设置
+    service_action = QAction("模型服务设置...", self)
+    service_action.triggered.connect(self._open_llm_model_service_dialog)
+    self._ai_menu.addAction(service_action)
+
+    # 用量查询
+    usage_action = QAction("用量查询", self)
+    usage_action.triggered.connect(self._open_usage_panel)
+    self._ai_menu.addAction(usage_action)
+
+    # Provider 快速切换子菜单 (_quick_provider_menu)
+    self._quick_provider_menu = QMenu("切换模型服务", self._ai_menu)
+    self._ai_menu.addMenu(self._quick_provider_menu)
+    self._quick_provider_actions = {}
+    self._rebuild_quick_provider_menu()
 ```
 
 点击 **LLM 设置...** 调用 `_open_llm_settings_dialog()`，打开 `LLMSettingsDialog`（两栏布局）进行 LLM Provider 配置。
 
-**Provider 快速切换** 由独立的 `_quick_provider_menu`（主工具栏菜单）处理，通过 `_rebuild_quick_provider_menu()` 动态构建，自动为每个启用的 Provider 生成菜单项，并显示能力标记：
+点击 **模型服务设置...** 调用 `_open_llm_model_service_dialog()`，打开 `LLMModelServiceDialog`（三栏布局：左侧分类、中间 Provider 列表、右侧详情），支持新增、编辑、删除 Provider 及设置默认模型。变更默认 Provider 时触发 `default_changed(provider, model)` 信号。
+
+点击 **用量查询** 调用 `_open_usage_panel()`，打开 `UsagePanel` 对话框查看 token 用量和费用统计。
+
+**Provider 快速切换** 由 `_quick_provider_menu`（AI 菜单子菜单）处理，通过 `_rebuild_quick_provider_menu()` 动态构建，自动为每个启用的 Provider 生成菜单项，并显示能力标记：
 - 👁 - 支持 Vision
 - 🔧 - 支持 Function Calling
 - ⚠️ - Provider 不健康
+
+切换 Provider 时触发 `llm_provider_changed(provider_name, model_name)` Signal。
 
 ### 3.2 自定义标题栏 (CustomTitleBar)
 
@@ -154,8 +175,10 @@ graph TB
     end
     TW --> Tab1[官方功能 tab]
     TW --> Tab2[第三方功能 tab]
-    Tab1 --> SA1[QScrollArea]
-    Tab2 --> SA2[QScrollArea]
+    Tab1 --> VW1[QWidget - QVBoxLayout]
+    Tab2 --> VW2[QWidget - QVBoxLayout]
+    VW1 --> SA1[QScrollArea]
+    VW2 --> SA2[QScrollArea]
     SA1 --> C1[container - HBoxLayout]
     SA2 --> C2[container - HBoxLayout]
     C1 --> B1[SkillButton × N]
@@ -167,6 +190,7 @@ graph TB
 - **位置**: 窗口中部（技能面板下方）
 - **特性**: 可伸缩，占用剩余空间
 - **功能**: 显示当前选中插件的 Widget
+- **初始状态**: 显示占位文本 "点击上方技能按钮，在此处显示插件功能" (`ui/work_area/work_area.py` 第32行)
 
 ---
 
@@ -372,14 +396,17 @@ def _open_about_dialog(self):
 
 #### LLM 设置对话框
 
-通过 **AI > LLM 设置...** (Ctrl+L) 打开，提供两栏式配置界面。左侧为 Provider 列表，右侧为选中 Provider 的配置详情（API 密钥、API 地址、模型选择等）。详细说明见 [对话框组件](dialogs.md#2-llmsettingsdialog-llm-设置对话框)。
+通过 **AI > LLM 设置...** (Ctrl+L) 打开，提供两栏式配置界面。左侧为 Provider 列表（标题"模型服务"），右侧为选中 Provider 的配置详情（API 密钥、API 地址、模型选择等）。详细说明见 [对话框组件](dialogs.md#2-llmsettingsdialog-llm-设置对话框)。
 
 ```python
 def _open_llm_settings_dialog(self):
     """打开 LLM 设置对话框"""
     from ui.dialog.llm_settings_dialog import LLMSettingsDialog
     dialog = LLMSettingsDialog(self)
-    dialog.exec()
+
+    if dialog.exec() == QDialog.DialogCode.Accepted:
+        from core.llm.llm_provider import get_llm_provider
+        get_llm_provider().reload_config()
 ```
 
 ### 5.5 插件排序

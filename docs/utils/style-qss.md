@@ -15,12 +15,12 @@
 - 系统主题自动检测
 - 模块化 QSS 样式文件
 - 运行时变量替换
-- 27 个 QSS 样式文件覆盖常用控件
+- 26 个 QSS 样式文件覆盖常用控件
 
 **支持的控件**:
 - 基础控件：按钮、输入框、标签
 - 选择控件：复选框、单选按钮、下拉框、滑块
-- 容器控件：分组框、框架、标签页、工具箱
+- 容器控件：分组框、框架、标签页
 - 布局控件：分割器、滚动条
 - 菜单控件：菜单、工具栏、停靠窗口
 - 窗口控件：主窗口、对话框、状态栏
@@ -466,7 +466,7 @@ warning_btn.setProperty("class", "warning")
 from utils.style_qss import set_style_qss_theme
 set_style_qss_theme(app, 'dark')
 
-# 方式 2: 通过 utils 包（需要 themes 模块支持）
+# 方式 2: 通过 utils 包（仅限 set_style_qss_theme）
 from utils import set_style_qss_theme
 set_style_qss_theme(app, 'auto')
 ```
@@ -474,12 +474,12 @@ set_style_qss_theme(app, 'auto')
 ### 7.2 集成方式
 
 ```python
-# 方式 1: 通过 utils 模块（推荐）
+# 方式 1: 通过 utils 包（仅导出 set_style_qss_theme）
 from utils import set_style_qss_theme
 set_style_qss_theme(app)
 
-# 方式 2: 直接导入 style_qss（推荐）
-from utils.style_qss import set_style_qss_theme
+# 方式 2: 直接导入 style_qss（完整接口）
+from utils.style_qss import set_style_qss_theme, create_qss, detect_system_theme
 set_style_qss_theme(app, 'dark')
 ```
 
@@ -546,7 +546,7 @@ QPushButton {
 }
 ```
 
-该文件在加载顺序中优先级为 20（仅次于 base），可覆盖默认样式。
+该文件在加载顺序中紧随 base 之后（优先级 10），可覆盖 base 之后的所有默认样式。注意：实际不使用 `registry.py` 的 `_get_priority()` 方法，优先级由 `_STYLE_FILES` 列表索引决定。
 
 ---
 

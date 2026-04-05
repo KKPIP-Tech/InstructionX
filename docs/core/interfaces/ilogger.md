@@ -96,6 +96,21 @@ def critical(self, name: str, message: str) -> None:
 
 ---
 
+### 2.6 log
+
+```python
+def log(self, level: str, module_name: str, message: str) -> None:
+    """按指定日志级别记录消息"""
+    pass
+```
+
+**参数**:
+- `level`: 日志级别（DEBUG, INFO, WARNING, ERROR, CRITICAL）
+- `module_name`: 调用方模块名称（用于日志分组）
+- `message`: 日志消息内容
+
+---
+
 ## 3. 重要说明
 
 ### 3.1 name 参数的作用
@@ -134,11 +149,11 @@ logger.error("MyPlugin", "连接失败: timeout")
 
 ```python
 from core.plugin.plugin_interface import IPlugin
-from utils.logging_tools import LoggerManager
+from utils import LoggerManager
 
 class MyPlugin(IPlugin):
     def _create_widget(self, parent=None, data_provider=None):
-        # 直接获取 logger 实例（当前所有插件均直接导入单例）
+        # 直接获取 logger 实例（LoggerManager 为线程安全单例）
         logger = LoggerManager()
 
         logger.info("MyPlugin", "开始创建 UI")
@@ -151,7 +166,7 @@ class MyPlugin(IPlugin):
 ### 4.2 错误记录
 
 ```python
-from utils.logging_tools import LoggerManager
+from utils import LoggerManager
 
 class MyPlugin(IPlugin):
     def __init__(self):
@@ -170,7 +185,7 @@ class MyPlugin(IPlugin):
 ## 5. 相关文档
 
 - [接口层概述](overview.md)
-- [PluginServices](overview.md#37-pluginservices)
+- [PluginServices](./overview.md)
 - [日志工具](../../utils/logging-tools.md)
 
 ---

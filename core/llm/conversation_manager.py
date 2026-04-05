@@ -10,11 +10,14 @@ Classes:
 import uuid
 import logging
 from datetime import datetime
-from typing import Dict, List, Optional, Callable, TYPE_CHECKING
+from typing import Any, Dict, List, Optional, Callable, TYPE_CHECKING
 
 from .types import Conversation, UsageStats, StreamChunk
-from .provider_interface import UsageInfo, Message
+from .provider_interface import UsageInfo, Message, ChatResponse
 from .llm_provider import get_llm_provider
+from .usage_record_store import get_usage_record_store
+from .types import UsageRecord
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -25,30 +28,26 @@ class ConversationManager:
     管理所有对话的生命周期：
     - 创建 / 获取 / 列出 / 删除对话
     - 发送消息（同步 / 流式）
-    - 自动上下文截断（保留 system + 最近 2/3 消息）
-    - Token 累计与费用估算
+    - Token 累计与用量记录
     - 用量统计查询
     """
 
-    DEFAULT_MAX_CONTEXT = 128000
-    DEFAULT_SUMMARIZE_THRESHOLD = 0.8
-
     def __init__(
         self,
-        max_context: Optional[int] = None,
         pricing: Optional[Dict[str, Dict]] = None,
+        **kwargs,
     ):
         """初始化对话管理器
 
         Args:
-            max_context: 最大上下文 token 数（默认 128000）
             pricing: 定价表（格式：{provider: {chat: {input_per_1k, output_per_1k}}}）
+            **kwargs: 兼容旧参数（如 max_context），已废弃但会被吸收
         """
         self._conversations: Dict[str, Conversation] = {}
         self._llm = get_llm_provider()
-        self._max_context = max_context or self.DEFAULT_MAX_CONTEXT
         self._pricing = pricing or {}
         self._logger = logger
+        self._usage_store = get_usage_record_store()
 
     # ==================== 对话 CRUD ====================
 
@@ -148,10 +147,10 @@ class ConversationManager:
         if images:
             user_msg["images"] = images
         messages.append(user_msg)
-
-        self._maybe_truncate_history(conv, messages)
+        conv.add_message("user", content, images=images if images else None)
 
         msg_objs = [Message(**m) if isinstance(m, dict) else m for m in messages]
+        t0 = time.perf_counter()
         response = self._llm.chat(
             messages=msg_objs,
             provider=conv.provider if conv.provider != "default" else None,
@@ -160,6 +159,7 @@ class ConversationManager:
             max_tokens=max_tokens,
             tools=tools,
         )
+        duration_ms = (time.perf_counter() - t0) * 1000
 
         conv.add_message("assistant", response.content,
                          getattr(response, 'usage', None))
@@ -167,6 +167,17 @@ class ConversationManager:
             cost = self._estimate_cost(response.usage, conv.provider, conv.model)
             if cost:
                 conv.total_cost += cost
+
+        record = self._build_usage_record(
+            usage=getattr(response, 'usage', None),
+            conversation_id=conversation_id,
+            provider=conv.provider,
+            model=conv.model,
+            is_stream=False,
+            duration_ms=duration_ms,
+        )
+        if record:
+            self._usage_store.record(record)
 
         return response.content, getattr(response, 'usage', None)
 
@@ -202,16 +213,16 @@ class ConversationManager:
             user_msg["images"] = images
         messages.append(user_msg)
 
-        self._maybe_truncate_history(conv, messages)
-
         full_content = []
         last_usage: Optional[UsageInfo] = None
 
-        def stream_callback(chunk: str, done: bool):
+        def stream_callback(cr: ChatResponse, done: bool):
             nonlocal last_usage
-            full_content.append(chunk)
+            full_content.append(cr.content)
+            if cr.usage:
+                last_usage = cr.usage
             sc = StreamChunk(
-                content=chunk,
+                content=cr.content,
                 done=done,
                 full_response="".join(full_content),
             )
@@ -223,6 +234,7 @@ class ConversationManager:
 
         msg_objs = [Message(**m) if isinstance(m, dict) else m for m in messages]
 
+        t0 = time.perf_counter()
         try:
             self._llm.stream_chat(
                 messages=msg_objs,
@@ -238,45 +250,25 @@ class ConversationManager:
             if callback:
                 callback(sc)
             raise
+        duration_ms = (time.perf_counter() - t0) * 1000
 
         final_content = "".join(full_content)
         conv.add_message("user", content, images=images if images else None)
         if final_content:
             conv.add_message("assistant", final_content, last_usage)
 
-        return final_content, last_usage
-
-    # ==================== 上下文管理 ====================
-
-    def _maybe_truncate_history(self, conv: Conversation, messages: List[Dict]):
-        """检查并截断超长上下文
-
-        保留 system 消息 + 最近 2/3 条对话消息。
-
-        Args:
-            conv: 对话对象
-            messages: 当前消息列表（会被原地修改）
-        """
-        def estimate_tokens(text: str) -> int:
-            """粗略估算中英混合文本的 token 数"""
-            chinese = sum(1 for c in text if '\u4e00' <= c <= '\u9fff')
-            return chinese + (len(text) - chinese) // 4
-
-        total = sum(estimate_tokens(m.get("content", "")) for m in messages)
-        if total <= self._max_context * self.DEFAULT_SUMMARIZE_THRESHOLD:
-            return
-
-        system_count = 1 if conv.system_prompt else 0
-        keep_count = len(messages) - system_count
-        keep = messages[:system_count] + messages[
-            system_count: system_count + int(keep_count * 0.66)
-        ]
-        messages.clear()
-        messages.extend(keep)
-        self._logger.debug(
-            f"Truncated {conv.id}: {total} → "
-            f"{sum(estimate_tokens(m.get('content','')) for m in messages)} tokens"
+        record = self._build_usage_record(
+            usage=last_usage,
+            conversation_id=conversation_id,
+            provider=conv.provider,
+            model=conv.model,
+            is_stream=True,
+            duration_ms=duration_ms,
         )
+        if record:
+            self._usage_store.record(record)
+
+        return final_content, last_usage
 
     def _estimate_cost(
         self,
@@ -301,6 +293,35 @@ class ConversationManager:
         output_price = p.get("output_per_1k", 0)
         return (usage.input_tokens or 0) / 1000 * input_price + \
                (usage.output_tokens or 0) / 1000 * output_price
+
+    def _build_usage_record(
+        self,
+        usage,
+        conversation_id: str,
+        provider: str,
+        model: str,
+        is_stream: bool,
+        duration_ms: float,
+    ) -> Optional[UsageRecord]:
+        """构建用量记录"""
+        if usage is None:
+            return None
+        import uuid
+        cached_tokens = getattr(usage, 'cache_read_tokens', 0) or 0
+        return UsageRecord(
+            id=uuid.uuid4().hex,
+            timestamp=datetime.now(),
+            conversation_id=conversation_id,
+            provider=provider or "",
+            model=model or "",
+            input_tokens=usage.input_tokens or 0,
+            output_tokens=usage.output_tokens or 0,
+            total_tokens=usage.total_tokens or 0,
+            cached_tokens=cached_tokens,
+            cache_hit=cached_tokens > 0,
+            is_stream=is_stream,
+            duration_ms=round(duration_ms, 2),
+        )
 
     def _get_or_raise(self, conversation_id: str) -> Conversation:
         """获取对话，不存在则抛出 ValueError
@@ -342,5 +363,5 @@ class ConversationManager:
             stats.by_provider[conv.provider] = (
                 stats.by_provider.get(conv.provider, 0) + conv.total_cost
             )
-        stats.request_count = sum(len(c.messages) // 2 for c in convs)
+        stats.request_count = sum(len(c.messages) for c in convs)
         return stats

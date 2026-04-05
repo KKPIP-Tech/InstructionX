@@ -101,6 +101,7 @@ conv_id = svc.create_conversation(
     system_prompt="你是一个代码助手",
     provider="siliconflow",  # 可选，默认 "default"
     model="Pro/deepseek-ai/DeepSeek-V3",  # 可选
+    metadata=None,  # 可选，额外元数据字典
 )
 ```
 
@@ -185,9 +186,20 @@ flowchart TB
 resp = svc.chat([
     {"role": "system", "content": "你是一个助手"},
     {"role": "user", "content": "你好"},
-])
+], tools=[...])  # 可选，显式传入工具定义（也可通过 executor.tools.register() 预先注册）
 print(resp.content)
 print(f"Token: {resp.usage.total_tokens}")  # Token 用量信息
+```
+
+### 发送消息（流式，无状态）
+
+```python
+def callback(chunk):
+    print(chunk.content, end="", flush=True)
+
+content = svc.stream_chat([
+    {"role": "user", "content": "写一个快排"},
+], callback=callback, provider="minimax")
 ```
 
 ---
@@ -271,6 +283,18 @@ registry.register(
     handler=my_search_func,
 )
 ```
+
+### 获取底层 Provider（高级用法）
+
+大多数插件应通过 `LLMPluginService` 使用 LLM 能力。如需直接访问底层 `ILLM` Provider 实例（例如调用某些 `LLMPluginService` 未封装的高级方法），可使用：
+
+```python
+provider = svc.get_raw_provider(provider="default")
+# provider 是 ILLM 接口的实例（通常是某个具体的 Provider 类）
+response = provider.chat([...])
+```
+
+> **警告**：直接使用底层 Provider 会绕过 `LLMPluginService` 的对话管理、用量记录和错误处理逻辑。仅在需要 `LLMPluginService` 未提供的能力时才使用。
 
 **工具注册与使用完整流程**：
 
@@ -406,5 +430,6 @@ if not ok:
 
 - [LLM Provider API 参考](../core/llm-provider/api-reference.md) — LLMPluginService、ConversationManager、ToolCallExecutor 完整 API 清单
 - [LLM Provider 概述](../core/llm-provider/overview.md) — Provider 底层实现细节
+- [MCP 协议模块概述](../core/mcp/overview.md) — MCP Server 和 MCP Client 完整指南
 - [插件开发指南](../core/plugin-system/plugin-development.md)
 - [PluginManager 架构](../core/plugin-system/plugin-manager.md)

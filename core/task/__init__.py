@@ -17,7 +17,10 @@ Classes:
 使用示例:
     >>> from core.task import BackgroundTaskManager, TaskType, TaskStatus
     >>> manager = BackgroundTaskManager()
-    >>> task_id = manager.create_task(TaskType.PLUGIN, callback_func)
+    >>> task_id = manager.register_async_task(
+    ...     plugin_id="plugin-uuid", name="my_task",
+    ...     func=my_function, callback=my_callback,
+    ...     args=(arg1, arg2), kwargs={"key1": value1})
 
 模块依赖:
     - utils.logging_tools: 日志工具

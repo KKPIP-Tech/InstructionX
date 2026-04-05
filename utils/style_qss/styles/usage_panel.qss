@@ -1,0 +1,130 @@
+/* ═════════════════════════════════════════════════════════════════════════════
+ * 用量查询面板专用样式 (Usage Panel)
+ * ═════════════════════════════════════════════════════════════════════════════ */
+
+/* 统计卡片容器 */
+#statsCard {
+    background-color: {window};
+    border-radius: 12px;
+    border-left: 4px solid {accent};
+    border-top: 1px solid {borderLight};
+    border-right: 1px solid {borderLight};
+    border-bottom: 1px solid {borderLight};
+}
+
+#statsCard:hover {
+    border-left-color: {accentLight};
+    background-color: {alternateBase};
+}
+
+#statsCardTitle {
+    color: {textSecondary};
+    font-size: 12px;
+    font-weight: 500;
+}
+
+#statsCardValue {
+    color: {textPrimary};
+    font-size: 22px;
+    font-weight: 700;
+}
+
+/* 图表区域 */
+#chartGroup {
+    background-color: {window};
+    border: 1px solid {borderLight};
+    border-radius: 8px;
+}
+
+#chartGroup::title {
+    color: {windowText};
+    font-weight: 600;
+    font-size: 13px;
+    padding: 0 8px;
+}
+
+/* 筛选栏容器 */
+#filterContainer {
+    background-color: {alternateBase};
+    border: 1px solid {borderLight};
+    border-radius: 8px;
+}
+
+#filterLabel {
+    color: {textSecondary};
+    font-size: 12px;
+    font-weight: 500;
+}
+
+#filterCombo {
+    min-width: 100px;
+    max-width: 150px;
+}
+
+#filterInput {
+    min-width: 150px;
+    max-width: 200px;
+}
+
+#filterDate {
+    min-width: 100px;
+}
+
+#refreshBtn {
+    min-width: 80px;
+}
+
+/* 用量表格 */
+#usageTable {
+    background-color: {window};
+    border: 1px solid {borderLight};
+    border-radius: 8px;
+    gridline-color: transparent;
+}
+
+#usageTable::item {
+    padding: 6px 8px;
+    border-bottom: 1px solid {borderLight};
+}
+
+#usageTable::item:alternate {
+    background-color: {alternateBase};
+}
+
+#usageTable::item:selected {
+    background-color: {highlight};
+    color: {highlightedText};
+}
+
+#usageTable::item:hover {
+    background-color: {controlFillHover};
+}
+
+#usageTable QHeaderView::section {
+    background-color: {alternateBase};
+    color: {textPrimary};
+    font-weight: 600;
+    padding: 8px;
+    border: none;
+    border-bottom: 2px solid {borderLight};
+}
+
+#usageTable QHeaderView::section:hover {
+    background-color: {controlFillHover};
+}
+
+/* 分页控件 */
+#pageContainer {
+    background-color: transparent;
+}
+
+#pageLabel {
+    color: {textSecondary};
+    font-size: 13px;
+    min-width: 150px;
+}
+
+#pageBtn {
+    min-width: 80px;
+    padding: 4px 16px;
+}

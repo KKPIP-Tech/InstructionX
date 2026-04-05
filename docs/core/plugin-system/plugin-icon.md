@@ -119,7 +119,7 @@ def load_icon(self, plugin_dir: Optional[Path] = None) -> Optional[QIcon]
 根据图标类型加载并返回 `QIcon` 对象。所有异常均在内部捕获并记录日志，失败时静默返回 `None`。
 
 **参数**:
-- `plugin_dir`: 插件目录路径（用于解析相对路径）。`FILE` 类型必须传入此参数以解析相对路径；其他类型可不传。
+- `plugin_dir`: 插件目录路径（`Path` 对象，用于解析相对路径）。`FILE` 类型**应当**传入此参数以解析相对路径；若未传入或传入 `None`，`load_icon()` 静默返回 `None`，`IPlugin.skill_icon` 会自动降级为系统默认图标 `SP_FileIcon`。其他类型可不传。
 
 **返回**:
 - `QIcon` 对象，`NONE` 类型或加载失败时返回 `None`。注意：返回值无法区分"显式无图标"和"加载失败"。
@@ -128,7 +128,7 @@ def load_icon(self, plugin_dir: Optional[Path] = None) -> Optional[QIcon]
 ```python
 icon = PluginIcon.builtin("SP_FileIcon")
 qicon = icon.load_icon()                          # BUILTIN/RESOURCE/BASE64 可不传 plugin_dir
-qicon = icon.load_icon(plugin_dir=plugin_dir)     # FILE 类型必须传入 plugin_dir
+qicon = icon.load_icon(plugin_dir=plugin_dir)     # FILE 类型建议传入 plugin_dir（未传入时自动降级为默认图标）
 ```
 
 ---
@@ -138,6 +138,8 @@ qicon = icon.load_icon(plugin_dir=plugin_dir)     # FILE 类型必须传入 plug
 ### 在 information.py 中定义图标
 
 ```python
+# PluginIcon 定义在 core.plugin.plugin_icon
+# 注意：core.interfaces 不导出 PluginIcon，from core.interfaces import PluginIcon 会报错
 from core.plugin.plugin_icon import PluginIcon
 
 class MyPluginInfo(IPluginInfo):
@@ -174,6 +176,9 @@ class ImagePluginInfo(IPluginInfo):
 因此，开发者只需在 `information.py` 中按以下方式定义图标即可：
 
 ```python
+# 导入路径: PluginIcon 定义在 core.plugin.plugin_icon
+from core.plugin.plugin_icon import PluginIcon
+
 class MyPluginInfo(IPluginInfo):
     @property
     def skill_icon(self) -> PluginIcon:

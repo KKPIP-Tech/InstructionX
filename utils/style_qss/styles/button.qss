@@ -130,17 +130,30 @@ QPushButton[class="subtle"]:pressed {
     background-color: {controlFillPressed};
 }
 
-/* 保存按钮（强调色） */
+/* 保存按钮（强调色）- 启用状态：蓝色背景，白色文字 */
 QPushButton[class="accentSave"] {
     background-color: {accent};
     border: 1px solid {accent};
     border-radius: {radius};
-    color: white;
+    color: {highlightedText};
     padding: 4px 10px;
 }
-QPushButton[class="accentSave"]:hover { background-color: {accentLight}; border-color: {accentLight}; }
-QPushButton[class="accentSave"]:pressed { background-color: {accentDark}; border-color: {accentDark}; }
-QPushButton[class="accentSave"]:disabled { background-color: {controlFillDisabled}; color: {textDisabled}; border-color: {borderLight}; }
+QPushButton[class="accentSave"]:hover { 
+    background-color: {accentLight}; 
+    border-color: {accentLight}; 
+    color: {highlightedText};
+}
+QPushButton[class="accentSave"]:pressed { 
+    background-color: {accentDark}; 
+    border-color: {accentDark}; 
+    color: {highlightedText};
+}
+/* 保存按钮 - 禁用状态：灰色背景，灰色文字（可见但不可点击） */
+QPushButton[class="accentSave"]:disabled { 
+    background-color: {button}; 
+    color: {textDisabled}; 
+    border-color: {borderLight};
+}
 
 /* 警告/刷新按钮 */
 QPushButton[class="warning"] {

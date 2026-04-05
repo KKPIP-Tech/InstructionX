@@ -103,19 +103,17 @@ Provider 徽标（`ProviderLogoLabel`，程序化彩色方块）、名称、子�
 - 两个下拉框自动合并预设模型 + API 获取模型（去重）
 
 #### 底部栏（固定高度 52px）
-- 用量统计文字（从 `LLMPluginService.get_usage_stats()` 获取，显示 "累计使用: $X.XXXX"）
+- 用量统计文字（从 `LLMPluginService.get_usage_stats()` 获取，显示 `"累计使用：$X.XXXX"`（美元））
 - 取消按钮、**保存** 按钮（修改后才可用）
 
 ### 2.5 自定义组件
 
 | 组件 | 文件 | 说明 |
 |------|------|------|
-| `ProviderListItem` | `llm_settings_components.py` | Provider 列表项，含图标、名称、ON/OFF 状态 |
-| `ProviderLogoLabel` | `llm_settings_components.py` | 程序化 Provider 徽标（彩色方块 + 首字母） |
-| `CapabilityBadge` | `llm_settings_components.py` | 能力徽章（Vision / Thinking / Tools） |
-| `CategoryBadge` | `llm_settings_components.py` | 类别徽章（Chat / Embedding） |
+| `ProviderListItemWidget` | `llm_settings_components.py` | Provider 列表项，含圆形 Logo、名称、已启用/未启用状态标签 |
 | `CollapsibleGroup` | `llm_settings_components.py` | 可折叠分组容器 |
-| `ModelDetailItem` | `llm_settings_components.py` | API 获取模型的列表项（含勾选状态） |
+| `ActionButton` | `llm_settings_components.py` | 统一操作按钮样式（蓝色圆角） |
+| `ModelDetailItem` | `llm_settings_components.py` | 预设模型 / API 获取模型的详情列表项（含上下文长度、能力标签） |
 
 ### 2.6 使用方式
 
@@ -182,7 +180,7 @@ if dialog.exec() == QDialog.DialogCode.Accepted:
 from ui.dialog.plugin_order_dialog import PluginOrderDialog
 
 dialog = PluginOrderDialog(plugin_manager, parent_window)
-if dialog.exec():
+if dialog.exec() == QDialog.DialogCode.Accepted:
     # 排序已保存，SkillsPanel 需要刷新
     skills_panel.load_skills_from_manager()
 ```
@@ -208,30 +206,31 @@ if dialog.exec():
 ### 4.3 三栏布局
 
 ```
-┌──────────────────────────────────────────────────────────────────────┐
-│  设置                                                    [×]         │
-├────────────┬─────────────────┬──────────────────────────────────────┤
-│ 设置分类   │  Provider 列表  │  详情区                              │
-│ ─────────│ ───────────────│ ─────────────────────────────────────│
-│ 🤖 模型服务 │ ▶ MiniMax-1    │  [MiniMax]  启用 ✓                  │
-│ ⭐ 默认模型 │   SiliconFlow-1│  ──────────────────────────────────│
-│ ⚙️ 常规设置 │   GLM-1        │  API 密钥 [...]                     │
-│ 🖥️ 显示设置 │   Ollama-1     │  ──────────────────────────────────│
-│ 💾 数据设置 │                 │  模型列表                           │
-│ ...        │ + 添加供应商    │  ▼ Chat 模型                       │
-│            │                │    ├─ MiniMax-M2.5  [Chat][Tools] │
-│            │                │    └─ ...                             │
-│            │                │  ▼ Embedding 模型                    │
-│            │                │    └─ ...                             │
-│            │                │  ──────────────────────────────────│
-│            │                │  当前聊天模型 [MiniMax-M2.5     ▼]  │
-│            │                │  [保存]                               │
-└────────────┴─────────────────┴──────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────┐
+│  设置                                                        [×]        │
+├────────────────┬─────────────────────┬──────────────────────────────────┤
+│ 设置分类       │  Provider 列表       │  详情区                          │
+│ (170px)       │  (260px)            │                                  │
+│ ─────────────│ ──────────────────│ ─────────────────────────────────│
+│ 🤖 模型服务     │ ▶ MiniMax-1        │  [MiniMax]  启用 ✓               │
+│ ⭐ 默认模型     │   SiliconFlow-1     │  ──────────────────────────────│
+│ ⚙️ 常规设置     │   GLM-1            │  API 密钥 [...]                 │
+│ 🖥️ 显示设置     │   Ollama-1         │  ──────────────────────────────│
+│ 💾 数据设置     │                     │  模型                            │
+│ ...           │ + 添加               │  ▼ deepseek-ai                  │
+│               │                     │    └─ MiniMax-M2.5              │
+│               │                     │  ▼ pro                          │
+│               │                     │    └─ ...                       │
+│               │                     │  ──────────────────────────────│
+│               │                     │  [保存]                          │
+└───────────────┴─────────────────────┴──────────────────────────────────┘
 ```
 
-- **左栏**：14 个设置分类（模型服务、默认模型、常规设置、显示设置、数据设置、MCP 服务器等）
-- **中栏**：Provider 列表，含图标、名称、启用状态标签；支持添加新 Provider
-- **右栏**：详情区，含 Logo、操作按钮、折叠模型分组（Chat / Embedding / Vision）
+- **左栏**（170px）：15 个设置分类（模型服务、默认模型、常规设置、显示设置、数据设置、MCP 服务器等）
+- **中栏**（260px）：Provider 列表，含图标、名称、启用状态标签；支持添加新 Provider（按钮文字：`+ 添加`）
+- **右栏**：详情区，含 Logo、操作按钮、折叠模型分组（按 deepseek-ai / pro / 其他分组，源自 `_group_models` 方法按 model_id 关键字匹配）
+
+- **底部栏**：用量统计（格式：`用量: Token X | 费用 ¥X.XXXX | 请求 X 次`，人民币）、重置用量按钮、取消按钮、**保存** 按钮
 
 ### 4.4 信号
 
@@ -245,11 +244,12 @@ Provider 默认模型变更时发射 `default_changed(provider_name, chat_model)
 
 | 组件 | 文件 | 说明 |
 |------|------|------|
-| `ProviderListItem` | `llm_settings_components.py` | Provider 列表项，含图标、名称、启用状态 |
-| `ModelListItem` | `llm_settings_components.py` | 模型列表项（含勾选状态） |
-| `SettingsCategoryItem` | `llm_settings_components.py` | 左侧设置分类项 |
+| `ProviderListItemWidget` | `llm_settings_components.py` | Provider 列表项，含圆形 Logo、名称、已启用/未启用状态标签 |
+| `ModelListItem` | `llm_settings_components.py` | 模型列表项（含固定、设置、删除操作按钮） |
+| `SettingsCategoryItem` | `llm_settings_components.py` | 左侧设置分类项（含图标、文字、选中状态） |
 | `CollapsibleGroup` | `llm_settings_components.py` | 可折叠分组容器 |
 | `ActionButton` | `llm_settings_components.py` | 统一操作按钮样式 |
+| `IconLineEdit` | `llm_settings_components.py` | 带图标按钮的输入框（用于 API 密钥输入） |
 
 ### 4.6 使用方式
 

@@ -34,6 +34,7 @@ _STYLE_FILES = [
     'dock',           # 停靠窗口
     'mainwindow',     # 主窗口
     'titlebar',       # 自定义标题栏
+    'usage_panel',    # 用量查询面板
 ]
 
 

@@ -38,8 +38,8 @@ WorkArea 使用 `QVBoxLayout`，通过以下方式管理多个 Widget：
 
 - 使用 `add_widget()` 将 Widget 添加到布局（显示该 Widget）
 - 使用 `clear()` 或 `clear_keep_highlight()` 移除 Widget
-- `clear()` 移除并销毁（`deleteLater()`）所有 Widget，通常用于彻底清空
-- `clear_keep_highlight()` 仅隐藏（`hide()`）Widget 而不销毁，保留实例以供缓存复用，切换插件时使用此方法
+- `clear()` 移除并销毁（`deleteLater()`）所有 Widget，同时可选触发按钮高亮清除回调；不自动显示占位符
+- `clear_keep_highlight()` 仅隐藏（`hide()`）Widget 而不销毁，保留实例以供 IPlugin 缓存复用，切换插件时使用此方法
 
 ### 3.2 Widget 管理
 
@@ -94,16 +94,18 @@ def clear(self, clear_highlight: bool = True):
     """
     # 移除并销毁所有 Widget
     while self.work_layout.count() > 0:
-        child = self.work_layout.takeAt(0)
-        if child.widget():
-            child.widget().deleteLater()
+        item = self.work_layout.takeAt(0)
+        if item:
+            widget = item.widget()
+            if widget:
+                widget.deleteLater()
+        if item:
+            del item
 
-    # 如果需要清除高亮，调用回调
-    if clear_highlight and self._clear_highlight_callback:
+    # 如果需要清除高亮，调用回调（使用 hasattr 做防御性检查）
+    if clear_highlight and hasattr(self, '_clear_highlight_callback'):
         self._clear_highlight_callback()
-
-    # 显示占位符
-    self.show_placeholder()
+    # 注意：此方法不自动显示占位符，调用方需自行调用 show_placeholder()
 ```
 
 ### 4.4 清除但保持高亮
@@ -113,9 +115,18 @@ def clear_keep_highlight(self):
     """
     清除工作区但不清除按钮高亮状态
 
-    内部调用 clear(clear_highlight=False)。用于切换插件时保留技能按钮的选中状态。
+    内部实现：遍历布局，调用 hide() 隐藏而非 deleteLater() 销毁 Widget，
+    保留实例以供 IPlugin 缓存复用。用于切换插件时保留技能按钮的选中状态。
     """
-    self.clear(clear_highlight=False)
+    while self.work_layout.count() > 0:
+        item = self.work_layout.takeAt(0)
+        if item:
+            widget = item.widget()
+            if widget:
+                widget.hide()  # 隐藏而非销毁
+            # 不调用 deleteLater()，保留 widget 实例以便缓存复用
+        if item:
+            del item
 ```
 
 ### 4.5 设置清除高亮回调
@@ -230,18 +241,20 @@ self.work_area.clear_keep_highlight()
 
 ```mermaid
 flowchart TD
-    A[用户点击技能按钮] --> B[主窗口接收 skill_clicked 信号]
-    B --> C[clear_keep_highlight 隐藏现有 Widget]
-    C --> D[plugin.get_widget 获取插件 Widget]
+    A[用户点击技能按钮] --> B[SkillsPanel 发出 skill_clicked 信号]
+    B --> C[MainWindow._on_skill_clicked 接收插件实例]
+    C --> D[WorkArea.clear_keep_highlight 隐藏现有 Widget]
+    D --> E[IPlugin.get_widget 获取插件 Widget]
 
-    D -->|首次| E[_create_widget 创建 UI]
-    D -->|后续| F[返回缓存的 Widget]
+    E -->|首次| F[_create_widget 创建 UI 并缓存]
+    E -->|后续| G[返回缓存的 Widget]
 
-    E --> G[add_widget 替换布局中的 Widget]
-    F --> G
-
-    G --> H[显示 Widget]
+    F --> H[WorkArea.add_widget 添加到布局]
+    G --> H
+    H --> I[widget.show 显示]
 ```
+
+> **说明**：`clear_keep_highlight` 调用 `hide()` 隐藏而非销毁 Widget，保留实例供 IPlugin 缓存复用。`_create_widget` / 缓存返回逻辑属于 `IPlugin.get_widget()` 的内部行为（在 `core/plugin/plugin_interface.py` 中）。
 
 ---
 

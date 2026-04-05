@@ -31,7 +31,9 @@
     >>>
     >>> # 后台任务
     >>> task_manager = BackgroundTaskManager()
-    >>> task_manager.create_task(TaskType.PLUGIN, callback_func)
+    >>> task_id = task_manager.register_async_task(
+    ...     plugin_id="plugin-uuid", name="my_task",
+    ...     func=callback_func, callback=my_callback)
 
 模块依赖:
     - core/plugin: 插件系统模块

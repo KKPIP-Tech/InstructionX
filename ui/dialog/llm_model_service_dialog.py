@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (
     QSizePolicy, QSpacerItem
 )
 from PySide6.QtCore import Qt, Signal, QSize
-from PySide6.QtGui import QFont, QPixmap
+from PySide6.QtGui import QFont, QPixmap, QBrush
 
 from core.llm.config import LLMConfig, ProviderConfig
 from core.llm.llm_provider import get_llm_provider
@@ -26,7 +26,7 @@ from core.llm.types import ProviderInfo
 from core.llm.provider_interface import ModelInfo
 
 from ui.dialog.llm_settings_components import (
-    ProviderListItem, CollapsibleGroup, ModelListItem,
+    CollapsibleGroup, ModelListItem,
     ActionButton, IconLineEdit, SettingsCategoryItem
 )
 
@@ -76,13 +76,12 @@ class LLMModelServiceDialog(QDialog):
         self._current_category: str = "model_service"
 
         # 数据存储
-        self._provider_items: Dict[str, ProviderListItem] = {}
+        self._provider_items: Dict[str, QListWidgetItem] = {}
         self._category_items: Dict[str, SettingsCategoryItem] = {}
         self._enabled_models: Dict[str, List[str]] = {}
         self._default_provider = self._load_default_provider()
 
         self._init_ui()
-        self._load_styles()
         self._load_data()
 
     # ===============================================================
@@ -148,25 +147,13 @@ class LLMModelServiceDialog(QDialog):
         self._search_box.textChanged.connect(self._on_search_changed)
         layout.addWidget(self._search_box)
 
-        # Provider 列表容器
-        self._provider_list_widget = QWidget()
-        self._provider_list_layout = QVBoxLayout(self._provider_list_widget)
-        self._provider_list_layout.setSpacing(2)
-        self._provider_list_layout.setContentsMargins(0, 0, 0, 0)
-        self._provider_list_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
-        
-        # 滚动区域
-        scroll = QScrollArea()
-        scroll.setObjectName("providerListScroll")
-        scroll.setWidgetResizable(True)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        scroll.setStyleSheet("QScrollArea { border: none; background: transparent; }")
-        scroll.setWidget(self._provider_list_widget)
-        layout.addWidget(scroll, stretch=1)
+        # Provider 列表
+        self._provider_list_widget = QListWidget()
+        self._provider_list_widget.currentItemChanged.connect(self._on_provider_current_changed)
+        layout.addWidget(self._provider_list_widget, stretch=1)
 
         # 添加按钮
         self._add_btn = QPushButton("+ 添加")
-        self._add_btn.setObjectName("addProviderBtn")
         self._add_btn.clicked.connect(self._on_add_provider)
         layout.addWidget(self._add_btn)
 
@@ -236,18 +223,6 @@ class LLMModelServiceDialog(QDialog):
         parent_layout.addWidget(bottom_widget)
 
     # ===============================================================
-    # 样式加载
-    # ===============================================================
-
-    def _load_styles(self):
-        """加载 LLM 设置专用样式"""
-        from utils.style_qss.registry import StyleRegistry
-        registry = StyleRegistry()
-        extra_style = registry.load_style("llm_settings")
-        if extra_style:
-            self.setStyleSheet(self.styleSheet() + "\n" + extra_style)
-
-    # ===============================================================
     # 数据加载
     # ===============================================================
 
@@ -291,35 +266,54 @@ class LLMModelServiceDialog(QDialog):
 
     def _refresh_provider_list(self):
         """刷新中间 Provider 列表"""
-        # 清除现有项
-        while self._provider_list_layout.count():
-            child = self._provider_list_layout.takeAt(0)
-            if child.widget():
-                child.widget().deleteLater()
+        from ui.dialog.llm_settings_components import ProviderListItemWidget
+
+        self._provider_list_widget.clear()
         self._provider_items.clear()
 
-        # 添加 Provider 项
+        logo_base = Path(__file__).resolve().parent.parent.parent / "core" / "llm" / "providers"
+
         providers = self._llm_config.get_all_providers()
         for name, config in providers.items():
-            is_active = config.enabled_chat or config.enabled_embedding
-            logo_path = str(Path(__file__).resolve().parent.parent.parent / "core" / "llm" / "providers" / f"{config.provider_type}.png")
-            item = ProviderListItem(
-                provider_name=name,
-                provider_type=config.provider_type,
-                is_active=is_active,
-                display_name=config.name,
-                icon_path=logo_path,
+            item = QListWidgetItem()
+            item.setText("")
+            item.setData(Qt.ItemDataRole.UserRole, name)
+            item.setData(Qt.ItemDataRole.UserRole + 1, config.enabled_chat or config.enabled_embedding)
+            item.setSizeHint(QSize(0, 40))
+            item.setBackground(QBrush(Qt.GlobalColor.transparent))
+            self._provider_list_widget.addItem(item)
+            logo_path = str(logo_base / f"{config.provider_type}.png")
+            widget = ProviderListItemWidget(
+                name=config.name or name,
+                logo_path=logo_path,
+                is_enabled=bool(config.enabled_chat or config.enabled_embedding)
             )
-            item.clicked.connect(self._on_provider_clicked)
+            self._provider_list_widget.setItemWidget(item, widget)
             self._provider_items[name] = item
-            self._provider_list_layout.addWidget(item)
 
-        self._provider_list_layout.addStretch()
+    def _refresh_provider_item_widget(self, name: str):
+        """刷新单个 Provider 列表项的控件（更新启用状态）"""
+        from ui.dialog.llm_settings_components import ProviderListItemWidget
+        item = self._provider_items.get(name)
+        if not item:
+            return
+        config = self._llm_config.get_provider(name)
+        if not config:
+            return
+        logo_base = Path(__file__).resolve().parent.parent.parent / "core" / "llm" / "providers"
+        logo_path = str(logo_base / f"{config.provider_type}.png")
+        widget = ProviderListItemWidget(
+            name=config.name or name,
+            logo_path=logo_path,
+            is_enabled=bool(config.enabled_chat or config.enabled_embedding)
+        )
+        self._provider_list_widget.setItemWidget(item, widget)
 
         # 选中第一个
+        providers = self._llm_config.get_all_providers()
         if providers:
             first_name = list(providers.keys())[0]
-            self._on_provider_clicked(first_name)
+            self._provider_list_widget.setCurrentItem(self._provider_items[first_name])
 
     # ===============================================================
     # 事件处理
@@ -342,23 +336,23 @@ class LLMModelServiceDialog(QDialog):
             self._clear_detail_panel()
             self._show_placeholder(f"{self.CATEGORIES[[c[2] for c in self.CATEGORIES].index(category)][1]}功能开发中...")
 
-    def _on_provider_clicked(self, provider_name: str):
-        """Provider 点击事件"""
-        # 更新选中状态
-        for name, item in self._provider_items.items():
-            item.set_selected(name == provider_name)
-
+    def _on_provider_current_changed(self, current: QListWidgetItem, previous: QListWidgetItem):
+        """Provider 选中切换事件"""
+        if not current:
+            return
+        provider_name = current.data(Qt.ItemDataRole.UserRole)
+        if not provider_name:
+            return
         self._current_provider = provider_name
         self._show_provider_detail(provider_name)
 
     def _on_search_changed(self, text: str):
         """搜索框内容变化"""
         text = text.lower()
-        for name, item in self._provider_items.items():
-            if text in name.lower() or text in item.provider_name.lower():
-                item.setVisible(True)
-            else:
-                item.setVisible(False)
+        for row in range(self._provider_list_widget.count()):
+            item = self._provider_list_widget.item(row)
+            name = item.data(Qt.ItemDataRole.UserRole)
+            item.setHidden(text not in name.lower())
 
     def _clear_detail_panel(self):
         """清空详情面板"""
@@ -384,7 +378,7 @@ class LLMModelServiceDialog(QDialog):
             return
 
         # 1. 头部区域：Logo + 名称 + 开关
-        header = self._create_detail_header(config)
+        header = self._create_detail_header(provider_name, config)
         self._detail_layout.addWidget(header)
 
         # 分隔线
@@ -411,7 +405,7 @@ class LLMModelServiceDialog(QDialog):
 
         self._detail_layout.addStretch()
 
-    def _create_detail_header(self, config: ProviderConfig) -> QWidget:
+    def _create_detail_header(self, provider_name: str, config: ProviderConfig) -> QWidget:
         """创建详情头部"""
         widget = QWidget()
         widget.setObjectName("detailHeader")
@@ -453,7 +447,7 @@ class LLMModelServiceDialog(QDialog):
         toggle.setObjectName("providerToggleSwitch")
         toggle.setChecked(config.enabled_chat)
         toggle.stateChanged.connect(
-            lambda state: self._on_toggle_provider(config, state)
+            lambda state, pn=provider_name: self._on_toggle_provider(pn, config, state)
         )
         layout.addWidget(toggle)
 
@@ -703,11 +697,10 @@ class LLMModelServiceDialog(QDialog):
     # 操作处理
     # ===============================================================
 
-    def _on_toggle_provider(self, config: ProviderConfig, state: int):
+    def _on_toggle_provider(self, provider_name: str, config: ProviderConfig, state: int):
         """切换 Provider 启用状态"""
         config.enabled_chat = bool(state)
-        if self._current_provider in self._provider_items:
-            self._provider_items[self._current_provider].set_active(bool(state))
+        self._refresh_provider_item_widget(provider_name)
 
     def _on_toggle_api_key_visibility(self):
         """切换 API Key 显示/隐藏"""
@@ -873,7 +866,6 @@ class LLMModelServiceDialog(QDialog):
             model = config.chat_model if config else ""
             self.default_changed.emit(self._default_provider, model)
 
-        self.accept()
 
     def _save_current_provider(self):
         """保存当前 Provider 配置"""

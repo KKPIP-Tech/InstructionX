@@ -29,15 +29,15 @@ def __init__(
     icon: QIcon,
     name: str,
     description: str,
-    parent: QWidget = None
+    parent=None
 )
 ```
 
 **参数**:
 - `icon`: 插件的图标（`QIcon`）
 - `name`: 插件显示名称
-- `description`: 插件描述（用于工具提示）
-- `parent`: 父控件
+- `description`: 插件描述（用于工具提示，**必填参数**）
+- `parent`: 父控件（可选）
 
 **示例**:
 ```python
@@ -46,6 +46,13 @@ button = SkillButton(
     name="LLM\nChat",
     description="LLM 智能对话",
     parent=self
+)
+
+# 注意：description 为必填参数
+button2 = SkillButton(
+    icon=QIcon(":/icons/my_plugin.png"),
+    name="我的\n插件",
+    description="我的插件功能描述"
 )
 ```
 
@@ -78,16 +85,16 @@ def is_active(self) -> bool
 
 返回当前是否为激活状态。
 
-### skill_tooltip
+### tool_tip
 
-按钮的悬浮提示文本，由 `IPlugin.skill_tooltip` 属性提供，格式为 `"插件名称\n技能描述"`。
-
-**来源**: `IPlugin.skill_tooltip`（`core/plugin/plugin_interface.py`）
+按钮的悬浮提示文本，在构造函数中由调用方传入的 `name` 和 `description` 拼接而成，格式为 `"名称\n描述"`。
 
 ```python
 # SkillButton 构造函数中设置 tooltip
 self.setToolTip(f"{name}\n{description}")
 ```
+
+**注意**: `SkillButton` 本身不感知 `IPlugin` 接口，tooltip 所需的数据由 `SkillsPanel` 从 `IPlugin` 相关属性中提取后，以普通字符串形式传入。`SkillsPanel` 构造 `SkillButton` 时的 description 参数来源为 `plugin.skill_description`。
 
 ---
 
@@ -127,7 +134,7 @@ self.setToolTip(f"{name}\n{description}")
 | 悬停状态 | 半透明背景高亮 |
 | 激活状态 | 边框高亮（accent 色） |
 
-样式文件位于 `utils/style_qss/styles/custom.qss`：
+样式文件位于 `utils/style_qss/styles/button.qss`：
 
 ```css
 SkillButton[active="true"] {
