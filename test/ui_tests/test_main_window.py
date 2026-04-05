@@ -108,6 +108,7 @@ def test_cycle_theme_cycles_all_states(mocker, qtbot):
     mocker.patch('ui.main_window.WorkArea')
     mocker.patch('ui.main_window.DataProvider')
     mocker.patch('ui.main_window.PluginManager')
+    mocker.patch('utils.style_qss.set_style_qss_theme')
 
     from ui.main_window import InstructionXMainWindow
     with patch.object(InstructionXMainWindow, '_load_saved_theme'):
@@ -138,6 +139,7 @@ def test_theme_change_saved_via_dataprovider(mocker, qtbot):
     mocker.patch('ui.main_window.SkillsPanel')
     mocker.patch('ui.main_window.WorkArea')
     mocker.patch('ui.main_window.PluginManager')
+    mocker.patch('utils.style_qss.set_style_qss_theme')
 
     from ui.main_window import InstructionXMainWindow
     with patch.object(InstructionXMainWindow, '_load_saved_theme'):

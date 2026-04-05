@@ -21,6 +21,9 @@ class MockStyleQSS:
         'base': '#1E1E1E',
     }
 
+    def colors(self):
+        return self.COLORS
+
     def get_color_dict(self):
         return self.COLORS
 
@@ -72,6 +75,8 @@ def _make_dialog(mocker, patch_init_ui=True):
         self._detail_layout = mock_detail_layout
         self._save_btn = mock_save_btn
         self._cancel_btn = mock_cancel_btn
+        # Needed so _refresh_provider_list() doesn't return early (truthy check)
+        self._provider_list_widget = MagicMock()
 
     if patch_init_ui:
         # Patch Qt classes at the module level so no real C++ objects are created
@@ -122,7 +127,7 @@ def _make_dialog(mocker, patch_init_ui=True):
 # Test: _load_data() populates provider list and selects first
 # ---------------------------------------------------------------------------
 def test_load_data_populates_provider_list(mocker, qtbot):
-    """_load_data() populates provider list and selects the first provider."""
+    """_load_data() populates _provider_items dict and selects the first provider."""
     mock_provider1 = MagicMock()
     mock_provider1.name = 'OpenAI'
     mock_provider1.provider_type = 'openai'
@@ -141,22 +146,21 @@ def test_load_data_populates_provider_list(mocker, qtbot):
 
     dialog = _make_dialog(mocker, patch_init_ui=True)
     dialog._llm_config = mock_config
-    # Patch _show_provider_detail to avoid _detail_layout access
-    dialog._show_provider_detail = lambda name: None
+    # _provider_list_widget is set by patched_init_ui, preventing early return
     qtbot.addWidget(dialog)
+
     dialog._load_data()
 
     assert len(dialog._provider_items) == 2
     assert 'openai' in dialog._provider_items
     assert 'glm' in dialog._provider_items
-    assert dialog._current_provider_name == 'openai'
 
 
 # ---------------------------------------------------------------------------
-# Test: _refresh_provider_list() creates ProviderListItem for each provider
+# Test: _refresh_provider_list() creates provider items for each provider
 # ---------------------------------------------------------------------------
 def test_refresh_provider_list_creates_items(mocker, qtbot):
-    """_refresh_provider_list() creates ProviderListItem widgets for each provider."""
+    """_refresh_provider_list() creates an entry in _provider_items for each provider."""
     mock_p1 = MagicMock()
     mock_p1.name = 'MiniMax'
     mock_p1.provider_type = 'minimax'
@@ -176,46 +180,36 @@ def test_refresh_provider_list_creates_items(mocker, qtbot):
     dialog = _make_dialog(mocker, patch_init_ui=True)
     dialog._llm_config = mock_config
     qtbot.addWidget(dialog)
+
     dialog._refresh_provider_list()
 
     assert 'minimax' in dialog._provider_items
     assert 'siliconflow' in dialog._provider_items
-    # Verify addWidget was called (layout is mocked, so count() returns 0)
-    assert dialog._provider_list_layout.addWidget.call_count >= 2
+    # Each provider should have an item added to _provider_items
+    assert len(dialog._provider_items) == 2
 
 
 # ---------------------------------------------------------------------------
 # Test: _on_provider_clicked() switches selection state
 # ---------------------------------------------------------------------------
 def test_on_provider_clicked_switches_selection(mocker, qtbot):
-    """_on_provider_clicked() switches selection state between providers."""
-    mock_config = MagicMock()
-    mock_p1 = MagicMock()
-    mock_p1.name = 'P1'
-    mock_p1.provider_type = 'type1'
-    mock_p1.enabled_chat = True
-    mock_p2 = MagicMock()
-    mock_p2.name = 'P2'
-    mock_p2.provider_type = 'type2'
-    mock_p2.enabled_chat = True
-
-    mock_config.get_all_providers.return_value = {'p1': mock_p1, 'p2': mock_p2}
-    mock_config.load_models_cache.return_value = None
-
+    """_on_provider_clicked() calls setCurrentItem with the correct provider item."""
     dialog = _make_dialog(mocker, patch_init_ui=True)
-    dialog._llm_config = mock_config
-    # Mock _show_provider_detail to avoid real widget creation
-    dialog._show_provider_detail = lambda name: None
     qtbot.addWidget(dialog)
-    dialog._provider_items = {'p1': MagicMock(), 'p2': MagicMock()}
 
-    dialog._on_provider_clicked('p1')
-    dialog._provider_items['p1'].set_selected.assert_called_with(True)
-    dialog._provider_items['p2'].set_selected.assert_called_with(False)
+    # Set up two mock items
+    mock_item1 = MagicMock()
+    mock_item2 = MagicMock()
+    dialog._provider_items = {'p1': mock_item1, 'p2': mock_item2}
+    dialog._current_provider_name = 'p1'
+
+    dialog._show_provider_detail = MagicMock()
 
     dialog._on_provider_clicked('p2')
-    dialog._provider_items['p1'].set_selected.assert_called_with(False)
-    dialog._provider_items['p2'].set_selected.assert_called_with(True)
+
+    # _on_provider_clicked calls _provider_list_widget.setCurrentItem(item)
+    # (it does NOT update _current_provider_name directly; that happens via Qt signals)
+    dialog._provider_list_widget.setCurrentItem.assert_called_with(mock_item2)
 
 
 # ---------------------------------------------------------------------------

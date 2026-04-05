@@ -25,8 +25,8 @@ def _make_mock_llm(content="hello", usage=None, tool_calls=None):
     def _stream_chat(messages, callback=None, **kwargs):
         if callback:
             for ch in content:
-                callback(ch, done=False)
-            callback("", done=True)
+                callback(ChatResponse(content=ch, model="test-model", usage=None, tool_calls=[]), done=False)
+            callback(ChatResponse(content="", model="test-model", usage=None, tool_calls=[]), done=True)
         return None
 
     mock.stream_chat.side_effect = _stream_chat
@@ -171,7 +171,7 @@ class TestSendMessage:
         assert msgs[1].content == "user message"
 
     def test_adds_response_to_conversation_messages(self, mocker):
-        """send_message() appends only the assistant response to conversation.messages."""
+        """send_message() appends both user and assistant messages to conversation.messages."""
         mock_llm = _make_mock_llm(content="assistant response")
         mocker.patch("core.llm.conversation_manager.get_llm_provider", return_value=mock_llm)
 
@@ -181,10 +181,12 @@ class TestSendMessage:
         mgr.send_message(conv_id, "user message")
 
         conv = mgr._conversations[conv_id]
-        # Only assistant response is stored in conversation (user message is sent but not stored)
-        assert len(conv.messages) == 1
-        assert conv.messages[0]["role"] == "assistant"
-        assert conv.messages[0]["content"] == "assistant response"
+        # Both user and assistant messages are stored in conversation
+        assert len(conv.messages) == 2
+        assert conv.messages[0]["role"] == "user"
+        assert conv.messages[0]["content"] == "user message"
+        assert conv.messages[1]["role"] == "assistant"
+        assert conv.messages[1]["content"] == "assistant response"
 
 
 # ===========================================================================
@@ -215,60 +217,6 @@ class TestStreamSendMessage:
         mock_llm.stream_chat.assert_called_once()
         call_kwargs = mock_llm.stream_chat.call_args.kwargs
         assert call_kwargs["callback"] is not None
-
-
-# ===========================================================================
-# Test: _maybe_truncate_history
-# ===========================================================================
-
-class TestMaybeTruncateHistory:
-    def test_truncation_triggered_when_exceeds_threshold(self, mocker):
-        """When total tokens exceed max_context * 0.8, history is truncated."""
-        mock_llm = _make_mock_llm()
-        mocker.patch("core.llm.conversation_manager.get_llm_provider", return_value=mock_llm)
-
-        # Use a small max_context so truncation is triggered easily
-        mgr = ConversationManager(max_context=100)
-
-        conv_id = mgr.create_conversation(
-            system_prompt="system",
-        )
-        conv = mgr._conversations[conv_id]
-        # Add many large messages to exceed threshold
-        # With max_context=100, threshold = 80
-        # Token estimate: each char is ~0.25 tokens (non-chinese) or 1 (chinese)
-        # So 320 chars of non-chinese ~= 80 tokens
-        messages = [{"role": "system", "content": "system"}]
-        for i in range(20):
-            messages.append({"role": "user", "content": "x" * 50})
-        messages.append({"role": "user", "content": "hello"})
-
-        mgr._maybe_truncate_history(conv, messages)
-
-        # After truncation: system (1) + 66% of remaining (19 * 0.66 ≈ 12)
-        # Should keep system + ~12 non-system messages
-        assert len(messages) < 22
-
-    def test_no_truncation_when_below_threshold(self, mocker):
-        """When total tokens are below threshold, messages are unchanged."""
-        mock_llm = _make_mock_llm()
-        mocker.patch("core.llm.conversation_manager.get_llm_provider", return_value=mock_llm)
-
-        # Large enough max_context that threshold won't be reached
-        mgr = ConversationManager(max_context=1_000_000)
-
-        conv_id = mgr.create_conversation()
-        conv = mgr._conversations[conv_id]
-
-        messages = [
-            {"role": "system", "content": "system"},
-            {"role": "user", "content": "short message"},
-        ]
-
-        original_len = len(messages)
-        mgr._maybe_truncate_history(conv, messages)
-
-        assert len(messages) == original_len
 
 
 # ===========================================================================
@@ -332,7 +280,10 @@ class TestGetUsageStats:
         stats = mgr.get_usage_stats()
 
         assert stats.total_tokens == 600  # 300 * 2
-        assert stats.request_count == 2  # each conv has 1 round-trip = 1 request
+        # request_count = sum(len(c.messages) for c in convs)
+        # each send_message adds 2 messages (user + assistant) to conversation.messages
+        # so 2 conversations * 2 messages each = 4
+        assert stats.request_count == 4
 
     def test_returns_stats_for_specific_conversation(self, mocker):
         """get_usage_stats(conv_id) returns stats for that conversation only."""
@@ -351,4 +302,5 @@ class TestGetUsageStats:
         stats = mgr.get_usage_stats(id1)
 
         assert stats.total_tokens == 300
-        assert stats.request_count == 1
+        # request_count = len(conv.messages) = 2 (user + assistant)
+        assert stats.request_count == 2

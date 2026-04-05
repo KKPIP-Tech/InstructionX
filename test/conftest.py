@@ -80,6 +80,10 @@ def reset_singletons():
     # 重置 LLMPluginService
     core.llm.plugin_service._instance = None
 
+    # 重置 MCPManager 模块级单例
+    import core.mcp.manager as mcp_manager_module
+    mcp_manager_module._module_instance = None
+
     yield
 
     # 测试后清理

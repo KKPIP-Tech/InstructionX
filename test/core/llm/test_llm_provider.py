@@ -142,10 +142,11 @@ class TestChat:
         mock_provider.refresh_models.return_value = []
         mock_provider.get_models.return_value = []
         mock_response = MagicMock(content="hello", model="m")
+        mock_response.usage = None
         mock_provider.chat.return_value = mock_response
         inst._providers["first"] = mock_provider
 
-        mocker.patch.object(inst, "get_enabled_providers", return_value={"first": mock_provider})
+        mocker.patch.object(lp_module.LLMProvider, "get_enabled_providers", return_value={"first": mock_provider})
 
         result = inst.chat([Message("user", "hi")], provider="default")
         assert result.content == "hello"
@@ -160,7 +161,7 @@ class TestChat:
         inst._providers.clear()
         inst._providers["p"] = MagicMock()
 
-        mocker.patch.object(inst, "get_enabled_providers", return_value={})
+        mocker.patch.object(lp_module.LLMProvider, "get_enabled_providers", return_value={})
 
         with pytest.raises(lp_module.ConfigurationError, match="No enabled chat provider"):
             inst.chat([{"role": "user", "content": "hi"}], provider="default")
@@ -189,6 +190,7 @@ class TestChat:
         mock_provider.refresh_models.return_value = []
         mock_provider.get_models.return_value = []
         mock_response = MagicMock(content="ok", model="m")
+        mock_response.usage = None
         mock_provider.chat.return_value = mock_response
         inst._providers["prov"] = mock_provider
 
@@ -216,9 +218,9 @@ class TestChat:
         inst._providers.clear()
 
         mock_a = MagicMock()
-        mock_a.chat.return_value = MagicMock(content="a", model="m1")
+        mock_a.chat.return_value = MagicMock(content="a", model="m1", usage=None)
         mock_b = MagicMock()
-        mock_b.chat.return_value = MagicMock(content="b", model="m2")
+        mock_b.chat.return_value = MagicMock(content="b", model="m2", usage=None)
         mock_a.refresh_models.return_value = []
         mock_b.refresh_models.return_value = []
         inst._providers["prov_a"] = mock_a
@@ -250,7 +252,7 @@ class TestStreamChat:
         mock_provider.stream_chat.return_value = iter([MagicMock(content="chunk")])
         inst._providers["prov"] = mock_provider
 
-        mocker.patch.object(inst, "get_enabled_providers", return_value={"prov": mock_provider})
+        mocker.patch.object(lp_module.LLMProvider, "get_enabled_providers", return_value={"prov": mock_provider})
 
         inst.stream_chat([Message("user", "hi")], provider="default")
         mock_provider.stream_chat.assert_called_once()
@@ -264,7 +266,7 @@ class TestStreamChat:
         inst._providers.clear()
         inst._providers["p"] = MagicMock()
 
-        mocker.patch.object(inst, "get_enabled_providers", return_value={})
+        mocker.patch.object(lp_module.LLMProvider, "get_enabled_providers", return_value={})
 
         with pytest.raises(lp_module.ConfigurationError, match="No enabled chat provider"):
             inst.stream_chat([{"role": "user", "content": "hi"}], provider="default")
@@ -289,7 +291,7 @@ class TestEmbed:
         mock_provider.embed.return_value = [MagicMock(embedding=[0.1], model="emb")]
         inst._providers["emb_prov"] = mock_provider
 
-        mocker.patch.object(inst, "get_enabled_providers", return_value={"emb_prov": mock_provider})
+        mocker.patch.object(lp_module.LLMProvider, "get_enabled_providers", return_value={"emb_prov": mock_provider})
 
         result = inst.embed("hello world", provider="default")
         assert len(result) == 1
@@ -304,7 +306,7 @@ class TestEmbed:
         inst._providers.clear()
         inst._providers["p"] = MagicMock()
 
-        mocker.patch.object(inst, "get_enabled_providers", return_value={})
+        mocker.patch.object(lp_module.LLMProvider, "get_enabled_providers", return_value={})
 
         with pytest.raises(lp_module.ConfigurationError, match="No enabled embedding provider"):
             inst.embed("text", provider="default")
@@ -533,7 +535,7 @@ class TestAsyncChat:
         mock_provider.get_models.return_value = []
         inst._providers["async_prov"] = mock_provider
 
-        mocker.patch.object(inst, "get_enabled_providers", return_value={"async_prov": mock_provider})
+        mocker.patch.object(lp_module.LLMProvider, "get_enabled_providers", return_value={"async_prov": mock_provider})
 
         result = asyncio.run(inst.async_chat([Message("user", "hi")], provider="default"))
         assert result.content == "async hello"
