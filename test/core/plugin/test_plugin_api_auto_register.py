@@ -189,11 +189,11 @@ plugin = PublicPrivatePlugin()
         service_code = '''
 class Service:
     def public_method(self, text):
-        """公共方法，应被注册"""
+        """Public method - should be registered"""
         return text.upper()
 
     def _private_method(self):
-        """私有方法，不应被注册"""
+        """Private method - should not be registered"""
         return "private"
 '''
         (test_plugin_dir / "service.py").write_text(service_code.lstrip())

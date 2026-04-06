@@ -58,7 +58,7 @@ class TestMCPBridgeSyncPluginAPI:
             {"type": "function", "function": {"name": "already-synced"}}
         ]
 
-        with patch("core.plugin.manager.PluginManager", return_value=mock_pm):
+        with patch("core.plugin.manager.get_plugin_manager", return_value=mock_pm):
             bridge.sync_plugin_api_to_mcp_server()
 
         # Should not call add_tool for already synced
@@ -87,7 +87,7 @@ class TestMCPBridgeSyncPluginAPI:
             }
         ]
 
-        with patch("core.plugin.manager.PluginManager", return_value=mock_pm):
+        with patch("core.plugin.manager.get_plugin_manager", return_value=mock_pm):
             bridge.sync_plugin_api_to_mcp_server()
 
         mock_server.add_tool.assert_called_once()
@@ -118,7 +118,7 @@ class TestMCPBridgeSyncPluginAPI:
             }
         ]
 
-        with patch("core.plugin.manager.PluginManager", return_value=mock_pm):
+        with patch("core.plugin.manager.get_plugin_manager", return_value=mock_pm):
             bridge.sync_plugin_api_to_mcp_server()
 
         # Should not call add_tool for invalid format
@@ -163,7 +163,7 @@ class TestMCPBridgeSyncPluginAPI:
             },
         ]
 
-        with patch("core.plugin.manager.PluginManager", return_value=mock_pm):
+        with patch("core.plugin.manager.get_plugin_manager", return_value=mock_pm):
             bridge.sync_plugin_api_to_mcp_server()
 
         assert bridge.get_synced_tool_count() == 2
