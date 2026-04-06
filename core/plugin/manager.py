@@ -547,14 +547,20 @@ class PluginManager:
                 return
 
             # 获取 Service 类
+            # 遍历模块中的所有类，跳过基类，找到实际的 Service 实现类
             service_class = None
             for attr_name in dir(service_module):
                 attr = getattr(service_module, attr_name)
-                if isinstance(attr, type) and attr.__name__ == 'Service':
-                    # 注意：Service 类名硬编码，不支持自定义类名。
-                    # 这是当前 API 注册机制的限制，详见文档。
-                    service_class = attr
-                    break
+                if not isinstance(attr, type):
+                    continue
+                # 跳过基类和接口类
+                if attr.__name__ in ('IPlugin', 'object'):
+                    continue
+                # 跳过 PluginInfo 相关类（可能在 service_module 中被导入）
+                if attr.__name__.endswith('Info') or attr.__name__ == 'PluginInfo':
+                    continue
+                service_class = attr
+                break
 
             if not service_class:
                 return
@@ -593,7 +599,11 @@ class PluginManager:
         )
 
         # 遍历方法描述，绑定实际方法到 API 容器
+        # 过滤私有方法（以下划线开头）
         for method_name, desc in api_descriptions.items():
+            # 跳过私有方法
+            if method_name.startswith('_'):
+                continue
             if hasattr(service_instance, method_name):
                 method = getattr(service_instance, method_name)
                 if callable(method):

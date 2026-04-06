@@ -55,11 +55,12 @@ class MCPClientManager:
         tool_registry: 应用内的 ToolRegistry 实例
     """
 
-    def __init__(self, tool_registry: Any):
+    def __init__(self, tool_registry: Any, timeout: float = 60.0):
         self._connections: Dict[str, MCPServerConnection] = {}
         self._tool_registry = tool_registry
         self._async_loop: Optional[asyncio.AbstractEventLoop] = None
         self._loop_thread: Optional[threading.Thread] = None
+        self._timeout = timeout
 
     def _ensure_loop(self) -> asyncio.AbstractEventLoop:
         """确保有一个可用的异步事件循环"""
@@ -82,7 +83,7 @@ class MCPClientManager:
                     session.call_tool(original_tool_name, kwargs or {}),
                     loop,
                 )
-                result = future.result(timeout=60)
+                result = future.result(timeout=self._timeout)
                 # 解析 CallToolResult
                 if hasattr(result, "content"):
                     texts = [
@@ -220,7 +221,7 @@ class MCPClientManager:
                 self._async_connect(config.server_id, config),
                 loop,
             )
-            future.result(timeout=60)
+            future.result(timeout=self._timeout)
         except Exception as e:
             logger.error(f"MCP connect failed for {config.server_id}: {e}")
             raise
