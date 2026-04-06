@@ -22,6 +22,15 @@ from core.interfaces.plugin_services import PluginServices
 from utils.logging_tools import LoggerManager, get_name
 
 
+def get_plugin_manager() -> "PluginManager":
+    """获取插件管理器单例实例
+
+    Returns:
+        PluginManager: 插件管理器单例实例
+    """
+    return PluginManager()
+
+
 class PluginAPI:
     """插件 API 信息容器"""
 
@@ -536,6 +545,7 @@ class PluginManager:
                     break
 
             if not plugin_info_class:
+                self._logger.warning(get_name(), f'Skipping API registration ({plugin_dir.name}): no IPluginInfo subclass found')
                 return
 
             # 实例化 PluginInfo
@@ -544,6 +554,7 @@ class PluginManager:
             # 获取 service_api 方法描述
             api_descriptions = plugin_info.service_api
             if not api_descriptions:
+                self._logger.warning(get_name(), f'Skipping API registration ({plugin_dir.name}): service_api is empty')
                 return
 
             # 获取 Service 类
@@ -563,6 +574,7 @@ class PluginManager:
                 break
 
             if not service_class:
+                self._logger.warning(get_name(), f'Skipping API registration ({plugin_dir.name}): no Service class found in service_module')
                 return
 
             # 实例化 Service
