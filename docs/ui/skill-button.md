@@ -134,7 +134,7 @@ self.setToolTip(f"{name}\n{description}")
 | 悬停状态 | 半透明背景高亮 |
 | 激活状态 | 边框高亮（accent 色） |
 
-样式文件位于 `utils/style_qss/styles/button.qss`：
+样式文件位于 `utils/style_qss/styles/custom.qss`：
 
 ```css
 SkillButton[active="true"] {

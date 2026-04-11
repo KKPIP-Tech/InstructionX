@@ -224,6 +224,11 @@ self.skills_panel.set_plugin_manager(self.plugin_manager)
 # 加载技能
 self.skills_panel.load_skills_from_manager()
 
+# 设置清除高亮的回调
+self.work_area.set_clear_highlight_callback(
+    self.skills_panel.clear_active_state
+)
+
 # 连接信号
 self.skills_panel.skill_clicked.connect(self._on_skill_clicked)
 ```
