@@ -154,6 +154,7 @@ self._is_shutdown: bool                     # 关闭标志
 
 **关键方法**:
 ```python
+register_long_running_task()       # 注册长期任务
 update_long_running_task_status()  # 更新长期任务状态
 shutdown()                         # 安全关闭任务管理器
 ```
@@ -262,12 +263,12 @@ sequenceDiagram
 ```python
 @dataclass
 class PluginServices:
-    data_provider: IDataProvider = None
-    task_manager: ITaskManager = None
-    llm_facade: ILLMFacade = None      # LLMPluginService 单例
-    logger: LoggerManager = None
-    mcp_manager: MCPManager = None      # MCP 单例协调器
-    mcp_client: MCPClientManager = None # MCP Client 管理器
+    llm_facade: "LLMPluginService"       # LLM 服务（必需字段）
+    data_provider: "DataProvider"          # 数据服务（必需字段）
+    task_manager: "BackgroundTaskManager" # 任务服务（必需字段）
+    logger: "ILogger"                     # 日志接口（必需字段）
+    mcp_manager: "MCPManager" = None    # MCP Server 管理器
+    mcp_client: "MCPClientManager" = None  # MCP Client 管理器
 ```
 
 新版插件通过 `self._services` 访问服务，旧版插件可通过直接导入单例兼容访问。
@@ -372,7 +373,7 @@ graph TD
     MCPM[MCPManager<br/>core/mcp/manager.py<br/>单例] --> MCPH[MCPHostServer<br/>core/mcp/server.py]
     MCPM[MCPManager] --> MCPC[MCPClientManager<br/>core/mcp/client.py]
     MCPC[MCPClientManager] --> TR[ToolRegistry<br/>tool_call_executor.py]
-    MCPC[MCPClientManager] --> LLMS2[LLMPluginService<br/>单例]
+    MCPC -.->|间接依赖| LLMS2[LLMPluginService<br/>单例<br/>通过 ToolRegistry]
     PM2[PluginManager<br/>单例] -.->|创建并注入| PS2[PluginServices<br/>DI 容器]
     PS2 -.->|"mcp_manager"| MCPM
     PS2 -.->|"mcp_client"| MCPC

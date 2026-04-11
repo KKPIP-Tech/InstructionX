@@ -116,9 +116,7 @@ graph TB
 
     subgraph Plugins ["Plugins"]
         LLM_CHAT[llm_chat]
-        SAMPLE_AI[sample_ai_plugin]
-        STRING_TOOLS[string_tools]
-        API_DEMO[api_demo]
+        OTHER[第三方插件<br/>（通过 GitHub 安装）]
     end
 
     subgraph Utils ["Utils"]
@@ -307,11 +305,11 @@ def get_tool_executor() -> Any                                      # core/inter
 def get_shared_tool_registry() -> Any                              # core/interfaces/i_llm_facade.py:148
 def chat_with_tools(messages, provider="default", ...)             # core/interfaces/i_llm_facade.py:153
 def get_available_providers() -> List[Any]                          # core/interfaces/i_llm_facade.py:167
+def validate_provider(provider) -> Tuple[bool, str]                # core/interfaces/i_llm_facade.py:177
 def load_image_as_base64(file_path) -> str                         # core/interfaces/i_llm_facade.py:182
 ```
 
 **扩展方法**（仅在 `LLMPluginService` 实现类中可用，不在接口层定义）：
-- `validate_provider(provider)` — `core/llm/plugin_service.py:465`
 - `create_conversation(...)` — `core/llm/plugin_service.py:93`
 - `send_message(...)` — `core/llm/plugin_service.py:118`
 - `stream_send_message(...)` — `core/llm/plugin_service.py:147`

@@ -318,6 +318,13 @@ InstructionX/
 │   │   ├── task_model.py
 │   │   ├── task_storage.py
 │   │   └── scheduler.py
+│   ├── mcp/                  # MCP 协议模块
+│   │   ├── client.py         # MCPClientManager（MCP 客户端）
+│   │   ├── server.py         # MCPHostServer（MCP 主机）
+│   │   ├── manager.py        # MCPManager（单例协调器）
+│   │   ├── bridge.py         # MCPBridge（桥接器）
+│   │   ├── config.py         # MCP 配置
+│   │   └── plugin_interface.py  # MCP 插件接口
 │   └── llm/                  # LLM 提供者实现
 │       ├── llm_provider.py  # LLMProvider 核心层
 │       ├── provider_interface.py
@@ -354,16 +361,9 @@ InstructionX/
 │
 ├── workers/                  # 预留：多进程工作池
 │
-├── plugin/                   # 官方插件
-│   ├── llm_chat/
-│   ├── sample_ai_plugin/   # LLM 集成示例
-│   ├── text_formatting/
-│   ├── code_formatter/
-│   └── ...
+├── plugin/                   # 官方插件（通过 GitHub 安装器获取，不再捆绑）
 │
-├── custom_plugin/            # 第三方插件
-│   ├── api_demo/
-│   └── ...
+├── custom_plugin/            # 第三方插件（通过 GitHub 安装器获取，不再捆绑）
 │
 ├── data/                     # 数据存储
 │   ├── data.json
@@ -423,7 +423,7 @@ class PluginManager:
 
 ### 7.2 线程安全
 
-- DataProvider 使用 `Lock`（文件写入锁）和 `RLock`（订阅管理锁）双重锁机制（`core/data/data_provider.py:75-76`）
+- DataProvider 使用双 `RLock`（`_file_lock` 文件写入锁 + `_subscription_lock` 订阅管理锁）双重锁机制（`core/data/data_provider.py:75-76`）
 - BackgroundTaskManager 使用线程池
 
 ### 7.3 原子写入
