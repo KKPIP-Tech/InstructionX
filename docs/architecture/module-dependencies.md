@@ -18,6 +18,7 @@ graph TB
         SB[ui/skills_panel/skill_button.py<br/>SkillButton]
         SP[ui/skills_panel/panel.py<br/>SkillsPanel]
         WA[ui/work_area/work_area.py<br/>WorkArea]
+        GPI[ui/dialog/github_plugin_install_dialog.py<br/>GitHubPluginInstallDialog]
     end
 
     subgraph Core ["核心层"]
@@ -25,6 +26,7 @@ graph TB
         DP[core/data/data_provider.py<br/>DataProvider 单例]
         BTM[core/task/background_task.py<br/>BackgroundTaskManager 单例]
         IPlugin[core/interfaces/i_plugin.py<br/>IPlugin]
+        GInst[core/plugin/github_plugin_installer.py<br/>GitHubPluginInstaller]
     end
 
     subgraph MCP ["MCP 层"]
@@ -62,6 +64,9 @@ graph TB
     SP --> SB
     MW --> DP
     MW --> STYLE
+    MW --> GPI
+    GPI --> GInst
+    GInst --> PM
     SP --> PM
     PM --> IPlugin
     IPlugin --> PLUGIN
@@ -388,6 +393,7 @@ graph TD
 - [系统架构概述](overview.md)
 - [完整架构分析](full-analysis.md)
 - [插件系统概述](../core/plugin-system/overview.md)
+- [GitHub 插件安装器](../core/plugin-system/plugin-installer.md)
 - [DataProvider 概述](../core/data-provider/overview.md)
 - [LLM Provider 概述](../core/llm-provider/overview.md)
 - [后台任务概述](../core/background-task/overview.md)

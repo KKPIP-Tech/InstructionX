@@ -263,11 +263,87 @@ dialog.exec()
 
 ---
 
-## 5. 相关文档
+## 5. GitHubPluginInstallDialog GitHub 插件安装对话框
+
+**文件位置**: `ui/dialog/github_plugin_install_dialog.py`
+
+### 5.1 概述
+
+`GitHubPluginInstallDialog` 是从 GitHub 仓库安装插件的对话框，支持单插件和多插件仓库的用户选择性安装。
+
+### 5.2 窗口属性
+
+| 属性 | 值 |
+|------|------|
+| 窗口类型 | QDialog |
+| 最小尺寸 | 600 x 450 |
+| 布局 | 垂直布局 + 堆叠窗口 |
+
+### 5.3 布局结构
+
+```
+┌─────────────────────────────────────────────┐
+│  从 GitHub 安装插件                           │
+├─────────────────────────────────────────────┤
+│  GitHub URL: [________________________] [检查] │
+│                                             │
+│  ── 插件信息 ──────────────────────────────  │
+│  将安装到: 第三方插件目录 (custom_plugin/)    │
+│                                             │
+│  单插件模式:                                 │
+│  ┌─────────────────────────────────────┐   │
+│  │ 名称: My Awesome Plugin               │   │
+│  │ 版本: release.1.0.0                   │   │
+│  │ 描述: 一个强大的插件...                │   │
+│  └─────────────────────────────────────┘   │
+│                                             │
+│  多插件模式:                                 │
+│  ☑ plugin-a  (Plugin A)                    │
+│  ☑ plugin-b  (Plugin B)                    │
+│  ☐ plugin-c  (Plugin C)  ← 未选中          │
+│                                             │
+│              [取消]  [安装]                  │
+└─────────────────────────────────────────────┘
+```
+
+### 5.4 功能特性
+
+- **仓库检查**: 输入 URL 后点击「检查」分析仓库类型
+- **单/多插件识别**: 自动识别单插件仓库（IXPlugin.json）或多插件仓库（IXRepo.json）
+- **选择性安装**: 多插件时显示复选框列表
+- **自动目录判定**: 根据 GitHub 组织自动判定安装目录（KKPIP-Tech → plugin/，其他 → custom_plugin/）
+- **后台下载**: 使用 QThread 后台下载，不阻塞 UI
+
+### 5.5 信号
+
+```python
+plugin_installed = Signal(list)  # List[InstallResult]
+```
+
+安装完成后发射，携带每个插件的安装结果。
+
+### 5.6 使用方式
+
+```python
+from ui.dialog.github_plugin_install_dialog import GitHubPluginInstallDialog
+
+dialog = GitHubPluginInstallDialog(parent_window)
+dialog.plugin_installed.connect(self._on_plugin_installed)
+dialog.exec()
+
+def _on_plugin_installed(self, results):
+    # 重新加载技能面板
+    self.skills_panel.load_skills_from_manager()
+```
+
+---
+
+## 6. 相关文档
 
 - [主窗口](main-window.md)
 - [技能面板](skills-panel.md)
 - [插件系统概述](../core/plugin-system/overview.md)
+- [GitHub 插件安装器](../core/plugin-system/plugin-installer.md)
 
 ---
 

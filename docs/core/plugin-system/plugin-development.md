@@ -380,7 +380,72 @@ class TextFormattingPlugin(IPlugin):
 
 ---
 
-## 4. 最佳实践
+## 4. 远程插件描述文件
+
+如果要将插件发布到 GitHub 供他人通过「从 GitHub 安装插件」功能安装，需要在仓库中包含描述文件。
+
+### 4.1 单插件仓库
+
+在仓库根目录创建 `IXPlugin.json`：
+
+```json
+{
+  "id": "my-awesome-plugin",
+  "name": "My Awesome Plugin",
+  "version": "release.1.0.0",
+  "main": "entrance.py",
+  "description": "一个强大的插件",
+  "author": "Your Name",
+  "keywords": ["text", "utility"]
+}
+```
+
+### 4.2 多插件仓库
+
+在仓库根目录创建 `IXRepo.json` 作为索引，每个插件子目录创建 `IXPlugin.json`：
+
+```
+multi-plugin-repo/
+├── IXRepo.json              # 仓库索引
+├── plugin-a/
+│   ├── IXPlugin.json        # 插件 A 描述
+│   └── entrance.py
+└── plugin-b/
+    ├── IXPlugin.json        # 插件 B 描述
+    └── entrance.py
+```
+
+**IXRepo.json 示例**:
+```json
+{
+  "plugins": [
+    { "path": "plugin-a", "id": "plugin-a", "name": "Plugin A" },
+    { "path": "plugin-b", "id": "plugin-b", "name": "Plugin B" }
+  ]
+}
+```
+
+### 4.3 描述文件字段说明
+
+| 字段 | 类型 | 必需 | 说明 |
+|------|------|------|------|
+| `id` | string | 是 | 插件唯一标识符（字母、数字、下划线、短横线） |
+| `name` | string | 是 | 插件显示名称 |
+| `version` | string | 是 | 版本号，格式：`<类型>.<大>.<小>.<补丁>`，如 `release.1.0.0` |
+| `main` | string | 是 | 插件入口文件路径 |
+| `description` | string | 否 | 插件简短描述 |
+| `author` | string | 否 | 插件作者 |
+
+### 4.4 安装目录规则
+
+| GitHub 组织 | 安装目录 |
+|------------|---------|
+| `KKPIP-Tech` | `plugin/`（官方插件目录） |
+| 其他所有 | `custom_plugin/`（第三方插件目录） |
+
+---
+
+## 5. 最佳实践
 
 ### 4.1 插件注册
 
@@ -498,6 +563,7 @@ print("结果:", result)
 - [IPlugin 接口](iplugin.md)
 - [PluginManager](plugin-manager.md)
 - [PluginIdentity](plugin-identity.md)
+- [GitHub 插件安装器](plugin-installer.md)
 - [接口层概述](../interfaces/overview.md)
 - [DataProvider 概述](../data-provider/overview.md)
 - [后台任务概述](../background-task/overview.md)

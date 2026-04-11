@@ -185,7 +185,21 @@ graph TB
 
 **职责**: 任务数据持久化层，管理 `data/tasks.json`，支持原子写入和缓存。
 
-### 3.10 抽象接口层
+### 3.10 GitHubPluginInstaller（GitHub 插件安装器）
+
+**文件位置**: `core/plugin/github_plugin_installer.py`
+
+**职责**: 从 GitHub 仓库远程安装插件，支持单插件和多插件仓库。
+
+**功能特性**:
+- 检测仓库类型（单插件 `IXPlugin.json` / 多插件 `IXRepo.json`）
+- 解析 GitHub URL 支持多种格式
+- 自动判定安装目录（KKPIP-Tech → plugin/，其他 → custom_plugin/）
+- 后台下载，不阻塞 UI
+
+**详细文档**: [GitHub 插件安装器](../core/plugin-system/plugin-installer.md)
+
+### 3.11 抽象接口层
 
 **文件位置**: `core/interfaces/`
 
@@ -291,7 +305,8 @@ InstructionX/
 │   │   ├── plugin_version.py
 │   │   ├── plugin_icon.py
 │   │   ├── plugin_identity.py
-│   │   └── config_manager.py
+│   │   ├── config_manager.py
+│   │   └── github_plugin_installer.py  # GitHub 插件安装器
 │   ├── data/                 # 数据层实现
 │   │   ├── data_provider.py # DataProvider（核心）
 │   │   ├── dao.py           # 预留：DAO 扩展
@@ -333,7 +348,9 @@ InstructionX/
 │       ├── __init__.py
 │       ├── about_dialog.py      # 关于对话框
 │       ├── llm_settings_dialog.py  # LLM 设置对话框（两栏）
-│       └── llm_model_service_dialog.py  # 模型服务对话框（三栏）
+│       ├── llm_model_service_dialog.py  # 模型服务对话框（三栏）
+│       ├── plugin_order_dialog.py  # 插件排序对话框
+│       └── github_plugin_install_dialog.py  # GitHub 插件安装对话框
 │
 ├── workers/                  # 预留：多进程工作池
 │
