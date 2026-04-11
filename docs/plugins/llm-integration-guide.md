@@ -100,7 +100,7 @@ svc = get_llm_plugin_service()
 conv_id = svc.create_conversation(
     system_prompt="你是一个代码助手",
     provider="siliconflow",  # 可选，默认 "default"
-    model="Pro/deepseek-ai/DeepSeek-V3",  # 可选
+    model="default",  # 可选，默认 "default"
     metadata=None,  # 可选，额外元数据字典
 )
 ```
@@ -194,8 +194,10 @@ print(f"Token: {resp.usage.total_tokens}")  # Token 用量信息
 ### 发送消息（流式，无状态）
 
 ```python
-def callback(chunk):
-    print(chunk.content, end="", flush=True)
+def callback(chunk: str, done: bool):
+    print(chunk, end="", flush=True)
+    if done:
+        print()  # 流结束时换行
 
 content = svc.stream_chat([
     {"role": "user", "content": "写一个快排"},
@@ -272,7 +274,7 @@ msgs, results, final = executor.chat_with_tools_stream(
 
 ### 使用共享工具注册表
 
-参考 `plugin/sample_ai_plugin/tools.py`：
+通过 `get_shared_tool_registry()` 获取全局共享注册表，供多个插件共享工具：
 
 ```python
 registry = svc.get_shared_tool_registry()
@@ -405,9 +407,7 @@ if not ok:
 
 ## 完整示例
 
-参考 `plugin/sample_ai_plugin/` 目录下的示例插件源码：
-- `entrance.py` — 插件主入口，展示对话、流式、工具调用
-- `tools.py` — 共享工具注册示例
+参考 [KKPIP-Tech/InstructionX-Plugins](https://github.com/KKPIP-Tech/InstructionX-Plugins) 仓库中的示例插件源码，学习完整实现。
 
 ---
 

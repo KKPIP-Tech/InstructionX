@@ -9,54 +9,47 @@
 ```
 plugins/
 ├── index.md                    # 本文档 - 插件索引
-├── official-plugins.md         # 官方插件文档（11个）
-├── thirdparty-plugins.md       # 第三方插件文档（4个）
+├── official-plugins.md         # 官方插件说明（当前无预装插件）
+├── thirdparty-plugins.md       # 第三方插件说明（已废弃）
 └── llm-integration-guide.md    # LLM 集成开发指南
 ```
 
 ---
 
-## 插件总览
+## 插件获取方式
 
-InstructionX 内置了 **15 个插件**，分为官方插件和第三方插件两类。
+InstructionX 不再捆绑预装插件，而是通过 **GitHub 插件安装器** 按需获取插件。
 
-### 官方插件（11个）
+### 通过 GitHub 安装插件
 
-位于项目根目录下的 `plugin/` 目录：
+使用 **GitHub Plugin Installer** 从社区仓库安装插件：
 
-| 插件 | 类型 ID | 功能描述 |
-|------|---------|---------|
-| [LLM Chat](official-plugins.md#llm-chat) | `llm-chat` | 多提供商 LLM 对话，支持流式输出 |
-| [示例 AI 插件](official-plugins.md#示例-ai-插件) | `sample-ai-plugin` | LLM 工具调用、流式对话、多模态示例 |
-| [文本格式化](official-plugins.md#文本格式化) | `text-formatting` | 文本大小写转换 |
-| [代码格式化](official-plugins.md#代码格式化) | `code-formatter` | JSON/XML 格式化、注释移除 |
-| [字符串工具](official-plugins.md#字符串工具) | `string-tools` | 文本反转、单词统计等 |
-| [任务管理器](official-plugins.md#任务管理器) | `task-manager` | 任务 CRUD、优先级管理 |
-| [任务报告器](official-plugins.md#任务报告器) | `task-reporter` | 订阅任务变化、生成报告 |
-| [图片压缩](official-plugins.md#图片压缩) | `image-compressor` | 图片压缩与信息查看 |
-| [后台任务演示](official-plugins.md#后台任务演示) | `background-task-demo` | 四种后台任务演示 |
-| [本地服务器](official-plugins.md#本地服务器) | `local-server` | 本地 HTTP 服务器 |
-| [UI 演示](official-plugins.md#ui-演示) | `ui-demo` | 控件展示 |
+- **官方插件仓库**: [KKPIP-Tech/InstructionX-Plugins](https://github.com/KKPIP-Tech/InstructionX-Plugins)（安装到 `plugin/` 目录）
+- **第三方插件**: 任何包含 `IXPlugin.json` 或 `IXRepo.json` 的 GitHub 仓库（安装到 `custom_plugin/` 目录）
 
-### 第三方插件（4个）
-
-位于项目根目录下的 `custom_plugin/` 目录：
-
-| 插件 | 类型 ID | 功能描述 |
-|------|---------|---------|
-| [API 调用演示](thirdparty-plugins.md#api-调用演示) | `api-demo` | 跨插件 API 调用演示 |
-| [框架 API 综合演示](thirdparty-plugins.md#框架-api-综合演示) | `framework-api-demo` | 所有框架 API 综合演示 |
-| [颜色转换](thirdparty-plugins.md#颜色转换) | `color-converter` | HEX 到 RGB 颜色转换 |
-| [单位转换](thirdparty-plugins.md#单位转换) | `unit-converter` | 长度/重量/温度单位转换 |
+详细说明见 [GitHub 插件安装器](../core/plugin-system/plugin-installer.md)。
 
 ---
 
-## 学习路径
+## 文档索引
 
-1. **[官方插件文档](official-plugins.md)** - 了解所有内置插件的功能和使用方式
-2. **[第三方插件文档](thirdparty-plugins.md)** - 了解示例插件的实现方式
-3. **[LLM 集成开发指南](llm-integration-guide.md)** - 学习如何在插件中使用 LLM 服务（对话、工具调用、多模态）
-4. **[插件开发指南](../core/plugin-system/plugin-development.md)** - 学习如何开发自己的插件
+```
+plugins/
+├── index.md                    # 本文档 - 插件索引
+├── official-plugins.md         # 官方插件说明（当前无预装插件）
+├── thirdparty-plugins.md       # 第三方插件说明（已废弃）
+└── llm-integration-guide.md    # LLM 集成开发指南
+```
+
+### 文档说明
+
+| 文档 | 说明 |
+|------|------|
+| [官方插件](official-plugins.md) | 当前无预装插件，所有插件通过 GitHub 安装 |
+| [第三方插件](thirdparty-plugins.md) | 已废弃，第三方插件通过 GitHub 安装 |
+| [LLM 集成开发指南](llm-integration-guide.md) | 学习如何在插件中使用 LLM 服务 |
+| [GitHub 插件安装器](../core/plugin-system/plugin-installer.md) | 从 GitHub 安装插件的完整说明 |
+| [插件开发指南](../core/plugin-system/plugin-development.md) | 学习如何开发自己的插件 |
 
 ---
 
