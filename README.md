@@ -12,7 +12,7 @@
 [![License](https://img.shields.io/badge/License-Modified%20Apache%202.0-orange.svg)](LICENSE)
 [![Version](https://img.shields.io/badge/Version-0.1.0%20CE-blue.svg)](#)
 
-<p>基于 PySide6 的插件式桌面应用框架，支持 LLM 集成、MCP Function Calling 和热插拔插件系统</p>
+<p>基于 PySide6 的插件式桌面应用框架，支持 LLM 集成、MCP 协议（Server/Client）、多会话管理与热插拔插件系统</p>
 
 </div>
 
@@ -39,15 +39,35 @@ InstructionX 是一个功能强大的**插件集成框架**，允许你根据实
 
 插件系统支持**热加载**和**热卸载**，无需重启应用即可添加、移除或更新插件。你可以在运行时动态管理插件，构建个性化的工具集合。
 
-### 🤖 LLM 集成与 MCP Function Calling
+### 📦 GitHub 插件安装
 
-内置多厂商 LLM 对接能力，支持将插件 API 自动转换为 MCP（Model Context Protocol）Function Calling 工具：
+内置 GitHub 插件安装器，支持从任意 GitHub URL 安装插件：
+
+- **URL 安装**：输入 GitHub 仓库 URL 即可安装
+- **单/多插件支持**：支持单插件仓库（IXPlugin.json）和多插件仓库（IXRepo.json）
+- **后台安装**：安装过程在后台执行，有进度显示
+- **自动分类**：KKPIP-Tech 组织下的插件自动归类为官方插件
+
+### 🤖 LLM 集成与对话管理
+
+内置多厂商 LLM 对接能力，通过 `LLMPluginService` 提供完整的对话管理和工具调用自动化：
 
 - **多 Provider 支持**：MiniMax、SiliconFlow、智谱 GLM、Ollama 等
-- **统一接口**：提供标准化 chat、stream_chat、embed 接口
-- **自动工具转换**：插件 API 自动转换为 OpenAI 格式函数定义
-- **Vision 多模态**：支持图片理解和多模态对话
-- **模型缓存**：启动时自动拉取模型列表并缓存
+- **对话管理**：多会话创建、切换、历史自动管理、上下文自动截断
+- **ToolCallExecutor**：自动处理工具调用两轮循环，插件只需注册工具
+- **多模态支持**：图片理解（Vision）、图片生成、TTS 语音合成
+- **用量统计**：按对话和全局统计 Token 消耗、费用估算
+- **Embedding**：向量嵌入支持
+- **模型缓存**：启动时自动拉取模型列表并缓存到本地
+
+### 🔗 MCP 协议支持
+
+通过官方 MCP SDK 实现完整的 Model Context Protocol 支持：
+
+- **MCP Server**：将所有插件 API 自动暴露为 MCP 工具，支持 stdio 和 HTTP 传输
+- **MCP Client**：连接外部 MCP Server，将它们的工具注册到本地 ToolRegistry
+- **双向桥接**：MCPBridge 自动同步插件 API 注册到 MCP Server
+- **外部调用**：Claude Code 等 MCP Client 可直接调用 InstructionX 插件功能
 
 ### 💾 灵活的数据层
 
@@ -67,6 +87,15 @@ InstructionX 是一个功能强大的**插件集成框架**，允许你根据实
 - **任务持久化**：任务状态在应用重启后依然保留
 - **任务工厂**：支持任务恢复机制，重启后自动重建任务
 
+### 📊 用量查询面板
+
+内置 LLM 使用量统计和可视化面板：
+
+- **统计卡片**：多维度数据卡片（Token 消耗、费用、请求次数等）
+- **趋势图表**：按时间维度展示 LLM 使用量变化
+- **过滤查询**：按 Provider、Model、对话 ID 过滤记录
+- **分页表格**：详细用量记录表格
+
 ### 🔗 跨插件通信
 
 插件之间可以互相调用 API，实现功能协作：
@@ -77,9 +106,19 @@ InstructionX 是一个功能强大的**插件集成框架**，允许你根据实
 ### 🎨 StyleQSS 主题系统
 
 内置完整的 StyleQSS 样式系统，提供现代化界面外观：
+- **手动切换**：支持 light/dark/auto 三种主题模式，可通过菜单或快捷键切换
 - **自动主题检测**：根据操作系统设置自动切换深色/浅色模式
-- **完整控件样式**：27 个 QSS 样式文件覆盖常用 Qt 控件
+- **30+ 控件样式**：覆盖按钮、输入框、菜单、对话框等常用 Qt 控件
+- **9+ 按钮变体**：primary、danger、success、outline、subtle 等
 - **动态加载**：通过样式注册表动态加载和应用 QSS 样式
+
+### 🅰️ 多字体支持
+
+内置 FontMap 字体映射系统：
+
+- **5 字体家族**：阿里巴巴普惠体 3.0、阿里妈妈方圆体、阿里妈妈东方大楷、ZenDots、得意黑
+- **22 字体文件**：涵盖标准字重、意大利体等
+- **状态机查询**：FontMap.get_path() 避免硬编码路径
 
 ### 💾 UI 状态缓存
 
@@ -117,29 +156,21 @@ python main.py
 
 ## 插件生态
 
-### 官方插件（11个）
+InstructionX 是一个**插件框架**，本身不内置插件。用户可以通过以下方式获取插件：
 
-| 插件 | 功能描述 |
-|------|----------|
-| **llm_chat** | LLM 智能对话：支持多 Provider、多模态、流式输出 |
-| **text_formatting** | 文本格式化：大小写转换、空白处理 |
-| **code_formatter** | 代码格式化工具 |
-| **image_compressor** | 图片压缩：支持批量处理 |
-| **string_tools** | 字符串工具：编码转换、哈希计算 |
-| **task_manager** | 任务管理：查看和管理后台任务 |
-| **task_reporter** | 任务报告：生成任务执行报告 |
-| **local_server** | 本地服务器：快速启动本地 HTTP 服务 |
-| **ui_demo** | UI 演示：展示控件效果 |
-| **background_task_demo** | 后台任务演示：展示各类任务类型 |
+- **GitHub 安装**：通过内置的 GitHub 插件安装器，输入插件仓库 URL 即可一键安装
+- **第三方开发者**：从其他开发者处获取插件，复制到 `custom_plugin/` 目录
 
-### 示例插件（4个）
+### 安装插件
 
-| 插件 | 功能描述 |
-|------|----------|
-| **api_demo** | 展示如何调用其他插件的 API |
-| **framework_api_demo** | 框架 API 调用演示 |
-| **color_converter** | 颜色格式转换：HEX、RGB、HSL |
-| **unit_converter** | 单位转换：长度、重量、温度等 |
+```bash
+# 通过 GitHub URL 安装插件
+# 菜单路径：编辑 → 安装 GitHub 插件
+```
+
+### 开发插件
+
+如果你希望开发自己的插件，请参考 [插件开发](docs/core/plugin-system/plugin-development.md) 文档。
 
 ---
 
@@ -181,6 +212,12 @@ graph TD
 | custom_plugin | `custom_plugin/` | 自定义插件目录 |
 | workers | `workers/` | 工作线程（预留扩展） |
 | docs | `docs/` | 技术文档 |
+| core/mcp | `core/mcp/` | MCP 协议核心（Server/Client/Bridge） |
+| core/llm/plugin_service | `core/llm/plugin_service.py` | LLM 插件服务层（对话管理、工具调用） |
+| core/llm/types | `core/llm/types.py` | LLM 数据类型（Conversation、UsageStats 等） |
+| core/plugin/github_plugin_installer | `core/plugin/github_plugin_installer.py` | GitHub 插件安装器 |
+| ui/usage_panel | `ui/usage_panel.py` | 用量查询面板 |
+| utils/font_map | `utils/font_map.py` | 字体映射系统 |
 
 ### 详细文档
 
@@ -278,6 +315,8 @@ class MyPluginInfo(IPluginInfo):
 | 插件数据 | `data/data.json` | 插件数据持久化存储 |
 | 任务状态 | `data/tasks.json` | 后台任务状态持久化 |
 | 资源文件 | `data/assets/` | 插件资源文件存储 |
+| MCP 配置 | `config/mcp_config.json` | MCP Server/Client 连接配置 |
+| 用量记录 | `data/llm_usage.json` | LLM API 使用量记录 |
 
 ---
 

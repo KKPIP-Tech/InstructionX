@@ -12,7 +12,7 @@
 [![License](https://img.shields.io/badge/License-Modified%20Apache%202.0-orange.svg)](LICENSE)
 [![Version](https://img.shields.io/badge/Version-0.1.0%20CE-blue.svg)](#)
 
-> A PySide6-based plugin desktop application framework with LLM integration, MCP Function Calling, and hot-swappable plugin system
+> A PySide6-based plugin desktop application framework with LLM integration, MCP Protocol (Server/Client), multi-conversation management, and hot-swappable plugin system
 
 </div>
 
@@ -38,15 +38,35 @@ With InstructionX, you can:
 
 The plugin system supports **hot-loading** and **hot-unloading**, allowing you to add, remove, or update plugins without restarting the application. You can dynamically manage plugins at runtime to build a personalized tool collection.
 
-### 🤖 LLM Integration & MCP Function Calling
+### 📦 GitHub Plugin Installer
 
-Built-in multi-provider LLM integration with automatic conversion of plugin APIs to MCP (Model Context Protocol) Function Calling tools:
+Built-in GitHub plugin installer for installing plugins from any GitHub URL:
+
+- **URL Installation**: Install plugins by entering a GitHub repository URL
+- **Single/Multi-Plugin Support**: Supports single-plugin repos (IXPlugin.json) and multi-plugin repos (IXRepo.json)
+- **Background Installation**: Installation runs in the background with progress display
+- **Auto-Classification**: Plugins from KKPIP-Tech organization are automatically classified as official plugins
+
+### 🤖 LLM Integration & Conversation Management
+
+Built-in multi-provider LLM integration with `LLMPluginService` providing complete conversation management and automated tool calling:
 
 - **Multi-Provider Support**: MiniMax, SiliconFlow, Zhipu GLM, Ollama, and more
-- **Unified Interface**: Standardized chat, stream_chat, and embed APIs
-- **Automatic Tool Conversion**: Plugin APIs automatically converted to OpenAI format function definitions
-- **Vision Multimodal**: Support for image understanding and multimodal conversations
+- **Conversation Management**: Multi-session creation, switching, automatic history management, context auto-truncation
+- **ToolCallExecutor**: Automatic two-round tool calling loop, plugins only need to register tools
+- **Multimodal Support**: Image understanding (Vision), image generation, TTS voice synthesis
+- **Usage Statistics**: Per-conversation and global Token consumption and cost estimation
+- **Embedding**: Vector embedding support
 - **Model Caching**: Automatic model list fetching and caching at startup
+
+### 🔗 MCP Protocol Support
+
+Full Model Context Protocol support through the official MCP SDK:
+
+- **MCP Server**: Expose all plugin APIs as MCP tools, supporting stdio and HTTP transport
+- **MCP Client**: Connect to external MCP Servers, registering their tools in the local ToolRegistry
+- **Bidirectional Bridge**: MCPBridge automatically syncs plugin API registrations to MCP Server
+- **External Invocation**: Claude Code and other MCP Clients can directly call InstructionX plugin functionality
 
 ### 💾 Flexible Data Layer
 
@@ -66,6 +86,15 @@ Built-in multi-provider LLM integration with automatic conversion of plugin APIs
 - **Task Persistence**: Task states persist across application restarts
 - **Task Factory**: Supports task recovery mechanism, automatically rebuilds tasks after restart
 
+### 📊 Usage Panel
+
+Built-in LLM usage statistics and visualization panel:
+
+- **Statistics Cards**: Multi-dimensional data cards (Token consumption, cost, request count, etc.)
+- **Trend Charts**: Display LLM usage changes over time
+- **Filter & Query**: Filter records by Provider, Model, conversation ID
+- **Paginated Table**: Detailed usage records table
+
 ### 🔗 Cross-Plugin Communication
 
 Plugins can call each other's APIs to achieve functional collaboration:
@@ -76,9 +105,19 @@ Plugins can call each other's APIs to achieve functional collaboration:
 ### 🎨 StyleQSS Theme System
 
 Built-in complete StyleQSS styling system with modern interface appearance:
+- **Manual Switching**: Support for light/dark/auto theme modes, switchable via menu or shortcuts
 - **Auto Theme Detection**: Automatically switch between dark/light mode based on OS settings
-- **Complete Control Styles**: 26 QSS style files covering common Qt controls
+- **30+ Control Styles**: Covering buttons, inputs, menus, dialogs, and other common Qt controls
+- **9+ Button Variants**: primary, danger, success, outline, subtle, etc.
 - **Dynamic Loading**: Dynamically load and apply QSS styles through style registry
+
+### 🅰️ Multi-Font Support
+
+Built-in FontMap font mapping system:
+
+- **5 Font Families**: Alibaba PuHuiTi 3.0, Alimama FangYuanTi, Alimama DongFang DaKai, ZenDots, SmileySans
+- **22 Font Files**: Covering standard weights, italics, etc.
+- **State Machine Lookup**: FontMap.get_path() avoids hardcoded paths
 
 ### 💾 UI State Caching
 
@@ -116,29 +155,21 @@ python main.py
 
 ## Plugin Ecosystem
 
-### Official Plugins (12)
+InstructionX is a **plugin framework** and does not include built-in plugins. Users can obtain plugins through:
 
-| Plugin | Description |
-|--------|-------------|
-| **llm_chat** | LLM intelligent chat: multi-provider, multimodal, streaming output |
-| **text_formatting** | Text formatting: case conversion, whitespace handling |
-| **code_formatter** | Code formatting utilities |
-| **image_compressor** | Image compression with batch processing support |
-| **string_tools** | String tools: encoding conversion, hash calculation |
-| **task_manager** | Task management: view and manage background tasks |
-| **task_reporter** | Task reporting: generate task execution reports |
-| **local_server** | Local server: quickly start local HTTP services |
-| **ui_demo** | UI demo: showcase control effects |
-| **background_task_demo** | Background task demo: showcase various task types |
+- **GitHub Installation**: Use the built-in GitHub plugin installer, enter the plugin repository URL to install with one click
+- **Third-party Developers**: Get plugins from other developers, copy to the `custom_plugin/` directory
 
-### Example Plugins (4)
+### Install Plugins
 
-| Plugin | Description |
-|--------|-------------|
-| **api_demo** | Demonstrates how to call other plugins' APIs |
-| **framework_api_demo** | Framework API calling demonstration |
-| **color_converter** | Color format conversion: HEX, RGB, HSL |
-| **unit_converter** | Unit conversion: length, weight, temperature, etc. |
+```bash
+# Install plugins via GitHub URL
+# Menu path: Edit → Install GitHub Plugin
+```
+
+### Develop Plugins
+
+If you want to develop your own plugins, please refer to the [Plugin Development](docs/core/plugin-system/plugin-development.md) documentation.
 
 ---
 
@@ -179,6 +210,13 @@ graph TD
 | custom_plugin | `custom_plugin/` | Custom plugin directory |
 | workers | `workers/` | Worker threads (reserved for extension) |
 | docs | `docs/` | Technical documentation |
+| core/interfaces | `core/interfaces/` | Abstract interface layer (IPlugin, IDataProvider, etc.) |
+| core/mcp | `core/mcp/` | MCP protocol core (Server/Client/Bridge) |
+| core/llm/plugin_service | `core/llm/plugin_service.py` | LLM plugin service layer (conversation management, tool calling) |
+| core/llm/types | `core/llm/types.py` | LLM data types (Conversation, UsageStats, etc.) |
+| core/plugin/github_plugin_installer | `core/plugin/github_plugin_installer.py` | GitHub plugin installer |
+| ui/usage_panel | `ui/usage_panel.py` | Usage query panel |
+| utils/font_map | `utils/font_map.py` | Font mapping system |
 
 ### Detailed Documentation
 
@@ -276,6 +314,8 @@ class MyPluginInfo(IPluginInfo):
 | Plugin Data | `data/data.json` | Plugin data persistent storage |
 | Task Status | `data/tasks.json` | Background task state persistence |
 | Assets | `data/assets/` | Plugin asset file storage |
+| MCP Config | `config/mcp_config.json` | MCP Server/Client connection configuration |
+| Usage Records | `data/llm_usage.json` | LLM API usage records |
 
 ---
 
