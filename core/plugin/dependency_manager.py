@@ -1,0 +1,288 @@
+"""
+插件依赖管理器
+
+负责检查和自动安装插件所需的 Python 依赖。
+"""
+
+import subprocess
+import sys
+import re
+from dataclasses import dataclass
+from typing import Dict, List, Optional, Callable
+
+from utils.logging_tools import LoggerManager, get_name
+
+
+@dataclass
+class DependencyCheckResult:
+    """依赖检查结果"""
+    satisfied: bool  # 所有依赖是否已满足
+    missing: List[str]  # 缺失的依赖包名列表（不含版本约束）
+
+
+@dataclass
+class DependencyInstallResult:
+    """依赖安装结果"""
+    success: bool
+    message: str = ""
+    failed_packages: List[str] = None  # 安装失败的包名列表
+
+    def __post_init__(self):
+        if self.failed_packages is None:
+            self.failed_packages = []
+
+
+class DependencyManager:
+    """
+    插件依赖管理器
+
+    负责：
+    - 检查插件依赖是否满足
+    - 自动安装缺失的依赖（通过 pip）
+    """
+
+    def __init__(self):
+        self._logger = LoggerManager()
+
+    def check_dependencies(self, dependencies: Dict[str, str]) -> DependencyCheckResult:
+        """
+        检查依赖是否满足
+
+        Args:
+            dependencies: 依赖字典，key 为包名，value 为版本约束
+                         例如: {"requests": ">=2.25.0", "numpy": ""}
+
+        Returns:
+            DependencyCheckResult: 包含是否满足和缺失列表
+        """
+        if not dependencies:
+            return DependencyCheckResult(satisfied=True, missing=[])
+
+        missing = []
+        for package, version_constraint in dependencies.items():
+            if not self._is_package_installed(package, version_constraint):
+                missing.append(package)
+
+        return DependencyCheckResult(
+            satisfied=len(missing) == 0,
+            missing=missing
+        )
+
+    def get_missing_dependencies(self, dependencies: Dict[str, str]) -> List[str]:
+        """
+        获取缺失的依赖包名列表
+
+        Args:
+            dependencies: 依赖字典
+
+        Returns:
+            缺失的包名列表（不含版本约束）
+        """
+        result = self.check_dependencies(dependencies)
+        return result.missing
+
+    def install_dependencies(
+        self,
+        dependencies: Dict[str, str],
+        callback: Optional[Callable[[str], None]] = None
+    ) -> DependencyInstallResult:
+        """
+        安装缺失的依赖
+
+        Args:
+            dependencies: 依赖字典，key 为包名，value 为版本约束
+            callback: 可选的进度回调，接收安装消息字符串
+
+        Returns:
+            DependencyInstallResult: 安装结果
+        """
+        if not dependencies:
+            return DependencyInstallResult(success=True, message="无依赖需要安装")
+
+        check_result = self.check_dependencies(dependencies)
+        if check_result.satisfied:
+            return DependencyInstallResult(success=True, message="所有依赖已满足")
+
+        # 需要安装的依赖
+        to_install = []
+        for package, version_constraint in dependencies.items():
+            if package in check_result.missing:
+                if version_constraint:
+                    to_install.append(f"{package}{version_constraint}")
+                else:
+                    to_install.append(package)
+
+        if callback:
+            callback(f"开始安装依赖: {', '.join(to_install)}")
+
+        failed_packages = []
+
+        for package_spec in to_install:
+            if callback:
+                callback(f"正在安装 {package_spec}...")
+
+            success = self._pip_install(package_spec)
+            if not success:
+                failed_packages.append(package_spec)
+                msg = f"安装失败: {package_spec}"
+                if callback:
+                    callback(msg)
+                self._logger.error(get_name(), msg)
+            else:
+                msg = f"已安装: {package_spec}"
+                if callback:
+                    callback(msg)
+                self._logger.info(get_name(), msg)
+
+        if failed_packages:
+            return DependencyInstallResult(
+                success=False,
+                message=f"部分依赖安装失败: {', '.join(failed_packages)}",
+                failed_packages=failed_packages
+            )
+
+        return DependencyInstallResult(
+            success=True,
+            message=f"成功安装 {len(to_install)} 个依赖包"
+        )
+
+    def _is_package_installed(self, package: str, version_constraint: str) -> bool:
+        """
+        检查包是否已安装且满足版本约束
+
+        Args:
+            package: 包名
+            version_constraint: 版本约束，如 ">=2.25.0" 或空字符串
+
+        Returns:
+            bool: 是否满足
+        """
+        try:
+            # 使用 python -m pip show 检查包是否已安装
+            result = subprocess.run(
+                [sys.executable, "-m", "pip", "show", package],
+                capture_output=True,
+                text=True,
+                timeout=30
+            )
+
+            if result.returncode != 0:
+                return False
+
+            # 如果没有版本约束，包存在即可
+            if not version_constraint:
+                return True
+
+            # 解析已安装版本
+            installed_version = self._parse_version_from_pip_show(result.stdout)
+            if installed_version is None:
+                return False
+
+            # 检查版本约束
+            return self._check_version_constraint(installed_version, version_constraint)
+
+        except subprocess.TimeoutExpired:
+            self._logger.warning(get_name(), f"检查包 {package} 超时")
+            return False
+        except Exception as e:
+            self._logger.warning(get_name(), f"检查包 {package} 时出错: {e}")
+            return False
+
+    def _parse_version_from_pip_show(self, output: str) -> Optional[str]:
+        """从 pip show 输出中解析版本号"""
+        for line in output.splitlines():
+            if line.startswith("Version:"):
+                return line.split(":", 1)[1].strip()
+        return None
+
+    def _check_version_constraint(self, installed_version: str, constraint: str) -> bool:
+        """
+        检查已安装版本是否满足版本约束
+
+        Args:
+            installed_version: 已安装的版本，如 "2.26.0"
+            constraint: 版本约束，如 ">=2.25.0"
+
+        Returns:
+            bool: 是否满足
+        """
+        # 解析版本约束
+        match = re.match(r'^([><=!]+)\s*(\d+(?:\.\d+)*)$', constraint.strip())
+        if not match:
+            # 无法解析的约束，默认不满足
+            self._logger.warning(get_name(), f"无法解析版本约束: {constraint}")
+            return False
+
+        op = match.group(1)
+        required_version = match.group(2)
+
+        # 规范化版本号（去除后缀）
+        installed = self._normalize_version(installed_version)
+        required = self._normalize_version(required_version)
+
+        if installed is None or required is None:
+            return False
+
+        # 比较版本
+        installed_parts = [int(x) for x in installed.split('.')]
+        required_parts = [int(x) for x in required.split('.')]
+
+        # 补齐长度
+        max_len = max(len(installed_parts), len(required_parts))
+        installed_parts.extend([0] * (max_len - len(installed_parts)))
+        required_parts.extend([0] * (max_len - len(required_parts)))
+
+        if op == ">=":
+            return installed_parts >= required_parts
+        elif op == ">":
+            return installed_parts > required_parts
+        elif op == "<=":
+            return installed_parts <= required_parts
+        elif op == "<":
+            return installed_parts < required_parts
+        elif op == "==":
+            return installed_parts == required_parts
+        elif op == "!=":
+            return installed_parts != required_parts
+        else:
+            return False
+
+    def _normalize_version(self, version: str) -> Optional[str]:
+        """将版本号规范化为 'x.y.z' 格式"""
+        # 去除 pre-release、post-release 等后缀
+        match = re.match(r'^(\d+(?:\.\d+)*)', version)
+        if match:
+            return match.group(1)
+        return None
+
+    def _pip_install(self, package_spec: str) -> bool:
+        """
+        使用 pip 安装包
+
+        Args:
+            package_spec: 包规格，如 "requests>=2.25.0" 或 "numpy"
+
+        Returns:
+            bool: 是否成功
+        """
+        try:
+            result = subprocess.run(
+                [sys.executable, "-m", "pip", "install", package_spec, "--quiet"],
+                capture_output=True,
+                text=True,
+                timeout=300  # 5 分钟超时
+            )
+
+            if result.returncode != 0:
+                error_msg = result.stderr.strip()
+                self._logger.error(get_name(), f"pip install {package_spec} 失败: {error_msg}")
+                return False
+
+            return True
+
+        except subprocess.TimeoutExpired:
+            self._logger.error(get_name(), f"pip install {package_spec} 超时")
+            return False
+        except Exception as e:
+            self._logger.error(get_name(), f"pip install {package_spec} 出错: {e}")
+            return False
