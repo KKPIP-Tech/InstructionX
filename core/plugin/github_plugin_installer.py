@@ -16,6 +16,7 @@ from urllib.parse import urlparse
 import requests
 
 from utils.logging_tools import LoggerManager, get_name
+from .dependency_manager import DependencyManager
 
 
 @dataclass
@@ -252,7 +253,7 @@ class GitHubPluginInstaller:
 
         # 验证 version 格式
         version = descriptor.get("version", "")
-        if not re.match(r"^(release|beta|alpha)\.\d+\.\d+\.\d+$", version):
+        if not re.match(r"^(release|pre-release|beta|alpha|internal)\.\d+\.\d+\.\d+$", version):
             return False, f"版本号格式无效: {version}，期望格式: <类型>.<大>.<小>.<补丁>"
 
         # 验证 id 格式
@@ -267,7 +268,8 @@ class GitHubPluginInstaller:
         github_url: str,
         selected_plugins: List[str] = None,
         official_dir: Path = None,
-        thirdparty_dir: Path = None
+        thirdparty_dir: Path = None,
+        progress_callback=None
     ) -> List[InstallResult]:
         """
         从 GitHub URL 安装插件
@@ -307,7 +309,7 @@ class GitHubPluginInstaller:
             repo_index_path = temp_dir / self.REPO_INDEX_FILE
             if repo_index_path.exists():
                 return self._install_from_multi_plugin_repo(
-                    repo_index_path, target_dir, selected_plugins, dir_desc
+                    repo_index_path, target_dir, selected_plugins, dir_desc, progress_callback
                 )
             else:
                 # 单插件仓库
@@ -315,7 +317,7 @@ class GitHubPluginInstaller:
                 if not plugin_path.exists():
                     return [InstallResult.error("插件描述文件不存在")]
 
-                return self._install_single_plugin(temp_dir, target_dir, dir_desc)
+                return self._install_single_plugin(temp_dir, target_dir, dir_desc, progress_callback)
         finally:
             # 清理临时目录
             self._cleanup_temp_dir(temp_dir)
@@ -384,7 +386,8 @@ class GitHubPluginInstaller:
         repo_index_path: Path,
         target_dir: Path,
         selected_plugins: List[str],
-        dir_desc: str
+        dir_desc: str,
+        progress_callback=None
     ) -> List[InstallResult]:
         """从多插件仓库安装"""
         try:
@@ -409,7 +412,7 @@ class GitHubPluginInstaller:
                 results.append(InstallResult.error(f"插件目录不存在: {plugin_path_str}"))
                 continue
 
-            result = self._install_plugin_dir(plugin_dir, target_dir, plugin_id, dir_desc)
+            result = self._install_plugin_dir(plugin_dir, target_dir, plugin_id, dir_desc, progress_callback)
             results.append(result)
 
         return results
@@ -418,17 +421,19 @@ class GitHubPluginInstaller:
         self,
         plugin_root: Path,
         target_dir: Path,
-        dir_desc: str
+        dir_desc: str,
+        progress_callback=None
     ) -> List[InstallResult]:
         """安装单插件仓库（插件文件直接在仓库根目录）"""
-        return self._install_plugin_dir(plugin_root, target_dir, "", dir_desc)
+        return self._install_plugin_dir(plugin_root, target_dir, "", dir_desc, progress_callback)
 
     def _install_plugin_dir(
         self,
         plugin_dir: Path,
         target_dir: Path,
         plugin_id: str = "",
-        dir_desc: str = ""
+        dir_desc: str = "",
+        progress_callback=None
     ) -> InstallResult:
         """安装单个插件目录"""
         try:
@@ -451,6 +456,25 @@ class GitHubPluginInstaller:
             # 获取插件 ID 和名称
             actual_plugin_id = descriptor.get("id", plugin_id)
             plugin_name = descriptor.get("name", "Unknown")
+
+            # 检查并安装插件依赖
+            dependencies = descriptor.get("dependencies", {})
+            if dependencies:
+                dep_mgr = DependencyManager()
+                check_result = dep_mgr.check_dependencies(dependencies)
+                if not check_result.satisfied:
+                    missing = check_result.missing
+                    msg = f"插件 {actual_plugin_id} 缺少依赖: {', '.join(missing)}，正在自动安装..."
+                    self._logger.info(get_name(), msg)
+                    if progress_callback:
+                        progress_callback(msg)
+                    install_result = dep_mgr.install_dependencies(dependencies)
+                    if not install_result.success:
+                        return InstallResult.error(f"依赖安装失败: {install_result.message}")
+                    msg = f"插件 {actual_plugin_id} 依赖安装完成"
+                    self._logger.info(get_name(), msg)
+                    if progress_callback:
+                        progress_callback(msg)
 
             # 确定目标目录
             target_plugin_dir = target_dir / actual_plugin_id

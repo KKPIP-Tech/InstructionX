@@ -439,7 +439,7 @@ class LLMPluginService:
                 provider_type=getattr(p, "PROVIDER_TYPE", name),
                 enabled_chat=getattr(p, "enabled_chat", True),
                 enabled_embedding=getattr(p, "enabled_embedding", True),
-                supports_vision=getattr(p, "support_vision", False),
+                supports_vision=getattr(p, "supports_vision", False),
                 supports_function_calling=any(
                     getattr(m, "support_function_calling", False)
                     for m in models

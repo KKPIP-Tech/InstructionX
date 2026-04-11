@@ -235,7 +235,7 @@ class IPlugin(ABC):
         """
         return self._plugin_id
 
-    def on_plugin_loaded(self) -> None:
+    def on_plugin_loaded(self, plugin_id: Optional[str] = None, **kwargs) -> None:
         """
         插件加载完成回调钩子
 
@@ -246,6 +246,10 @@ class IPlugin(ABC):
         - 订阅其他插件的数据
 
         注意：此时插件的用户界面尚未创建，禁止在此方法中实例化 QWidget。
+
+        Args:
+            plugin_id: 插件唯一标识符（通过 self.plugin_id 也可访问）
+            **kwargs: 预留参数（向后兼容）
         """
         pass
 
