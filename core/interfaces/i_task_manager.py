@@ -196,3 +196,8 @@ class ITaskManager(ABC):
     def clear_completed_tasks(self, plugin_id: Optional[str] = None) -> int:
         """清理已完成的任务"""
         pass
+
+    @abstractmethod
+    def shutdown(self) -> None:
+        """关闭任务管理器，释放所有资源"""
+        pass
