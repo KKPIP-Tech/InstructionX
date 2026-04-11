@@ -66,11 +66,15 @@ class GitHubInstallWorker(QThread):
             official_dir = pm.official_plugin_dir
             thirdparty_dir = pm.thirdparty_plugin_dir
 
+            def on_progress(msg):
+                self.progress.emit(msg)
+
             results = self.installer.install_from_url(
                 self.url,
                 selected_plugins=self.selected_plugins,
                 official_dir=official_dir,
-                thirdparty_dir=thirdparty_dir
+                thirdparty_dir=thirdparty_dir,
+                progress_callback=on_progress
             )
             self.finished.emit(results)
         except Exception as e:
@@ -111,6 +115,17 @@ class PluginInfoWidget(QWidget):
             author_label = QLabel(f"作者: {self.plugin_info.author}")
             author_label.setStyleSheet("color: gray;")
             layout.addWidget(author_label)
+
+        # 依赖信息
+        if self.plugin_info.dependencies:
+            deps_text = ", ".join(
+                f"{k}{v}" if v else k
+                for k, v in self.plugin_info.dependencies.items()
+            )
+            deps_label = QLabel(f"依赖: {deps_text}")
+            deps_label.setStyleSheet("color: #0078d4; font-size: 9pt;")
+            deps_label.setWordWrap(True)
+            layout.addWidget(deps_label)
 
         layout.addStretch()
 
@@ -418,6 +433,7 @@ class GitHubPluginInstallDialog(QDialog):
         )
         self.install_worker.finished.connect(self._on_install_finished)
         self.install_worker.error.connect(self._on_install_error)
+        self.install_worker.progress.connect(self._on_install_progress)
         self.install_worker.start()
 
     def _on_install_finished(self, results: List[InstallResult]):
@@ -469,6 +485,10 @@ class GitHubPluginInstallDialog(QDialog):
         self.status_label.setStyleSheet("color: red;")
 
         QMessageBox.critical(self, "安装失败", error)
+
+    def _on_install_progress(self, msg: str):
+        """安装进度更新"""
+        self.status_label.setText(msg)
 
     def closeEvent(self, event):
         """对话框关闭事件"""
