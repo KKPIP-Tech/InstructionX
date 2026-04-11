@@ -153,7 +153,7 @@ from core.llm.exceptions import (
 | `get_plugin_data(instance_id, key, namespace, default)` | 获取数据 | Any |
 | `set_plugin_data(instance_id, key, value, namespace, notify)` | 设置数据，notify 默认 True，控制是否通知订阅者 | None |
 | `get_all_plugin_data(instance_id, namespace)` | 获取所有数据 | Dict |
-| `subscribe(subscriber, target, key, callback)` | 订阅数据 | None |
+| `subscribe(subscriber_id, target_plugin_id, target_key, callback)` | 订阅数据 | None |
 | `unsubscribe(subscriber, target=None)` | 取消订阅，target 为空则取消所有订阅 | None |
 | `publish(publisher, key, value, namespace)` | 发布数据 | None |
 | `save_asset(plugin_id, filename, content)` | 保存资源 | str |
@@ -184,9 +184,11 @@ from core.llm.exceptions import (
 
 **文件**: `core/task/background_task.py`
 
+> 注意: `BackgroundTaskManager` 采用单例模式，直接调用 `BackgroundTaskManager()` 获取单例实例。
+
 | 方法 | 说明 | 返回值 |
 |------|------|--------|
-| `BackgroundTaskManager()` | 获取单例实例 | BackgroundTaskManager |
+| `BackgroundTaskManager()` | 获取单例实例（单例模式） | BackgroundTaskManager |
 | `register_sync_task(plugin_id, name, func, callback, args, kwargs)` | 注册同步任务 | str (task_id) |
 | `register_async_task(plugin_id, name, func, callback, args, kwargs)` | 注册异步任务 | str (task_id) |
 | `register_scheduled_task(plugin_id, name, func, interval, callback, args, kwargs)` | 注册定时任务 | str (task_id) |
@@ -208,7 +210,7 @@ from core.llm.exceptions import (
 | `get_scheduled_tasks(plugin_id)` | 获取定时任务 | List[ScheduledTask] |
 | `cancel_task(task_id)` | 取消任务 | bool |
 | `clear_completed_tasks(plugin_id)` | 清理已完成任务 | int |
-| `shutdown()` | 关闭任务管理器（不在 ITaskManager 接口中） | None |
+| `shutdown()` | 关闭任务管理器 | None |
 
 ### 4.2 TaskType
 
@@ -276,7 +278,6 @@ from core.llm.exceptions import (
 | `AuthenticationError` | 认证错误 |
 | `APIError` | API 调用错误 |
 | `RateLimitError` | 速率限制 |
-| `InvalidRequestError` | 无效请求 |
 | `ModelNotSupportedError` | 模型不支持 |
 | `ConnectionError` | 连接错误 |
 | `TimeoutError` | 超时错误 |
@@ -300,7 +301,7 @@ from core.llm.exceptions import (
 | `get_tool_executor()` | 获取工具调用执行器 | ToolCallExecutor |
 | `get_shared_tool_registry()` | 获取共享工具注册表 | ToolRegistry |
 | `get_raw_provider(provider?)` | 获取底层 ILLM Provider（高级用） | ILLM |
-| `embed(texts, provider?, model?)` | 向量嵌入 | List |
+| `embed(texts, provider?, model?)` | 向量嵌入 | List[List[float]] |
 | `generate_image(prompt, provider?, ...)` | 图像生成 | ImageResult |
 | `text_to_speech(text, provider?, ...)` | 文本转语音 | AudioResult |
 | `load_image_as_base64(file_path)` | 图片文件转 base64 | str |
@@ -331,7 +332,7 @@ from core.llm.exceptions import (
 | `ToolRegistry` | `register(name, description, parameters, handler)` | 注册工具 |
 | `ToolRegistry` | `unregister(name)` | 注销工具 |
 | `ToolRegistry` | `get_tool(name)` | 获取工具 |
-| `ToolRegistry` | `get_all_tools()` | 获取所有工具 |
+| `ToolRegistry` | `get_tools()` | 获取所有工具 |
 | `ToolCallExecutor` | `chat_with_tools(messages, provider?, model?, max_turns?, ...)` | 工具调用循环 |
 | `ToolCallExecutor` | `chat_with_tools(..., stream, stream_callback)` | 流式工具调用 |
 
@@ -342,16 +343,24 @@ from core.llm.exceptions import (
 | 方法 | 说明 |
 |------|------|
 | `get_mcp_manager()` | 获取 MCPManager 全局单例 |
-| `start_server(transport="stdio")` | 启动 MCP Server |
+| `start_server(transport=None)` | 启动 MCP Server（None 时使用配置默认值） |
 | `stop_server()` | 停止 MCP Server |
 | `is_server_running()` | Server 是否运行中 |
 | `get_server_url()` | 返回 HTTP Server 地址 |
 | `update_server_config(config)` | 更新 Server 配置 |
+| `get_config()` | 获取当前 MCP 配置 |
+| `get_server_config()` | 获取当前 Server 配置 |
+| `get_server()` | 获取 MCPHostServer 实例 |
 | `get_client_manager(tool_registry)` | 获取 MCPClientManager |
 | `connect(config, tool_registry)` | 连接外部 MCP Server |
 | `disconnect(server_id)` | 断开外部 MCP Server |
 | `list_connected_servers()` | 已连接 server_id 列表 |
 | `list_remote_tools(server_id)` | 列出外部 Server 工具 |
+| `add_remote_server(config)` | 添加外部 MCP Server 配置 |
+| `remove_remote_server(server_id)` | 移除外部 MCP Server 配置 |
+| `sync_plugin_tool(plugin_id, method_name, description, parameters)` | 同步插件工具到 MCP 系统 |
+| `remove_plugin_tool(plugin_id, method_name)` | 从 MCP 系统移除插件工具 |
+| `get_bridge()` | 获取 MCPBridge 实例 |
 | `shutdown()` | 关闭所有资源 |
 
 ### 5.7 MCPClientManager
@@ -364,6 +373,7 @@ from core.llm.exceptions import (
 | `disconnect(server_id)` | 断开连接 |
 | `list_connected_servers()` | 列出已连接 server_id |
 | `list_tools(server_id)` | 列出指定 Server 工具（带命名空间前缀 `mcp:{server_id}:{tool}`） |
+| `get_connection(server_id)` | 获取指定连接的信息 |
 | `shutdown()` | 关闭所有连接 |
 
 ---
@@ -560,8 +570,6 @@ task_id = task_manager.register_scheduled_task(
 | `cancel_task(task_id)` | 取消任务 |
 | `clear_completed_tasks(plugin_id)` | 清理已完成任务 |
 
-> **注意**：`update_long_running_task_status(task_id, status)` 存在于 `BackgroundTaskManager` 实现中，但未在 `ITaskManager` 接口中声明。
-
 ### 7.6 ILLMFacade（LLM 外观接口）
 
 **文件**: `core/interfaces/i_llm_facade.py`
@@ -605,6 +613,8 @@ task_id = task_manager.register_scheduled_task(
 | `task_manager` | `BackgroundTaskManager` | 后台任务管理器实例（失败时为 `None`） |
 | `llm_facade` | `LLMPluginService` | LLM 服务实例 |
 | `logger` | `LoggerManager` | 日志管理器实例 |
+| `mcp_manager` | `MCPManager` | MCP 管理器实例（可能为 `None`） |
+| `mcp_client` | `MCPClientManager` | MCP 客户端管理器实例（可能为 `None`） |
 
 ### 7.8 ILogger（日志接口）
 
