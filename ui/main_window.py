@@ -144,6 +144,15 @@ class InstructionXMainWindow(QMainWindow):
         menu_edit.addAction(self._menu_theme_action)
         self._update_theme_action_text()
 
+        # 分隔线
+        menu_edit.addSeparator()
+
+        # 从 GitHub 安装插件
+        menu_edit_github_install_action = QAction("从 GitHub 安装插件...", self)
+        menu_edit_github_install_action.setStatusTip("从 GitHub 仓库安装插件")
+        menu_edit_github_install_action.triggered.connect(self._open_github_plugin_install_dialog)
+        menu_edit.addAction(menu_edit_github_install_action)
+
         # -------------------------------------------------
         # 用户中心
         menu_user = menu_bar.addMenu("用户中心")
@@ -254,6 +263,28 @@ class InstructionXMainWindow(QMainWindow):
         from ui.dialog.license_dialog import LicenseDialog
         dialog = LicenseDialog(self)
         dialog.exec()
+
+    def _open_github_plugin_install_dialog(self):
+        """打开从 GitHub 安装插件对话框"""
+        from ui.dialog.github_plugin_install_dialog import GitHubPluginInstallDialog
+        dialog = GitHubPluginInstallDialog(self)
+        dialog.plugin_installed.connect(self._on_github_plugin_installed)
+        dialog.exec()
+
+    def _on_github_plugin_installed(self, results):
+        """GitHub 插件安装完成后的回调"""
+        from core.plugin.github_plugin_installer import InstallResult
+        # 重新加载技能面板
+        self.skills_panel.load_skills_from_manager()
+
+        # 提示用户
+        success_count = sum(1 for r in results if isinstance(r, InstallResult) and r.success)
+        if success_count > 0:
+            QMessageBox.information(
+                self,
+                "安装成功",
+                f"成功安装 {success_count} 个插件，请刷新页面或重新启动应用以加载新插件。"
+            )
 
     def _load_saved_theme(self):
         """从 DataProvider 加载保存的主题设置"""
