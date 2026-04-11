@@ -96,21 +96,6 @@ def critical(self, name: str, message: str) -> None:
 
 ---
 
-### 2.6 log
-
-```python
-def log(self, level: str, module_name: str, message: str) -> None:
-    """按指定日志级别记录消息"""
-    pass
-```
-
-**参数**:
-- `level`: 日志级别（DEBUG, INFO, WARNING, ERROR, CRITICAL）
-- `module_name`: 调用方模块名称（用于日志分组）
-- `message`: 日志消息内容
-
----
-
 ## 3. 重要说明
 
 ### 3.1 name 参数的作用
@@ -130,6 +115,17 @@ logger.error("MyPlugin", "连接失败: timeout")
 - **`LoggerManager`**：`ILogger` 的具体实现类
 
 插件通过 `PluginServices.logger` 获取注入的日志实例，而非直接实例化 `LoggerManager`。
+
+### 3.3 log 方法（LoggerManager 实现）
+
+`log(level, module_name, message)` 是 `LoggerManager` 的具体实现方法，**不属于 `ILogger` 接口契约**。
+此方法接受日志级别字符串（DEBUG, INFO, WARNING, ERROR, CRITICAL）作为第一个参数，
+提供了比接口方法更灵活的动态级别指定方式。
+
+```python
+# LoggerManager 独有方法（非 ILogger 接口方法）
+logger.log('WARNING', 'MyModule', '警告信息')
+```
 
 ### 3.3 日志等级
 

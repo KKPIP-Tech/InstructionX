@@ -558,10 +558,12 @@ def get_tasks_by_plugin(self, plugin_id: str) -> List[BackgroundTask]
 def get_all_tasks(self) -> List[BackgroundTask]
 ```
 
-获取所有任务。
+获取所有任务（不包括长期任务）。
+
+> **注意**: 长期任务需通过 `get_long_running_tasks()` 获取。
 
 **返回**:
-- 任务列表
+- 任务列表（不含长期任务）
 
 ---
 

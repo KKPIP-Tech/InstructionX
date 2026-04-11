@@ -245,7 +245,7 @@ def get_widget(self, parent=None, data_provider=None) -> QWidget:
 ### 3.3 on_plugin_loaded()
 
 ```python
-def on_plugin_loaded(self) -> None:
+def on_plugin_loaded(self, plugin_id: Optional[str] = None, **kwargs) -> None:
     """
     插件加载完成回调
 
@@ -256,10 +256,14 @@ def on_plugin_loaded(self) -> None:
     - 订阅其他插件的数据
 
     注意：
-    - 框架调用此方法时**不传任何参数**。
+    - 框架调用此方法时**不传任何参数**（向后兼容旧插件）。
     - plugin_id 通过 `self.plugin_id` 访问（而非通过形参）。
     - services 已通过 `self._services` 实例属性注入（由 PluginManager 设置）。
     - 此时插件的 UI 尚未创建，禁止在此方法中实例化 QWidget。
+
+    Args:
+        plugin_id: 插件唯一标识符（仅用于向后兼容，实际通过 self.plugin_id 访问）
+        **kwargs: 预留参数（services 等通过实例属性 self._services 访问）
 
     Example:
         def __init__(self, services=None):
@@ -267,7 +271,7 @@ def on_plugin_loaded(self) -> None:
             super().__init__()
             self._llm = services.llm_facade if services else None
 
-        def on_plugin_loaded(self):
+        def on_plugin_loaded(self, plugin_id=None, **kwargs):
             # plugin_id 通过 self.plugin_id 访问
             # services 已通过 self._services 访问
             print(f"插件 {self.plugin_id} 已加载")

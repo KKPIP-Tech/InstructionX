@@ -361,7 +361,7 @@ class MyPlugin(IPlugin):
 - `get_provider(name)`: 获取 Provider 实例
 - `get_all_providers()`: 获取所有 Provider
 - `get_cached_models(provider_name)`: 获取缓存模型
-- `get_raw_provider(provider)`: 获取底层 LLM Provider（高级插件用）
+- `get_raw_provider(provider="default")`: 获取底层 LLM Provider（高级插件用）
 
 *对话管理*:
 - `create_conversation(system_prompt, provider, model, metadata)`: 创建新对话，返回对话 ID
@@ -511,6 +511,8 @@ class MyPlugin(IPlugin):
 - `task_manager`: `BackgroundTaskManager` - 后台任务管理器实例
 - `llm_facade`: `LLMPluginService` - LLM 统一门面接口（`ILLMFacade` 的完整实现）
 - `logger`: `LoggerManager` - 日志接口
+- `mcp_manager`: `MCPManager` - MCP Server 管理器实例（可为空，用于管理内置 MCP Server）
+- `mcp_client`: `MCPClientManager` - 外部 MCP Client 管理器实例（可为空，用于连接外部 MCP Server）
 
 **设计模式**: 依赖注入（Dependency Injection）
 
@@ -588,6 +590,7 @@ from core.interfaces import (
     EmbeddingResponse,
     ModelInfo,
 )
+# 注意：UsageInfo 未通过 core.interfaces 导出，如需使用请从 core.llm.provider_interface 导入
 
 # 从 core.llm 导入 LLMPluginService（ILLMFacade 的完整实现）
 from core.llm import get_llm_plugin_service, LLMPluginService

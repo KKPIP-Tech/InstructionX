@@ -165,6 +165,8 @@ graph LR
     style E fill:#dfb,stroke:#333
 ```
 
+## 4. 核心设计原则
+
 | # | 原则 | 说明 |
 |---|---|---|
 | ① | **单一入口** | 插件开发者只与 `LLMPluginService` 交互，不直接访问 `LLMProvider` |
@@ -173,7 +175,7 @@ graph LR
 | ④ | **可测试性** | `PluginServices` DI 容器允许插件在无 API 环境下完成测试 |
 | ⑤ | **类型分离** | `types.py` 存放新增类型，`provider_interface.py` 存放 LLM 层核心类型 |
 
-### 3.4 对话消息流
+### 4.1 对话消息流
 
 ```mermaid
 flowchart LR
@@ -336,10 +338,8 @@ LLM 层重构新增了完整的对话管理能力，通过 `LLMPluginService` �
 |---|---|
 | **对话 CRUD** | 创建/获取/列出/删除对话，自动管理 conversation_id |
 | **自动历史追加** | send_message / stream_send_message 自动将用户消息和 LLM 回复追加到历史 |
-| **上下文截断** | 超过 max_context (默认 128000 token) 时自动截断，保留 system + 最近 2/3 消息 |
-| **Token 估算** | 中文字符按 1:1 估算，英文按 4:1 估算（4 个字符 ≈ 1 token） |
 | **费用计算** | 基于 `DEFAULT_PRICING` 估算每次请求费用 |
-| **用量统计** | 按对话和全局维度统计 token、总费用、请求次数 |
+| **用量统计** | 按对话和全局维度统计 token、总费用、消息条数 |
 
 ### 8.2 使用方式
 
@@ -372,14 +372,14 @@ print(f"Token: {stats.total_tokens}, 费用: {stats.total_cost}元")
 | 方面 | 旧 API (LLMProvider.chat) | 新 API (LLMPluginService) |
 |---|---|---|
 | 对话历史 | 插件自行管理 List[Message] | 自动管理，自动截断 |
-| 上下文窗口 | 插件自行计算 token | 自动估算并截断 |
+| 上下文窗口 | 插件自行计算 token | 自动管理 |
 | 工具调用 | 手动两轮循环 | ToolCallExecutor 自动处理 |
 | 流式输出 | 自行实现 QThread | stream_send_message 一行搞定 |
 | 费用统计 | 无 | 自动累计 |
 
 ## 9. Function Calling
 
-### 8.1 概述
+### 9.1 概述
 
 LLM Provider 支持 **Function Calling**（函数调用），允许模型调用外部工具或函数，实现与外部系统的集成。
 
@@ -388,7 +388,7 @@ LLM Provider 支持 **Function Calling**（函数调用），允许模型调用�
 1. **推荐：新方式（ToolCallExecutor）** — 自动处理两轮循环，插件只需注册工具
 2. **旧方式（手动两轮）** — 通过 `LLMProvider.chat()` 手动管理
 
-### 8.2 工具调用自动循环
+### 9.2 工具调用自动循环
 
 ```mermaid
 flowchart TD
@@ -434,7 +434,7 @@ flowchart TD
     style EXEC fill:#fbe,stroke:#333,stroke-width:2px
 ```
 
-### 8.3 推荐方式：ToolCallExecutor（自动两轮循环）
+### 9.3 推荐方式：ToolCallExecutor（自动两轮循环）
 
 ```python
 from core.llm import get_llm_plugin_service
@@ -481,7 +481,7 @@ final_msgs, tool_results, final = executor.chat_with_tools_stream(
 )
 ```
 
-### 9.3 旧方式：手动两轮调用
+### 9.4 旧方式：手动两轮调用
 
 ```python
 from core.llm import get_llm_provider
@@ -525,7 +525,7 @@ if response.tool_calls:
         print(f"参数: {tool_call['function']['arguments']}")
 ```
 
-### 9.4 处理工具结果（手动方式）
+### 9.5 处理工具结果（手动方式）
 
 ```python
 # 1. 执行工具函数
@@ -555,7 +555,7 @@ if response.tool_calls:
     print(final_response.content)
 ```
 
-### 9.5 基类统一支持
+### 9.6 基类统一支持
 
 `BaseProvider` 提供了统一的 Function Calling 支持：
 
@@ -741,7 +741,7 @@ class CustomProvider(BaseProvider):
 graph LR
     subgraph ✨ 新增模块
         TI[types.py<br/>• Conversation<br/>• ToolResult<br/>• UsageStats<br/>• ImageResult<br/>• AudioResult<br/>• StreamChunk<br/>• ProviderInfo]
-        CM[conversation_manager.py<br/>• ConversationManager<br/>• 上下文截断<br/>• token 估算<br/>• 费用计算]
+        CM[conversation_manager.py<br/>• ConversationManager<br/>• 对话管理<br/>• 费用计算]
         TCE[tool_call_executor.py<br/>• ToolRegistry<br/>• ToolCallExecutor<br/>• 自动两轮循环]
         PS[plugin_service.py<br/>• LLMPluginService<br/>• 对话 + 工具 + 多模态<br/>• 全局单例工厂]
         PR[pricing.py<br/>• DEFAULT_PRICING<br/>• 默认定价表]
@@ -757,7 +757,7 @@ graph LR
     end
 
     subgraph 📋 示例
-        SA[sample_ai_plugin/<br/>• entrance.py<br/>• tools.py]
+        SA[KKPIP-Tech/<br/>InstructionX-Plugins]
     end
 ```
 

@@ -212,14 +212,15 @@ classDiagram
     class IPlugin {
         <<abstract>>
         +plugin_name: str
-        +plugin_id: str
+        +plugin_id: Optional[str] (具体属性，返回 None)
         +skill_icon: QIcon
         +skill_description: str
         +skill_tooltip: str
         +plugin_info: IPluginInfo
+        +llm_tools: List[Dict]
         +_create_widget(parent, data_provider): QWidget
         +get_widget(parent, data_provider): QWidget
-        +on_plugin_loaded(): None
+        +on_plugin_loaded(plugin_id?, **kwargs): None
     }
 
     class IPluginInfo {
@@ -256,7 +257,36 @@ classDiagram
 
     IPlugin --> PluginManager : 注册到
     IPlugin --> IPluginInfo : 通过 plugin_info 属性访问
+
+### 6.1 PluginServices 架构
+
+```mermaid
+graph LR
+    subgraph PluginServices [PluginServices 容器]
+        LLM[llm_facade<br/>LLMPluginService]
+        DP[data_provider<br/>DataProvider]
+        TM[task_manager<br/>BackgroundTaskManager]
+        LG[logger<br/>LoggerManager]
+        MCM[mcp_manager<br/>MCPManager]
+        MCC[mcp_client<br/>MCPClientManager]
+    end
+
+    PluginServices --> LLM
+    PluginServices --> DP
+    PluginServices --> TM
+    PluginServices --> LG
+    PluginServices --> MCM
+    PluginServices --> MCC
 ```
+
+| 服务字段 | 类型 | 说明 |
+|----------|------|------|
+| `llm_facade` | `LLMPluginService` | LLM 服务入口（单例） |
+| `data_provider` | `DataProvider` | 数据持久化服务 |
+| `task_manager` | `BackgroundTaskManager` | 后台任务管理 |
+| `logger` | `LoggerManager` | 日志服务 |
+| `mcp_manager` | `MCPManager` | MCP Server 管理器 |
+| `mcp_client` | `MCPClientManager` | MCP 外部连接管理器 |
 
 ---
 

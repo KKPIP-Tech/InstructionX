@@ -29,12 +29,37 @@
 
 ## 3. 核心 API
 
+### 3.0 访问入口
+
+#### get_plugin_manager()
+
+```python
+def get_plugin_manager() -> "PluginManager":
+    """获取插件管理器单例实例
+
+    Returns:
+        PluginManager: 插件管理器单例实例
+    """
+    return PluginManager()
+```
+
+**使用示例**:
+
+```python
+from core.plugin.manager import get_plugin_manager
+
+# 获取单例实例
+manager = get_plugin_manager()
+```
+
+> 注意: 也可以直接通过 `PluginManager()` 获取单例实例（`__new__` 保证全局唯一）。
+
 ### 3.1 插件加载
 
 #### load_plugins()
 
 ```python
-def load_plugins(self):
+def load_plugins(self) -> None:
     """加载所有插件（官方和第三方）"""
     self.load_official_plugins()
     self.load_thirdparty_plugins()
@@ -43,28 +68,26 @@ def load_plugins(self):
 #### load_official_plugins()
 
 ```python
-def load_official_plugins(self) -> List[IPlugin]:
+def load_official_plugins(self) -> None:
     """
     加载官方插件
 
     扫描 plugin/ 目录，加载所有有效的插件。
 
-    Returns:
-        官方插件列表
+    注意: 无返回值，插件通过 get_official_plugins() 获取
     """
 ```
 
 #### load_thirdparty_plugins()
 
 ```python
-def load_thirdparty_plugins(self) -> List[IPlugin]:
+def load_thirdparty_plugins(self) -> None:
     """
     加载第三方插件
 
     扫描 custom_plugin/ 目录，加载所有有效的插件。
 
-    Returns:
-        第三方插件列表
+    注意: 无返回值，插件通过 get_thirdparty_plugins() 获取
     """
 ```
 
@@ -188,7 +211,12 @@ def reload_plugins(self):
     """
     重新加载所有插件
 
-    清空当前注册的插件（包括 _api_registry），然后重新扫描并加载所有插件。
+    清空内存中的插件注册表（包括 _official_plugins、_thirdparty_plugins、
+    _plugin_registry、_plugin_name_to_id、_api_registry），然后重新扫描
+    并加载所有插件。
+
+    注意：此方法不会清空插件顺序配置（plugin_order.json），用户自定义的
+    插件显示顺序在重新加载后仍然有效（通过 apply_custom_order() 恢复）。
     """
 ```
 
@@ -463,6 +491,8 @@ def _create_plugin_services(self) -> PluginServices:
 | `data_provider` | `DataProvider` | 数据持久化服务（失败时为 `None`） |
 | `task_manager` | `BackgroundTaskManager` | 后台任务管理（失败时为 `None`） |
 | `logger` | `LoggerManager` | 日志服务（`LoggerManager` 实例） |
+| `mcp_manager` | `MCPManager` | MCP Server 管理器（失败时为 `None`） |
+| `mcp_client` | `MCPClientManager` | MCP 外部连接管理器（失败时为 `None`） |
 
 **使用流程**（见 `manager.py` 的 `_load_plugin_from_directory()` 方法，第 238-252 行）：
 

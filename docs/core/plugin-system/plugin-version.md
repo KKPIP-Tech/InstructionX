@@ -17,6 +17,7 @@
 版本字符串格式为 `<version_type>.<major>.<minor>.<patch>`，例如：
 
 - `release.1.0.0` — 正式版 1.0.0
+- `pre-release.1.0.0` — 预发布版 1.0.0
 - `beta.2.1.0` — 测试版 2.1.0
 - `alpha.1.0.0` — 内测版 1.0.0
 - `internal.1.0.0` — 内部版 1.0.0
@@ -124,7 +125,7 @@ v2 = PluginVersion.from_string("release.1.0.1")
 v3 = PluginVersion.from_string("beta.1.0.0")
 
 print(v2 > v1)   # True（修订号更大）
-print(v1 > v3)   # False（版本号完全相同时，即使类型优先级不同，> 仍返回 False）
+print(v1 > v3)   # True（release 类型优先级高于 beta）
 print(v1 == v1)  # True
 print(v3 < v1)   # True
 print(v1 != v2)  # True

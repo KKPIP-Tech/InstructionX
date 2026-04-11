@@ -586,7 +586,7 @@ def reset_all_data(self) -> None
 
 **警告**: 此操作会删除所有插件数据和订阅关系，不可恢复！
 
-> **注意**：此方法为 `DataProvider` 实现类扩展方法，**不属于 `IDataProvider` 接口契约**。依赖此方法的插件无法无缝切换到其他 `IDataProvider` 实现。
+> **注意**：此方法是 `IDataProvider` 接口契约的一部分，由 `DataProvider` 实现类提供。
 
 **示例**:
 ```python

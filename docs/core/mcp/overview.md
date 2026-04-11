@@ -202,7 +202,7 @@ graph TB
     PS --> MM
     PS --> MC
     MC --> LLMS
-    TCE --> LLMP
+    TR --> LLMP
 ```
 
 ---
@@ -295,18 +295,27 @@ config = MCPRemoteServerConfig(
     args=["-y", "@modelcontextprotocol/server-filesystem", "/tmp"],
 )
 
-# streamable-http 方式
+# streamable-http 方式（默认传输方式）
 config_http = MCPRemoteServerConfig(
     server_id="github",
     name="GitHub",
-    transport="streamable-http",
+    # transport 默认为 "streamable-http"
     url="http://localhost:3000/mcp",
 )
 
 # 获取 ToolRegistry 并连接
+# 注意：tool_registry 只在首次连接时需要传入
+# 后续调用 mcp.connect() 时可省略（使用已缓存的 client manager）
 tool_registry = get_llm_plugin_service().get_shared_tool_registry()
 mcp.connect(config, tool_registry=tool_registry)
+
+# 后续连接可省略 tool_registry
+mcp.connect(config_http)
 ```
+
+**关键区分**：
+- `MCPManager.connect(config, tool_registry?)` - 高层 API，`tool_registry` 仅首次需要
+- `MCPClientManager.connect(config)` - 低层 API，不接受 `tool_registry`（在 `MCPManager` 内部使用）
 
 ### 6.3 断开连接
 
@@ -430,6 +439,7 @@ class MyPlugin(IPlugin):
 
         registry = self._services.llm_facade.get_shared_tool_registry()
         try:
+            # tool_registry 仅首次连接时需要，后续可省略
             self._services.mcp_manager.connect(config, tool_registry=registry)
             self.status_label.setText("已连接")
         except Exception as e:
@@ -459,6 +469,8 @@ config = MCPServerConfig(
 
 外部 MCP Server 连接配置（MCP Client 模式）：
 
+**传输方式默认值**：`streamable-http`（与本地 MCP Server 的默认 `stdio` 不同）
+
 ```python
 from core.mcp import MCPRemoteServerConfig
 
@@ -466,17 +478,17 @@ from core.mcp import MCPRemoteServerConfig
 config = MCPRemoteServerConfig(
     server_id="my-server",
     name="My Server",
-    transport="stdio",
+    transport="stdio",   # 明确指定 stdio
     command="npx",
     args=["-y", "@modelcontextprotocol/server-filesystem", "/tmp"],
     env={"HOME": "/tmp"},
 )
 
-# streamable-http 方式
+# streamable-http 方式（默认传输方式，可省略 transport 字段）
 config = MCPRemoteServerConfig(
     server_id="github",
     name="GitHub",
-    transport="streamable-http",
+    # transport 默认为 "streamable-http"，可省略
     url="http://localhost:3000/mcp",
     auth_token="Bearer xxx",
 )
@@ -596,10 +608,12 @@ mcp.shutdown()  # 停止 Server + 断开所有 Client 连接
 
 ### 10.6 IMCPClient
 
+> 注意：接口定义为 async 方法，但 `MCPClientManager` 实现为同步方法（内部通过 `asyncio.run_coroutine_threadsafe` 调用异步 SDK）。
+
 | 方法 | 说明 |
 |------|------|
-| `async connect(config)` | 异步连接到外部 MCP Server，返回 server_id |
-| `async disconnect(server_id)` | 异步断开与指定 Server 的连接 |
+| `async connect(config)` | 连接到外部 MCP Server，返回 server_id（接口为 async，实现为 sync） |
+| `async disconnect(server_id)` | 断开与指定 Server 的连接（接口为 async，实现为 sync） |
 | `list_connected_servers()` | 列出已连接 server_id |
 | `list_tools(server_id)` | 列出指定 Server 的工具 |
 
