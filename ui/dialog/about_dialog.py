@@ -75,7 +75,7 @@ class AboutDialog(QDialog):
         layout.addWidget(name_label)
 
         # 版本号
-        version_label = QLabel("版本 0.1.0")
+        version_label = QLabel("版本 Alpha 1.0")
         version_font = QFont()
         version_font.setPointSize(9)
         version_label.setFont(version_font)

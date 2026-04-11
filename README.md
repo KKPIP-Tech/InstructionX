@@ -10,7 +10,7 @@
 [![PySide6](https://img.shields.io/badge/PySide6-6.10+-green.svg)](https://doc.qt.io/qtforpython/)
 [![Platform](https://img.shields.io/badge/Platform-Windows-lightgrey.svg)](#)
 [![License](https://img.shields.io/badge/License-Modified%20Apache%202.0-orange.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/Version-0.1.0%20CE-blue.svg)](#)
+[![Version](https://img.shields.io/badge/Alpha-1.0%20CE-red.svg)](#)
 
 <p>基于 PySide6 的插件式桌面应用框架，支持 LLM 集成、MCP 协议（Server/Client）、多会话管理与热插拔插件系统</p>
 
