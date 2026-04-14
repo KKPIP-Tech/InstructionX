@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import List, Dict, Optional, Any, Callable
 from abc import ABC, abstractmethod
 
-from .plugin_interface import IPlugin
+from core.interfaces import IPlugin
 from .config_manager import PluginConfigManager
 from .plugin_identity import PluginIdentity
 from core.interfaces.plugin_services import PluginServices
@@ -248,14 +248,19 @@ class PluginManager:
             spec.loader.exec_module(module)
 
             # 在模块中查找 IPlugin 的子类
+            # 排除：core.interfaces.IPlugin（框架基类）和 core.plugin.plugin_interface.IPlugin（中间基类）
             plugin_class = None
             for attr_name in dir(module):
                 attr = getattr(module, attr_name)
-                if (isinstance(attr, type) and
-                    issubclass(attr, IPlugin) and
-                    attr is not IPlugin):
-                    plugin_class = attr
-                    break
+                if (not isinstance(attr, type) or not issubclass(attr, IPlugin)):
+                    continue
+                # 排除框架级 IPlugin 类（来自 core.interfaces 或 core.plugin.plugin_interface）
+                if attr is IPlugin:
+                    continue
+                if getattr(attr, '__module__', '') == 'core.plugin.plugin_interface':
+                    continue
+                plugin_class = attr
+                break
 
             if plugin_class is None:
                 self._logger.warning(get_name(), f'No IPlugin subclass found in {entrance_file}')
@@ -506,29 +511,32 @@ class PluginManager:
             if not service_file.exists():
                 return
 
-
             # 动态导入模块
             module_name = plugin_dir.name
+            parent_pkg = plugin_dir.parent.name  # e.g. "plugin"
+            info_mod_name = f"{parent_pkg}.{module_name}.information"
+            svc_mod_name = f"{parent_pkg}.{module_name}.service"
 
             # 确保父目录在搜索路径中
-            parent_dir = str(plugin_dir.parent)
-            if parent_dir not in sys.path:
-                sys.path.insert(0, parent_dir)
+            grandparent_dir = str(plugin_dir.parent.parent)
+            if grandparent_dir not in sys.path:
+                sys.path.insert(0, grandparent_dir)
 
             try:
-                # 清理可能缓存的模块以获取最新定义
-                modules_to_remove = [
-                    module_name,
-                    f"{module_name}.information",
-                    f"{module_name}.service",
-                    f"{module_name}.entrance",
-                ]
-                for mod_name in modules_to_remove:
-                    if mod_name in sys.modules:
-                        del sys.modules[mod_name]
+                # 确保父包（如 plugin/__init__.py）已导入
+                if parent_pkg not in sys.modules:
+                    importlib.import_module(parent_pkg)
 
-                info_module = importlib.import_module(f"{module_name}.information")
-                service_module = importlib.import_module(f"{module_name}.service")
+                # 使用 importlib.reload 获取最新定义
+                if info_mod_name in sys.modules:
+                    info_module = importlib.reload(sys.modules[info_mod_name])
+                else:
+                    info_module = importlib.import_module(info_mod_name)
+
+                if svc_mod_name in sys.modules:
+                    service_module = importlib.reload(sys.modules[svc_mod_name])
+                else:
+                    service_module = importlib.import_module(svc_mod_name)
             except Exception as e:
                 self._logger.warning(get_name(), f'Skipping API registration ({plugin_dir.name}): {e}')
                 return
@@ -558,27 +566,69 @@ class PluginManager:
                 return
 
             # 获取 Service 类
-            # 遍历模块中的所有类，跳过基类，找到实际的 Service 实现类
+            # 优先查找名称以 "Service" 结尾的类，其次取第一个候选
+            from enum import Enum
             service_class = None
             for attr_name in dir(service_module):
                 attr = getattr(service_module, attr_name)
                 if not isinstance(attr, type):
                     continue
-                # 跳过基类和接口类
                 if attr.__name__ in ('IPlugin', 'object'):
                     continue
-                # 跳过 PluginInfo 相关类（可能在 service_module 中被导入）
                 if attr.__name__.endswith('Info') or attr.__name__ == 'PluginInfo':
                     continue
-                service_class = attr
-                break
+                if attr.__module__ == 'typing':
+                    continue
+                if issubclass(attr, Enum):
+                    continue
+                # 优先选择名称以 Service 结尾的类
+                if attr.__name__.endswith('Service'):
+                    service_class = attr
+                    break
+                # 否则记录候选
+                if service_class is None:
+                    service_class = attr
 
             if not service_class:
-                self._logger.warning(get_name(), f'Skipping API registration ({plugin_dir.name}): no Service class found in service_module')
+                self._logger.warning(get_name(), f'Skipping API registration ({plugin_dir.name}): no Service class found')
                 return
 
-            # 实例化 Service
-            service_instance = service_class()
+            # 实例化 Service（使用真实 LLM，DataProvider/TaskManager 用 Mock）
+            from unittest.mock import MagicMock
+            from core.llm import get_llm_plugin_service
+
+            try:
+                from core.data import DataProvider
+                mock_dp = DataProvider()
+            except Exception:
+                mock_dp = MagicMock()
+
+            real_llm = get_llm_plugin_service()
+
+            try:
+                from core.task import BackgroundTaskManager
+                mock_ts = BackgroundTaskManager()
+            except Exception:
+                mock_ts = MagicMock()
+
+            service_instance = None
+            # 动态尝试不同参数组合
+            for args in [
+                (plugin_id, mock_dp, real_llm, mock_ts),
+                (plugin_id, mock_dp, real_llm),
+                (plugin_id, mock_dp),
+                (plugin_id,),
+                (),
+            ]:
+                try:
+                    service_instance = service_class(*args)
+                    break
+                except TypeError:
+                    continue
+
+            if service_instance is None:
+                self._logger.warning(get_name(), f'Skipping API registration ({plugin_dir.name}): cannot instantiate Service class')
+                return
 
             # 注册 API 方法
             self.register_plugin_api(plugin_id, service_instance, api_descriptions)

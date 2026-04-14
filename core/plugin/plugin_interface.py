@@ -15,7 +15,7 @@
 import sys
 import os
 import importlib.util
-from abc import ABC, abstractmethod
+from abc import ABC
 from typing import Optional, Tuple, TYPE_CHECKING
 from pathlib import Path
 from PySide6.QtWidgets import QWidget, QApplication, QStyle
@@ -24,24 +24,23 @@ from PySide6.QtGui import QIcon
 if TYPE_CHECKING:
     from .plugin_info_interface import IPluginInfo
 
+from core.interfaces import IPlugin as _BaseIPlugin
 from utils.logging_tools import LoggerManager, get_name
 
 
-class IPlugin(ABC):
+class IPlugin(_BaseIPlugin):
     """
-    插件抽象基类
+    插件框架实现基类
 
-    所有插件必须继承此类并实现抽象方法。该类提供：
-    - 插件唯一标识和名称管理
-    - 控件缓存机制，避免重复创建
-    - 技能图标和描述的动态加载（带缓存）
-    - 插件生命周期回调钩子
+    所有插件必须继承此类。该类继承自 core.interfaces.IPlugin，
+    并扩展了控件缓存机制和生命周期管理。
     """
 
     _logger = LoggerManager()
 
     def __init__(self):
         """初始化插件实例的内部状态"""
+        super().__init__()
         self._plugin_id: Optional[str] = None
         self._plugin_name: Optional[str] = None
         self._cached_widget: Optional[QWidget] = None
@@ -49,33 +48,7 @@ class IPlugin(ABC):
         self._info_cache: Optional[Tuple[float, 'IPluginInfo']] = None
         self._info_cache_path: Optional[str] = None
 
-    @property
-    @abstractmethod
-    def plugin_name(self) -> str:
-        """
-        获取插件显示名称
-
-        Returns:
-            插件显示名称，用于界面展示和标识
-        """
-        pass
-
-    @abstractmethod
-    def _create_widget(self, parent=None, data_provider=None) -> QWidget:
-        """
-        创建插件用户界面控件
-
-        子类必须实现此方法以创建自己的 Qt 控件。该方法在插件首次激活时调用，
-        之后会通过缓存机制复用已创建的控件实例。
-
-        Args:
-            parent: 父控件，传递工作区的中心控件作为父容器
-            data_provider: 数据提供者实例，用于数据读写和插件间通信
-
-        Returns:
-            插件的 Qt 用户界面控件
-        """
-        pass
+    # plugin_name 和 _create_widget 已在 _BaseIPlugin 中声明为抽象方法
 
     def get_widget(self, parent=None, data_provider=None) -> QWidget:
         """
