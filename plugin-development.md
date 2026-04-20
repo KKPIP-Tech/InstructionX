@@ -177,8 +177,10 @@ InstructionX/
 ├── ixplugin.json                   # 插件描述文件
 ├── __init__.py                     # Python 包标识（可为空）
 ├── entrance.py                     # 插件入口（必需），继承 IPlugin
-├── service.py                      # 业务逻辑层（必需），位于根目录
+├── service.py                      # 接口层（**必需**），位于根目录，仅对外暴露API
 ├── information.py                  # 插件元数据（**必需**），继承 IPluginInfo
+├── config/                        # 配置文件目录（**必需**），禁止魔法数
+│   └── default.json
 ├── ui/                             # UI 组件层
 │   ├── __init__.py
 │   ├── main_widget.py              # 主控件（_create_widget 返回的根控件）
@@ -218,6 +220,8 @@ InstructionX/
 │   ├── entrance.py
 │   ├── service.py
 │   ├── information.py
+│   ├── config/
+│   │   └── default.json
 │   ├── ui/
 │   ├── function/
 │   ├── icons/
@@ -242,10 +246,10 @@ InstructionX/
 
 **职责划分原则**：
 - `entrance.py`：作为胶水层，实例化 Service 和 UI 组件，连接两者
-- `service.py`（位于根目录）：作为业务协调层，在根目录导入 `function/` 子模块，组织业务逻辑；**禁止**在此文件中直接写 UI 代码
+- `service.py`（位于根目录）：**仅**作为对 InstructionX 框架和必要交互的接口层，负责导入和组织 `function/` 子模块、对外暴露 API 方法；**禁止**写任何实际业务逻辑；**禁止**出现 UI 操作相关代码（如创建 QWidget、更新 UI 状态等），PySide6 类型定义、信号/slot 机制、枚举等除外；所有业务代码必须放在 `function/` 目录下
 - `information.py`（位于根目录，**必需**）：严格遵循 `docs/core/plugin-system/plugin-development.md` 中 `information.py` 的规范，继承 `IPluginInfo`，定义所有元数据字段
 - `ui/` 目录：所有 PySide6/Qt 控件相关代码，**禁止**在此目录下写业务逻辑
-- `function/` 目录：纯 Python 业务逻辑，**禁止**在此目录下创建 QWidget
+- `function/` 目录：**所有**实际业务代码（数据处理、外部 API 调用、业务规则等），**禁止**在此目录下创建 QWidget
 
 ### 步骤 5：创建 PRD 文档
 
@@ -264,12 +268,12 @@ InstructionX/
 graph LR
     subgraph Plugin [<开发者插件目录>]
         Entrance[entrance.py<br/>插件入口]
-        Service[service.py<br/>业务协调层]
+        Service[service.py<br/>接口层<br/>仅暴露API<br/>委托业务至function/]
         subgraph UI [ui/ UI层]
             Main[ui/main_widget.py<br/>主控件]
             Components[ui/components/<br/>可复用组件]
         end
-        subgraph Function [function/ 功能层]
+        subgraph Function [function/ 功能层<br/>承载所有实际业务逻辑]
             SubServices[function/services/<br/>服务子模块]
             Models[function/models/<br/>数据模型]
             Utils[function/utils/<br/>工具函数]
@@ -283,7 +287,9 @@ graph LR
     Service --> Main
     Main --> Components
     Info -->|service_api| Service
-    Service --> External[InstructionX<br/>框架服务]
+    SubServices --> External[InstructionX<br/>框架服务]
+    SubServices --> DataProvider[DataProvider<br/>数据持久化]
+    SubServices --> LLM[LLMService<br/>LLM服务]
 ```
 
 ### 步骤 6：创建实现文档
@@ -304,14 +310,14 @@ graph LR
 ```mermaid
 flowchart TD
     User[用户操作] --> Entrance[entrance.py]
-    Entrance --> Service[service.py]
-    Service --> SubServices[function/services/*.py]
+    Entrance --> Service[service.py<br/>接口层：委托业务至function/]
+    Service --> SubServices[function/services/*.py<br/>实际业务逻辑]
     Service --> Models[function/models/*.py]
     Service --> Utils[function/utils/*.py]
     Service --> MainWidget[ui/main_widget.py]
     MainWidget --> Components[ui/components/*.py]
     SubServices --> DataProvider[DataProvider<br/>数据持久化]
-    SubServices --> LLM[LLMPluginService<br/>LLM服务]
+    SubServices --> LLM[LLMService<br/>LLM服务]
     DataProvider --> Storage[数据存储]
     LLM --> APICall[外部API调用]
 ```
@@ -342,15 +348,18 @@ flowchart TD
 8. **文档间有机联系** — 通过文档内引用链组织
 9. **不生成无用文档** — 不要创建空壳文档，每篇文档必须有实质内容
 10. **代码质量规范** — 遵循单一职责、函数拆分（≤20行）、状态机、解耦、注释、可维护性、可扩展性、可读性规范
-11. **目录结构规范** — `service.py` 和 `information.py` 必须在根目录，`ui/` 和 `function/` 子模块，`service.py` 不直接写 UI 代码，`information.py` 必须严格遵循开发指南规范
+11. **目录结构规范** — `service.py` 和 `information.py` 必须在根目录，`ui/` 和 `function/` 子模块，`config/` 存放配置，`service.py` 仅作为框架接口层，禁止写业务逻辑和 UI 操作代码，`information.py` 必须严格遵循开发指南规范
 12. **多插件场景** — 插件集目录下每个插件是独立子目录，各自遵循单插件结构
+13. **service 约束** — `service.py` 禁止出现 UI 操作代码（创建/更新 QWidget 等），允许使用 PySide6 类型定义和信号/slot 机制，禁止写任何实际业务逻辑
+14. **配置规范** — 禁止出现魔法数，所有配置统一放入 `config/` 目录
 
 ## 代码质量规范（强制要求）
 
 ### 单一职责原则
 - 每个类、每个函数只做一件事
 - `entrance.py` 中的插件类只负责协调 UI 和 Service，不写具体实现
-- `service.py`（位于根目录）作为业务协调层，通过 `function/` 子模块组织具体业务逻辑
+- `service.py`（位于根目录）**仅**作为框架接口层，负责对外暴露 API；**禁止**出现 UI 操作相关代码（如创建 QWidget、更新 UI 状态等），PySide6 类型定义、信号/slot 机制除外；所有实际业务代码必须放在 `function/` 目录下
+- `function/` 目录中的各模块承担所有实际业务逻辑（数据处理、外部 API 调用、业务规则等）
 - `ui/main_widget.py` 中的主控件类只负责组装 UI 组件，不写业务逻辑
 - `information.py`（**必需**）中的 Info 类只负责元数据定义，**必须**严格遵循 `docs/core/plugin-system/plugin-development.md` 的规范
 
@@ -369,7 +378,7 @@ flowchart TD
 - `ui/` 目录中的任何文件**禁止**直接写业务逻辑，UI 组件通过 Service 实例调用业务逻辑
 - `function/` 目录中的任何文件**禁止**创建 QWidget 或依赖 PySide6
 - UI 事件处理函数只做分发，调用 Service 方法
-- `service.py`（根目录）不直接创建 QWidget，只通过 `ui/` 模块返回数据或组装结果
+- `service.py`（根目录）**仅**作为框架接口层，**禁止**出现 UI 操作相关代码（如创建 QWidget、更新 UI 状态等），PySide6 类型定义、信号/slot 机制除外；**禁止**写任何实际业务逻辑，所有业务委托给 `function/` 子模块
 
 ### 代码注释规范
 - 每个模块开头用 docstring 说明模块职责
@@ -378,13 +387,14 @@ flowchart TD
 - 禁止无意义的注释（如 `# 增加 1` → `# i += 1`）
 
 ### 可维护性
-- 常量定义在文件顶部（版本号、配置值等）
-- Magic number 必须定义为命名常量
-- 配置项通过 `information.py` 或环境变量注入，不硬编码
+- **禁止**出现魔法数（未命名的数值、字符串阈值等），统一放入 `config/` 目录的配置文件
+- 配置项通过 `config/` 目录下的配置文件注入，各模块按需读取
+- `information.py` 仅用于元数据，不用于运行时配置
 
 ### 可扩展性
-- 新增功能优先通过添加新 Service 方法实现，而非修改现有方法
-- `information.py` 的 `service_api` **必须**随 `service.py` 的方法同步更新（这是强制要求）
+- 新增功能优先通过在 `function/` 目录下添加新模块/方法实现，而非修改现有代码
+- `service.py` 作为接口层，通过委托调用 `function/` 子模块实现功能扩展
+- `information.py` 的 `service_api` **必须**随 `function/` 子模块的方法同步更新（这是强制要求）
 - 版本号遵循语义化版本规范（Semantic Versioning）
 
 ### 可读性
