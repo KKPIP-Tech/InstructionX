@@ -307,6 +307,8 @@ class LLMPluginService:
         temperature: Optional[float] = None,
     ) -> Tuple[List[Dict], List[ToolResult], str]:
         """流式版本的 chat_with_tools"""
+        def _sc(chunk: str, done: bool):
+            callback(StreamChunk(content=chunk, done=done))
         return self._tool_executor.chat_with_tools(
             messages=messages,
             provider=provider,
@@ -314,7 +316,7 @@ class LLMPluginService:
             max_turns=max_turns,
             temperature=temperature,
             stream=True,
-            stream_callback=callback,
+            stream_callback=_sc,
         )
 
     # ==================== 向量嵌入 ====================
