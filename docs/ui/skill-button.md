@@ -96,6 +96,17 @@ self.setToolTip(f"{name}\n{description}")
 
 **注意**: `SkillButton` 本身不感知 `IPlugin` 接口，tooltip 所需的数据由 `SkillsPanel` 从 `IPlugin` 相关属性中提取后，以普通字符串形式传入。`SkillsPanel` 构造 `SkillButton` 时的 description 参数来源为 `plugin.skill_description`。
 
+### skill_name / skill_description
+
+`SkillButton` 在构造函数中保存传入的 `name` 和 `description` 为实例属性：
+
+```python
+self.skill_name = name
+self.skill_description = description
+```
+
+这些属性主要用于调试和日志输出（如 `SkillsPanel._on_skill_clicked` 中的日志记录）。
+
 ---
 
 ## 5. 内部方法
@@ -112,7 +123,7 @@ self.setToolTip(f"{name}\n{description}")
 **示例**:
 ```python
 # "LLM\nChat" -> 显示为两行
-# "文本格式化" -> 显示为 "文本..." 和 "格式化"
+# "超长插件名称" -> 显示为 "超长插" 和 "件名称"
 ```
 
 ### _apply_style()

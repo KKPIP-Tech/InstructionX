@@ -119,22 +119,25 @@ def load_skills_from_manager(self):
     if self.plugin_manager is None:
         return
 
-    # 清空现有按钮
-    self._clear_layout(self.official_layout)
-    self._clear_layout(self.thirdparty_layout)
+    try:
+        # 清空现有按钮
+        self._clear_layout(self.official_layout)
+        self._clear_layout(self.thirdparty_layout)
 
-    # 清除激活状态
-    self._active_button = None
+        # 清除激活状态（重要：因为旧按钮已被删除）
+        self._active_button = None
 
-    # 加载官方技能
-    official_plugins = self.plugin_manager.get_official_plugins()
-    for plugin in official_plugins:
-        self.add_skill_button(plugin, is_official=True)
+        # 加载官方技能
+        official_plugins = self.plugin_manager.get_official_plugins()
+        for plugin in official_plugins:
+            self.add_skill_button(plugin, is_official=True)
 
-    # 加载第三方技能
-    thirdparty_plugins = self.plugin_manager.get_thirdparty_plugins()
-    for plugin in thirdparty_plugins:
-        self.add_skill_button(plugin, is_official=False)
+        # 加载第三方技能
+        thirdparty_plugins = self.plugin_manager.get_thirdparty_plugins()
+        for plugin in thirdparty_plugins:
+            self.add_skill_button(plugin, is_official=False)
+    except Exception as e:
+        self._logger.error(get_name(), f'Error loading skills from manager: {e}')
 ```
 
 ### 5.3 添加技能
@@ -156,7 +159,8 @@ def add_skill_button(self, plugin, is_official: bool):
             icon = style.standardIcon(QStyle.StandardPixmap.SP_FileIcon)
         name = plugin.plugin_name
         description = getattr(plugin, 'skill_description', name)
-    except Exception:
+    except Exception as e:
+        self._logger.error(get_name(), f'Error getting plugin info: {e}')
         return
 
     # 创建技能按钮
@@ -192,12 +196,15 @@ def clear_active_state(self):
 
 def _clear_all_active_states(self):
     """内部方法：清除所有按钮的激活状态"""
+    active_count = 0
     for layout in [self.official_layout, self.thirdparty_layout]:
         for i in range(layout.count()):
             item = layout.itemAt(i)
             if item:
                 widget = item.widget()
                 if isinstance(widget, SkillButton):
+                    if widget.is_active():
+                        active_count += 1
                     widget.set_active(False)
     self._active_button = None
 ```
