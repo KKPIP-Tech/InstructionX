@@ -9,8 +9,8 @@
 ```
 plugins/
 ├── index.md                    # 本文档 - 插件索引
-├── official-plugins.md         # 官方插件说明（当前无预装插件）
-├── thirdparty-plugins.md       # 第三方插件说明（已废弃）
+├── official-plugins.md         # 官方插件说明
+├── thirdparty-plugins.md       # 第三方插件说明
 └── llm-integration-guide.md    # LLM 集成开发指南
 ```
 
@@ -33,23 +33,27 @@ InstructionX 不再捆绑预装插件，而是通过 **GitHub 插件安装器** 
 
 ## 文档索引
 
-```
-plugins/
-├── index.md                    # 本文档 - 插件索引
-├── official-plugins.md         # 官方插件说明（当前无预装插件）
-├── thirdparty-plugins.md       # 第三方插件说明（已废弃）
-└── llm-integration-guide.md    # LLM 集成开发指南
-```
-
-### 文档说明
-
 | 文档 | 说明 |
 |------|------|
-| [官方插件](official-plugins.md) | 当前无预装插件，所有插件通过 GitHub 安装 |
-| [第三方插件](thirdparty-plugins.md) | 已废弃，第三方插件通过 GitHub 安装 |
+| [官方插件](official-plugins.md) | 官方插件仓库及 `plugin/` 目录说明 |
+| [第三方插件](thirdparty-plugins.md) | 第三方插件仓库及 `custom_plugin/` 目录说明 |
 | [LLM 集成开发指南](llm-integration-guide.md) | 学习如何在插件中使用 LLM 服务 |
+| [插件系统概述](../core/plugin-system/overview.md) | 插件系统架构与核心概念 |
 | [GitHub 插件安装器](../core/plugin-system/plugin-installer.md) | 从 GitHub 安装插件的完整说明 |
 | [插件开发指南](../core/plugin-system/plugin-development.md) | 学习如何开发自己的插件 |
+| [IPlugin 接口](../core/plugin-system/iplugin.md) | 插件抽象基类接口参考 |
+| [PluginManager](../core/plugin-system/plugin-manager.md) | 插件管理器完整 API 参考 |
+
+---
+
+## 相关文档
+
+- [插件系统概述](../core/plugin-system/overview.md)
+- [插件开发指南](../core/plugin-system/plugin-development.md)
+- [IPlugin 接口](../core/plugin-system/iplugin.md)
+- [PluginManager](../core/plugin-system/plugin-manager.md)
+- [GitHub 插件安装器](../core/plugin-system/plugin-installer.md)
+- [LLM 集成开发指南](llm-integration-guide.md)
 
 ---
 
