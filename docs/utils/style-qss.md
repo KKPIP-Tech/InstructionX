@@ -64,6 +64,7 @@ utils/style_qss/
     ├── mainwindow.qss   # 主窗口
     ├── titlebar.qss     # 自定义标题栏
     ├── spinbox.qss      # 数值选择
+    ├── usage_panel.qss  # 用量查询面板
     └── custom.qss       # 自定义样式（可覆盖）
 ```
 
@@ -427,6 +428,10 @@ QSS 支持通过 `class` 属性选择不同风格的按钮：
 # 主要按钮（蓝色）
 button = QPushButton("Primary")
 button.setProperty("class", "primary")
+
+# 强调按钮（与 primary 相同）
+accent_btn = QPushButton("Accent")
+accent_btn.setProperty("class", "accent")
 
 # 危险按钮（红色）
 danger_btn = QPushButton("Delete")

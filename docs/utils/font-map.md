@@ -107,14 +107,16 @@ FontWeight.BLACK      # 115
 ```python
 from utils.font_map import FontInfo
 
-# FontInfo 字段
+# FontInfo 字段（dataclass）
 info.family          # FontFamily 枚举
 info.variant         # FontVariant 枚举
 info.weight          # int | None（仅阿里普惠体有效）
 info.relative_path   # str，相对于项目根目录的路径
 info.absolute_path   # str，绝对路径
+
+# FontInfo 属性（@property）
 info.font_family_name # str，字体家族显示名称
-info.font_style_name # str，Qt 样式名（Family Style）
+info.font_style_name  # str，Qt 样式名（Family Style）
 ```
 
 ### 2.6 FontMap
