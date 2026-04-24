@@ -93,12 +93,14 @@ graph TB
 | API 注册 | 自动扫描 `information.py` 获取方法描述，再扫描 `service.py` 获取实现，注册为可调用 API |
 | 跨插件调用 | `call_plugin_method()` 方法路由 |
 | 顺序管理 | 支持自定义插件显示顺序 |
+| MCP 工具同步 | `_notify_mcp_new_tools()` / `_notify_mcp_remove_tools()` 自动同步插件 API 到 MCP 层 |
 
 **关键属性**:
 ```python
 self._official_plugins: List[IPlugin]      # 官方插件列表
 self._thirdparty_plugins: List[IPlugin]    # 第三方插件列表
 self._plugin_registry: Dict[str, IPlugin]   # UUID -> 插件实例
+self._plugin_name_to_id: Dict[str, str]    # 插件名 -> UUID 映射
 self._api_registry: Dict[str, PluginAPI]   # UUID -> API 信息
 self.config_manager: PluginConfigManager  # 插件顺序配置管理器
 ```
@@ -263,12 +265,12 @@ sequenceDiagram
 ```python
 @dataclass
 class PluginServices:
-    llm_facade: "LLMPluginService"       # LLM 服务（必需字段）
-    data_provider: "DataProvider"          # 数据服务（必需字段）
-    task_manager: "BackgroundTaskManager" # 任务服务（必需字段）
-    logger: "ILogger"                     # 日志接口（必需字段）
-    mcp_manager: "MCPManager" = None    # MCP Server 管理器
-    mcp_client: "MCPClientManager" = None  # MCP Client 管理器
+    llm_facade: "LLMPluginService"              # LLM 服务（必需字段）
+    data_provider: "DataProvider"               # 数据服务（必需字段）
+    task_manager: "BackgroundTaskManager"       # 任务服务（必需字段）
+    logger: "ILogger"                           # 日志服务（必需字段）
+    mcp_manager: "MCPManager" = field(default=None)       # MCP Server 管理器
+    mcp_client: "MCPClientManager" = field(default=None)  # MCP Client 管理器
 ```
 
 新版插件通过 `self._services` 访问服务，旧版插件可通过直接导入单例兼容访问。
@@ -375,9 +377,10 @@ graph TD
     MCPC[MCPClientManager] --> TR[ToolRegistry<br/>tool_call_executor.py]
     MCPC -.->|间接依赖| LLMS2[LLMPluginService<br/>单例<br/>通过 ToolRegistry]
     PM2[PluginManager<br/>单例] -.->|创建并注入| PS2[PluginServices<br/>DI 容器]
+    PS2 -.->|llm_facade| LLMS2
     PS2 -.->|"mcp_manager"| MCPM
     PS2 -.->|"mcp_client"| MCPC
-```
+
 
 **依赖规则**:
 - 入口层（main.py）直接持有 BackgroundTaskManager 的生命周期管理（初始化 + shutdown）

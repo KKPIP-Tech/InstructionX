@@ -42,10 +42,17 @@ graph TB
         BTM[BackgroundTaskManager<br/>后台任务管理器]
     end
 
+    subgraph MCP ["MCP 层"]
+        MCPM[MCPManager<br/>MCP 协议协调器]
+        MCPB[MCPBridge<br/>桥接器]
+        MCPC[MCPClientManager<br/>MCP 客户端]
+    end
+
     subgraph LLM ["LLM 层"]
         LLMS[LLMPluginService<br/>插件开发者入口]
         LLMP[LLMProvider<br/>LLM 核心层]
         PS[PluginServices<br/>DI 容器]
+        TR[ToolRegistry<br/>工具注册表]
     end
 
     subgraph Storage ["持久化层"]
@@ -53,6 +60,7 @@ graph TB
         TasksJSON[data/tasks.json]
         Assets[data/assets/]
         LLMConfig[config/llm_providers.json]
+        MCPConfig[config/mcp_config.json]
     end
 
     MainWindow --> Plugins
@@ -60,13 +68,19 @@ graph TB
     Plugins --> DP
     Plugins --> BTM
     Plugins --> LLMS
+    Plugins --> MCPM
     PM -.->|创建并注入| PS
     PS -.->|llm_facade| LLMS
+    PS -.->|mcp_manager / mcp_client| MCPM
     LLMS --> LLMP
+    LLMS --> TR
+    MCPC --> TR
     LLMP -->|LLM API| LLMConfig
     PM -->|插件加载| Plugins
+    PM -->|MCP 工具同步| MCPM
     DP -->|数据持久化| Storage
     BTM -->|任务存储| TasksJSON
+    MCPM -->|配置| MCPConfig
 ```
 
 ---
@@ -82,6 +96,7 @@ graph TB
 - 扫描并加载第三方插件（`custom_plugin/` 目录）
 - 管理插件实例和 API 注册
 - 提供跨插件方法调用
+- MCP 工具同步（注册/注销插件 API 时自动通知 MCP 层）
 
 **单例模式**: 整个应用只有一个 PluginManager 实例
 
@@ -219,7 +234,7 @@ graph TB
 | `IPluginInfo` | `i_plugin_info.py` | 插件信息抽象基类 | `core/plugin/plugin_info_interface.py` |
 | `IDataProvider` | `i_data_provider.py` | 数据提供者接口 | `core/data/data_provider.py` |
 | `ITaskManager` | `i_task_manager.py` | 任务管理器接口 | `core/task/background_task.py` |
-| `ILLMFacade` | `i_llm_facade.py` | LLM 外观接口（方法签名兼容，非继承） | `core/llm/llm_provider.py`（Duck Typing 实现） |
+| `ILLMFacade` | `i_llm_facade.py` | LLM 外观接口（方法签名兼容，非继承） | `core/llm/plugin_service.py`（`LLMPluginService` 完整实现，Duck Typing，未显式继承） |
 | `ILogger` | `i_logger.py`（`core/interfaces/` 重导出） | 日志接口 | `utils/logging_tools.py`（LoggerManager） |
 | `PluginServices` | `plugin_services.py` | 服务封装（依赖注入容器） | — |
 
@@ -297,6 +312,7 @@ InstructionX/
 │   │   ├── i_data_provider.py    # IDataProvider 抽象接口
 │   │   ├── i_task_manager.py      # ITaskManager 抽象接口
 │   │   ├── i_llm_facade.py       # ILLMFacade 抽象接口
+│   │   ├── i_logger.py           # ILogger 接口重导出（向后兼容）
 │   │   └── plugin_services.py    # PluginServices 服务封装
 │   ├── plugin/               # 插件系统实现
 │   │   ├── manager.py       # PluginManager
@@ -306,6 +322,7 @@ InstructionX/
 │   │   ├── plugin_icon.py
 │   │   ├── plugin_identity.py
 │   │   ├── config_manager.py
+│   │   ├── dependency_manager.py  # 插件依赖管理
 │   │   └── github_plugin_installer.py  # GitHub 插件安装器
 │   ├── data/                 # 数据层实现
 │   │   ├── data_provider.py # DataProvider（核心）
@@ -319,6 +336,7 @@ InstructionX/
 │   │   ├── task_storage.py
 │   │   └── scheduler.py
 │   ├── mcp/                  # MCP 协议模块
+│   │   ├── __init__.py
 │   │   ├── client.py         # MCPClientManager（MCP 客户端）
 │   │   ├── server.py         # MCPHostServer（MCP 主机）
 │   │   ├── manager.py        # MCPManager（单例协调器）
@@ -345,7 +363,7 @@ InstructionX/
 ├── ui/                       # UI 模块
 │   ├── main_window.py       # 主窗口
 │   ├── title_bar.py        # 自定义标题栏
-│   ├── plugin_order_dialog.py  # 插件排序对话框（主文件）
+│   ├── usage_panel.py       # 用量查询面板
 │   ├── skills_panel/        # 技能面板
 │   │   ├── panel.py        # SkillsPanel 面板
 │   │   └── skill_button.py  # SkillButton 按钮组件
@@ -354,7 +372,9 @@ InstructionX/
 │   └── dialog/              # 对话框
 │       ├── __init__.py
 │       ├── about_dialog.py      # 关于对话框
+│       ├── license_dialog.py    # 开源许可对话框
 │       ├── llm_settings_dialog.py  # LLM 设置对话框（两栏）
+│       ├── llm_settings_components.py  # LLM 设置对话框组件
 │       ├── llm_model_service_dialog.py  # 模型服务对话框（三栏）
 │       ├── plugin_order_dialog.py  # 插件排序对话框
 │       └── github_plugin_install_dialog.py  # GitHub 插件安装对话框
@@ -368,12 +388,15 @@ InstructionX/
 ├── data/                     # 数据存储
 │   ├── data.json
 │   ├── tasks.json
+│   ├── llm_usage.json
 │   └── assets/
+│       └── plugins/          # 插件资源文件
 │
 ├── config/                   # 配置目录
 │   ├── plugin_order.json
 │   ├── llm_providers.json
-│   └── llm_models_cache.json
+│   ├── llm_models_cache.json
+│   └── mcp_config.json      # MCP 协议配置
 │
 ├── utils/                    # 工具类
 │   ├── logging_tools.py     # 日志管理
@@ -391,16 +414,19 @@ InstructionX/
 ```mermaid
 flowchart TD
     A[main] --> B[QApplication 创建]
-    B --> C[InstructionXMainWindow 创建]
-    C --> D[创建菜单栏]
-    D --> E[_create_main_layout]
-    E --> E1[初始化 PluginManager]
-    E1 --> F[load_official_plugins<br/>扫描plugin/目录]
-    E1 --> G[load_thirdparty_plugins<br/>扫描custom_plugin/目录]
-    F --> H[创建 SkillsPanel]
+    B --> C[set_style_qss_theme<br/>自动检测系统主题]
+    C --> D[LoggerManager 初始化]
+    D --> E[InstructionXMainWindow 创建]
+    E --> F[创建自定义标题栏 + 菜单栏]
+    F --> G[_create_main_layout]
+    G --> G1[初始化 PluginManager]
+    G1 --> G2[load_plugins<br/>加载官方 + 第三方插件]
+    G2 --> G3[apply_custom_order<br/>应用自定义排序]
+    G3 --> H[创建 SkillsPanel]
     H --> I[从 PluginManager 加载技能按钮]
     I --> J[创建 WorkArea]
-    J --> K[等待用户交互]
+    J --> K[show 主窗口]
+    K --> L[等待用户交互]
 ```
 
 ---
@@ -409,16 +435,55 @@ flowchart TD
 
 ### 7.1 单例模式
 
-所有核心组件采用单例模式：
+核心组件采用单例模式，实现方式分为两类：
+
+**类型 A：`__new__` + `_initialized` 标志（PluginManager）**
 
 ```python
 class PluginManager:
     _instance = None
+    _initialized = False
 
     def __new__(cls):
         if cls._instance is None:
             cls._instance = super().__new__(cls)
         return cls._instance
+
+    def __init__(self):
+        if PluginManager._initialized:
+            return
+        # 初始化代码...
+        PluginManager._initialized = True
+```
+
+**类型 B：`__new__` + `threading.Lock` 双重检查锁定（DataProvider、BackgroundTaskManager、LLMProvider、TaskStorage、LoggerManager）**
+
+```python
+class DataProvider:
+    _instance = None
+    _lock = threading.Lock()
+
+    def __new__(cls, *args, **kwargs):
+        if cls._instance is None:
+            with cls._lock:
+                if cls._instance is None:
+                    cls._instance = super().__new__(cls)
+        return cls._instance
+```
+
+**类型 C：模块级锁 + 全局变量（MCPManager、LLMPluginService）**
+
+```python
+_module_lock = threading.Lock()
+_module_instance = None
+
+def get_mcp_manager() -> "MCPManager":
+    global _module_instance
+    if _module_instance is None:
+        with _module_lock:
+            if _module_instance is None:
+                _module_instance = MCPManager()
+    return _module_instance
 ```
 
 ### 7.2 线程安全
@@ -444,6 +509,7 @@ os.replace(temp_file, data_file)
 ## 相关文档
 
 - [模块依赖关系](module-dependencies.md)
+- [完整架构分析](full-analysis.md)
 - [插件系统概述](../core/plugin-system/overview.md)
 - [DataProvider 概述](../core/data-provider/overview.md)
 - [后台任务概述](../core/background-task/overview.md)
@@ -451,4 +517,6 @@ os.replace(temp_file, data_file)
 - [MCP 协议模块概述](../core/mcp/overview.md)
 
 ---
+
+*本文档由 Claude Code 自动生成*
 
