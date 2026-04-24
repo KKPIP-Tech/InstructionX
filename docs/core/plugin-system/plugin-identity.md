@@ -56,9 +56,10 @@ def load_or_create_id(self) -> str
 
 **示例**:
 ```python
+from pathlib import Path
 from core.plugin.plugin_identity import PluginIdentity
 
-identity = PluginIdentity(plugin_dir="/path/to/plugin")
+identity = PluginIdentity(plugin_dir=Path("/path/to/plugin"))
 plugin_id = identity.load_or_create_id()
 print(f"插件 ID: {plugin_id}")
 ```
@@ -78,7 +79,10 @@ def regenerate_id(self) -> str
 
 **示例**:
 ```python
-identity = PluginIdentity(plugin_dir="/path/to/plugin")
+from pathlib import Path
+from core.plugin.plugin_identity import PluginIdentity
+
+identity = PluginIdentity(plugin_dir=Path("/path/to/plugin"))
 new_id = identity.regenerate_id()
 print(f"新插件 ID: {new_id}")
 ```
@@ -94,7 +98,10 @@ def registered_at(self) -> Optional[datetime]
 
 **示例**:
 ```python
-identity = PluginIdentity(plugin_dir="/path/to/plugin")
+from pathlib import Path
+from core.plugin.plugin_identity import PluginIdentity
+
+identity = PluginIdentity(plugin_dir=Path("/path/to/plugin"))
 identity.load_or_create_id()
 print(f"注册时间: {identity.registered_at}")
 ```
@@ -110,7 +117,10 @@ def plugin_id(self) -> Optional[str]
 
 **示例**:
 ```python
-identity = PluginIdentity(plugin_dir="/path/to/plugin")
+from pathlib import Path
+from core.plugin.plugin_identity import PluginIdentity
+
+identity = PluginIdentity(plugin_dir=Path("/path/to/plugin"))
 identity.load_or_create_id()
 print(f"当前 UUID: {identity.plugin_id}")
 ```

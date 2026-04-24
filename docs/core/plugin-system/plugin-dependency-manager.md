@@ -148,30 +148,28 @@ print(f"安装结果: {result.message}")
 
 ## 5. 与 GitHub 插件安装器的集成
 
-`DependencyManager` 由 `GithubPluginInstaller` 自动使用，在安装插件时自动检查和安装依赖。
+`DependencyManager` 由 `GitHubPluginInstaller` 自动使用，在安装插件时自动检查和安装依赖。
+
+实际集成发生在 `GitHubPluginInstaller._install_plugin_dir()` 方法中（简化示意）：
 
 ```python
-# GithubPluginInstaller 内部逻辑（简化）
 from .dependency_manager import DependencyManager
 
-def _install_with_dependencies(self, plugin_path, repo_info):
-    # 1. 解析插件依赖
-    dependencies = self._parse_plugin_dependencies(repo_info)
-
-    # 2. 检查依赖
+# 在 _install_plugin_dir 方法内部
+dependencies = descriptor.get("dependencies", {})
+if dependencies:
     dep_mgr = DependencyManager()
     check_result = dep_mgr.check_dependencies(dependencies)
-
     if not check_result.satisfied:
-        # 3. 安装缺失依赖
-        install_result = dep_mgr.install_dependencies(
-            dependencies,
-            callback=lambda msg: self._report_progress(msg)
-        )
+        # 报告进度
+        if progress_callback:
+            progress_callback(f"正在安装缺失依赖...")
+        # 安装缺失依赖
+        install_result = dep_mgr.install_dependencies(dependencies)
         if not install_result.success:
-            raise InstallationError(install_result.message)
-
-    # 4. 继续插件安装...
+            return InstallResult.error(f"依赖安装失败: {install_result.message}")
+        if progress_callback:
+            progress_callback("依赖安装完成")
 ```
 
 ---

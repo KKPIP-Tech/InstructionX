@@ -154,10 +154,13 @@ def install_from_url(
     github_url: str,
     selected_plugins: List[str] = None,
     official_dir: Path = None,
-    thirdparty_dir: Path = None
+    thirdparty_dir: Path = None,
+    progress_callback=None
 ) -> List[InstallResult]:
     """
     从 GitHub URL 安装插件
+
+    安装过程中会自动检查并安装插件依赖（通过 DependencyManager）。
 
     Args:
         github_url: GitHub 仓库 URL
@@ -165,6 +168,7 @@ def install_from_url(
                         为 None 时安装所有插件
         official_dir: 官方插件目录
         thirdparty_dir: 第三方插件目录
+        progress_callback: 可选的进度回调函数，接收消息字符串
 
     Returns:
         List[InstallResult]: 每个插件的安装结果
@@ -183,6 +187,24 @@ def parse_github_url(self, url: str) -> Optional[Tuple[str, str]]:
     - https://github.com/owner/repo.git
     - https://github.com/owner/repo/releases
     - git@github.com:owner/repo.git
+    """
+```
+
+### 4.4 validate_descriptor()
+
+```python
+def validate_descriptor(self, descriptor: Dict[str, Any]) -> Tuple[bool, str]:
+    """
+    验证插件描述文件格式
+
+    检查必需字段（id, name, version, main）是否存在，
+    并验证 version 格式和 id 格式。
+
+    Args:
+        descriptor: 从 IXPlugin.json 解析的字典
+
+    Returns:
+        (is_valid, error_message): 验证是否通过及错误信息
     """
 ```
 

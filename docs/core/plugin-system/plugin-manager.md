@@ -68,26 +68,24 @@ def load_plugins(self) -> None:
 #### load_official_plugins()
 
 ```python
-def load_official_plugins(self) -> None:
+def load_official_plugins(self) -> List[IPlugin]:
     """
-    加载官方插件
+    扫描并加载 plugin 目录下的所有官方插件
 
-    扫描 plugin/ 目录，加载所有有效的插件。
-
-    注意: 无返回值，插件通过 get_official_plugins() 获取
+    Returns:
+        已加载的官方插件列表
     """
 ```
 
 #### load_thirdparty_plugins()
 
 ```python
-def load_thirdparty_plugins(self) -> None:
+def load_thirdparty_plugins(self) -> List[IPlugin]:
     """
-    加载第三方插件
+    扫描并加载 custom_plugin 目录下的所有第三方插件
 
-    扫描 custom_plugin/ 目录，加载所有有效的插件。
-
-    注意: 无返回值，插件通过 get_thirdparty_plugins() 获取
+    Returns:
+        已加载的第三方插件列表
     """
 ```
 
@@ -301,6 +299,9 @@ def register_plugin_api(self,
     """
     注册插件的 API 方法
 
+    注册完成后会自动调用 `_notify_mcp_new_tools()`，
+    将新注册的 API 方法同步到 MCP 系统。
+
     Args:
         plugin_id: 插件实例 ID
         service_instance: Service 类实例
@@ -490,20 +491,24 @@ def _create_plugin_services(self) -> PluginServices:
 | `llm_facade` | `LLMPluginService` | LLM 服务入口（单例） |
 | `data_provider` | `DataProvider` | 数据持久化服务（失败时为 `None`） |
 | `task_manager` | `BackgroundTaskManager` | 后台任务管理（失败时为 `None`） |
-| `logger` | `LoggerManager` | 日志服务（`LoggerManager` 实例） |
+| `logger` | `ILogger` | 日志服务（`LoggerManager` 实例） |
 | `mcp_manager` | `MCPManager` | MCP Server 管理器（失败时为 `None`） |
 | `mcp_client` | `MCPClientManager` | MCP 外部连接管理器（失败时为 `None`） |
 
-**使用流程**（见 `manager.py` 的 `_load_plugin_from_directory()` 方法，第 238-252 行）：
+**使用流程**（见 `manager.py` 的 `_load_plugin_from_directory()` 方法）：
 
 ```python
 # 1. PluginManager 在加载插件前创建服务容器
 services = self._create_plugin_services()
 
-# 2. 将 services 注入插件（通过构造器参数 + 实例属性双重注入）
-plugin = plugin_class(services=services)
+# 2. 将 services 注入插件（构造器参数为条件注入，实例属性为强制注入）
+# 仅当插件的 __init__ 包含 services 参数时才通过构造器传入
+if 'services' in [p.name for p in inspect.signature(plugin_class).parameters.values()]:
+    plugin = plugin_class(services=services)
+else:
+    plugin = plugin_class()
 plugin._plugin_id = plugin_id  # 框架内部赋值
-plugin._services = services  # 框架内部赋值
+plugin._services = services  # 框架内部赋值（强制注入，与构造器参数无关）
 
 # 3. 调用生命周期回调（不传参数，向后兼容旧插件）
 plugin.on_plugin_loaded()
@@ -511,10 +516,45 @@ plugin.on_plugin_loaded()
 
 **注入时机说明**: `_create_plugin_services()` 在 `_load_plugin_from_directory()` 遍历每个插件时调用，而非全局一次性创建。这意味着每个插件加载时共享同一个 `PluginServices` 实例（DI 容器），因此旧版插件即便不使用 DI 也能通过 `get_llm_plugin_service()` 等单例函数访问服务。
 
-> **注意**：插件通过 `services` 参数接收容器，但应将引用保存到实例属性 `self._services`，
-> 以便在后续方法中访问。旧版插件（不支持 DI）可通过直接导入单例访问服务。
+> **注意**：无论插件的 `__init__` 是否接收 `services` 参数，`PluginManager` 都会在实例化后通过
+> `plugin_instance._services = services` 强制注入服务容器。因此插件始终可以通过 `self._services`
+> 访问服务。旧版插件（不支持 DI）也可通过直接导入单例访问服务。
 
 ---
+
+### 3.10 MCP 通知（内部方法）
+
+#### _notify_mcp_new_tools()
+
+```python
+def _notify_mcp_new_tools(
+    self,
+    plugin_id: str,
+    api_descriptions: Dict[str, Dict[str, Any]],
+) -> None:
+    """
+    通知 MCP 系统有新插件工具注册
+
+    将 service_api 中定义的方法转换为 MCP 工具格式，
+    通过 MCPManager.sync_plugin_tool() 同步到 MCP 系统。
+
+    注意: MCP 系统未初始化时静默忽略错误。
+    """
+```
+
+#### _notify_mcp_remove_tools()
+
+```python
+def _notify_mcp_remove_tools(self, plugin_id: str) -> None:
+    """
+    通知 MCP 系统移除插件工具
+
+    在注销插件 API 时调用，通过 MCPManager.remove_plugin_tool()
+    清理已注册的工具。
+
+    注意: MCP 系统未初始化时静默忽略错误。
+    """
+```
 
 ## 4. 内部结构
 

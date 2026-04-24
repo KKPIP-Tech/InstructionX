@@ -45,7 +45,7 @@ class MyPlugin(IPlugin):
         """创建插件 UI"""
         plugin_id = self.plugin_id or "my-plugin-default"
 
-        # 创建服务实例（Service 不需要传入 plugin_id 和 data_provider）
+        # 创建服务实例（Service 的具体参数取决于其实现）
         service = Service()
 
         # 创建 UI
@@ -201,6 +201,47 @@ class MyPluginInfo(IPluginInfo):
         """插件标签（可选）"""
         return ["工具", "示例"]
 ```
+
+---
+
+### 2.4 使用 PluginServices
+
+`PluginServices` 是框架自动注入的服务容器，包含 LLM、数据持久化、任务管理、日志和 MCP 等核心服务。
+
+```python
+from core.interfaces import PluginServices  # 类型提示用
+from core.plugin.plugin_interface import IPlugin
+
+
+class MyPlugin(IPlugin):
+    def __init__(self, services=None):
+        super().__init__()
+        # PluginManager 会自动将 services 注入到 self._services
+        self._services = services
+
+    def on_plugin_loaded(self):
+        """插件加载完成后调用"""
+        if self._services:
+            # LLM 服务
+            llm = self._services.llm_facade
+
+            # 数据持久化
+            data_provider = self._services.data_provider
+
+            # 后台任务管理
+            task_manager = self._services.task_manager
+
+            # 日志服务
+            logger = self._services.logger
+
+            # MCP Server 管理（可能为 None）
+            mcp_manager = self._services.mcp_manager
+
+            # MCP 外部客户端（可能为 None）
+            mcp_client = self._services.mcp_client
+```
+
+**注意**：即使 `__init__` 不接收 `services` 参数，`PluginManager` 仍会在实例化后通过 `self._services` 注入服务容器。
 
 ---
 
@@ -447,12 +488,14 @@ multi-plugin-repo/
 
 ## 5. 最佳实践
 
-### 4.1 插件注册
+### 5.1 插件注册
 
 > **注意**: 插件注册由 `PluginManager` 在加载时自动处理，通常不需要在 `_create_widget()` 中手动调用。
 > 以下代码仅在有特殊需求（如在插件内部主动注册）时参考。
 
 ```python
+from core.data.data_provider import DataProviderError
+
 def _create_widget(self, parent=None, data_provider=None):
     plugin_id = self.plugin_id or "my-plugin-default"
 
@@ -467,7 +510,7 @@ def _create_widget(self, parent=None, data_provider=None):
             print(f"注册插件: {e}")
 ```
 
-### 4.2 数据持久化
+### 5.2 数据持久化
 
 ```python
 from core.data.data_provider import DataProvider, DataNamespace
@@ -494,7 +537,7 @@ class Service:
         )
 ```
 
-### 4.3 发布/订阅
+### 5.3 发布/订阅
 
 ```python
 from core.data.data_provider import DataProvider
@@ -518,9 +561,9 @@ class Service:
 
 ---
 
-## 5. 调试技巧
+## 6. 调试技巧
 
-### 5.1 打印日志
+### 6.1 打印日志
 
 ```python
 def _create_widget(self, parent=None, data_provider=None):
@@ -532,7 +575,7 @@ def _create_widget(self, parent=None, data_provider=None):
     return widget
 ```
 
-### 5.2 测试 API 调用
+### 6.2 测试 API 调用
 
 ```python
 from core.data.data_provider import DataProviderError
@@ -557,7 +600,7 @@ print("结果:", result)
 
 ---
 
-## 6. 相关文档
+## 7. 相关文档
 
 - [插件系统概述](overview.md)
 - [IPlugin 接口](iplugin.md)
