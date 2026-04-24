@@ -201,6 +201,8 @@ def register_scheduled_task(
 **返回**:
 - 任务 ID
 
+> **注意**: `SchedulerCallback.execute_scheduled_task()` 在执行时优先检查 `args`，当 `args` 和 `kwargs` 同时存在时，`kwargs` 会被忽略。如需同时使用两者，请在 `args` 中传递字典并在 `func` 内部解包。
+
 **示例**:
 ```python
 def backup_task():
@@ -432,7 +434,7 @@ def update_long_running_task_status(self, task_id: str, status: str) -> bool
 **返回**:
 - 是否成功更新
 
-> **注意**：此方法存在于 `BackgroundTaskManager` 实现中，但未在 `ITaskManager` 抽象接口中声明。如需通过接口使用，请直接依赖具体实现。
+> **注意**：此方法在 `BackgroundTaskManager` 实现和 `ITaskManager` 抽象接口（`core/interfaces/i_task_manager.py:157`）中均有声明。
 
 ---
 
@@ -526,13 +528,15 @@ def unregister_scheduled_task(self, task_id: str) -> bool
 def get_task(self, task_id: str) -> Optional[BackgroundTask]
 ```
 
-获取指定任务。
+获取指定任务（不包括长期任务）。
 
 **参数**:
 - `task_id`: 任务 ID
 
 **返回**:
 - BackgroundTask 对象，如果不存在则返回 None
+
+> **注意**: 长期任务需通过 `get_long_running_tasks()` 获取。
 
 ---
 
@@ -542,13 +546,15 @@ def get_task(self, task_id: str) -> Optional[BackgroundTask]
 def get_tasks_by_plugin(self, plugin_id: str) -> List[BackgroundTask]
 ```
 
-获取指定插件的所有任务。
+获取指定插件的所有任务（不包括长期任务）。
 
 **参数**:
 - `plugin_id`: 插件 UUID
 
 **返回**:
 - 任务列表
+
+> **注意**: 长期任务需通过 `get_long_running_tasks()` 获取。
 
 ---
 
@@ -573,13 +579,15 @@ def get_all_tasks(self) -> List[BackgroundTask]
 def get_task_status(self, task_id: str) -> Optional[TaskStatus]
 ```
 
-获取任务状态。
+获取任务状态（不包括长期任务）。
 
 **参数**:
 - `task_id`: 任务 ID
 
 **返回**:
 - TaskStatus 枚举值，如果任务不存在则返回 None
+
+> **注意**: 长期任务状态需通过 `get_long_running_tasks()` 获取。
 
 ---
 

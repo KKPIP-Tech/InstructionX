@@ -422,7 +422,6 @@ classDiagram
         +bool support_vision
         +bool support_function_calling
         +int context_length
-        +str description
         +float input_price_per_1k
         +float output_price_per_1k
         +str provider
@@ -1141,7 +1140,6 @@ classDiagram
     class ConversationManager {
         -Dict _conversations
         -LLMProvider _llm
-        -int _max_context
         +create_conversation(system_prompt?, provider, model, metadata?) str
         +send_message(conv_id, content, images?, ...) Tuple
         +stream_send_message(conv_id, content, images?, callback?, ...) Tuple
@@ -1149,7 +1147,6 @@ classDiagram
         +list_conversations() List
         +delete_conversation(conv_id) bool
         +get_usage_stats(conv_id?) UsageStats
-        -_maybe_truncate_history(conv, messages) void
     }
 
     class ToolCallExecutor {
@@ -1249,7 +1246,7 @@ flowchart TB
     TOOLS[chat_with_tools&#40;&#41; + messages]
     RESP3[自动处理两轮 + 返回 final_response]
     STATS[get_usage_stats&#40;conv_id&#41;]
-    RESP4[UsageStats - total_tokens, cost, request_count]
+    RESP4[UsageStats - total_tokens, cost, request_count（消息总条数）]
 
     START --> CREATE
     CREATE --> CONV_ID
@@ -1614,7 +1611,7 @@ def get_usage_stats(conversation_id: Optional[str] = None) -> UsageStats
 
 获取用量统计。`conversation_id` 为 None 时返回全局统计。
 
-**返回字段**: `total_tokens`, `total_cost`, `request_count`, `by_provider`
+**返回字段**: `total_tokens`, `total_cost`, `request_count`（消息总条数）, `by_provider`
 
 #### validate_provider()
 
@@ -1627,7 +1624,7 @@ def validate_provider(provider: str) -> Tuple[bool, str]
 #### get_raw_provider()
 
 ```python
-def get_raw_provider(provider: str = "default") -> ILLM
+def get_raw_provider(provider: str = "default") -> Optional[ILLM]
 ```
 
 获取底层 `LLMProvider` 实例（供高级插件使用）。一般插件不应直接使用。
@@ -1639,8 +1636,7 @@ def get_raw_provider(provider: str = "default") -> ILLM
 > **内部组件**: 插件开发者通常通过 `LLMPluginService` 间接使用，详见 Section 5。
 
 `ConversationManager` 管理对话的完整生命周期：
-- 自动上下文截断（保留 system + 最近 2/3 消息，阈值 80%）
-- Token 估算（中文字符按 1:1 计，英文按 4:1 估算）
+- 自动管理历史消息追加（用户消息和助手回复）
 - 费用计算（基于 `DEFAULT_PRICING`）
 
 **Conversation 状态机**：
@@ -1662,18 +1658,10 @@ stateDiagram-v2
         Error --> [*]
     }
 
-    Active --> Truncated : _maybe_truncate_history() /\n 上下文超限
-    Truncated --> Active : 截断旧消息
-
     Active --> Deleted : delete_conversation()
     Deleted --> [*]
 
     Created --> Deleted : delete_conversation()
-
-    state Truncated {
-        [*] --> RemoveOldMessages : 保留 system + 最近 2/3 消息
-        RemoveOldMessages --> [*]
-    }
 ```
 
 **主要方法**:

@@ -116,18 +116,30 @@ logger.error("MyPlugin", "连接失败: timeout")
 
 插件通过 `PluginServices.logger` 获取注入的日志实例，而非直接实例化 `LoggerManager`。
 
-### 3.3 log 方法（LoggerManager 实现）
+### 3.3 LoggerManager 扩展方法
 
-`log(level, module_name, message)` 是 `LoggerManager` 的具体实现方法，**不属于 `ILogger` 接口契约**。
-此方法接受日志级别字符串（DEBUG, INFO, WARNING, ERROR, CRITICAL）作为第一个参数，
-提供了比接口方法更灵活的动态级别指定方式。
+以下方法仅存在于 `LoggerManager` 实现中，**不属于 `ILogger` 接口契约**：
+
+#### log
+
+`log(level, module_name, message)` 提供了动态级别指定方式。
 
 ```python
 # LoggerManager 独有方法（非 ILogger 接口方法）
 logger.log('WARNING', 'MyModule', '警告信息')
 ```
 
-### 3.3 日志等级
+#### get_logger
+
+`get_logger()` 返回底层的 `logging.Logger` 实例，供需要直接操作 Python 标准日志系统的场景使用。
+
+```python
+# 获取底层 logger 实例
+py_logger = logger.get_logger()
+py_logger.handlers  # 访问日志处理器
+```
+
+### 3.4 日志等级
 
 | 方法 | 等级 | 典型用途 |
 |------|------|---------|
@@ -145,7 +157,7 @@ logger.log('WARNING', 'MyModule', '警告信息')
 
 ```python
 from core.plugin.plugin_interface import IPlugin
-from utils import LoggerManager
+from utils.logging_tools import LoggerManager
 
 class MyPlugin(IPlugin):
     def _create_widget(self, parent=None, data_provider=None):
@@ -162,7 +174,7 @@ class MyPlugin(IPlugin):
 ### 4.2 错误记录
 
 ```python
-from utils import LoggerManager
+from utils.logging_tools import LoggerManager
 
 class MyPlugin(IPlugin):
     def __init__(self):

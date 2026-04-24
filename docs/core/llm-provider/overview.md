@@ -20,6 +20,8 @@
 
 **插件开发者入口**: 第三方插件开发者请使用 `LLMPluginService`（`core/llm/plugin_service.py`），通过 `get_llm_plugin_service()` 获取单例。`LLMPluginService` 整合了对话管理、工具调用自动化、多模态等完整能力，是插件开发者的唯一入口。
 
+> **注意**: `LLMPluginService` 是插件开发者使用 LLM 能力的推荐入口。它没有显式继承 `ILLMFacade`，而是直接提供对话管理、工具调用、多模态等高级能力。如需底层 LLM 调用，可通过 `get_llm_provider()` 获取 `LLMProvider` 单例。
+
 **历史**: 原架构中插件直接访问 `LLMProvider` 单例。为解决无对话历史管理、Tool Use 门槛高、流式输出复杂等问题，重构新增了 LLM Plugin Service Layer。
 
 ---
@@ -371,8 +373,8 @@ print(f"Token: {stats.total_tokens}, 费用: {stats.total_cost}元")
 
 | 方面 | 旧 API (LLMProvider.chat) | 新 API (LLMPluginService) |
 |---|---|---|
-| 对话历史 | 插件自行管理 List[Message] | 自动管理，自动截断 |
-| 上下文窗口 | 插件自行计算 token | 自动管理 |
+| 对话历史 | 插件自行管理 List[Message] | 自动管理历史消息 |
+| 上下文窗口 | 插件自行计算 token | 无需手动计算 |
 | 工具调用 | 手动两轮循环 | ToolCallExecutor 自动处理 |
 | 流式输出 | 自行实现 QThread | stream_send_message 一行搞定 |
 | 费用统计 | 无 | 自动累计 |
@@ -662,7 +664,7 @@ if response.tool_calls:
 
 左侧栏（250px）列出所有 Provider，点击切换；右侧栏显示选中 Provider 的完整配置详情（API 密钥、地址、模型列表、模型选择），底部栏实时显示用量统计。
 
-> **相关文档**: [对话框组件](../../ui/dialogs.md#2-llmsettingsdialog-llm-设置对话框)
+> **相关文档**: [对话框组件](../../ui/dialogs.md)
 
 ---
 
@@ -711,10 +713,10 @@ except ConnectionError:
 ### 12.1 注册机制
 
 ```python
-from core.llm.providers import PROVIDER_REGISTRY
+from core.llm.providers import register_provider
 
 # 使用装饰器注册
-@PROVIDER_REGISTRY.register("custom")
+@register_provider
 class CustomProvider(BaseProvider):
     provider_type = "custom"
     provider_name = "Custom LLM"

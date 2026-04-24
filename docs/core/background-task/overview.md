@@ -38,6 +38,7 @@ class TaskType(Enum):
 
 - **特点**: 立即执行，在主线程中运行
 - **适用场景**: 快速完成的小任务
+- **持久化注意**: 同步任务的 `RUNNING` 状态**不会被持久化**到存储中。`mark_running()` 后没有调用 `save_task()`，任务完成后才在 `finally` 块中保存最终状态（`COMPLETED` 或 `FAILED`）。因此，如果应用在同步任务执行期间崩溃，任务将不会留下运行中的记录。
 - **示例**:
   ```python
   task_id = manager.register_sync_task(
@@ -66,6 +67,7 @@ class TaskType(Enum):
 
 - **特点**: 按固定间隔重复执行
 - **适用场景**: 定期备份、自动同步等
+- **参数限制**: `SchedulerCallback.execute_scheduled_task()` 在执行时优先检查 `args`。当 `args` 和 `kwargs` 同时存在时，`kwargs` 会被忽略。如需同时使用两者，请在 `args` 中传递字典并在 `func` 内部解包。
 - **示例**:
   ```python
   task_id = manager.register_scheduled_task(
@@ -174,7 +176,7 @@ graph TB
     BTM -->|恢复| JSON
 ```
 
-> **注意**：`TaskScheduler` 类负责启动定时检查线程，但实际的到期检查逻辑在 `BackgroundTaskManager._check_scheduled_tasks()` daemon 线程中执行（`SchedulerCallback.should_run()` 判断到期，`execute_scheduled_task()` 执行任务）。
+> **注意**：`TaskScheduler` 类虽然被初始化并启动，但其 `_check_and_run_tasks()` 方法目前为空实现（`pass`）。实际的定时任务检查逻辑在 `BackgroundTaskManager._check_scheduled_tasks()` daemon 线程（`ScheduledTaskChecker`）中执行，该线程使用 `SchedulerCallback.should_run()` 判断到期，并通过 `SchedulerCallback.execute_scheduled_task()` 执行任务。
 
 ---
 
@@ -279,7 +281,13 @@ manager.register_long_running_task_factory(
 # BackgroundTaskManager 会在工厂注册后自动恢复
 ```
 
-### 6.3 恢复流程
+### 6.3 工厂注册限制
+
+> **重要限制**：一个插件只能注册**一个定时任务工厂**和**一个长期任务工厂**。后注册的工厂会覆盖先注册的工厂（以 `plugin_id` 为键的字典存储）。
+>
+> 如果插件需要多个定时任务，应在工厂函数内部通过参数区分不同的任务逻辑，或使用多个异步任务替代。
+
+### 6.4 恢复流程
 
 ```mermaid
 flowchart TD
@@ -335,6 +343,8 @@ def get_long_running_tasks(self, plugin_id: Optional[str] = None) -> List[LongRu
         长期任务列表
     """
 ```
+
+> **注意**: `get_task()` 和 `get_task_status()` 方法**不包含长期任务**。查询长期任务必须显式调用 `get_long_running_tasks()`。
 
 ---
 

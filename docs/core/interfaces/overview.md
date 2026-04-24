@@ -38,7 +38,7 @@ graph TB
         C1[PluginManager]
         C2[DataProvider]
         C3[BackgroundTaskManager]
-        C4[LLMProvider]
+        C4[LLMPluginService]
         C5[LoggerManager]
     end
 
@@ -79,8 +79,8 @@ graph TB
 | **IPluginInfo** | `i_plugin_info.py` | 插件信息抽象基类 | `core/plugin/plugin_info_interface.py` |
 | **IDataProvider** | `i_data_provider.py` | 数据提供者接口 | `core/data/data_provider.py` |
 | **ITaskManager** | `i_task_manager.py` | 后台任务管理器接口 | `core/task/background_task.py` |
-| **ILLMFacade** | `i_llm_facade.py` | LLM 统一门面接口 | `core/llm/plugin_service.py`（`LLMPluginService` 完整实现所有方法，`LLMProvider` 仅通过签名 duck-type 实现部分方法） |
-| **ILogger** | `core/interfaces/i_logger.py`（定义）/ `utils/i_logger.py`（原始定义，通过重导出）| 日志接口 | `utils/logging_tools.py`（`LoggerManager` 实现）|
+| **ILLMFacade** | `i_llm_facade.py` | LLM 统一门面接口 | `core/llm/plugin_service.py`（`LLMPluginService` 通过方法签名兼容实现所有方法，**未显式继承** `ILLMFacade`；`LLMProvider` 同样通过 Duck Typing 实现部分方法） |
+| **ILogger** | `utils/i_logger.py`（原始定义）/ `core/interfaces/__init__.py`（重导出）| 日志接口 | `utils/logging_tools.py`（`LoggerManager` 实现）|
 
 ### 2.2 辅助类
 
@@ -105,20 +105,20 @@ graph TB
 **核心属性**:
 - `plugin_name`: 插件名称（抽象属性，必须实现）
 - `plugin_id`: 插件唯一标识符 UUID（由框架设置）
-- `skill_icon`: 技能按钮图标（带缓存的属性，默认返回 None）
-- `skill_description`: 技能描述（带缓存的属性，默认返回 plugin_name）
-- `skill_tooltip`: 工具提示（带缓存的属性，默认格式为"名称\n描述"）
-- `plugin_info`: 插件信息对象（从 information.py 加载，带缓存）
+- `skill_icon`: 技能按钮图标（默认返回 None，具体实现可带缓存）
+- `skill_description`: 技能描述（默认返回 `plugin_name`，具体实现可带缓存）
+- `skill_tooltip`: 工具提示（默认格式为"名称\n描述"）
+- `plugin_info`: 插件信息对象（默认返回 None，具体实现可从 `information.py` 加载并带缓存）
 - `llm_tools`: 插件暴露给 LLM 的工具列表（返回符合 OpenAI function calling 规范的字典列表）
 
 **核心方法**:
 - `_create_widget(parent, data_provider)`: 创建 UI（抽象方法，必须实现）
-- `get_widget(parent, data_provider)`: 获取 Widget（带缓存，自动复用已创建的控件实例）
-- `on_plugin_loaded(plugin_id, **kwargs)`: 加载完成回调（可通过 `self._services` 访问注入的服务容器）
+- `get_widget(parent, data_provider)`: 获取 Widget（默认直接调用 `_create_widget`，具体实现可添加缓存）
+- `on_plugin_loaded(plugin_id=None, **kwargs)`: 加载完成回调（PluginManager 调用时不传任何参数，可通过 `self._services` 访问注入的服务容器）
 
 **使用示例**:
 ```python
-from core.interfaces import IPlugin
+from core.plugin.plugin_interface import IPlugin
 
 class MyPlugin(IPlugin):
     @property
@@ -217,6 +217,9 @@ class MyPluginInfo(IPluginInfo):
 - `get_plugin_assets_dir(plugin_id)`: 获取插件资源目录路径
 - `get_plugin_info(instance_id)`: 获取插件信息
 - `get_all_plugins()`: 获取所有插件信息
+- `clear_cache()`: 清除缓存，下次读取时将重新从磁盘加载
+- `load_data(force_reload=False)`: 从磁盘加载数据到缓存
+- `save_data()`: 将当前缓存数据保存到磁盘
 - `reset_all_data()`: 重置所有数据（慎用）
 
 **使用示例**:
@@ -272,8 +275,8 @@ class MyPlugin(IPlugin):
 *同步/异步任务*:
 - `register_sync_task(plugin_id, name, func, callback, args, kwargs)`: 注册并立即执行同步任务
 - `register_async_task(plugin_id, name, func, callback, args, kwargs)`: 注册异步任务
-- `cancel_task(task_id)`: 取消任务（仅限普通任务）
-- `clear_completed_tasks(plugin_id)`: 清理已完成的任务
+- `cancel_task(task_id)`: 取消任务（仅限普通任务），返回是否成功
+- `clear_completed_tasks(plugin_id=None)`: 清理已完成的任务，返回清理数量
 
 *定时任务*:
 - `register_scheduled_task(plugin_id, name, func, interval, callback, args, kwargs)`: 注册定时任务
@@ -282,7 +285,7 @@ class MyPlugin(IPlugin):
 - `unregister_scheduled_task(task_id)`: 注销定时任务
 - `enable_scheduled_task(task_id)`: 启用定时任务
 - `disable_scheduled_task(task_id)`: 禁用定时任务
-- `get_scheduled_tasks(plugin_id)`: 获取定时任务列表
+- `get_scheduled_tasks(plugin_id=None)`: 获取定时任务列表
 
 *长期任务*:
 - `register_long_running_task(plugin_id, name, func, callback, stop_callback, status_callback, auto_restart, args, kwargs)`: 注册长期任务
@@ -338,7 +341,7 @@ class MyPlugin(IPlugin):
 
 **文件**: `core/interfaces/i_llm_facade.py`
 
-**作用**: 定义大语言模型统一访问的抽象接口，由 `LLMPluginService`（`core/llm/plugin_service.py`）完整实现
+**作用**: 定义大语言模型统一访问的抽象接口。`LLMPluginService`（`core/llm/plugin_service.py`）提供了与接口兼容的完整方法集合，**注意：未显式继承 `ILLMFacade`，属于 Duck Typing 兼容**
 
 **核心功能**:
 - 同步/异步聊天
@@ -420,7 +423,9 @@ class MyPlugin(IPlugin):
 
 **文件**: `core/llm/plugin_service.py`
 
-**作用**: `ILLMFacade` 接口的完整实现，是插件开发者使用 LLM 能力的唯一入口。整合了对话管理、工具调用自动化、向量嵌入、多模态和用量统计。
+**作用**: 提供与 `ILLMFacade` 接口方法签名完全兼容的实现，是插件开发者使用 LLM 能力的唯一入口。整合了对话管理、工具调用自动化、向量嵌入、多模态和用量统计。
+
+> **注意**：`LLMPluginService` **未显式继承** `ILLMFacade` 抽象基类，而是通过方法签名兼容（Duck Typing）实现接口契约。插件开发者通过 `PluginServices.llm_facade` 获取的实例类型为 `LLMPluginService`，可直接调用所有 `ILLMFacade` 定义的方法。
 
 **核心组件**:
 - `ConversationManager`: 对话生命周期管理
@@ -460,7 +465,7 @@ svc = get_llm_plugin_service()
 | `get_usage_stats(conv_id?)` | 获取用量统计 |
 | `validate_provider(provider)` | 验证 Provider 配置 |
 
-**详细文档**: [LLM Provider API 参考](../llm-provider/api-reference.md#section-5)
+**详细文档**: [LLM Provider API 参考](../llm-provider/api-reference.md)
 
 ---
 
@@ -480,6 +485,7 @@ svc = get_llm_plugin_service()
 **使用示例**:
 ```python
 from core.interfaces import ILogger
+from utils.logging_tools import LoggerManager
 
 class MyPlugin(IPlugin):
     def _create_widget(self, parent=None, data_provider=None):
@@ -509,8 +515,8 @@ class MyPlugin(IPlugin):
 **属性**:
 - `data_provider`: `DataProvider` - 数据提供者实例
 - `task_manager`: `BackgroundTaskManager` - 后台任务管理器实例
-- `llm_facade`: `LLMPluginService` - LLM 统一门面接口（`ILLMFacade` 的完整实现）
-- `logger`: `LoggerManager` - 日志接口
+- `llm_facade`: `LLMPluginService` - LLM 统一门面（通过 Duck Typing 兼容 `ILLMFacade`，未显式继承）
+- `logger`: `ILogger` - 日志接口
 - `mcp_manager`: `MCPManager` - MCP Server 管理器实例（可为空，用于管理内置 MCP Server）
 - `mcp_client`: `MCPClientManager` - 外部 MCP Client 管理器实例（可为空，用于连接外部 MCP Server）
 
@@ -619,7 +625,7 @@ from core.interfaces import IPlugin, IPluginInfo
 | `IPluginInfo` | `IPluginInfo` | `core/plugin/plugin_info_interface.py` |
 | `IDataProvider` | `DataProvider` | `core/data/data_provider.py` |
 | `ITaskManager` | `BackgroundTaskManager` | `core/task/background_task.py` |
-| `ILLMFacade` | `LLMPluginService` | `core/llm/plugin_service.py` | `PluginServices` 注入的是 `LLMPluginService`（完整实现所有 `ILLMFacade` 方法） |
+| `ILLMFacade` | `LLMPluginService` | `core/llm/plugin_service.py` | `PluginServices` 注入的是 `LLMPluginService`（通过 Duck Typing 兼容 `ILLMFacade`，**未显式继承**） |
 | `ILogger` | `LoggerManager` | `utils/logging_tools.py` |
 
 ### 5.2 访问单例实例
