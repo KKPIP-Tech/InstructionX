@@ -53,19 +53,25 @@ def _get_manifest_dir() -> Path:
 
 class _LicenseItemWidget(QWidget):
     def __init__(self, name: str, display_name: str, license_type: str,
-                 category: str, version: str = "", parent=None):
+                 category: str, version: str = "", colors: dict = None, parent=None):
         super().__init__(parent)
         self._name = name
         self._display_name = display_name
         self._license_type = license_type
         self._category = category
         self._version = version
+        self._colors = colors or {}
+        self._is_selected = False
         self._setup_ui()
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(12, 10, 12, 10)
-        layout.setSpacing(4)
+        layout.setContentsMargins(10, 6, 10, 6)
+        layout.setSpacing(2)
+
+        # 主题色
+        tp = self._colors.get('textPrimary', '#212121')
+        ts = self._colors.get('textSecondary', '#757575')
 
         # 名称（加粗）
         name_font = QFont()
@@ -73,37 +79,71 @@ class _LicenseItemWidget(QWidget):
         name_font.setBold(True)
 
         title = self._display_name if self._display_name else self._name
-        name_label = QLabel(title)
-        name_label.setFont(name_font)
-        name_label.setStyleSheet("color: #212121;")
-        layout.addWidget(name_label)
+        self._name_label = QLabel(title)
+        self._name_label.setFont(name_font)
+        self._name_label.setStyleSheet(f"color: {tp}; background: transparent;")
+        layout.addWidget(self._name_label)
 
         # 英文名（如果有）
+        self._en_label = None
         if self._display_name and self._display_name != self._name:
-            en_label = QLabel(self._name)
-            en_label.setStyleSheet("color: #757575; font-size: 8pt;")
-            layout.addWidget(en_label)
+            self._en_label = QLabel(self._name)
+            self._en_label.setStyleSheet(f"color: {ts}; font-size: 8pt; background: transparent;")
+            layout.addWidget(self._en_label)
 
         # 底部行：许可证标签 + 版本
         row = QHBoxLayout()
-        row.setSpacing(6)
+        row.setSpacing(4)
+        row.setContentsMargins(0, 0, 0, 0)
 
         bg, fg = _get_license_colors(self._license_type)
-        badge = QLabel(self._license_type)
-        badge.setStyleSheet(
+        self._badge = QLabel(self._license_type)
+        self._badge.setStyleSheet(
             f"QLabel {{ background-color: {bg}; color: {fg}; "
-            f"border-radius: 12px; padding: 2px 10px; font-size: 8pt; "
+            f"border-radius: 4px; padding: 1px 6px; font-size: 7pt; "
             f"font-weight: 500; }}"
         )
-        row.addWidget(badge)
+        row.addWidget(self._badge)
 
+        self._ver_label = None
         if self._version:
-            ver_label = QLabel(f"v{self._version}")
-            ver_label.setStyleSheet("color: #9E9E9E; font-size: 8pt;")
-            row.addWidget(ver_label)
+            self._ver_label = QLabel(f"v{self._version}")
+            self._ver_label.setStyleSheet(f"color: {ts}; font-size: 8pt; background: transparent;")
+            row.addWidget(self._ver_label)
 
         row.addStretch()
         layout.addLayout(row)
+
+    def set_selected(self, selected: bool):
+        """更新选中态文字颜色"""
+        self._is_selected = selected
+        if selected:
+            self._name_label.setStyleSheet("color: #FFFFFF; background: transparent;")
+            if self._en_label:
+                self._en_label.setStyleSheet("color: rgba(255,255,255,0.85); font-size: 8pt; background: transparent;")
+            if self._ver_label:
+                self._ver_label.setStyleSheet("color: rgba(255,255,255,0.7); font-size: 8pt; background: transparent;")
+            # Badge: 半透明背景 + 白色文字，更协调
+            self._badge.setStyleSheet(
+                "QLabel { background-color: rgba(255,255,255,0.25); color: #FFFFFF; "
+                "border-radius: 4px; padding: 1px 6px; font-size: 7pt; "
+                "font-weight: 500; }"
+            )
+        else:
+            tp = self._colors.get('textPrimary', '#212121')
+            ts = self._colors.get('textSecondary', '#757575')
+            self._name_label.setStyleSheet(f"color: {tp}; background: transparent;")
+            if self._en_label:
+                self._en_label.setStyleSheet(f"color: {ts}; font-size: 8pt; background: transparent;")
+            if self._ver_label:
+                self._ver_label.setStyleSheet(f"color: {ts}; font-size: 8pt; background: transparent;")
+            # Badge: 恢复原色
+            bg, fg = _get_license_colors(self._license_type)
+            self._badge.setStyleSheet(
+                f"QLabel {{ background-color: {bg}; color: {fg}; "
+                f"border-radius: 4px; padding: 1px 6px; font-size: 7pt; "
+                f"font-weight: 500; }}"
+            )
 
     def name(self) -> str:
         return self._name
@@ -174,7 +214,7 @@ class LicenseDialog(QDialog):
 
         # 左栏
         left_panel = QFrame()
-        left_panel.setFixedWidth(260)
+        left_panel.setFixedWidth(320)
         left_panel.setObjectName("leftPanel")
         ll = QVBoxLayout(left_panel)
         ll.setContentsMargins(12, 12, 12, 12)
@@ -374,22 +414,27 @@ class LicenseDialog(QDialog):
             lic = item.get("license_type", "Unknown")
             version = item.get("version", "")
 
-            widget = _LicenseItemWidget(name, display, lic, cat, version)
+            widget = _LicenseItemWidget(name, display, lic, cat, version, self._colors)
+            # 强制 layout 以获取准确 sizeHint，再加 10px 余量应对 item padding
+            widget.adjustSize()
+            hint = widget.sizeHint()
+            from PySide6.QtCore import QSize
             lw_item = QListWidgetItem()
-            lw_item.setSizeHint(widget.sizeHint())
+            lw_item.setSizeHint(QSize(hint.width(), hint.height() + 10))
             lw_item.setData(Qt.UserRole, item)
             self._list_widget.addItem(lw_item)
             self._list_widget.setItemWidget(lw_item, widget)
-            self._all_list_items.append((lw_item, item))
+            self._all_list_items.append((lw_item, widget, item))
 
         if self._all_items:
             self._list_widget.setCurrentRow(0)
             self._show_detail(self._all_items[0])
+            self._update_selection_state()
 
     def _on_search(self, text: str):
         self._current_search = text.strip().lower()
         visible_count = 0
-        for lw_item, item in self._all_list_items:
+        for lw_item, widget, item in self._all_list_items:
             name = item.get("name", "")
             display = item.get("display_name", "")
             match = (
@@ -413,6 +458,13 @@ class LicenseDialog(QDialog):
         item = lw_item.data(Qt.UserRole)
         if item:
             self._show_detail(item)
+        self._update_selection_state()
+
+    def _update_selection_state(self):
+        """同步所有列表项的选中态样式"""
+        for lw_item, widget, _ in getattr(self, '_all_list_items', []):
+            if isinstance(widget, _LicenseItemWidget):
+                widget.set_selected(lw_item.isSelected())
 
     def _show_detail(self, item: dict):
         name = item.get("name", "")
@@ -435,7 +487,7 @@ class LicenseDialog(QDialog):
         # 第一行：主标题 + 徽章
         header_html += f'<div style="margin-bottom: 6px;">'
         header_html += f'<span style="font-size: 16pt; font-weight: bold; color: {tp};">{title}</span>'
-        header_html += f'<span style="background-color: {bg}; color: {fg}; border-radius: 12px; padding: 3px 10px; font-size: 9pt; font-weight: 500; margin-left: 10px; vertical-align: middle;">{lic}</span>'
+        header_html += f'<span style="background-color: {bg}; color: {fg}; border-radius: 12px; padding: 3px 10px; font-size: 9pt; font-weight: 500; margin-left: 24px; vertical-align: middle;">{lic}</span>'
         header_html += '</div>'
         
         # 第二行：英文名称（如果有）

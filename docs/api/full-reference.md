@@ -367,8 +367,8 @@ from core.mcp import IMCPTool, IMCPClient
 |------|---------|------|
 | `ToolRegistry` | `register(name, description, parameters, handler)` | 注册工具 |
 | `ToolRegistry` | `unregister(name)` | 注销工具 |
-| `ToolRegistry` | `get_tool(name)` | 获取工具 |
-| `ToolRegistry` | `get_tools()` | 获取所有工具 |
+| `ToolRegistry` | `get_handler(name)` | 获取工具处理器（callable） |
+| `ToolRegistry` | `get_tools()` | 获取所有工具定义列表 |
 | `ToolCallExecutor` | `chat_with_tools(messages, provider?, model?, max_turns?, ...)` | 工具调用循环 |
 | `ToolCallExecutor` | `chat_with_tools(..., stream, stream_callback)` | 流式工具调用 |
 
@@ -580,7 +580,7 @@ task_id = task_manager.register_scheduled_task(
 | `save_asset(plugin_id, filename, content)` | 保存资源文件（content 为 bytes） |
 | `get_asset_path(relative_path)` | 获取资源绝对路径 |
 | `load_asset(relative_path)` | 加载资源文件 |
-| `get_plugin_assets_dir(plugin_id)` | 获取插件资源目录 |
+| `get_plugin_assets_dir(plugin_id)` | 获取插件资源目录 | `str` |
 | `clear_cache()` | 清除缓存，下次读取时重新从磁盘加载 |
 | `load_data(force_reload=False)` | 从磁盘加载数据到缓存 |
 | `save_data()` | 将当前缓存数据保存到磁盘 |
@@ -658,7 +658,7 @@ task_id = task_manager.register_scheduled_task(
 | `data_provider` | `DataProvider` | 数据提供者实例（失败时为 `None`） |
 | `task_manager` | `BackgroundTaskManager` | 后台任务管理器实例（失败时为 `None`） |
 | `llm_facade` | `LLMPluginService` | LLM 服务实例 |
-| `logger` | `LoggerManager` | 日志管理器实例 |
+| `logger` | `ILogger` | 日志管理器实例（`LoggerManager` 实现） |
 | `mcp_manager` | `MCPManager` | MCP 管理器实例（可能为 `None`） |
 | `mcp_client` | `MCPClientManager` | MCP 客户端管理器实例（可能为 `None`） |
 

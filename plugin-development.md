@@ -75,8 +75,7 @@ InstructionX/
 16. `docs/utils/logging-tools.md` — **日志工具**，日志使用规范
 17. `docs/utils/style-qss.md` — **样式工具**，QSS 样式规范
 18. `docs/plugins/index.md` — **插件索引文档**
-19. `docs/plugins/official-plugins.md` — **官方插件文档**
-20. `docs/core/plugin-system/plugin-identity.md` — **PluginIdentity**，UUID 管理
+19. `docs/core/plugin-system/plugin-identity.md` — **PluginIdentity**，UUID 管理
 21. `docs/core/plugin-system/plugin-version.md` — **PluginVersion**，版本规范
 22. `docs/core/plugin-system/plugin-icon.md` — **PluginIcon**，图标规范
 23. `docs/core/plugin-system/plugin-config-manager.md` — **PluginConfigManager**
@@ -85,7 +84,7 @@ InstructionX/
 26. `docs/core/llm-provider/overview.md` — **LLM Provider 概览**
 27. `docs/core/llm-provider/api-reference.md` — **LLM API 参考**
 28. `docs/core/llm-provider/provider-config.md` — **LLM 配置**
-29. `docs/core/task-storage.md` — **任务存储**
+29. `docs/core/background-task/task-storage.md` — **任务存储**
 30. `docs/ui/dialogs.md` — **对话框 UI**
 31. `docs/ui/main-window.md` — **主窗口 UI**
 32. `docs/ui/skill-button.md` — **技能按钮**
@@ -123,12 +122,13 @@ InstructionX/
 
 ```json
 {
-  "id": "<插件唯一ID，使用小写字母、数字、连字符>",
+  "id": "<插件唯一ID，使用小写字母、数字、下划线、连字符>",
   "name": "<插件显示名称>",
-  "version": "<版本号，格式: release|x.y.z，例如 release.1.0.0>",
+  "version": "<版本号，格式: <类型>.<大>.<小>.<补丁>，类型为 release|pre-release|beta|alpha|internal>",
   "main": "entrance.py",
   "description": "<简短描述，1-2句话>",
   "author": "<开发者名称>",
+  "homepage": "<插件主页URL>",
   "keywords": ["<标签1>", "<标签2>"],
   "dependencies": {}
 }
@@ -139,10 +139,11 @@ InstructionX/
 |------|------|------|------|
 | `id` | string | 是 | 唯一标识符，只能包含字母、数字、下划线、短横线 |
 | `name` | string | 是 | 显示名称 |
-| `version` | string | 是 | 格式：`<类型>.<大>.<小>.<补丁>`，类型为 `release`、`pre-release`、`beta`、`alpha`、`internal` |
+| `version` | string | 是 | 格式：`<类型>.<大>.<小>.<补丁>`，类型为 `release`、`pre-release`、`beta`、`alpha`、`internal`；`<大>/<小>/<补丁>` 为非负整数，正则：`^(release|pre-release|beta|alpha|internal)\.\d+\.\d+\.\d+$` |
 | `main` | string | 是 | 入口文件路径，固定为 `entrance.py` |
 | `description` | string | 否 | 简短描述 |
 | `author` | string | 否 | 作者 |
+| `homepage` | string | 否 | 插件主页 URL |
 | `keywords` | array | 否 | 搜索标签 |
 | `dependencies` | object | 否 | Python 依赖，如 `{"requests": ">=2.25.0"}` |
 
@@ -181,6 +182,7 @@ InstructionX/
 ├── information.py                  # 插件元数据（**必需**），继承 IPluginInfo
 ├── config/                        # 配置文件目录（**必需**），禁止魔法数
 │   └── default.json
+├── style/                         # QSS 样式目录，所有自定义样式文件（*.qss）放在此处
 ├── ui/                             # UI 组件层
 │   ├── __init__.py
 │   ├── main_widget.py              # 主控件（_create_widget 返回的根控件）
@@ -222,6 +224,7 @@ InstructionX/
 │   ├── information.py
 │   ├── config/
 │   │   └── default.json
+│   ├── style/                      # QSS 样式目录
 │   ├── ui/
 │   ├── function/
 │   ├── icons/
@@ -352,6 +355,31 @@ flowchart TD
 12. **多插件场景** — 插件集目录下每个插件是独立子目录，各自遵循单插件结构
 13. **service 约束** — `service.py` 禁止出现 UI 操作代码（创建/更新 QWidget 等），允许使用 PySide6 类型定义和信号/slot 机制，禁止写任何实际业务逻辑
 14. **配置规范** — 禁止出现魔法数，所有配置统一放入 `config/` 目录
+15. **MCP 工具定义** — 插件可通过继承 `IMCPTool`（来自 `core.mcp.plugin_interface`）定义 MCP 工具。继承后框架自动将实例注册到内置 MCP Server，无需手动调用注册方法。关键属性/方法：
+    - `mcp_tool_name` — 工具名称（str），必须唯一
+    - `mcp_tool_description` — 工具描述，LLM 会看到此描述
+    - `mcp_tool_parameters` — JSON Schema 格式参数定义（Dict）
+    - `mcp_invoke(**kwargs)` — 执行逻辑（必须是 async）
+    注意：`connect()` / `disconnect()` 是 async 方法，必须用 `await` 调用。
+16. **MCP 外部连接** — 通过 `self._services.mcp_client`（`IMCPClient` 接口）可连接外部 MCP Server。主要方法：
+    - `await connect(config)` — 连接，返回 server_id；config 为 `MCPRemoteServerConfig`
+    - `await disconnect(server_id)` — 断开连接
+    - `list_connected_servers()` — 返回已连接服务器列表
+    - `list_tools(server_id)` — 返回工具名称列表（带 `mcp:{server_id}:{name}` 前缀）
+    `mcp_manager` 负责内置 MCP Server，`mcp_client` 负责外部 MCP 连接，两者职责独立。
+17. **skill_icon 规范** — `information.py` 中 `skill_icon` 属性返回 `PluginIcon` 实例（来自 `core.plugin.plugin_icon`）。支持工厂方法：
+    - `PluginIcon.builtin("SP_XXX")` — Qt 系统图标（推荐）
+    - `PluginIcon.from_file("icons/icon.png")` — 插件目录相对路径
+    - `PluginIcon.from_resource(":/icons/icon.png")` — Qt 资源路径
+    - `PluginIcon.from_base64("<base64>")` — Base64 编码图片
+    - `PluginIcon.none()` — 无图标（使用默认 SP_FileIcon）
+    注意：`from_file()` 需要图标文件存在；加载失败时降级为系统默认图标。详细规范见 `docs/core/plugin-system/plugin-icon.md`。
+18. **跨插件通信** — 通过 `self._services` 可访问其他框架服务。跨插件方法调用通过 `PluginManager.call_plugin_method(caller_id, plugin_id, method_name, **kwargs)` 实现；数据层面通过 `DataProvider.subscribe()` / `publish()` 进行发布/订阅通信。
+19. **LLM 工具调用** — `llm_facade.chat_with_tools(messages, max_turns)` 提供完整的 tool-calling 对话循环，自动处理多轮工具调用。`llm_facade.create_conversation()` / `send_message()` 管理对话生命周期，详细用法见 `docs/plugins/llm-integration-guide.md`。
+20. **长期任务与工厂** — `task_manager.register_long_running_task_factory()` 支持应用重启后自动恢复长期任务（需提供 `restore_callback`）。定时任务通过 `register_scheduled_task_factory()` 自动触发 `restore_scheduled_tasks()` 恢复，详细用法见 `docs/core/background-task/overview.md`。
+21. **DataProvider 高级用法** — `save_asset()` / `load_asset()` 管理资源文件；`get_plugin_assets_dir()` 获取资源目录；`set_active_instance()` / `get_active_instance()` 管理插件类型单例，详细用法见 `docs/core/data-provider/overview.md`。
+22. **IPluginInfo 可选字段** — `information.py` 中的 `Info` 类可覆盖 `dependencies`（声明对其他插件的依赖，格式 `{type_id: 版本约束}`）和 `tags`（用于分类和筛选的标签列表）。`information.py` 修改后框架下次访问时**自动重新加载**（mtime 缓存失效）。
+23. **QSS 样式规范** — 禁止任何形式的内联样式（`setStyleSheet()` 传硬编码字符串视为内联）；所有自定义 QSS 样式文件必须放在 `style/` 目录下（`style/*.qss`）；自定义样式**禁止使用全局选择器**（如 `QPushButton`、`QLabel` 不带前缀），只允许带明确命名空间前缀的类选择器或子控件选择器，确保样式仅对本插件 widget 树生效，不影响其他插件和软件主题；样式文件加载后在插件 widget 销毁时需同步卸载。
 
 ## 代码质量规范（强制要求）
 

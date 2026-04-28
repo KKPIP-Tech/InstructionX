@@ -1,37 +1,49 @@
 /* ═════════════════════════════════════════════════════════════════════════════
  * 工具栏 (QToolBar, QToolButton)
+ * 风格来源：DemoUIDesign/ix-ce-desktop — 圆角边框按钮
  * ═════════════════════════════════════════════════════════════════════════════ */
 
 QToolBar {
-    background-color: {window};
-    border: none;
-    padding: 3px;
+    background: {menuBarBg};
+    border: 1px solid {borderLight};
+    border-radius: 6px;
+    padding: 4px;
     spacing: 4px;
 }
 
 QToolBar::separator {
     width: 1px;
-    background-color: {borderLight};
+    background: {borderLight};
     margin: 4px;
 }
 
-QToolButton {
-    background-color: transparent;
-    border: none;
-    border-radius: {radius};
-    padding: 4px;
+/* 仅作用于 QToolBar 内部的 QToolButton，避免影响 SkillButton 等其他 QToolButton */
+QToolBar QToolButton {
+    background: {menuPopupBg};
+    color: {textSecondary};
+    border: 1px solid {borderLight};
+    border-radius: 8px;
+    padding: 4px 8px;
+    font-size: 12px;
+    font-weight: 600;
 }
 
-QToolButton:hover {
-    background-color: {controlFillHover};
+QToolBar QToolButton:hover {
+    background: {window};
+    color: {windowText};
+    border: 1px solid {accent};
 }
 
-QToolButton:pressed {
-    background-color: {controlFillPressed};
+QToolBar QToolButton:pressed {
+    background: {controlFillPressed};
+    color: {windowText};
+    border: 1px solid {accentDark};
 }
 
-QToolButton:disabled {
-    background-color: transparent;
+QToolBar QToolButton:disabled {
+    background: transparent;
+    color: {textDisabled};
+    border: 1px solid {borderLight};
     opacity: 0.5;
 }
 

@@ -17,10 +17,12 @@
 ```mermaid
 graph TB
     subgraph SkillsPanel [SkillsPanel]
-        TW[QTabWidget<br/>标签页控件]
+        SW[QStackedWidget<br/>堆叠窗口控件]
+        OB["_official_btn<br/>官方功能 Pill 按钮]
+        TB["_thirdparty_btn<br/>第三方功能 Pill 按钮"]
     end
 
-    subgraph Tab1 [官方功能 标签]
+    subgraph Page1 [官方功能 页面]
         SA1[ScrollArea<br/>可滚动区域]
         CT1["QWidget#skillsContainer<br/>水平布局容器"]
         B1[技能按钮 1]
@@ -32,7 +34,7 @@ graph TB
         CT1 --> B3
     end
 
-    subgraph Tab2 [第三方功能 标签]
+    subgraph Page2 [第三方功能 页面]
         SA2[ScrollArea<br/>可滚动区域]
         CT2["QWidget#skillsContainer<br/>水平布局容器"]
         C1[技能按钮 1]
@@ -44,9 +46,13 @@ graph TB
         CT2 --> C3
     end
 
-    TW --> Tab1
-    TW --> Tab2
+    OB -->|切换显示| Page1
+    TB -->|切换显示| Page2
+    SW --> Page1
+    SW --> Page2
 ```
+
+> **注意**: 标签切换使用自定义 Pill 按钮（非 `QTabWidget` 的 `QTabBar`），通过 `QStackedWidget.setCurrentIndex()` 控制显示页面。
 
 **标签页结构**:
 - **官方功能**: 来自 `plugin/` 目录的官方插件
@@ -66,8 +72,8 @@ graph TB
 
 **文本自动处理**:
 - 允许插件设计者自行决定换行位置（使用 `\n`）
-- 如果文本不含 `\n` 且长度大于 5 个字符，在 `len(text) // 2` 处分割（midpoint split，非 Unicode 感知）
-- 每行最多 5 个字符，超出部分末尾自动添加省略号（`...`）
+- 如果文本不含 `\n` 且长度大于 13 个字符（单行模式）或 8 个字符/行（双行模式），在中间位置分割（midpoint split，非 Unicode 感知）
+- 单行模式每行最多 13 个字符，双行模式每行最多 8 个字符，超出部分末尾自动添加省略号（`...`）
 - 最多显示 2 行
 - 避免按钮因文本过长而破坏布局
 
@@ -298,7 +304,7 @@ SkillsPanel 使用以下颜色变量：
 
 | 颜色变量 | 浅色主题 | 深色主题 | 用途 |
 |---------|---------|---------|------|
-| `skillPanel` | `#F5F5F5` | `#454545` | 面板背景 |
+| `skillPanel` | `#F5F7FA` | `#2C2C2C` | 面板背景 |
 | `skillPanelTab` | `#E8E8E8` | `#6A6A6A` | Tab 背景 |
 | `windowText` | `#000000` | `#FFFFFF` | 文字颜色 |
 | `accent` | `#0078D4` | `#0078D4` | 选中边框 |

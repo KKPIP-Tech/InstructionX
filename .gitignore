@@ -211,6 +211,8 @@ __marimo__/
 
 .config/
 .claude/
+.kimi/
+temp/
 data/
 .mcp_sdk_temp/
 
@@ -222,5 +224,8 @@ data/*
 config/*
 !.gitkeep
 
+
 plugin/
 !__init__.py
+!.gitkeep
+

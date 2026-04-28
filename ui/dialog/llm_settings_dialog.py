@@ -226,8 +226,8 @@ class LLMSettingsDialog(QDialog):
         content.setStyleSheet(f"background-color: {bg_color};")
         self._detail_layout = QVBoxLayout(content)
         self._detail_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
-        self._detail_layout.setSpacing(20)
-        self._detail_layout.setContentsMargins(24, 24, 24, 24)
+        self._detail_layout.setSpacing(16)
+        self._detail_layout.setContentsMargins(24, 20, 24, 20)
 
         scroll.setWidget(content)
         layout.addWidget(scroll, 1)
@@ -241,19 +241,16 @@ class LLMSettingsDialog(QDialog):
         """创建底部栏：使用统计 + 保存/取消按钮."""
         widget = QWidget()
         widget.setObjectName("bottomBar")
-        widget.setFixedHeight(52)
+        widget.setFixedHeight(56)
         
         bg_color = self._get_color('window', '#FFFFFF')
         border_color = self._get_color('borderLight', '#E0E0E0')
-        text_color = self._get_color('textPrimary', '#000000')
+        text_secondary = self._get_color('textSecondary', '#666666')
         
         widget.setStyleSheet(f"""
             QWidget#bottomBar {{
                 background-color: {bg_color};
                 border-top: 1px solid {border_color};
-            }}
-            QLabel {{
-                color: {text_color};
             }}
         """)
 
@@ -262,22 +259,24 @@ class LLMSettingsDialog(QDialog):
 
         usage_text = self._get_usage_text()
         usage_label = QLabel(usage_text)
+        usage_label.setStyleSheet(f"color: {text_secondary}; font-size: 12px;")
         layout.addWidget(usage_label)
 
         layout.addStretch()
 
         cancel_btn = QPushButton("取消")
-        cancel_btn.setFixedHeight(30)
+        cancel_btn.setFixedHeight(36)
+        cancel_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         cancel_btn.clicked.connect(self.reject)
         layout.addWidget(cancel_btn)
 
-        # 保存按钮 - 直接在代码中设置样式表，确保样式生效
+        # 保存按钮
         save_btn = QPushButton("保存")
-        save_btn.setFixedHeight(30)
+        save_btn.setFixedHeight(36)
         save_btn.setEnabled(False)
+        save_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         save_btn.clicked.connect(self._on_save)
         
-        # 获取当前主题颜色
         accent = self._get_color('accent', '#0078D4')
         accent_light = self._get_color('accentLight', '#4CC2FF')
         accent_dark = self._get_color('accentDark', '#005A9E')
@@ -285,26 +284,15 @@ class LLMSettingsDialog(QDialog):
         text_disabled = self._get_color('textDisabled', '#6D6D6D')
         border_light = self._get_color('borderLight', '#CCCCCC')
         
-        # 设置样式表 - 禁用状态：灰色，启用状态：蓝色
         save_btn.setStyleSheet(f"""
             QPushButton {{
                 background-color: {button_bg};
                 border: 1px solid {border_light};
-                border-radius: 3px;
+                border-radius: 6px;
                 color: {text_disabled};
-                padding: 4px 16px;
+                padding: 0 20px;
                 font-weight: 500;
-                min-width: 60px;
-            }}
-            QPushButton:hover {{
-                background-color: {button_bg};
-                border: 1px solid {border_light};
-                color: {text_disabled};
-            }}
-            QPushButton:pressed {{
-                background-color: {button_bg};
-                border: 1px solid {border_light};
-                color: {text_disabled};
+                min-width: 72px;
             }}
             QPushButton:enabled {{
                 background-color: {accent};
@@ -313,13 +301,11 @@ class LLMSettingsDialog(QDialog):
             }}
             QPushButton:enabled:hover {{
                 background-color: {accent_light};
-                border: 1px solid {accent_light};
-                color: white;
+                border-color: {accent_light};
             }}
             QPushButton:enabled:pressed {{
                 background-color: {accent_dark};
-                border: 1px solid {accent_dark};
-                color: white;
+                border-color: {accent_dark};
             }}
         """)
         self._save_btn = save_btn
@@ -555,21 +541,12 @@ class LLMSettingsDialog(QDialog):
             return
 
         self._build_header_section(config)
-        self._add_divider()
 
-        self._build_api_key_section(config)
-        self._add_divider()
+        self._build_api_config_card(config)
 
-        self._build_api_url_section(config)
-        self._add_divider()
+        self._build_model_list_card(provider_name, config)
 
-        self._build_validate_section()
-        self._add_divider()
-
-        self._build_model_list_section(provider_name, config)
-        self._add_divider()
-
-        self._build_model_selection_section(config)
+        self._build_model_selection_card(config)
 
         self._populate_model_combos(provider_name, config)
 
@@ -588,14 +565,14 @@ class LLMSettingsDialog(QDialog):
         header_layout.setSpacing(16)
         header_layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
 
-        # Logo - 关键修复：显示 Provider Logo（圆形 64x64）
+        # Logo - 显示 Provider Logo（圆形 48x48）
         self._header_logo_label = QLabel()
-        self._header_logo_label.setFixedSize(64, 64)
+        self._header_logo_label.setFixedSize(48, 48)
         self._header_logo_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         
         logo_path = self._get_logo_path(config.provider_type)
         if logo_path:
-            pixmap = self._load_circular_pixmap(logo_path, 64)
+            pixmap = self._load_circular_pixmap(logo_path, 48)
             if not pixmap.isNull():
                 self._header_logo_label.setPixmap(pixmap)
             else:
@@ -613,14 +590,14 @@ class LLMSettingsDialog(QDialog):
         
         name_label = QLabel(config.name or "")
         name_font = QFont()
-        name_font.setPointSize(14)
+        name_font.setPointSize(16)
         name_font.setBold(True)
         name_label.setFont(name_font)
         name_label.setStyleSheet(f"color: {text_primary};")
         name_layout.addWidget(name_label)
 
         type_label = QLabel(config.provider_type)
-        type_label.setStyleSheet(f"color: {text_secondary}; font-size: 12px;")
+        type_label.setStyleSheet(f"color: {text_secondary}; font-size: 11px;")
         name_layout.addWidget(type_label)
 
         name_layout.addStretch()
@@ -672,35 +649,35 @@ class LLMSettingsDialog(QDialog):
         self._header_logo_label.setStyleSheet(f"""
             QLabel {{
                 background-color: {accent};
-                border-radius: 32px;
+                border-radius: 24px;
                 color: white;
-                font-size: 24px;
+                font-size: 18px;
                 font-weight: bold;
             }}
         """)
 
-    def _build_api_key_section(self, config: ProviderConfig) -> None:
-        """构建 API Key 输入区."""
+    def _build_api_config_card(self, config: ProviderConfig) -> None:
+        """构建 API 配置卡片：合并密钥、地址、检测按钮."""
         if not self._detail_layout:
             return
 
-        widget = QWidget()
-        layout = QVBoxLayout(widget)
-        layout.setSpacing(8)
-        layout.setContentsMargins(0, 0, 0, 0)
+        from ui.dialog.llm_settings_components import ConfigCard
+        card = ConfigCard("API 配置")
 
         text_primary = self._get_color('textPrimary', '#333333')
+        text_secondary = self._get_color('textSecondary', '#999999')
         border_color = self._get_color('borderLight', '#E0E0E0')
         accent = self._get_color('accent', '#4A90D9')
         link_color = self._get_color('link', '#4A90D9')
         hover_bg = self._get_color('controlFillHover', '#F5F5F5')
 
-        label = QLabel("API 密钥")
-        label.setStyleSheet(f"color: {text_primary}; font-weight: 500;")
-        layout.addWidget(label)
+        # API 密钥
+        key_label = QLabel("API 密钥")
+        key_label.setStyleSheet(f"color: {text_primary}; font-weight: 500;")
+        card.add_widget(key_label)
 
-        row = QHBoxLayout()
-        row.setSpacing(8)
+        key_row = QHBoxLayout()
+        key_row.setSpacing(8)
 
         self._api_key_edit = QLineEdit()
         self._api_key_edit.setEchoMode(QLineEdit.EchoMode.Password)
@@ -719,7 +696,7 @@ class LLMSettingsDialog(QDialog):
                 border-color: {accent};
             }}
         """)
-        row.addWidget(self._api_key_edit, 1)
+        key_row.addWidget(self._api_key_edit, 1)
 
         eye_btn = QToolButton()
         eye_btn.setText("👁")
@@ -737,37 +714,27 @@ class LLMSettingsDialog(QDialog):
                 border-radius: 6px;
             }}
         """)
-        row.addWidget(eye_btn)
-
-        layout.addLayout(row)
+        key_row.addWidget(eye_btn)
+        card.add_layout(key_row)
 
         link_label = QLabel("<a href='#'>点击这里获取密钥</a>")
         link_label.setCursor(Qt.CursorShape.PointingHandCursor)
         link_label.setTextFormat(Qt.TextFormat.RichText)
         link_label.setStyleSheet(f"color: {link_color}; font-size: 12px;")
         link_label.linkActivated.connect(lambda: self._open_provider_link(config.provider_type))
-        layout.addWidget(link_label)
+        card.add_widget(link_label)
 
-        self._detail_layout.addWidget(widget)
+        # 细分隔线
+        sep = QFrame()
+        sep.setFrameShape(QFrame.Shape.HLine)
+        sep.setFixedHeight(1)
+        sep.setStyleSheet(f"background-color: {border_color};")
+        card.add_widget(sep)
 
-    def _build_api_url_section(self, config: ProviderConfig) -> None:
-        """构建 API URL 输入区."""
-        if not self._detail_layout:
-            return
-
-        widget = QWidget()
-        layout = QVBoxLayout(widget)
-        layout.setSpacing(8)
-        layout.setContentsMargins(0, 0, 0, 0)
-
-        text_primary = self._get_color('textPrimary', '#333333')
-        text_secondary = self._get_color('textSecondary', '#999999')
-        border_color = self._get_color('borderLight', '#E0E0E0')
-        accent = self._get_color('accent', '#4A90D9')
-
-        label = QLabel("API 地址")
-        label.setStyleSheet(f"color: {text_primary}; font-weight: 500;")
-        layout.addWidget(label)
+        # API 地址
+        url_label = QLabel("API 地址")
+        url_label.setStyleSheet(f"color: {text_primary}; font-weight: 500;")
+        card.add_widget(url_label)
 
         self._api_url_edit = QLineEdit()
         self._api_url_edit.setPlaceholderText("例如：https://api.example.com/v1")
@@ -785,49 +752,34 @@ class LLMSettingsDialog(QDialog):
                 border-color: {accent};
             }}
         """)
-        layout.addWidget(self._api_url_edit)
+        card.add_widget(self._api_url_edit)
 
         preview_label = QLabel("请求将发送至此地址")
         preview_label.setStyleSheet(f"color: {text_secondary}; font-size: 12px;")
-        layout.addWidget(preview_label)
+        card.add_widget(preview_label)
 
-        self._detail_layout.addWidget(widget)
-
-    def _build_validate_section(self) -> None:
-        """构建检测供应商有效性按钮区域."""
-        if not self._detail_layout:
-            return
-
-        widget = QWidget()
-        layout = QHBoxLayout(widget)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(12)
-
+        # 检测按钮
+        btn_row = QHBoxLayout()
+        btn_row.setContentsMargins(0, 4, 0, 0)
         validate_btn = ActionButton("检测供应商有效性", "✓")
         validate_btn.clicked.connect(self._on_validate_provider)
-        layout.addWidget(validate_btn)
+        btn_row.addWidget(validate_btn)
+        btn_row.addStretch()
+        card.add_layout(btn_row)
 
-        layout.addStretch()
-        self._detail_layout.addWidget(widget)
+        self._detail_layout.addWidget(card)
 
-    def _build_model_list_section(
+    def _build_model_list_card(
         self, provider_name: str, config: ProviderConfig
     ) -> None:
-        """构建模型列表区：预设 / API 切换."""
+        """构建模型列表卡片."""
         if not self._detail_layout:
             return
 
-        widget = QWidget()
-        layout = QVBoxLayout(widget)
-        layout.setSpacing(8)
-        layout.setContentsMargins(0, 0, 0, 0)
+        from ui.dialog.llm_settings_components import ConfigCard
+        card = ConfigCard("模型列表")
 
         text_primary = self._get_color('textPrimary', '#333333')
-
-        label = QLabel("模型列表")
-        label.setFont(QFont("", -1, QFont.Weight.Bold))
-        label.setStyleSheet(f"color: {text_primary};")
-        layout.addWidget(label)
 
         radio_layout = QHBoxLayout()
         radio_layout.setSpacing(16)
@@ -838,7 +790,7 @@ class LLMSettingsDialog(QDialog):
         radio_layout.addWidget(self._preset_radio)
         radio_layout.addWidget(self._api_radio)
         radio_layout.addStretch()
-        layout.addLayout(radio_layout)
+        card.add_layout(radio_layout)
 
         force_preset = provider_name in ("minimax", "glm")
         if force_preset:
@@ -880,8 +832,8 @@ class LLMSettingsDialog(QDialog):
         else:
             self._model_stack.setCurrentWidget(self._api_view)
 
-        layout.addWidget(self._model_stack)
-        self._detail_layout.addWidget(widget)
+        card.add_widget(self._model_stack)
+        self._detail_layout.addWidget(card)
 
     def _populate_preset_view(
         self, layout: QVBoxLayout, provider_name: str
@@ -954,15 +906,13 @@ class LLMSettingsDialog(QDialog):
         if provider_name in self._fetched_models:
             self._populate_fetched_list(provider_name)
 
-    def _build_model_selection_section(self, config: ProviderConfig) -> None:
-        """构建模型选择区：当前聊天模型 + 当前 Embedding 模型."""
+    def _build_model_selection_card(self, config: ProviderConfig) -> None:
+        """构建默认模型设置卡片."""
         if not self._detail_layout:
             return
 
-        widget = QWidget()
-        layout = QVBoxLayout(widget)
-        layout.setSpacing(12)
-        layout.setContentsMargins(0, 0, 0, 0)
+        from ui.dialog.llm_settings_components import ConfigCard
+        card = ConfigCard("默认模型设置")
 
         text_primary = self._get_color('textPrimary', '#333333')
         border_color = self._get_color('borderLight', '#E0E0E0')
@@ -989,7 +939,7 @@ class LLMSettingsDialog(QDialog):
         """)
         chat_row.addWidget(chat_label)
         chat_row.addWidget(self._chat_model_combo, 1)
-        layout.addLayout(chat_row)
+        card.add_layout(chat_row)
 
         emb_row = QHBoxLayout()
         emb_label = QLabel("当前 Embedding 模型")
@@ -1012,9 +962,9 @@ class LLMSettingsDialog(QDialog):
         """)
         emb_row.addWidget(emb_label)
         emb_row.addWidget(self._emb_model_combo, 1)
-        layout.addLayout(emb_row)
+        card.add_layout(emb_row)
 
-        self._detail_layout.addWidget(widget)
+        self._detail_layout.addWidget(card)
 
     # ------------------------------------------------------------------ #
     # Helpers                                                               #

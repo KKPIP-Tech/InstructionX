@@ -1,23 +1,32 @@
 /* ═════════════════════════════════════════════════════════════════════════════
- * 进度条 (QProgressBar)
+ * 进度条 (QProgressBar) — 移植自 DemoUIDesign
  * ═════════════════════════════════════════════════════════════════════════════ */
 
-/* ─────────────────────────────────────────────────────────────────────────────
- * 进度条 (QProgressBar) - 确保与滑块对齐
- * ───────────────────────────────────────────────────────────────────────────── */
-
 QProgressBar {
-    border: none;
-    background: {borderLight};
-    border-radius: 3px;
-    height: 6px;
+    background: {progressBg};
+    border: 1px solid {progressBorder};
+    border-radius: 4px;
     text-align: center;
     color: {textPrimary};
+    font-size: 11px;
+    font-weight: 600;
 }
 
 QProgressBar::chunk {
     background: {accent};
     border-radius: 3px;
+}
+
+QProgressBar::chunk[success="true"] {
+    background: {progressSuccess};
+}
+
+QProgressBar::chunk[warning="true"] {
+    background: {progressWarning};
+}
+
+QProgressBar::chunk[error="true"] {
+    background: {progressError};
 }
 
 QProgressBar:disabled {
