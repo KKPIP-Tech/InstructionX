@@ -211,6 +211,8 @@ __marimo__/
 
 .config/
 .claude/
+.kimi/
+temp/
 data/
 .mcp_sdk_temp/
 
@@ -224,3 +226,4 @@ config/*
 
 plugin/*
 !.gitkeep
+
