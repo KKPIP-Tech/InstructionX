@@ -57,3 +57,26 @@ QLabel[captionBold="true"] {
     font-weight: bold;
     font-size: 10px;
 }
+
+/* ═════════════════════════════════════════════════════════════════════════════
+ * 状态语义化标签
+ * ═════════════════════════════════════════════════════════════════════════════ */
+
+QLabel[class="status-success"] {
+    color: {progressSuccess};
+    font-weight: 600;
+}
+
+QLabel[class="status-error"] {
+    color: {progressError};
+    font-weight: 600;
+}
+
+QLabel[class="status-warning"] {
+    color: {progressWarning};
+    font-weight: 600;
+}
+
+QLabel[class="status-info"] {
+    color: {textSecondary};
+}
