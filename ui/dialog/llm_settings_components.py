@@ -243,7 +243,7 @@ class CollapsibleGroup(QWidget):
         """)
         
         header_layout = QHBoxLayout(self.header)
-        header_layout.setContentsMargins(12, 10, 12, 10)
+        header_layout.setContentsMargins(12, 8, 12, 8)
         
         self.arrow_label = QLabel("▼")
         self.arrow_label.setObjectName("collapsibleArrow")
@@ -515,6 +515,48 @@ class IconLineEdit(QWidget):
         self.line_edit.setEchoMode(mode)
 
 
+class ConfigCard(QWidget):
+    """配置卡片容器 - 圆角边框 + 背景色分组."""
+    
+    def __init__(self, title: str = "", parent=None):
+        super().__init__(parent)
+        colors = get_current_colors()
+        bg = colors.get('cardBackground', colors.get('window', '#FFFFFF'))
+        border = colors.get('borderLight', '#E0E0E0')
+        text_primary = colors.get('textPrimary', '#333333')
+        
+        self.setStyleSheet(f"""
+            QWidget#ConfigCard {{
+                background-color: {bg};
+                border: 1px solid {border};
+                border-radius: 8px;
+            }}
+        """)
+        self.setObjectName("ConfigCard")
+        
+        self.main_layout = QVBoxLayout(self)
+        self.main_layout.setContentsMargins(16, 12, 16, 12)
+        self.main_layout.setSpacing(12)
+        
+        if title:
+            title_label = QLabel(title)
+            font = QFont()
+            font.setPointSize(11)
+            font.setBold(True)
+            title_label.setFont(font)
+            title_label.setStyleSheet(f"color: {text_primary};")
+            self.main_layout.addWidget(title_label)
+    
+    def add_widget(self, widget: QWidget):
+        self.main_layout.addWidget(widget)
+    
+    def add_layout(self, layout):
+        self.main_layout.addLayout(layout)
+    
+    def add_stretch(self):
+        self.main_layout.addStretch()
+
+
 class SettingsCategoryItem(QWidget):
     """左侧设置分类项."""
 
@@ -702,10 +744,10 @@ class ModelDetailItem(QWidget):
             }
         else:
             tag_colors = {
-                "category": ("#2196F3", "#E3F2FD"),
-                "vision": ("#9C27B0", "#F3E5F5"),
-                "thinking": ("#FF9800", "#FFF3E0"),
-                "tools": ("#009688", "#E0F2F1"),
+                "category": ("#1565C0", "#E3F2FD"),
+                "vision": ("#6A1B9A", "#F3E5F5"),
+                "thinking": ("#E65100", "#FFF3E0"),
+                "tools": ("#00695C", "#E0F2F1"),
             }
         
         text_color, bg_color = tag_colors.get(tag_type, ("#666666", "#F5F5F5"))
