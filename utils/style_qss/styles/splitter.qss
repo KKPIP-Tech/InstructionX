@@ -1,23 +1,20 @@
 /* ═════════════════════════════════════════════════════════════════════════════
- * 分割器 (QSplitter)
+ * 分割器 (QSplitter) — 移植自 DemoUIDesign
  * ═════════════════════════════════════════════════════════════════════════════ */
 
-QSplitter {
-    background-color: {window};
-}
-
 QSplitter::handle {
-    background-color: {borderLight};
+    background-color: {splitterHandle};
 }
 
 QSplitter::handle:horizontal {
-    width: 1px;
+    width: 2px;
 }
 
 QSplitter::handle:vertical {
-    height: 1px;
+    height: 2px;
 }
 
-QSplitter::handle:hover {
+QSplitter::handle:horizontal:hover,
+QSplitter::handle:vertical:hover {
     background-color: {accent};
 }
