@@ -200,8 +200,8 @@ class InstructionXMainWindow(QMainWindow):
         self.skills_panel = SkillsPanel(self._container)
         self.skills_panel.set_plugin_manager(self.plugin_manager)
         self.skills_panel.load_skills_from_manager()
-        self.skills_panel.setMaximumHeight(115)  # 设置最大高度
-        self.skills_panel.setMinimumHeight(105)  # 设置最小高度
+        self.skills_panel.setMaximumHeight(135)  # 设置最大高度
+        self.skills_panel.setMinimumHeight(125)  # 设置最小高度
         content_layout.addWidget(self.skills_panel)
 
         # 创建工作区（可伸缩）
