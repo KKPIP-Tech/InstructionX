@@ -119,6 +119,24 @@ class QssRegistry:
         """获取指定名称的 QSS"""
         return cls._styles.get(name, '')
 
+    @classmethod
+    def apply_variables(cls, qss: str, theme: str = None) -> str:
+        """
+        对给定的 QSS 字符串替换颜色变量
+
+        Args:
+            qss: 包含 {variable} 的 QSS 字符串
+            theme: 主题类型，None 则使用当前全局主题
+
+        Returns:
+            变量替换后的 QSS 字符串
+        """
+        if theme is None:
+            from . import get_style_qss
+            theme = get_style_qss().theme()
+        colors = get_color_dict(theme)
+        return cls._replace_variables(qss, colors)
+
 
 def register_styles():
     """自动注册所有样式文件"""
