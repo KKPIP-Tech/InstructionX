@@ -20,8 +20,36 @@ class StyleQSSColors:
             'toolTipText': '#000000',
 
             # 技能面板专用
-            'skillPanel': '#F5F5F5',
+            'skillPanel': '#F5F7FA',
             'skillPanelTab': '#E8E8E8',
+            'skillPanelHeaderBg': '#EBEEF2',
+            'skillButtonHover': '#E8F4FD',
+            'skillButtonActiveText': '#0078D4',
+
+            # 列表控件专用
+            'listBg': '#FFFFFF',
+            'listBorder': '#D8D8D8',
+            'listText': '#000000',
+            'treeBranchArrow': '#6B7280',
+
+            # 卡片/面板专用
+            'cardBackground': '#FFFFFF',
+            'codeBackground': '#F5F5F5',
+
+            # 分割器专用
+            'splitterHandle': '#E5E7EB',
+
+            # 进度条专用
+            'progressBg': '#F8F9FA',
+            'progressBorder': '#E5E7EB',
+            'progressSuccess': '#10B981',
+            'progressWarning': '#F59E0B',
+            'progressError': '#EF4444',
+
+            # 菜单/工具栏专用
+            'menuBarBg': '#F0F2F5',
+            'menuPopupBg': '#FFFFFF',
+            'accentDim': 'rgba(0, 120, 212, 0.08)',
 
             # 控件色
             'button': '#F3F3F3',
@@ -80,8 +108,36 @@ class StyleQSSColors:
             'toolTipText': '#FFFFFF',
 
             # 技能面板专用
-            'skillPanel': "#454545",
+            'skillPanel': '#2C2C2C',
             'skillPanelTab': '#6A6A6A',
+            'skillPanelHeaderBg': '#363636',
+            'skillButtonHover': '#1A3A5C',
+            'skillButtonActiveText': '#FFFFFF',
+
+            # 列表控件专用
+            'listBg': '#1E1E1E',
+            'listBorder': '#2A2A2C',
+            'listText': '#B0B8BC',
+            'treeBranchArrow': '#9CA3AF',
+
+            # 卡片/面板专用
+            'cardBackground': '#2C2C2C',
+            'codeBackground': '#1E1E1E',
+
+            # 分割器专用
+            'splitterHandle': '#21262D',
+
+            # 进度条专用
+            'progressBg': '#161B22',
+            'progressBorder': '#21262D',
+            'progressSuccess': '#10B981',
+            'progressWarning': '#F59E0B',
+            'progressError': '#EF4444',
+
+            # 菜单/工具栏专用
+            'menuBarBg': '#22272E',
+            'menuPopupBg': '#1C2128',
+            'accentDim': 'rgba(0, 120, 212, 0.1)',
 
             # 控件色
             'button': '#2C2C2C',
@@ -115,7 +171,7 @@ class StyleQSSColors:
 
             # 专用
             'accent': '#0078D4',
-            'accentLight': '#4CC2FF',
+            'accentLight': '#1A3A5C',
             'accentDark': '#005A9E',
 
             # 控件状态填充
