@@ -221,3 +221,6 @@ data/*
 # 忽略 config 目录（保留 .gitkeep 以便在需要时可以恢复跟踪）
 config/*
 !.gitkeep
+
+plugin/
+!__init__.py
