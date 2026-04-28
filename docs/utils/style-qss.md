@@ -231,10 +231,53 @@ sequenceDiagram
 
 | 变量 | 浅色主题 | 深色主题 | 说明 |
 |------|---------|---------|------|
-| `skillPanel` | `#F5F5F5` | `#454545` | SkillsPanel 主背景 |
-| `skillPanelTab` | `#E8E8E8` | `#6A6A6A` | SkillsPanel Tab 背景 |
+| `skillPanel` | `#F5F7FA` | `#2C2C2C` | SkillsPanel 主背景 |
+| `skillPanelTab` | `#E8E8E8` | `#6A6A6A` | SkillsPanel Tab 切换按钮背景 |
+| `skillPanelHeaderBg` | `#EBEEF2` | `#363636` | 标题栏背景 |
+| `skillButtonHover` | `#E8F4FD` | `#1A3A5C` | 按钮悬停背景 |
+| `skillButtonActiveText` | `#0078D4` | `#FFFFFF` | 激活按钮文字色 |
 
-### 4.7 圆角
+### 4.7 列表控件专用色
+
+| 变量 | 浅色主题 | 深色主题 | 说明 |
+|------|---------|---------|------|
+| `listBg` | `#FFFFFF` | `#1E1E1E` | 列表视图背景 |
+| `listBorder` | `#D8D8D8` | `#2A2A2C` | 列表边框色 |
+| `listText` | `#000000` | `#B0B8BC` | 列表文字色 |
+| `treeBranchArrow` | `#6B7280` | `#9CA3AF` | 树形视图分支箭头 |
+
+### 4.8 卡片/面板专用色
+
+| 变量 | 浅色主题 | 深色主题 | 说明 |
+|------|---------|---------|------|
+| `cardBackground` | `#FFFFFF` | `#2C2C2C` | 卡片背景 |
+| `codeBackground` | `#F5F5F5` | `#1E1E1E` | 代码块背景 |
+
+### 4.9 分割器专用色
+
+| 变量 | 浅色主题 | 深色主题 | 说明 |
+|------|---------|---------|------|
+| `splitterHandle` | `#E5E7EB` | `#21262D` | 分割器拖动手柄 |
+
+### 4.10 进度条专用色
+
+| 变量 | 浅色主题 | 深色主题 | 说明 |
+|------|---------|---------|------|
+| `progressBg` | `#F8F9FA` | `#161B22` | 进度条轨道背景 |
+| `progressBorder` | `#E5E7EB` | `#21262D` | 进度条边框 |
+| `progressSuccess` | `#10B981` | `#10B981` | 成功状态 |
+| `progressWarning` | `#F59E0B` | `#F59E0B` | 警告状态 |
+| `progressError` | `#EF4444` | `#EF4444` | 错误状态 |
+
+### 4.11 菜单/工具栏专用色
+
+| 变量 | 浅色主题 | 深色主题 | 说明 |
+|------|---------|---------|------|
+| `menuBarBg` | `#F0F2F5` | `#22272E` | 菜单栏背景 |
+| `menuPopupBg` | `#FFFFFF` | `#1C2128` | 弹出菜单背景 |
+| `accentDim` | `rgba(0, 120, 212, 0.08)` | `rgba(0, 120, 212, 0.1)` | 选中态淡化背景 |
+
+### 4.12 圆角
 
 | 变量 | 值 | 说明 |
 |------|-----|------|
@@ -351,6 +394,12 @@ qss = QssRegistry.get_all('light')
 
 # 获取单个样式
 button_qss = QssRegistry.get('button')
+
+# 注册自定义样式（可指定优先级，数字越小越先加载）
+QssRegistry.register('my_style', 'QPushButton { background: red; }', priority=30)
+
+# 批量替换 QSS 中的颜色变量
+colored_qss = QssRegistry.apply_variables('QPushButton { background: {accent}; }', 'light')
 
 # 清空样式（不常用）
 QssRegistry.clear()
@@ -551,7 +600,7 @@ QPushButton {
 }
 ```
 
-该文件在加载顺序中紧随 base 之后（优先级 10），可覆盖 base 之后的所有默认样式。注意：实际不使用 `registry.py` 的 `_get_priority()` 方法，优先级由 `_STYLE_FILES` 列表索引决定。
+该文件在加载顺序中紧随 base 之后（优先级 20），可覆盖 base 之后的所有默认样式。注意：`QssRegistry.register()` 实际使用 `_get_priority()` 方法来确定样式的加载顺序，数字越小越先加载。
 
 ---
 

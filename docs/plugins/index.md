@@ -9,7 +9,6 @@
 ```
 plugins/
 ├── index.md                    # 本文档 - 插件索引
-├── official-plugins.md         # 官方插件说明
 ├── thirdparty-plugins.md       # 第三方插件说明
 └── llm-integration-guide.md    # LLM 集成开发指南
 ```
@@ -24,7 +23,6 @@ InstructionX 不再捆绑预装插件，而是通过 **GitHub 插件安装器** 
 
 使用 **GitHub Plugin Installer** 从社区仓库安装插件：
 
-- **官方插件仓库**: [KKPIP-Tech/InstructionX-Plugins](https://github.com/KKPIP-Tech/InstructionX-Plugins)（安装到 `plugin/` 目录）
 - **第三方插件**: 任何包含 `IXPlugin.json` 或 `IXRepo.json` 的 GitHub 仓库（安装到 `custom_plugin/` 目录）
 
 详细说明见 [GitHub 插件安装器](../core/plugin-system/plugin-installer.md)。
@@ -35,7 +33,6 @@ InstructionX 不再捆绑预装插件，而是通过 **GitHub 插件安装器** 
 
 | 文档 | 说明 |
 |------|------|
-| [官方插件](official-plugins.md) | 官方插件仓库及 `plugin/` 目录说明 |
 | [第三方插件](thirdparty-plugins.md) | 第三方插件仓库及 `custom_plugin/` 目录说明 |
 | [LLM 集成开发指南](llm-integration-guide.md) | 学习如何在插件中使用 LLM 服务 |
 | [插件系统概述](../core/plugin-system/overview.md) | 插件系统架构与核心概念 |

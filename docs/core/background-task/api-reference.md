@@ -42,7 +42,7 @@ class TaskStatus(Enum):
     STOPPED = "stopped"      # 已停止（长期任务被主动停止）
 ```
 
-> **注意**：`STOPPED = "stopped"` 状态在 `core/interfaces/i_task_manager.py` 和 `core/task/task_model.py` 中均有定义，用于表示长期任务被主动停止的状态。
+> **注意**：`STOPPED = "stopped"` 状态在枚举中定义，但目前代码中尚未实际赋值。该状态预留用于长期任务的主动停止场景。
 
 ### TaskThreadLocal
 
@@ -708,6 +708,7 @@ scheduled_id = manager.register_scheduled_task(
 
 # 4. 长期任务
 import threading
+import time
 
 # 停止标志
 stop_flag = threading.Event()

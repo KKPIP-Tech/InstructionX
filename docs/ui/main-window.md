@@ -23,7 +23,7 @@ graph TB
         CL[_container_layout - 垂直布局 margins-8,0,8,8]
         TitleBar[CustomTitleBar - 固定40px - Logo+标题+菜单栏+窗口控制]
         Content[content_layout - 中间层VBox spacing-5]
-        SP[SkillsPanel - 技能面板 105-115px]
+        SP[SkillsPanel - 技能面板 125-135px]
         WA[WorkArea - 工作区]
     end
 
@@ -144,8 +144,8 @@ set_style_qss_theme(QApplication.instance(), theme)
 ### 3.4 技能面板 (SkillsPanel)
 
 - **位置**: 窗口顶部（标题栏下方）
-- **高度**: 最小 105px，最大 115px
-- **结构**: `QTabWidget`，包含两个标签页
+- **高度**: 最小 125px，最大 135px
+- **结构**: `QStackedWidget` + 自定义 Pill 切换按钮（非 QTabWidget），包含两个标签页
   - **官方功能**: 来自 `plugin/` 目录的插件
   - **第三方功能**: 来自 `custom_plugin/` 目录的插件
   - 每个标签页内部为 `QScrollArea` + 横向 `QHBoxLayout` 容器，容纳 `SkillButton`
@@ -154,19 +154,21 @@ set_style_qss_theme(QApplication.instance(), theme)
 ```mermaid
 graph TB
     subgraph SkillsPanel [SkillsPanel]
-        TW[QTabWidget]
+        SW[QStackedWidget]
+        OB[官方功能 Pill 按钮]
+        TB[第三方功能 Pill 按钮]
     end
-    TW --> Tab1[官方功能 tab]
-    TW --> Tab2[第三方功能 tab]
-    Tab1 --> VW1[QWidget - QVBoxLayout]
-    Tab2 --> VW2[QWidget - QVBoxLayout]
-    VW1 --> SA1[QScrollArea]
-    VW2 --> SA2[QScrollArea]
+    OB -->|切换| SW
+    TB -->|切换| SW
+    SW --> SA1[QScrollArea]
+    SW --> SA2[QScrollArea]
     SA1 --> C1[container - HBoxLayout]
     SA2 --> C2[container - HBoxLayout]
     C1 --> B1[SkillButton × N]
     C2 --> B2[SkillButton × M]
 ```
+
+> **注意**: 标签切换使用自定义 Pill 按钮 + `QStackedWidget` 实现，而非 `QTabWidget`。
 
 ### 3.5 工作区 (WorkArea)
 
@@ -281,8 +283,8 @@ def _create_main_layout(self) -> None:
     self.skills_panel = SkillsPanel(self._container)
     self.skills_panel.set_plugin_manager(self.plugin_manager)
     self.skills_panel.load_skills_from_manager()
-    self.skills_panel.setMaximumHeight(115)
-    self.skills_panel.setMinimumHeight(105)
+    self.skills_panel.setMaximumHeight(135)
+    self.skills_panel.setMinimumHeight(125)
     content_layout.addWidget(self.skills_panel)
 
     # 创建工作区（可伸缩）
@@ -561,7 +563,7 @@ def changeEvent(self, event):
 | 标题栏高度 | 40px（固定） |
 | 容器圆角 | 8px（非最大化时） |
 | 内容布局间距 | 5px（SkillsPanel 与 WorkArea 之间） |
-| 技能面板高度 | 最小 105px，最大 115px |
+| 技能面板高度 | 最小 125px，最大 135px |
 | 边缘检测范围 | 8px（用于拖拽缩放） |
 
 ---

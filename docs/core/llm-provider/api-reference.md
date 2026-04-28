@@ -99,12 +99,14 @@ msg.to_dict()
 from core.llm.provider_interface import UsageInfo
 
 # 属性
-usage.input_tokens   # int | None: 输入 token 数
-usage.output_tokens  # int | None: 输出 token 数
-usage.total_tokens   # int | None: 总 token 数
-usage.input_cost     # float | None: 输入费用（元）
-usage.output_cost    # float | None: 输出费用（元）
-usage.total_cost     # float | None: 总费用（元）
+usage.input_tokens         # int | None: 输入 token 数
+usage.output_tokens        # int | None: 输出 token 数
+usage.total_tokens         # int | None: 总 token 数
+usage.input_cost           # float | None: 输入费用（元）
+usage.output_cost          # float | None: 输出费用（元）
+usage.total_cost           # float | None: 总费用（元）
+usage.cache_read_tokens    # int | None: 缓存命中读取的 token 数
+usage.cache_creation_tokens # int | None: 缓存命中所节省的 token 数（模型生成）
 ```
 
 > **注意**: `UsageInfo` 通常作为 `ChatResponse.usage` 字段返回，也可由 `ConversationManager.send_message()` 等方法直接获取。
@@ -409,8 +411,6 @@ classDiagram
         +str current_embedding_model
         +List models
         +bool is_healthy
-        +str last_error
-        +int rate_limit_rpm
     }
 
     class ModelInfo {
@@ -458,11 +458,9 @@ classDiagram
         +str current_embedding_model
         +List models
         +bool is_healthy
-        +str last_error
-        +int rate_limit_rpm
     }
 
-    note for ProviderInfo "ProviderInfo 描述一个运行时 Provider 实例\n由 LLMPluginService.get_available_providers() 返回\nis_healthy = 健康 / last_error = 最后错误信息"
+    note for ProviderInfo "ProviderInfo 描述一个运行时 Provider 实例\n由 LLMPluginService.get_available_providers() 返回"
 ```
 
 ## 4. LLMProvider 方法
@@ -1276,10 +1274,22 @@ def send_message(
     images: Optional[List[str]] = None,
     temperature: Optional[float] = None,
     max_tokens: Optional[int] = None,
+    tools: Optional[List[Dict]] = None,
 ) -> str
 ```
 
 同步发送消息，自动追加到对话历史。返回 LLM 响应内容。
+
+**参数**:
+
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| `conversation_id` | `str` | 对话 ID |
+| `content` | `str` | 消息内容 |
+| `images` | `Optional[List[str]]` | 图片 base64 列表（可选） |
+| `temperature` | `Optional[float]` | 采样温度 |
+| `max_tokens` | `Optional[int]` | 最大 token 数 |
+| `tools` | `Optional[List[Dict]]` | 工具定义列表（可选） |
 
 **示例**:
 ```python
@@ -1402,7 +1412,7 @@ def stream_chat(
 )
 ```
 
-流式版本 chat（无对话状态）。callback 签名: `(chunk: str, done: bool) -> None`。
+流式版本 chat（无对话状态）。callback 签名: `(ChatResponse) -> None`，每次接收一个 `ChatResponse` 对象，通过 `chunk.content` 获取文本内容。
 
 ### 5.4 工具调用
 

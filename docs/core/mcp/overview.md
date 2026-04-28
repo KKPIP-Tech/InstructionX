@@ -137,7 +137,7 @@ flowchart TD
     subgraph CM [MCPClientManager]
         CONNECT["connect()\\n建立连接"]
         SESSION["ClientSession\\nMCP 会话"]
-        REGTools["_register_tools\\n注册到 ToolRegistry"]
+        REGTools["_create_connection()\\n注册到 ToolRegistry"]
     end
 
     subgraph TR [ToolRegistry]

@@ -125,7 +125,7 @@ class TaskStatus(Enum):
     STOPPED = "stopped"      # 已停止（长期任务被主动停止）
 ```
 
-> **注意**：`STOPPED` 状态仅用于长期任务，表示任务被主动停止。
+> **注意**：`STOPPED` 状态在 `TaskStatus` 枚举中定义，但目前代码中尚未实际赋值。该状态预留用于长期任务的主动停止场景。
 
 ### 3.2 状态转换图
 
@@ -136,11 +136,10 @@ stateDiagram-v2
     PENDING --> CANCELLED: 取消
     RUNNING --> COMPLETED: 成功
     RUNNING --> FAILED: 失败
-    RUNNING --> STOPPED: 主动停止（长期任务）
     COMPLETED --> [*]
     FAILED --> [*]
     CANCELLED --> [*]
-    STOPPED --> [*]
+    Note: STOPPED 状态预留但未在代码中实际赋值
 ```
 
 ---

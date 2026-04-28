@@ -75,7 +75,6 @@ docs/
 
 └── plugins/                         # 插件文档
     ├── index.md                     # 插件索引
-    ├── official-plugins.md          # 官方插件文档
     ├── thirdparty-plugins.md        # 第三方插件文档
     └── llm-integration-guide.md     # LLM 集成开发指南
 ```
@@ -113,8 +112,7 @@ docs/
 ### 插件参考
 
 18. **[插件文档](plugins/index.md)** - 所有插件总览
-19. **[官方插件](plugins/official-plugins.md)** - 11 个官方插件详解
-20. **[第三方插件](plugins/thirdparty-plugins.md)** - 4 个示例插件详解
+19. **[第三方插件](plugins/thirdparty-plugins.md)** - 第三方插件说明
 
 ---
 
@@ -124,7 +122,7 @@ docs/
 
 项目核心组件均采用单例模式，确保全局唯一性：
 
-- **PluginManager** - 插件管理器（官方插件和第三方插件的加载、注册、排序）
+- **PluginManager** - 插件管理器（插件的加载、注册、排序）
 - **DataProvider** - 数据提供者（数据持久化、发布/订阅、插件间通信）
 - **BackgroundTaskManager** - 后台任务管理器（同步/异步任务、定时任务、长期任务）
 - **LLMProvider** - LLM 核心层（多厂商 LLM 底层管理，通过 get_llm_provider() 获取）

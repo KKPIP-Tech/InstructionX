@@ -20,7 +20,7 @@ InstructionX 支持第三方插件。第三方插件通过 **GitHub 插件安装
 
 | GitHub 组织/用户 | 目标目录 |
 |----------------|---------|
-| `KKPIP-Tech` | `plugin/`（官方插件） |
+| `KKPIP-Tech` | `plugin/` |
 | 其他所有 | `custom_plugin/`（第三方插件） |
 
 ### 仓库要求
@@ -45,7 +45,6 @@ InstructionX 支持第三方插件。第三方插件通过 **GitHub 插件安装
 ## 相关文档
 
 - [插件索引](index.md)
-- [官方插件](official-plugins.md)
 - [插件系统概述](../core/plugin-system/overview.md)
 - [GitHub 插件安装器](../core/plugin-system/plugin-installer.md)
 - [插件开发指南](../core/plugin-system/plugin-development.md)

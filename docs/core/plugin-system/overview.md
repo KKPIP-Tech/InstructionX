@@ -79,10 +79,11 @@ def _load_plugin_from_directory(self, plugin_dir: Path) -> Optional[IPlugin]:
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
 
-    # 4. 查找 IPlugin 子类
+    # 4. 查找 IPlugin 子类（排除框架内置 IPlugin）
     for attr_name in dir(module):
         attr = getattr(module, attr_name)
         if isinstance(attr, type) and issubclass(attr, IPlugin) and attr is not IPlugin:
+            # 同时排除 core.interfaces.IPlugin 和 core.plugin.plugin_interface.IPlugin
             plugin_class = attr
             break
 
