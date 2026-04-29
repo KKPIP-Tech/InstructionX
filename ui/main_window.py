@@ -121,6 +121,10 @@ class InstructionXMainWindow(QMainWindow):
         self._resize_dir = None  # 当前 resize 方向
         self._resize_start = None  # resize 起始位置和窗口大小
 
+        # 开启鼠标追踪，确保 hover 状态下鼠标移动也能触发 mouseMoveEvent，
+        # 从而及时更新边缘 resize 光标
+        self.setMouseTracking(True)
+
     # ===============================================================
     # GUI 界面
     def _create_menus(self) -> None:

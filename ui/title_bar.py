@@ -102,6 +102,7 @@ class CustomTitleBar(QWidget):
         self._menu_bar_inserted = False
 
         self.setFixedHeight(40)
+        self.setMouseTracking(True)
         self._setup_ui()
 
     def _setup_ui(self):
@@ -252,30 +253,42 @@ class CustomTitleBar(QWidget):
     def mousePressEvent(self, event: QMouseEvent):
         if event.button() == Qt.MouseButton.LeftButton:
             self._drag_pos = event.globalPosition().toPoint()
+        super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event: QMouseEvent):
         if self._drag_pos and event.buttons() == Qt.MouseButton.LeftButton:
             delta = QPoint(event.globalPosition().toPoint() - self._drag_pos)
-            
+
             # 拖动时从最大化/全屏恢复
             if self._is_window_maximized_or_fullscreen():
                 self._restore_from_maximized(event.globalPosition().toPoint())
                 self._drag_pos = event.globalPosition().toPoint()
+                super().mouseMoveEvent(event)
                 return
-            
+
             self._parent_window.move(
                 self._parent_window.x() + delta.x(),
                 self._parent_window.y() + delta.y()
             )
             self._drag_pos = event.globalPosition().toPoint()
+            super().mouseMoveEvent(event)
+            return
+
+        # 不在拖拽时，让事件传播给父窗口，以便父窗口处理边缘 resize cursor
+        event.ignore()
+        super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event: QMouseEvent):
         self._drag_pos = None
+        # 传播事件给父窗口，确保父窗口能正确结束 edge-resize 并重置光标
+        event.ignore()
+        super().mouseReleaseEvent(event)
 
     def mouseDoubleClickEvent(self, event: QMouseEvent):
         """双击标题栏切换最大化"""
         if event.button() == Qt.MouseButton.LeftButton:
             self._toggle_maximize()
+        super().mouseDoubleClickEvent(event)
 
     # ========== 右键系统菜单 ==========
     def contextMenuEvent(self, event):
