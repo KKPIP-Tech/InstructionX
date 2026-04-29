@@ -31,13 +31,10 @@ QComboBox::drop-down {
 }
 
 QComboBox::down-arrow {
-    image: none;
-    border-left: 4px solid transparent;
-    border-right: 4px solid transparent;
-    border-top: 5px solid {buttonText};
+    image: url({comboBoxArrowDown});
+    width: 10px;
+    height: 6px;
     margin-right: 8px;
-    width: 0px;
-    height: 0px;
 }
 
 QComboBox QAbstractItemView {
