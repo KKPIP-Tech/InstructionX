@@ -5,9 +5,81 @@
 """
 
 import os
-from PySide6.QtWidgets import QWidget, QHBoxLayout, QLabel, QPushButton, QMenuBar, QApplication
+from PySide6.QtWidgets import (
+    QWidget, QHBoxLayout, QLabel, QPushButton, QMenuBar, QApplication, QMenu
+)
 from PySide6.QtCore import Qt, QPoint, Signal
-from PySide6.QtGui import QMouseEvent, QPixmap
+from PySide6.QtGui import QMouseEvent, QPixmap, QPainter, QColor, QPen, QAction, QPalette
+
+
+class IconButton(QPushButton):
+    """自定义图标按钮，使用 QPainter 绘制图标"""
+
+    def __init__(self, icon_type, parent=None):
+        super().__init__(parent)
+        self._icon_type = icon_type  # 'minimize', 'maximize', 'restore', 'close'
+        self._hover = False
+        self.setFlat(True)
+        self.setText("")
+
+    def set_icon_type(self, icon_type: str):
+        self._icon_type = icon_type
+        self.update()
+
+    def enterEvent(self, event):
+        self._hover = True
+        self.update()
+        super().enterEvent(event)
+
+    def leaveEvent(self, event):
+        self._hover = False
+        self.update()
+        super().leaveEvent(event)
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        rect = self.rect()
+        w, h = rect.width(), rect.height()
+        cx, cy = w / 2, h / 2
+
+        # 直接从主题系统获取当前主题的前景色，确保与 QSS 完全一致
+        from utils.style_qss import get_style_qss
+        text_primary = get_style_qss().colors().get('textPrimary', '#000000')
+        text_color = QColor(text_primary)
+
+        if self._icon_type == 'close':
+            if self._hover:
+                painter.fillRect(rect, QColor("#E81123"))
+            # 关闭按钮 hover 时强制白色，否则使用主题色
+            icon_color = QColor("#FFFFFF") if self._hover else text_color
+        else:
+            if self._hover:
+                # hover 背景：根据文字亮度选择对比色背景
+                is_light_text = text_color.lightness() > 128
+                hover_bg = QColor(255, 255, 255, 40) if is_light_text else QColor(0, 0, 0, 40)
+                painter.fillRect(rect, hover_bg)
+            icon_color = text_color
+
+        pen = QPen(icon_color)
+        # DPI 自适应线宽：100% 用 1.0px，150% 用 1.5px，200% 用 2.0px
+        pen.setWidthF(max(1.0, 1.0 * self.devicePixelRatioF()))
+        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        painter.setPen(pen)
+
+        if self._icon_type == 'minimize':
+            painter.drawLine(int(cx - 6), int(cy), int(cx + 6), int(cy))
+        elif self._icon_type == 'maximize':
+            painter.drawRect(int(cx - 5), int(cy - 5), 10, 10)
+        elif self._icon_type == 'restore':
+            painter.drawRect(int(cx - 3), int(cy - 5), 8, 8)
+            painter.drawRect(int(cx - 5), int(cy - 3), 8, 8)
+        elif self._icon_type == 'close':
+            painter.drawLine(int(cx - 5), int(cy - 5), int(cx + 5), int(cy + 5))
+            painter.drawLine(int(cx + 5), int(cy - 5), int(cx - 5), int(cy + 5))
+
+        painter.end()
 
 
 class CustomTitleBar(QWidget):
@@ -26,6 +98,8 @@ class CustomTitleBar(QWidget):
         self._parent_window = parent
         self._drag_pos = None
         self._is_maximized = False
+        self._pre_max_geometry = None  # 记录最大化前的窗口几何信息
+        self._menu_bar_inserted = False
 
         self.setFixedHeight(40)
         self._setup_ui()
@@ -92,21 +166,21 @@ class CustomTitleBar(QWidget):
         h = 40
         
         # 最小化按钮
-        self._btn_min = QPushButton("—")
+        self._btn_min = IconButton('minimize', self)
         self._btn_min.setFixedSize(w, h)
         self._btn_min.setObjectName("btnMinimize")
         self._btn_min.clicked.connect(self._parent_window.showMinimized)
         controls_layout.addWidget(self._btn_min)
 
         # 最大化/还原按钮
-        self._btn_max = QPushButton("□")
+        self._btn_max = IconButton('maximize', self)
         self._btn_max.setFixedSize(w, h)
         self._btn_max.setObjectName("btnMaximize")
         self._btn_max.clicked.connect(self._toggle_maximize)
         controls_layout.addWidget(self._btn_max)
 
         # 关闭按钮
-        self._btn_close = QPushButton("X")
+        self._btn_close = IconButton('close', self)
         self._btn_close.setFixedSize(w, h)
         self._btn_close.setObjectName("btnClose")
         self._btn_close.clicked.connect(self._parent_window.close)
@@ -114,19 +188,32 @@ class CustomTitleBar(QWidget):
 
         layout.addWidget(controls, alignment=Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
 
+    def _is_window_maximized_or_fullscreen(self):
+        """检查窗口是否处于最大化或全屏状态"""
+        return self._parent_window.isMaximized() or self._parent_window.isFullScreen()
+
     def _toggle_maximize(self):
-        """切换最大化/还原"""
-        if self._is_maximized:
-            self._parent_window.showNormal()
-            self._btn_max.setText("□")
+        """切换最大化/还原/全屏"""
+        if self._is_window_maximized_or_fullscreen():
+            if self._parent_window.isFullScreen():
+                self._parent_window.showNormal()
+            else:
+                self._parent_window.showNormal()
+            self._btn_max.set_icon_type("maximize")
             self._is_maximized = False
         else:
+            self._pre_max_geometry = self._parent_window.geometry()
             self._parent_window.showMaximized()
-            self._btn_max.setText("❐")
+            self._btn_max.set_icon_type("restore")
             self._is_maximized = True
 
     def set_menu_bar(self, menu_bar: QMenuBar):
-        """设置外部传入的菜单栏"""
+        """设置外部传入的菜单栏（幂等调用安全）"""
+        if self._menu_bar_inserted:
+            return
+        
+        self._menu_bar_inserted = True
+        
         # 从布局中移除占位 widget
         layout = self.layout()
         layout.removeWidget(self._menu_bar_placeholder)
@@ -140,7 +227,26 @@ class CustomTitleBar(QWidget):
     def set_maximized(self, maximized: bool):
         """设置最大化状态（供外部调用）"""
         self._is_maximized = maximized
-        self._btn_max.setText("❐" if maximized else "□")
+        self._btn_max.set_icon_type("restore" if maximized else "maximize")
+        if maximized and not self._pre_max_geometry:
+            self._pre_max_geometry = self._parent_window.geometry()
+
+    def _restore_from_maximized(self, global_pos: QPoint):
+        """从最大化/全屏状态恢复，并保持鼠标相对位置"""
+        if not self._is_window_maximized_or_fullscreen():
+            return
+        
+        geo = self._parent_window.geometry()
+        ratio = (global_pos.x() - geo.x()) / geo.width()
+        
+        self._parent_window.showNormal()
+        self._btn_max.set_icon_type("maximize")
+        self._is_maximized = False
+        
+        new_geo = self._parent_window.geometry()
+        new_x = global_pos.x() - int(new_geo.width() * ratio)
+        new_y = global_pos.y() - 20
+        self._parent_window.move(new_x, new_y)
 
     # ========== 鼠标事件处理（窗口拖拽） ==========
     def mousePressEvent(self, event: QMouseEvent):
@@ -150,17 +256,18 @@ class CustomTitleBar(QWidget):
     def mouseMoveEvent(self, event: QMouseEvent):
         if self._drag_pos and event.buttons() == Qt.MouseButton.LeftButton:
             delta = QPoint(event.globalPosition().toPoint() - self._drag_pos)
+            
+            # 拖动时从最大化/全屏恢复
+            if self._is_window_maximized_or_fullscreen():
+                self._restore_from_maximized(event.globalPosition().toPoint())
+                self._drag_pos = event.globalPosition().toPoint()
+                return
+            
             self._parent_window.move(
                 self._parent_window.x() + delta.x(),
                 self._parent_window.y() + delta.y()
             )
             self._drag_pos = event.globalPosition().toPoint()
-
-            # 拖动时从最大化恢复
-            if self._is_maximized:
-                self._parent_window.showNormal()
-                self._btn_max.setText("□")
-                self._is_maximized = False
 
     def mouseReleaseEvent(self, event: QMouseEvent):
         self._drag_pos = None
@@ -169,3 +276,48 @@ class CustomTitleBar(QWidget):
         """双击标题栏切换最大化"""
         if event.button() == Qt.MouseButton.LeftButton:
             self._toggle_maximize()
+
+    # ========== 右键系统菜单 ==========
+    def contextMenuEvent(self, event):
+        """右键标题栏显示系统菜单"""
+        menu = QMenu(self)
+        
+        is_max = self._parent_window.isMaximized()
+        
+        restore_action = QAction("还原(R)", self)
+        restore_action.setEnabled(is_max)
+        restore_action.triggered.connect(self._parent_window.showNormal)
+        menu.addAction(restore_action)
+        
+        move_action = QAction("移动(M)", self)
+        move_action.setEnabled(not is_max)
+        # 移动功能：模拟系统移动模式
+        move_action.triggered.connect(self._start_system_move)
+        menu.addAction(move_action)
+        
+        size_action = QAction("大小(S)", self)
+        size_action.setEnabled(not is_max)
+        # 大小调整通过边缘 resize 已实现
+        menu.addAction(size_action)
+        menu.addSeparator()
+        
+        minimize_action = QAction("最小化(N)", self)
+        minimize_action.triggered.connect(self._parent_window.showMinimized)
+        menu.addAction(minimize_action)
+        
+        maximize_action = QAction("最大化(X)", self)
+        maximize_action.setEnabled(not is_max)
+        maximize_action.triggered.connect(self._parent_window.showMaximized)
+        menu.addAction(maximize_action)
+        menu.addSeparator()
+        
+        close_action = QAction("关闭(C)", self)
+        close_action.triggered.connect(self._parent_window.close)
+        menu.addAction(close_action)
+        
+        menu.exec(event.globalPos())
+    
+    def _start_system_move(self):
+        """开始模拟系统移动模式"""
+        self._drag_pos = self._parent_window.mapToGlobal(self._parent_window.rect().center())
+
