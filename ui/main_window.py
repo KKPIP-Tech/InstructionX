@@ -9,6 +9,8 @@ from copy import deepcopy
 import time
 from typing import Optional, Any, List, Dict
 from enum import Enum
+import ctypes
+from ctypes import wintypes
 
 import cv2
 import numpy as np
@@ -19,10 +21,10 @@ from PySide6.QtWidgets import (
     QMainWindow, QWidget, QSplitter,
     QHBoxLayout, QVBoxLayout, QLayoutItem,
     QFileDialog, QMessageBox, QDialog, QPushButton, QLabel,
-    QApplication, QMenu
+    QApplication, QMenu, QGraphicsDropShadowEffect
 )
 from PySide6.QtGui import (
-    QAction, QIcon, QCursor, QMouseEvent
+    QAction, QIcon, QCursor, QMouseEvent, QColor
 )
 from PySide6.QtCore import (
     Qt, QDateTime, QThread,
@@ -106,6 +108,13 @@ class InstructionXMainWindow(QMainWindow):
 
         # 应用容器样式
         self._update_container_style()
+
+        # 创建 Qt 阴影效果（替代 DWM 原生阴影，避免 WM_NCCALCSIZE 坐标错位）
+        self._shadow_effect = QGraphicsDropShadowEffect(self)
+        self._shadow_effect.setBlurRadius(20)
+        self._shadow_effect.setColor(QColor(0, 0, 0, 80))
+        self._shadow_effect.setOffset(0, 4)
+        self._container.setGraphicsEffect(self._shadow_effect)
 
         # 边缘 resize 相关变量
         self._resize_margin = 8  # 边缘检测区域宽度
@@ -504,16 +513,18 @@ class InstructionXMainWindow(QMainWindow):
         window_bg = colors.get('window', '#202020')
         border_color = colors.get('borderLight', '#3C3C3C')
 
-        if self.isMaximized():
-            # 最大化时移除圆角
+        if self.isMaximized() or self.isFullScreen():
+            # 最大化/全屏时移除圆角和阴影
             self._container.setStyleSheet(f"""
                 QWidget#mainContainer {{
                     background-color: {window_bg};
                     border-radius: 0px;
                 }}
             """)
+            if hasattr(self, '_shadow_effect') and self._shadow_effect:
+                self._shadow_effect.setEnabled(False)
         else:
-            # 还原时显示圆角
+            # 还原时显示圆角和阴影
             self._container.setStyleSheet(f"""
                 QWidget#mainContainer {{
                     background-color: {window_bg};
@@ -521,14 +532,24 @@ class InstructionXMainWindow(QMainWindow):
                     border: 1px solid {border_color};
                 }}
             """)
+            if hasattr(self, '_shadow_effect') and self._shadow_effect:
+                self._shadow_effect.setEnabled(True)
+
+    def nativeEvent(self, eventType, message):
+        """
+        保留原生事件接口，当前不拦截任何消息。
+        先前拦截 WM_NCCALCSIZE 会导致 Qt 与 Windows 坐标系错位，
+        阴影改用 QGraphicsDropShadowEffect 实现。
+        """
+        return super().nativeEvent(eventType, message)
 
     def changeEvent(self, event):
-        """监听窗口状态变化，更新标题栏按钮"""
+        """监听窗口状态变化，更新标题栏按钮和阴影"""
         if event.type() == event.Type.WindowStateChange:
             colors = self._style_qss.colors()
             window_bg = colors.get('window', '#202020')
 
-            if self.isMaximized():
+            if self.isMaximized() or self.isFullScreen():
                 self._title_bar.set_maximized(True)
                 self._container.setStyleSheet(f"""
                     QWidget#mainContainer {{
@@ -536,6 +557,8 @@ class InstructionXMainWindow(QMainWindow):
                         border-radius: 0px;
                     }}
                 """)
+                if hasattr(self, '_shadow_effect') and self._shadow_effect:
+                    self._shadow_effect.setEnabled(False)
             else:
                 self._title_bar.set_maximized(False)
                 border_color = colors.get('borderLight', '#3C3C3C')
@@ -546,6 +569,8 @@ class InstructionXMainWindow(QMainWindow):
                         border: 1px solid {border_color};
                     }}
                 """)
+                if hasattr(self, '_shadow_effect') and self._shadow_effect:
+                    self._shadow_effect.setEnabled(True)
         super().changeEvent(event)
 
     # ===============================================================
