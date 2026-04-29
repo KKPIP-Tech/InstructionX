@@ -2,7 +2,10 @@
 StyleQSS 颜色定义
 """
 
-from PySide6.QtGui import QColor
+import base64
+import os
+from PySide6.QtGui import QColor, QImage, QPainter, QPolygonF
+from PySide6.QtCore import Qt, QPointF, QByteArray, QBuffer, QIODevice
 
 
 class StyleQSSColors:
@@ -216,7 +219,52 @@ class StyleQSSColors:
         return colors.get(name, '#000000')
 
 
+def _ensure_arrow_images(theme: str, colors: dict) -> dict:
+    """生成主题色箭头 PNG 文件并返回绝对路径字典（正斜杠格式）"""
+    assets_dir = os.path.join(os.path.dirname(__file__), 'assets', 'arrows')
+    os.makedirs(assets_dir, exist_ok=True)
+
+    arrows = {
+        'spinBoxArrowUp': ('windowText', 'up'),
+        'spinBoxArrowDown': ('windowText', 'down'),
+        'comboBoxArrowDown': ('buttonText', 'down'),
+    }
+
+    result = {}
+    for var_name, (color_key, direction) in arrows.items():
+        color = colors.get(color_key, '#000000')
+        filename = f"{var_name}_{theme}.png"
+        filepath = os.path.join(assets_dir, filename)
+
+        if not os.path.exists(filepath):
+            img = QImage(10, 6, QImage.Format_ARGB32)
+            img.fill(Qt.transparent)
+            painter = QPainter(img)
+            painter.setRenderHint(QPainter.Antialiasing)
+            painter.setBrush(QColor(color))
+            painter.setPen(Qt.NoPen)
+
+            if direction == 'down':
+                polygon = QPolygonF([
+                    QPointF(0, 0), QPointF(10, 0), QPointF(5, 6)
+                ])
+            else:
+                polygon = QPolygonF([
+                    QPointF(0, 6), QPointF(10, 6), QPointF(5, 0)
+                ])
+            painter.drawPolygon(polygon)
+            painter.end()
+            img.save(filepath)
+
+        result[var_name] = filepath.replace('\\', '/')
+
+    return result
+
+
 # 导出颜色常量供 QSS 使用
 def get_color_dict(theme: str = 'light') -> dict:
     """获取颜色字典，用于 QSS 变量替换"""
-    return StyleQSSColors.get_colors(theme)
+    colors = StyleQSSColors.get_colors(theme)
+    arrow_paths = _ensure_arrow_images(theme, colors)
+    colors.update(arrow_paths)
+    return colors
