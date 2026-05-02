@@ -1,0 +1,17 @@
+/* ═════════════════════════════════════════════════════════════════════════════
+ * 主窗口 (QMainWindow)
+ * ═════════════════════════════════════════════════════════════════════════════ */
+
+QMainWindow {
+    background-color: {window};
+}
+
+QMainWindow::separator {
+    background-color: {borderLight};
+    width: 1px;
+    height: 1px;
+}
+
+QMainWindow::separator:hover {
+    background-color: {accent};
+}

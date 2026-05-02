@@ -1,0 +1,11 @@
+/* ═════════════════════════════════════════════════════════════════════════════
+ * 工具提示 (QToolTip)
+ * ═════════════════════════════════════════════════════════════════════════════ */
+
+QToolTip, QTipLabel {
+    background-color: {toolTipBase};
+    border: 1px solid {border};
+    border-radius: {radius};
+    padding: 3px 6px;
+    color: {toolTipText};
+}

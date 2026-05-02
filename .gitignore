@@ -205,3 +205,27 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# VS Code
+.vscode
+
+.config/
+.claude/
+.kimi/
+temp/
+data/
+.mcp_sdk_temp/
+
+# 忽略 data 目录（保留 .gitkeep 以便在需要时可以恢复跟踪）
+data/*
+!.gitkeep
+
+# 忽略 config 目录（保留 .gitkeep 以便在需要时可以恢复跟踪）
+config/*
+!.gitkeep
+
+
+plugin/
+!__init__.py
+!.gitkeep
+

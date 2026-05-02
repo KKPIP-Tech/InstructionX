@@ -1,0 +1,49 @@
+/* ═════════════════════════════════════════════════════════════════════════════
+ * 基础设置
+ * ═════════════════════════════════════════════════════════════════════════════ */
+
+/* 全局重置 */
+* {
+    outline: none;
+}
+
+/* 基础窗口 */
+QWidget {
+    font-family: "Segoe UI", "Microsoft YaHei", "PingFang SC", sans-serif;
+    font-size: 12px;
+}
+
+QMainWindow, QDialog, QMessageBox {
+    background-color: {window};
+}
+
+
+/* 通用框架 */
+QFrame, QStackedWidget, QScrollArea {
+    background-color: {window};
+}
+
+QFrame[frameShape="4"], QFrame[frameShape="5"] {
+    border: 1px solid {borderLight};
+    border-radius: {radius};
+}
+
+/* 聚焦边框动画 */
+QWidget:focus {
+    outline: none;
+}
+
+QWidget:focus-visible {
+    outline: 2px solid {accent};
+    outline-offset: -2px;
+}
+
+/* 拖拽区域 */
+QWidget[Drag="true"] {
+    background-color: {controlFillHover};
+}
+
+/* 载入指示器 */
+QLoadingIndicator {
+    color: {accent};
+}

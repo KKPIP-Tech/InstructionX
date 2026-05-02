@@ -1,0 +1,230 @@
+/* ═════════════════════════════════════════════════════════════════════════════
+ * 列表视图 (QListView, QTreeView, QTableView, QColumnView)
+ * ═════════════════════════════════════════════════════════════════════════════ */
+
+/* 通用控件基础 */
+QListView, QTreeView, QTableView, QColumnView {
+    background-color: {listBg};
+    border: none;
+    border-radius: {radiusLarge};
+    color: {windowText};
+    show-decoration-selected: 1;
+    outline: none;
+    gridline-color: transparent;
+}
+
+/* ═════════════════════════════════════════════════════════════════════════════
+ * QListView / QListWidget
+ * ═════════════════════════════════════════════════════════════════════════════ */
+
+QListView {
+    icon-size: 24px;
+    padding: 4px 0px;
+}
+
+QListView::item {
+    padding: 8px 12px;
+    margin: 0px;
+    border-radius: 0px;
+    border-bottom: 1px solid {listBorder};
+    min-height: 20px;
+}
+
+QListView::item:hover {
+    background-color: {controlFillHover};
+}
+
+/* 选中态：左侧 accent 竖条 + 浅蓝背景 + 蓝色文字 */
+QListView::item:selected {
+    background-color: {controlFillSelected};
+    color: {accent};
+    border: none;
+    border-left: 3px solid {accent};
+    border-bottom: 1px solid {listBorder};
+}
+
+QListView::item:selected:!active {
+    background-color: {controlFillSelected};
+    color: {accent};
+    border: none;
+    border-left: 3px solid {accent};
+    border-bottom: 1px solid {listBorder};
+}
+
+/* QListWidget 显式补充 */
+QListWidget::item {
+    padding: 8px 12px;
+    margin: 0px;
+    border-radius: 0px;
+    border-bottom: 1px solid {listBorder};
+    min-height: 20px;
+}
+
+QListWidget::item:hover {
+    background-color: {controlFillHover};
+}
+
+QListWidget::item:selected {
+    background-color: {controlFillSelected};
+    color: {accent};
+    border: none;
+    border-left: 3px solid {accent};
+    border-bottom: 1px solid {listBorder};
+}
+
+QListWidget::item:selected:!active {
+    background-color: {controlFillSelected};
+    color: {accent};
+    border: none;
+    border-left: 3px solid {accent};
+    border-bottom: 1px solid {listBorder};
+}
+
+/* ═════════════════════════════════════════════════════════════════════════════
+ * QTreeView / QTreeWidget
+ * ═════════════════════════════════════════════════════════════════════════════ */
+
+QTreeView {
+    icon-size: 20px;
+    padding: 4px 0px;
+}
+
+QTreeView::item {
+    padding: 6px 10px;
+    margin: 0px 4px;
+    border-radius: 0px;
+    border-bottom: 1px solid {listBorder};
+    min-height: 18px;
+}
+
+QTreeView::item:hover {
+    background-color: {controlFillHover};
+}
+
+QTreeView::item:selected {
+    background-color: {controlFillSelected};
+    color: {accent};
+    border: none;
+    border-left: 3px solid {accent};
+    border-bottom: 1px solid {listBorder};
+}
+
+QTreeView::item:selected:!active {
+    background-color: {controlFillSelected};
+    color: {accent};
+    border: none;
+    border-left: 3px solid {accent};
+    border-bottom: 1px solid {listBorder};
+}
+
+QTreeWidget::item {
+    padding: 6px 10px;
+    margin: 0px 4px;
+    border-radius: 0px;
+    border-bottom: 1px solid {listBorder};
+    min-height: 18px;
+}
+
+
+
+/* ═════════════════════════════════════════════════════════════════════════════
+ * QTableView / QTableWidget
+ * ═════════════════════════════════════════════════════════════════════════════ */
+
+QTableView {
+    icon-size: 20px;
+    alternate-background-color: {alternateBase};
+    gridline-color: {listBorder};
+    selection-background-color: {controlFillSelected};
+    selection-color: {windowText};
+}
+
+QTableView::item {
+    padding: 8px 12px;
+    margin: 0px;
+    border-radius: 0px;
+    border: none;
+    min-height: 20px;
+}
+
+QTableView::item:hover {
+    background-color: {controlFillHover};
+}
+
+QTableView::item:selected {
+    background-color: {controlFillSelected};
+    color: {windowText};
+    border: none;
+    border-left: 3px solid {accent};
+}
+
+QTableView::item:selected:!active {
+    background-color: {controlFillSelected};
+    color: {windowText};
+    border: none;
+    border-left: 3px solid {accent};
+}
+
+/* 表头样式 */
+QListView QHeaderView,
+QTreeView QHeaderView,
+QTableView QHeaderView {
+    background-color: {listBg};
+}
+
+QListView QHeaderView::section,
+QTreeView QHeaderView::section,
+QTableView QHeaderView::section {
+    background-color: {listBg};
+    color: {windowText};
+    padding: 6px 10px;
+    border: none;
+    border-bottom: 1px solid {borderLight};
+    font-weight: 600;
+    font-size: 12px;
+    text-align: center;
+}
+
+QListView QHeaderView::section:hover,
+QTreeView QHeaderView::section:hover,
+QTableView QHeaderView::section:hover {
+    background-color: {controlFillHover};
+}
+
+QListView QHeaderView::section:pressed,
+QTreeView QHeaderView::section:pressed,
+QTableView QHeaderView::section:pressed {
+    background-color: {controlFillPressed};
+}
+
+/* 垂直表头（行号）隐藏 */
+QTableView QHeaderView::section:vertical {
+    width: 0px;
+    padding: 0px;
+    border: none;
+}
+
+/* 对话框列表样式（保留原设计） */
+QListWidget[class="dialog"] {
+    border: 1px solid {borderLight};
+    border-radius: {radius};
+    padding: 5px;
+    background-color: #FAFAFA;
+}
+
+QListWidget[class="dialog"]::item {
+    padding: 8px;
+    margin: 3px;
+    border-radius: 3px;
+    background-color: white;
+    border: 1px solid {borderLight};
+}
+
+QListWidget[class="dialog"]::item:selected {
+    background-color: {accent};
+    color: white;
+}
+
+QListWidget[class="dialog"]::item:hover:!selected {
+    background-color: {controlFillHover};
+}

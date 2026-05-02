@@ -1,0 +1,38 @@
+/* ═════════════════════════════════════════════════════════════════════════════
+ * 进度条 (QProgressBar) — 移植自 DemoUIDesign
+ * ═════════════════════════════════════════════════════════════════════════════ */
+
+QProgressBar {
+    background: {progressBg};
+    border: 1px solid {progressBorder};
+    border-radius: 4px;
+    text-align: center;
+    color: {textPrimary};
+    font-size: 11px;
+    font-weight: 600;
+}
+
+QProgressBar::chunk {
+    background: {accent};
+    border-radius: 3px;
+}
+
+QProgressBar::chunk[success="true"] {
+    background: {progressSuccess};
+}
+
+QProgressBar::chunk[warning="true"] {
+    background: {progressWarning};
+}
+
+QProgressBar::chunk[error="true"] {
+    background: {progressError};
+}
+
+QProgressBar:disabled {
+    background: {borderLight};
+}
+
+QProgressBar:disabled::chunk {
+    background: {borderLight};
+}

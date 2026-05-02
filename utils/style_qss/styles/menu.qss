@@ -1,0 +1,102 @@
+/* ═════════════════════════════════════════════════════════════════════════════
+ * 菜单 (QMenuBar, QMenu)
+ * 风格来源：DemoUIDesign/ix-ce-desktop — 圆角卡片式菜单
+ * ═════════════════════════════════════════════════════════════════════════════ */
+
+/* 菜单栏 */
+QMenuBar {
+    background: {menuBarBg};
+    border: 1px solid {borderLight};
+    border-radius: 6px;
+    padding: 4px;
+}
+
+QMenuBar::item {
+    background: transparent;
+    color: {textSecondary};
+    padding: 6px 12px;
+    border-radius: 4px;
+    font-size: 13px;
+}
+
+QMenuBar::item:selected {
+    background: {accentDim};
+    color: {accent};
+}
+
+QMenuBar::item:pressed {
+    background: {accentDim};
+    color: {accent};
+}
+
+QMenuBar::item:disabled {
+    color: {textDisabled};
+}
+
+/* 下拉菜单 */
+QMenu {
+    background: {menuPopupBg};
+    border: 1px solid {borderLight};
+    border-radius: 6px;
+    padding: 4px;
+    margin: 0px;
+}
+
+QMenu::item {
+    background: transparent;
+    color: {textSecondary};
+    padding: 5px 12px;
+    padding-left: 26px;
+    border-radius: 4px;
+    min-width: 100px;
+    font-size: 13px;
+}
+
+QMenu::item:selected {
+    background: {accentDim};
+    color: {accent};
+}
+
+QMenu::item:disabled {
+    color: {textDisabled};
+}
+
+QMenu::separator {
+    height: 1px;
+    background: {listBorder};
+    margin: 4px 8px;
+}
+
+QMenu::icon {
+    margin-left: 8px;
+    width: 14px;
+    height: 14px;
+}
+
+QMenu::indicator {
+    width: 14px;
+    height: 14px;
+    margin-left: 6px;
+    border-radius: 2px;
+    border: 1px solid {border};
+}
+
+QMenu::indicator:checked {
+    background-color: {accent};
+    border-color: {accent};
+    image: none;
+}
+
+QMenu::indicator:non-exclusive:checked {
+    background-color: {accent};
+    border-color: {accent};
+    image: none;
+    border-radius: 7px;
+}
+
+QMenu::right-arrow {
+    image: none;
+    border-left: 4px solid {buttonText};
+    border-top: 4px solid transparent;
+    border-bottom: 4px solid transparent;
+}

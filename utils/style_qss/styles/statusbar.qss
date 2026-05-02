@@ -1,0 +1,13 @@
+/* ═════════════════════════════════════════════════════════════════════════════
+ * 状态栏 (QStatusBar)
+ * ═════════════════════════════════════════════════════════════════════════════ */
+
+QStatusBar {
+    background-color: {window};
+    border-top: 1px solid {borderLight};
+    color: {windowText};
+}
+
+QStatusBar::item {
+    border: none;
+}
