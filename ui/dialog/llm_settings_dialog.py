@@ -7,7 +7,8 @@ from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QFrame, QLineEdit, QComboBox, QCheckBox, QMessageBox,
     QScrollArea, QWidget, QInputDialog, QRadioButton,
-    QToolButton, QStackedWidget, QSizePolicy, QListWidget, QListWidgetItem
+    QToolButton, QStackedWidget, QSizePolicy, QListWidget, QListWidgetItem,
+    QSpinBox, QDoubleSpinBox, QGridLayout
 )
 from PySide6.QtCore import Qt, Signal, QTimer, QSize, QEvent, QObject
 from PySide6.QtGui import QFont, QResizeEvent, QPixmap, QPainter, QPainterPath
@@ -545,6 +546,9 @@ class LLMSettingsDialog(QDialog):
         self._build_api_config_card(config)
 
         self._build_model_list_card(provider_name, config)
+
+        if config.provider_type == "openai":
+            self._build_custom_models_card(provider_name, config)
 
         self._build_model_selection_card(config)
 
@@ -1092,6 +1096,16 @@ class LLMSettingsDialog(QDialog):
             except Exception:
                 pass
 
+        elif provider_name == "openai":
+            try:
+                config = self._llm_config.get_provider(provider_name)
+                if config:
+                    custom_models = config.extra.get("custom_models", [])
+                    for model_data in custom_models:
+                        models.append(ModelInfo.from_dict(model_data))
+            except Exception:
+                pass
+
         return models
 
     def _populate_model_combos(
@@ -1313,3 +1327,387 @@ class LLMSettingsDialog(QDialog):
         }
         url = links.get(provider_type.lower(), "https://www.google.com")
         webbrowser.open(url)
+
+    # ------------------------------------------------------------------ #
+    # Custom Models (OpenAI Provider)                                     #
+    # ------------------------------------------------------------------ #
+
+    def _build_custom_models_card(self, provider_name: str, config: ProviderConfig) -> None:
+        """构建自定义模型管理卡片."""
+        if not self._detail_layout:
+            return
+
+        from ui.dialog.llm_settings_components import ConfigCard
+        card = ConfigCard("自定义模型")
+
+        text_secondary = self._get_color('textSecondary', '#999999')
+        border_color = self._get_color('borderLight', '#E0E0E0')
+        accent = self._get_color('accent', '#4A90D9')
+        hover_bg = self._get_color('controlFillHover', '#F5F5F5')
+
+        # 标题行：说明 + 添加按钮
+        header_row = QHBoxLayout()
+        header_label = QLabel("管理该供应商的可用模型列表")
+        header_label.setStyleSheet(f"color: {text_secondary}; font-size: 12px;")
+        header_row.addWidget(header_label)
+        header_row.addStretch()
+
+        add_btn = QPushButton("+ 添加模型")
+        add_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        add_btn.setFixedHeight(32)
+        add_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {accent};
+                color: white;
+                border: none;
+                border-radius: 6px;
+                padding: 0 12px;
+                font-size: 12px;
+            }}
+            QPushButton:hover {{
+                background-color: {self._get_color('accentLight', '#4CC2FF')};
+            }}
+        """)
+        add_btn.clicked.connect(lambda: self._on_add_custom_model(provider_name))
+        header_row.addWidget(add_btn)
+        card.add_layout(header_row)
+
+        # 模型列表区域
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setMinimumHeight(300)
+        scroll.setMaximumHeight(900)
+
+        container = QWidget()
+        list_layout = QVBoxLayout(container)
+        list_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+        list_layout.setSpacing(4)
+        list_layout.setContentsMargins(0, 0, 0, 0)
+        scroll.setWidget(container)
+        card.add_widget(scroll)
+
+        self._refresh_custom_models_list(provider_name, list_layout)
+
+        self._detail_layout.addWidget(card)
+
+    def _refresh_custom_models_list(self, provider_name: str, layout: QVBoxLayout) -> None:
+        """刷新自定义模型列表显示."""
+        while layout.count():
+            item = layout.takeAt(0)
+            widget = item.widget()
+            if widget:
+                widget.deleteLater()
+
+        config = self._llm_config.get_provider(provider_name)
+        if not config:
+            return
+
+        custom_models = config.extra.get("custom_models", [])
+        text_secondary = self._get_color('textSecondary', '#666666')
+        border_color = self._get_color('borderLight', '#E0E0E0')
+        hover_bg = self._get_color('controlFillHover', '#F5F5F5')
+        accent = self._get_color('accent', '#4A90D9')
+
+        if not custom_models:
+            empty_label = QLabel("暂无自定义模型，点击上方按钮添加")
+            empty_label.setStyleSheet(f"color: {text_secondary};")
+            layout.addWidget(empty_label)
+            layout.addStretch()
+            return
+
+        for idx, model_data in enumerate(custom_models):
+            row_widget = QWidget()
+            row_layout = QHBoxLayout(row_widget)
+            row_layout.setContentsMargins(12, 10, 12, 10)
+            row_layout.setSpacing(12)
+            row_widget.setStyleSheet(f"""
+                QWidget {{
+                    background-color: transparent;
+                    border: 1px solid {border_color};
+                    border-radius: 6px;
+                }}
+                QWidget:hover {{
+                    background-color: {hover_bg};
+                }}
+            """)
+
+            # 模型名称/ID
+            model_id = model_data.get("id", "")
+            model_name = model_data.get("name", model_id)
+            name_label = QLabel(f"<b>{model_name}</b> <span style='color:{text_secondary};font-size:11px;'>({model_id})</span>")
+            name_label.setTextFormat(Qt.TextFormat.RichText)
+            row_layout.addWidget(name_label, 1)
+
+            # 类型标签
+            type_tags = []
+            if model_data.get("support_chat"):
+                type_tags.append("Chat")
+            if model_data.get("support_embedding"):
+                type_tags.append("Embedding")
+            if model_data.get("support_vision"):
+                type_tags.append("Vision")
+            tag_text = ", ".join(type_tags) if type_tags else "-"
+            tag_label = QLabel(tag_text)
+            tag_label.setStyleSheet(f"color: {accent}; font-size: 11px;")
+            tag_label.setFixedWidth(100)
+            row_layout.addWidget(tag_label)
+
+            # 上下文长度
+            ctx = model_data.get("context_length")
+            ctx_label = QLabel(f"{ctx or '-'}" if ctx else "-")
+            ctx_label.setStyleSheet(f"color: {text_secondary}; font-size: 11px;")
+            ctx_label.setFixedWidth(60)
+            ctx_label.setAlignment(Qt.AlignmentFlag.AlignRight)
+            row_layout.addWidget(ctx_label)
+
+            # 编辑按钮
+            edit_btn = QPushButton("编辑")
+            edit_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            edit_btn.setFixedHeight(24)
+            edit_btn.setStyleSheet(f"""
+                QPushButton {{
+                    background-color: transparent;
+                    color: {accent};
+                    border: none;
+                    font-size: 12px;
+                }}
+                QPushButton:hover {{
+                    text-decoration: underline;
+                }}
+            """)
+            edit_btn.clicked.connect(lambda checked, i=idx: self._on_edit_custom_model(provider_name, i))
+            row_layout.addWidget(edit_btn)
+
+            # 删除按钮
+            del_btn = QPushButton("删除")
+            del_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            del_btn.setFixedHeight(24)
+            del_btn.setStyleSheet("""
+                QPushButton {
+                    background-color: transparent;
+                    color: #E74C3C;
+                    border: none;
+                    font-size: 12px;
+                }
+                QPushButton:hover {
+                    text-decoration: underline;
+                }
+            """)
+            del_btn.clicked.connect(lambda checked, i=idx: self._on_delete_custom_model(provider_name, i))
+            row_layout.addWidget(del_btn)
+
+            layout.addWidget(row_widget)
+
+        layout.addStretch()
+
+    def _on_add_custom_model(self, provider_name: str) -> None:
+        """添加自定义模型."""
+        config = self._llm_config.get_provider(provider_name)
+        if not config:
+            return
+
+        dialog = ModelEditDialog(self)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            model_data = dialog.get_model_data()
+            if not model_data.get("id"):
+                QMessageBox.warning(self, "添加失败", "模型 ID 不能为空")
+                return
+
+            custom_models = config.extra.get("custom_models", [])
+            # 检查 ID 是否已存在
+            if any(m.get("id") == model_data["id"] for m in custom_models):
+                QMessageBox.warning(self, "添加失败", f"模型 ID '{model_data['id']}' 已存在")
+                return
+
+            custom_models.append(model_data)
+            config.extra["custom_models"] = custom_models
+            self._mark_dirty()
+            # 刷新当前显示的详情页
+            self._show_provider_detail(provider_name)
+
+    def _on_edit_custom_model(self, provider_name: str, model_index: int) -> None:
+        """编辑自定义模型."""
+        config = self._llm_config.get_provider(provider_name)
+        if not config:
+            return
+
+        custom_models = config.extra.get("custom_models", [])
+        if model_index < 0 or model_index >= len(custom_models):
+            return
+
+        model_data = custom_models[model_index]
+        dialog = ModelEditDialog(self, model_data)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            new_data = dialog.get_model_data()
+            if not new_data.get("id"):
+                QMessageBox.warning(self, "编辑失败", "模型 ID 不能为空")
+                return
+
+            # 如果 ID 改变了，检查是否冲突
+            if new_data["id"] != model_data.get("id"):
+                if any(m.get("id") == new_data["id"] for i, m in enumerate(custom_models) if i != model_index):
+                    QMessageBox.warning(self, "编辑失败", f"模型 ID '{new_data['id']}' 已存在")
+                    return
+
+            custom_models[model_index] = new_data
+            config.extra["custom_models"] = custom_models
+            self._mark_dirty()
+            self._show_provider_detail(provider_name)
+
+    def _on_delete_custom_model(self, provider_name: str, model_index: int) -> None:
+        """删除自定义模型."""
+        config = self._llm_config.get_provider(provider_name)
+        if not config:
+            return
+
+        custom_models = config.extra.get("custom_models", [])
+        if model_index < 0 or model_index >= len(custom_models):
+            return
+
+        model_data = custom_models[model_index]
+        model_name = model_data.get("name", model_data.get("id", ""))
+        reply = QMessageBox.question(
+            self,
+            "确认删除",
+            f"确定要删除模型 '{model_name}' 吗？",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            custom_models.pop(model_index)
+            config.extra["custom_models"] = custom_models
+            self._mark_dirty()
+            self._show_provider_detail(provider_name)
+
+
+class ModelEditDialog(QDialog):
+    """模型编辑对话框 - 用于添加/编辑自定义模型."""
+
+    def __init__(self, parent=None, model_data: Optional[Dict[str, Any]] = None):
+        super().__init__(parent)
+        self._model_data = model_data or {}
+        self.setWindowTitle("编辑模型" if model_data else "添加模型")
+        self.setMinimumWidth(420)
+        self._init_ui()
+
+    def _init_ui(self) -> None:
+        """初始化对话框界面."""
+        layout = QVBoxLayout(self)
+        layout.setSpacing(12)
+        layout.setContentsMargins(20, 20, 20, 20)
+
+        # 模型 ID
+        id_label = QLabel("模型 ID *")
+        self._id_edit = QLineEdit()
+        self._id_edit.setPlaceholderText("例如：gpt-4o")
+        self._id_edit.setText(self._model_data.get("id", ""))
+        layout.addWidget(id_label)
+        layout.addWidget(self._id_edit)
+
+        # 显示名称
+        name_label = QLabel("显示名称")
+        self._name_edit = QLineEdit()
+        self._name_edit.setPlaceholderText("留空则使用模型 ID")
+        self._name_edit.setText(self._model_data.get("name", ""))
+        layout.addWidget(name_label)
+        layout.addWidget(self._name_edit)
+
+        # 上下文长度
+        ctx_label = QLabel("上下文长度")
+        self._ctx_spin = QSpinBox()
+        self._ctx_spin.setRange(0, 9999999)
+        self._ctx_spin.setSingleStep(1000)
+        self._ctx_spin.setValue(self._model_data.get("context_length", 128000))
+        self._ctx_spin.setSpecialValueText("未设置")
+        layout.addWidget(ctx_label)
+        layout.addWidget(self._ctx_spin)
+
+        # 类型复选框
+        type_label = QLabel("支持能力")
+        layout.addWidget(type_label)
+
+        type_grid = QGridLayout()
+        type_grid.setSpacing(8)
+
+        self._chat_check = QCheckBox("聊天 Chat")
+        self._chat_check.setChecked(self._model_data.get("support_chat", True))
+        type_grid.addWidget(self._chat_check, 0, 0)
+
+        self._stream_check = QCheckBox("流式 Streaming")
+        self._stream_check.setChecked(self._model_data.get("support_streaming", True))
+        type_grid.addWidget(self._stream_check, 0, 1)
+
+        self._embed_check = QCheckBox("嵌入 Embedding")
+        self._embed_check.setChecked(self._model_data.get("support_embedding", False))
+        type_grid.addWidget(self._embed_check, 1, 0)
+
+        self._vision_check = QCheckBox("视觉 Vision")
+        self._vision_check.setChecked(self._model_data.get("support_vision", False))
+        type_grid.addWidget(self._vision_check, 1, 1)
+
+        self._fc_check = QCheckBox("函数调用 Function Calling")
+        self._fc_check.setChecked(self._model_data.get("support_function_calling", False))
+        type_grid.addWidget(self._fc_check, 2, 0, 1, 2)
+
+        layout.addLayout(type_grid)
+
+        # 价格
+        price_label = QLabel("定价（元 / 1M tokens）")
+        layout.addWidget(price_label)
+
+        price_row = QHBoxLayout()
+        price_row.addWidget(QLabel("输入："))
+        self._input_price = QDoubleSpinBox()
+        self._input_price.setRange(0, 99999)
+        self._input_price.setDecimals(6)
+        self._input_price.setSingleStep(1.0)
+        self._input_price.setValue(self._model_data.get("input_price_per_1k", 0.0))
+        price_row.addWidget(self._input_price)
+        price_row.addWidget(QLabel("输出："))
+        self._output_price = QDoubleSpinBox()
+        self._output_price.setRange(0, 99999)
+        self._output_price.setDecimals(6)
+        self._output_price.setSingleStep(1.0)
+        self._output_price.setValue(self._model_data.get("output_price_per_1k", 0.0))
+        price_row.addWidget(self._output_price)
+        layout.addLayout(price_row)
+
+        layout.addStretch()
+
+        # 按钮
+        btn_row = QHBoxLayout()
+        btn_row.addStretch()
+
+        cancel_btn = QPushButton("取消")
+        cancel_btn.clicked.connect(self.reject)
+        btn_row.addWidget(cancel_btn)
+
+        save_btn = QPushButton("保存")
+        save_btn.setDefault(True)
+        save_btn.clicked.connect(self.accept)
+        btn_row.addWidget(save_btn)
+
+        layout.addLayout(btn_row)
+
+    def get_model_data(self) -> Dict[str, Any]:
+        """获取用户填写的模型数据.
+
+        Returns:
+            Dict[str, Any]: 模型配置字典
+        """
+        model_id = self._id_edit.text().strip()
+        name = self._name_edit.text().strip()
+        return {
+            "id": model_id,
+            "name": name if name else model_id,
+            "context_length": self._ctx_spin.value() if self._ctx_spin.value() > 0 else None,
+            "support_chat": self._chat_check.isChecked(),
+            "support_streaming": self._stream_check.isChecked(),
+            "support_embedding": self._embed_check.isChecked(),
+            "support_vision": self._vision_check.isChecked(),
+            "support_function_calling": self._fc_check.isChecked(),
+            "input_price_per_1k": self._input_price.value(),
+            "output_price_per_1k": self._output_price.value(),
+        }
