@@ -32,6 +32,7 @@ from .minimax import MiniMaxProvider
 from .siliconflow import SiliconFlowProvider
 from .glm import GLMProvider
 from .ollama import OllamaProvider
+from .openai import OpenAIProvider
 
 # ==================== Provider 注册表 ====================
 
@@ -90,6 +91,7 @@ register_provider(MiniMaxProvider)
 register_provider(SiliconFlowProvider)
 register_provider(GLMProvider)
 register_provider(OllamaProvider)
+register_provider(OpenAIProvider)
 
 
 __all__ = [
@@ -98,6 +100,7 @@ __all__ = [
     "SiliconFlowProvider",
     "GLMProvider",
     "OllamaProvider",
+    "OpenAIProvider",
     "register_provider",
     "get_provider_class",
     "get_all_provider_types",

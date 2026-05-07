@@ -80,9 +80,30 @@ class LLMPluginService:
         """
         self._llm = get_llm_provider()
         self._config = LLMConfig()
+        # 构建定价表，将 custom_models 中的模型级别定价同步注入
+        effective_pricing = (pricing or DEFAULT_PRICING).copy()
+        for name, cfg in self._config.get_all_providers().items():
+            custom_models = cfg.extra.get("custom_models", []) if hasattr(cfg, "extra") else []
+            if not custom_models:
+                continue
+            if name not in effective_pricing:
+                effective_pricing[name] = {}
+            if "models" not in effective_pricing[name]:
+                effective_pricing[name]["models"] = {}
+            for m in custom_models:
+                model_id = m.get("id")
+                if not model_id:
+                    continue
+                input_price = m.get("input_price_per_1k", 0)
+                output_price = m.get("output_price_per_1k", 0)
+                if input_price or output_price:
+                    effective_pricing[name]["models"][model_id] = {
+                        "input_per_1k": input_price,
+                        "output_per_1k": output_price,
+                    }
         self._conversation_mgr = ConversationManager(
             max_context=max_context,
-            pricing=pricing or DEFAULT_PRICING,
+            pricing=effective_pricing,
         )
         self._tool_executor = ToolCallExecutor(self)
         self._shared_tool_registry = ToolRegistry()
