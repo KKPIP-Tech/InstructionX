@@ -229,3 +229,5 @@ plugin/
 !__init__.py
 !.gitkeep
 
+# 忽略 ShowDoc 文档目录
+ShowDoc/
