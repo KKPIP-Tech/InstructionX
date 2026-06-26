@@ -95,8 +95,6 @@ class DataProvider(IDataProvider):
             self._backend = SQLiteBackend(data_dir, data_filename)
             try:
                 self._backend.ensure_database()
-                # 若从 JSON 迁移成功，重命名 JSON 备份
-                self._backend.migrate_json_file_with_backup()
             except SQLiteBackendError as e:
                 raise DataProviderError(str(e)) from e
 
