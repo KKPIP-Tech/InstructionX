@@ -20,6 +20,7 @@ from uuid import UUID
 import orjson
 
 from .schema_migrations import MIGRATIONS, TARGET_SCHEMA_VERSION
+from . import sql_map
 
 
 # ---------------------------------------------------------------------------
@@ -220,9 +221,9 @@ class SQLiteBackend:
         conn = self._conn
         if conn is None:
             return
-        conn.execute("PRAGMA foreign_keys = ON;")
-        conn.execute("PRAGMA journal_mode = WAL;")
-        conn.execute("PRAGMA synchronous = NORMAL;")
+        conn.execute(sql_map.SQLMap.v1.PRAGMA_FOREIGN_KEYS)
+        conn.execute(sql_map.SQLMap.v1.PRAGMA_JOURNAL_MODE_WAL)
+        conn.execute(sql_map.SQLMap.v1.PRAGMA_SYNCHRONOUS_NORMAL)
 
     def close(self) -> None:
         """关闭数据库连接。"""
@@ -242,12 +243,12 @@ class SQLiteBackend:
         """返回一个使用 BEGIN IMMEDIATE 的事务上下文。"""
         conn = self._connect()
         try:
-            conn.execute("BEGIN IMMEDIATE;")
+            conn.execute(sql_map.SQLMap.v1.BEGIN_IMMEDIATE)
             yield conn
-            conn.execute("COMMIT;")
+            conn.execute(sql_map.SQLMap.v1.COMMIT)
         except Exception:
             try:
-                conn.execute("ROLLBACK;")
+                conn.execute(sql_map.SQLMap.v1.ROLLBACK)
             except Exception:
                 pass
             raise
@@ -257,39 +258,7 @@ class SQLiteBackend:
     # -----------------------------------------------------------------------
 
     def _create_tables(self, conn: sqlite3.Connection) -> None:
-        conn.executescript(
-            """
-            CREATE TABLE IF NOT EXISTS plugins (
-                instance_id TEXT PRIMARY KEY,
-                plugin_type TEXT NOT NULL,
-                active      INTEGER NOT NULL DEFAULT 0 CHECK (active IN (0, 1))
-            );
-
-            CREATE TABLE IF NOT EXISTS plugin_data (
-                id          INTEGER PRIMARY KEY AUTOINCREMENT,
-                instance_id TEXT NOT NULL,
-                namespace   TEXT NOT NULL CHECK (namespace IN ('private', 'public')),
-                key         TEXT NOT NULL,
-                value_json  TEXT NOT NULL,
-                updated_at  INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
-                FOREIGN KEY (instance_id) REFERENCES plugins(instance_id) ON DELETE CASCADE,
-                UNIQUE (instance_id, namespace, key)
-            );
-
-            CREATE TABLE IF NOT EXISTS active_instances (
-                plugin_type TEXT PRIMARY KEY,
-                instance_id TEXT NOT NULL,
-                FOREIGN KEY (instance_id) REFERENCES plugins(instance_id) ON DELETE CASCADE
-            );
-
-            CREATE TABLE IF NOT EXISTS db_metadata (
-                key   TEXT PRIMARY KEY,
-                value TEXT NOT NULL
-            );
-
-            CREATE INDEX IF NOT EXISTS idx_plugins_type ON plugins(plugin_type);
-            """
-        )
+        conn.executescript(sql_map.SQLMap.v1.CREATE_TABLES_SCRIPT)
 
     # -----------------------------------------------------------------------
     # 版本与元数据
@@ -299,7 +268,7 @@ class SQLiteBackend:
     def _get_schema_version(conn: sqlite3.Connection) -> int:
         """读取当前 schema 版本。若表或键不存在返回 0；值损坏则抛异常。"""
         try:
-            cur = conn.execute("SELECT value FROM db_metadata WHERE key='schema_version';")
+            cur = conn.execute(sql_map.SQLMap.v1.SELECT_SCHEMA_VERSION)
             row = cur.fetchone()
             if row is None:
                 return 0
@@ -310,11 +279,7 @@ class SQLiteBackend:
     @staticmethod
     def _set_metadata(conn: sqlite3.Connection, **items: str) -> None:
         for key, value in items.items():
-            conn.execute(
-                "INSERT INTO db_metadata (key, value) VALUES (?, ?) "
-                "ON CONFLICT(key) DO UPDATE SET value=excluded.value;",
-                (key, value),
-            )
+            conn.execute(sql_map.SQLMap.v1.UPSERT_METADATA, (key, value))
 
     def _upgrade_schema(self, conn: sqlite3.Connection) -> None:
         current = self._get_schema_version(conn)
@@ -416,10 +381,7 @@ class SQLiteBackend:
             return False
         try:
             conn = self._connect()
-            cur = conn.execute(
-                "SELECT name FROM sqlite_master WHERE type='table' AND name IN "
-                "('plugins', 'plugin_data', 'active_instances');"
-            )
+            cur = conn.execute(sql_map.SQLMap.v1.SELECT_CORE_TABLES)
             return len(cur.fetchall()) == 3
         except Exception:
             return False
@@ -478,7 +440,7 @@ class SQLiteBackend:
             },
         }
         for table, expected_cols in expected.items():
-            cur = conn.execute(f"PRAGMA table_info({table});")
+            cur = conn.execute(sql_map.SQLMap.v1.SELECT_TABLE_INFO.format(table=table))
             actual_cols = {(row[1], row[2], row[3], row[4], row[5]) for row in cur.fetchall()}
             missing = expected_cols - actual_cols
             if missing:
@@ -502,7 +464,7 @@ class SQLiteBackend:
             plugin_type = plugin_info.get("type", "")
             active = 1 if plugin_info.get("active", False) else 0
             conn.execute(
-                "INSERT INTO plugins (instance_id, plugin_type, active) VALUES (?, ?, ?);",
+                sql_map.SQLMap.v1.INSERT_PLUGIN,
                 (instance_id, plugin_type, active),
             )
             private = plugin_info.get("private", {})
@@ -512,15 +474,14 @@ class SQLiteBackend:
                     cleaned = _sanitize_for_migration(value, f"{instance_id}.{namespace}.{key}")
                     value_json = _serialize(cleaned)
                     conn.execute(
-                        "INSERT INTO plugin_data (instance_id, namespace, key, value_json) "
-                        "VALUES (?, ?, ?, ?);",
+                        sql_map.SQLMap.v1.INSERT_PLUGIN_DATA,
                         (instance_id, namespace, key, value_json),
                     )
 
         for plugin_type, instance_id in active_instances.items():
             if instance_id in plugins:
                 conn.execute(
-                    "INSERT INTO active_instances (plugin_type, instance_id) VALUES (?, ?);",
+                    sql_map.SQLMap.v1.INSERT_ACTIVE_INSTANCE,
                     (plugin_type, instance_id),
                 )
 
@@ -539,35 +500,31 @@ class SQLiteBackend:
 
     def plugin_exists(self, instance_id: str) -> bool:
         conn = self._connect()
-        cur = conn.execute(
-            "SELECT 1 FROM plugins WHERE instance_id=?;", (instance_id,)
-        )
+        cur = conn.execute(sql_map.SQLMap.v1.SELECT_PLUGIN_EXISTS, (instance_id,))
         return cur.fetchone() is not None
 
     def register_plugin(self, instance_id: str, plugin_type: str) -> None:
         conn = self._connect()
         try:
             conn.execute(
-                "INSERT INTO plugins (instance_id, plugin_type, active) VALUES (?, ?, 0);",
-                (instance_id, plugin_type),
+                sql_map.SQLMap.v1.INSERT_PLUGIN,
+                (instance_id, plugin_type, 0),
             )
         except sqlite3.IntegrityError as e:
             raise SQLiteBackendError(f"插件 {instance_id} 已存在") from e
 
     def unregister_plugin(self, instance_id: str) -> None:
         conn = self._connect()
-        cur = conn.execute("SELECT 1 FROM plugins WHERE instance_id=?;", (instance_id,))
+        cur = conn.execute(sql_map.SQLMap.v1.SELECT_PLUGIN_EXISTS, (instance_id,))
         if cur.fetchone() is None:
             raise SQLiteBackendError(f"插件 {instance_id} 不存在")
         # 外键级联会自动清理 plugin_data 和 active_instances
-        conn.execute("DELETE FROM plugins WHERE instance_id=?;", (instance_id,))
+        conn.execute(sql_map.SQLMap.v1.DELETE_PLUGIN, (instance_id,))
         self._value_cache.invalidate_plugin(instance_id)
 
     def get_plugin_type(self, instance_id: str) -> Optional[str]:
         conn = self._connect()
-        cur = conn.execute(
-            "SELECT plugin_type FROM plugins WHERE instance_id=?;", (instance_id,)
-        )
+        cur = conn.execute(sql_map.SQLMap.v1.SELECT_PLUGIN_TYPE, (instance_id,))
         row = cur.fetchone()
         return row[0] if row else None
 
@@ -577,10 +534,7 @@ class SQLiteBackend:
 
     def get_active_instance(self, plugin_type: str) -> Optional[str]:
         conn = self._connect()
-        cur = conn.execute(
-            "SELECT instance_id FROM active_instances WHERE plugin_type=?;",
-            (plugin_type,),
-        )
+        cur = conn.execute(sql_map.SQLMap.v1.SELECT_ACTIVE_INSTANCE, (plugin_type,))
         row = cur.fetchone()
         return row[0] if row else None
 
@@ -592,16 +546,15 @@ class SQLiteBackend:
         conn = self._connect()
         with self.transaction() as txn:
             txn.execute(
-                "UPDATE plugins SET active=0 WHERE plugin_type=? AND instance_id!=?;",
+                sql_map.SQLMap.v1.UPDATE_PLUGINS_INACTIVE_BY_TYPE,
                 (plugin_type, instance_id),
             )
             txn.execute(
-                "UPDATE plugins SET active=1 WHERE instance_id=?;",
+                sql_map.SQLMap.v1.UPDATE_PLUGIN_ACTIVE,
                 (instance_id,),
             )
             txn.execute(
-                "INSERT INTO active_instances (plugin_type, instance_id) VALUES (?, ?) "
-                "ON CONFLICT(plugin_type) DO UPDATE SET instance_id=excluded.instance_id;",
+                sql_map.SQLMap.v1.UPSERT_ACTIVE_INSTANCE,
                 (plugin_type, instance_id),
             )
 
@@ -619,8 +572,7 @@ class SQLiteBackend:
 
         conn = self._connect()
         cur = conn.execute(
-            "SELECT value_json FROM plugin_data "
-            "WHERE instance_id=? AND namespace=? AND key=?;",
+            sql_map.SQLMap.v1.SELECT_PLUGIN_DATA,
             (instance_id, namespace, key),
         )
         row = cur.fetchone()
@@ -636,10 +588,7 @@ class SQLiteBackend:
         value_json = _serialize(value)
         conn = self._connect()
         conn.execute(
-            "INSERT INTO plugin_data (instance_id, namespace, key, value_json) "
-            "VALUES (?, ?, ?, ?) "
-            "ON CONFLICT(instance_id, namespace, key) "
-            "DO UPDATE SET value_json=excluded.value_json, updated_at=strftime('%s','now');",
+            sql_map.SQLMap.v1.UPSERT_PLUGIN_DATA,
             (instance_id, namespace, key, value_json),
         )
         self._value_cache.invalidate((instance_id, namespace, key))
@@ -647,8 +596,7 @@ class SQLiteBackend:
     def get_all_plugin_data(self, instance_id: str, namespace: str) -> Dict[str, Any]:
         conn = self._connect()
         cur = conn.execute(
-            "SELECT key, value_json FROM plugin_data "
-            "WHERE instance_id=? AND namespace=? ORDER BY id;",
+            sql_map.SQLMap.v1.SELECT_ALL_PLUGIN_DATA,
             (instance_id, namespace),
         )
         result: Dict[str, Any] = {}
@@ -672,9 +620,7 @@ class SQLiteBackend:
         conn = self._connect()
         data: Dict[str, Any] = {"plugins": {}, "active_instances": {}}
 
-        cur = conn.execute(
-            "SELECT instance_id, plugin_type, active FROM plugins ORDER BY rowid;"
-        )
+        cur = conn.execute(sql_map.SQLMap.v1.SELECT_ALL_PLUGINS)
         for instance_id, plugin_type, active in cur.fetchall():
             data["plugins"][instance_id] = {
                 "type": plugin_type,
@@ -683,18 +629,14 @@ class SQLiteBackend:
                 "public": {},
             }
 
-        cur = conn.execute(
-            "SELECT instance_id, namespace, key, value_json FROM plugin_data ORDER BY rowid;"
-        )
+        cur = conn.execute(sql_map.SQLMap.v1.SELECT_ALL_PLUGIN_DATA_FOR_LOAD)
         for instance_id, namespace, key, value_json in cur.fetchall():
             value = _deserialize(value_json)
             self._value_cache.put((instance_id, namespace, key), value)
             if instance_id in data["plugins"]:
                 data["plugins"][instance_id][namespace][key] = copy.deepcopy(value)
 
-        cur = conn.execute(
-            "SELECT plugin_type, instance_id FROM active_instances ORDER BY rowid;"
-        )
+        cur = conn.execute(sql_map.SQLMap.v1.SELECT_ALL_ACTIVE_INSTANCES)
         for plugin_type, instance_id in cur.fetchall():
             data["active_instances"][plugin_type] = instance_id
 
@@ -705,9 +647,9 @@ class SQLiteBackend:
         conn = self._connect()
         with self.transaction() as txn:
             # 先清空子表，再清空父表
-            txn.execute("DELETE FROM plugin_data;")
-            txn.execute("DELETE FROM active_instances;")
-            txn.execute("DELETE FROM plugins;")
+            txn.execute(sql_map.SQLMap.v1.DELETE_ALL_PLUGIN_DATA)
+            txn.execute(sql_map.SQLMap.v1.DELETE_ALL_ACTIVE_INSTANCES)
+            txn.execute(sql_map.SQLMap.v1.DELETE_ALL_PLUGINS)
 
             plugins = data.get("plugins", {})
             active_instances = data.get("active_instances", {})
@@ -716,7 +658,7 @@ class SQLiteBackend:
                 plugin_type = plugin_info.get("type", "")
                 active = 1 if plugin_info.get("active", False) else 0
                 txn.execute(
-                    "INSERT INTO plugins (instance_id, plugin_type, active) VALUES (?, ?, ?);",
+                    sql_map.SQLMap.v1.INSERT_PLUGIN,
                     (instance_id, plugin_type, active),
                 )
                 for namespace in ("private", "public"):
@@ -724,14 +666,13 @@ class SQLiteBackend:
                     for key, value in ns_data.items():
                         value_json = _serialize(value)
                         txn.execute(
-                            "INSERT INTO plugin_data (instance_id, namespace, key, value_json) "
-                            "VALUES (?, ?, ?, ?);",
+                            sql_map.SQLMap.v1.INSERT_PLUGIN_DATA,
                             (instance_id, namespace, key, value_json),
                         )
 
             for plugin_type, instance_id in active_instances.items():
                 txn.execute(
-                    "INSERT INTO active_instances (plugin_type, instance_id) VALUES (?, ?);",
+                    sql_map.SQLMap.v1.INSERT_ACTIVE_INSTANCE,
                     (plugin_type, instance_id),
                 )
 
