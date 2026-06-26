@@ -275,3 +275,233 @@ class TestSerializationCompatibility:
         p.register_plugin("p1", "TypeA")
         with pytest.raises(DataProviderError):
             p.set_plugin_data("p1", "k", float("nan"), DataNamespace.PRIVATE)
+
+
+# ---------------------------------------------------------------------------
+# LRU 缓存
+# ---------------------------------------------------------------------------
+
+class TestLRUCache:
+    def test_none_value_is_cached(self, tmp_path):
+        p = _provider(tmp_path)
+        p.register_plugin("p1", "TypeA")
+        p.set_plugin_data("p1", "k", None, DataNamespace.PRIVATE)
+        # 第一次读取填充缓存
+        assert p.get_plugin_data("p1", "k", DataNamespace.PRIVATE, "DEFAULT") is None
+        # 第二次读取应命中缓存并仍然返回 None（不是默认值）
+        assert p.get_plugin_data("p1", "k", DataNamespace.PRIVATE, "DEFAULT") is None
+
+    def test_capacity_evicts_oldest(self, tmp_path):
+        p = _provider(tmp_path)
+        p.register_plugin("p1", "TypeA")
+        p._backend._value_cache.capacity = 2
+        p.set_plugin_data("p1", "k1", "v1", DataNamespace.PRIVATE)
+        p.set_plugin_data("p1", "k2", "v2", DataNamespace.PRIVATE)
+        p.set_plugin_data("p1", "k3", "v3", DataNamespace.PRIVATE)
+        # 读取填充缓存
+        p.get_plugin_data("p1", "k1", DataNamespace.PRIVATE)
+        p.get_plugin_data("p1", "k2", DataNamespace.PRIVATE)
+        p.get_plugin_data("p1", "k3", DataNamespace.PRIVATE)
+        keys = list(p._backend._value_cache._data.keys())
+        assert len(keys) == 2
+        # k1 应该被淘汰
+        assert ("p1", "private", "k1") not in keys
+
+    def test_invalidation_on_write(self, tmp_path):
+        p = _provider(tmp_path)
+        p.register_plugin("p1", "TypeA")
+        p.set_plugin_data("p1", "k", "v1", DataNamespace.PRIVATE)
+        p.get_plugin_data("p1", "k", DataNamespace.PRIVATE)
+        assert len(p._backend._value_cache._data) == 1
+        p.set_plugin_data("p1", "k", "v2", DataNamespace.PRIVATE)
+        assert len(p._backend._value_cache._data) == 0
+
+
+# ---------------------------------------------------------------------------
+# 迁移失败回滚
+# ---------------------------------------------------------------------------
+
+class TestMigrationFailure:
+    def test_migration_failure_cleans_up_db_and_keeps_json(self, tmp_path, monkeypatch):
+        json_data = {
+            "plugins": {
+                "p1": {"type": "T", "active": False, "private": {"k": "first"}, "public": {}},
+                "p2": {"type": "T", "active": False, "private": {"k": "second"}, "public": {}},
+            },
+            "active_instances": {}
+        }
+        json_file = tmp_path / "test.json"
+        json_file.write_text(json.dumps(json_data), encoding="utf-8")
+
+        from core.data.sqlite_backend import SQLiteBackend, _serialize
+
+        def _patched_migrate(self, conn, data):
+            plugins = data.get("plugins", {})
+            for i, (instance_id, plugin_info) in enumerate(plugins.items()):
+                if i == 1:
+                    raise RuntimeError("模拟迁移中途失败")
+                plugin_type = plugin_info.get("type", "")
+                active = 1 if plugin_info.get("active", False) else 0
+                conn.execute(
+                    "INSERT INTO plugins (instance_id, plugin_type, active) VALUES (?, ?, ?);",
+                    (instance_id, plugin_type, active),
+                )
+                private = plugin_info.get("private", {})
+                for key, value in private.items():
+                    value_json = _serialize(value)
+                    conn.execute(
+                        "INSERT INTO plugin_data (instance_id, namespace, key, value_json) VALUES (?, ?, ?, ?);",
+                        (instance_id, "private", key, value_json),
+                    )
+
+        monkeypatch.setattr(SQLiteBackend, "_migrate_json_to_sqlite", _patched_migrate)
+
+        _reset_singleton()
+        with pytest.raises(DataProviderError):
+            DataProvider(data_dir=str(tmp_path), data_filename="test.json")
+
+        # data.db 应被清理
+        db_file = tmp_path / "test.db"
+        assert not db_file.exists()
+        # 原始 json 应保留
+        assert json_file.exists()
+
+
+# ---------------------------------------------------------------------------
+# 锁顺序
+# ---------------------------------------------------------------------------
+
+class TestNotifyLockOrder:
+    def test_callback_not_under_file_lock(self, tmp_path):
+        p = _provider(tmp_path)
+        p.register_plugin("pub", "TypeA")
+        callback_lock_state = []
+
+        def callback(pid, key, old, new):
+            callback_lock_state.append(p._file_lock._is_owned())
+
+        p.subscribe("sub", "pub", "status", callback)
+        p.set_plugin_data("pub", "status", "ready", DataNamespace.PUBLIC)
+        assert len(callback_lock_state) == 1
+        assert callback_lock_state[0] is False
+
+    def test_callback_can_reenter_dataprovider(self, tmp_path):
+        p = _provider(tmp_path)
+        p.register_plugin("pub", "TypeA")
+        p.register_plugin("sub", "TypeB")
+
+        def callback(pid, key, old, new):
+            # 回调中再次读取数据不应死锁
+            p.get_plugin_data("pub", "status", DataNamespace.PUBLIC)
+
+        p.subscribe("sub", "pub", "status", callback)
+        p.set_plugin_data("pub", "status", "ready", DataNamespace.PUBLIC)
+        # 如果死锁，上面的调用不会返回
+
+
+# ---------------------------------------------------------------------------
+# 并发
+# ---------------------------------------------------------------------------
+
+class TestConcurrency:
+    def test_concurrent_set_get(self, tmp_path):
+        import threading
+        p = _provider(tmp_path)
+        p.register_plugin("p1", "TypeA")
+        errors = []
+
+        def worker(start):
+            try:
+                for i in range(start, start + 50):
+                    p.set_plugin_data("p1", f"key_{i}", i, DataNamespace.PRIVATE)
+                    p.get_plugin_data("p1", f"key_{i}", DataNamespace.PRIVATE)
+            except Exception as e:
+                errors.append(e)
+
+        threads = [threading.Thread(target=worker, args=(i * 50,)) for i in range(4)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert not errors
+        # 最终一致
+        for i in range(200):
+            assert p.get_plugin_data("p1", f"key_{i}", DataNamespace.PRIVATE) == i
+
+
+# ---------------------------------------------------------------------------
+# 资源文件
+# ---------------------------------------------------------------------------
+
+class TestAssets:
+    def test_save_and_load_asset(self, tmp_path):
+        p = _provider(tmp_path)
+        content = b"fake image data"
+        relative_path = p.save_asset("p1", "thumb.png", content)
+        assert relative_path == "assets/plugins/p1/thumb.png"
+        loaded = p.load_asset(relative_path)
+        assert loaded == content
+
+    def test_get_asset_path_rejects_traversal(self, tmp_path):
+        p = _provider(tmp_path)
+        with pytest.raises(DataProviderError):
+            p.get_asset_path("assets/plugins/../secret.txt")
+
+
+# ---------------------------------------------------------------------------
+# Schema 升级
+# ---------------------------------------------------------------------------
+
+class TestSchemaUpgrade:
+    def test_high_version_rejected(self, tmp_path):
+        p = _provider(tmp_path)
+        conn = sqlite3.connect(str(p._backend.db_file))
+        conn.execute(
+            "INSERT INTO db_metadata (key, value) VALUES ('schema_version', '99') "
+            "ON CONFLICT(key) DO UPDATE SET value='99';"
+        )
+        conn.commit()
+        conn.close()
+        p._backend.close()
+
+        _reset_singleton()
+        with pytest.raises(DataProviderError):
+            DataProvider(data_dir=str(tmp_path), data_filename="test.json")
+
+    def test_corrupt_version_rejected(self, tmp_path):
+        p = _provider(tmp_path)
+        conn = sqlite3.connect(str(p._backend.db_file))
+        conn.execute(
+            "INSERT INTO db_metadata (key, value) VALUES ('schema_version', 'abc') "
+            "ON CONFLICT(key) DO UPDATE SET value='abc';"
+        )
+        conn.commit()
+        conn.close()
+        p._backend.close()
+
+        _reset_singleton()
+        with pytest.raises(DataProviderError):
+            DataProvider(data_dir=str(tmp_path), data_filename="test.json")
+
+    def test_legacy_database_upgraded(self, tmp_path):
+        # 模拟一个有核心表但无 db_metadata 的旧数据库
+        p = _provider(tmp_path)
+        p._backend.close()
+        conn = sqlite3.connect(str(p._backend.db_file))
+        conn.execute("DROP TABLE db_metadata;")
+        conn.execute("INSERT INTO plugins (instance_id, plugin_type, active) VALUES ('p1', 'T', 1);")
+        conn.commit()
+        conn.close()
+
+        _reset_singleton()
+        p2 = DataProvider(data_dir=str(tmp_path), data_filename="test.json")
+        # 应补齐 schema_version 为 1，且不丢数据
+        conn = sqlite3.connect(str(p2._backend.db_file))
+        cur = conn.execute("SELECT value FROM db_metadata WHERE key='schema_version';")
+        assert cur.fetchone()[0] == "1"
+        cur = conn.execute("SELECT value FROM db_metadata WHERE key='migrated_from';")
+        assert cur.fetchone()[0] == "legacy"
+        cur = conn.execute("SELECT COUNT(*) FROM plugins;")
+        assert cur.fetchone()[0] == 1
+        conn.close()
