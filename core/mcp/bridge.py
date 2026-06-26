@@ -39,8 +39,8 @@ class MCPBridge:
             return
 
         try:
-            from core.plugin.manager import PluginManager
-            pm = PluginManager()
+            from core.plugin.manager import get_plugin_manager
+            pm = get_plugin_manager()
 
             # 获取所有插件 API 描述
             all_tools = pm.get_all_function_tools()

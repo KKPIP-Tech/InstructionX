@@ -43,13 +43,27 @@ DataProvider(data_dir: Optional[str] = None, data_filename: str = "data.json")
 - `data_dir`: 数据文件存储目录，默认为项目根目录下的 `data` 文件夹
 - `data_filename`: 数据文件名，默认为 `data.json`
 
+**数据库文件路径推导**:
+- 若 `data_filename` 以 `.json` 结尾，数据库文件名为 `data_filename[:-5] + ".db"`
+- 否则，数据库文件名为 `data_filename + ".db"`
+
+示例：
+
+| `data_filename` | 数据库文件 |
+|-----------------|------------|
+| `data.json`     | `data.db`  |
+| `my_data.json`  | `my_data.db` |
+| `app_data`      | `app_data.db` |
+
 **示例**:
 ```python
 # 使用默认路径
 provider = DataProvider()
+# 数据库文件: data/data.db
 
 # 自定义路径
 provider = DataProvider(data_dir="/custom/path", data_filename="my_data.json")
+# 数据库文件: /custom/path/my_data.db
 ```
 
 ---
@@ -489,13 +503,18 @@ assets_dir = provider.get_plugin_assets_dir("video-editor")
 def load_data(self, force_reload: bool = False) -> Dict[str, Any]
 ```
 
-从磁盘加载数据到缓存。
+从 SQLite 重建完整数据字典（包含 `plugins` 和 `active_instances`）。
 
 **参数**:
-- `force_reload`: 是否强制重新加载，忽略缓存
+- `force_reload`: 是否强制重新加载，忽略 `_cache`
 
 **返回**:
-- 数据字典
+- 数据字典的深拷贝
+
+**说明**:
+- 首次调用或 `force_reload=True` 时，从 `plugins`、`plugin_data`、`active_instances` 三张表全量读取并组装为与旧 JSON 结构一致的字典。
+- 反序列化结果会同时填充 `_cache` 与 LRU 缓存，供后续 `get_plugin_data` 使用。
+- 返回值是深拷贝，外部修改不会影响内部缓存或数据库。
 
 **示例**:
 ```python
@@ -510,10 +529,15 @@ data = provider.load_data()
 def save_data(self) -> None
 ```
 
-将当前缓存数据保存到磁盘。
+将当前 `_cache` 中的完整数据字典同步到 SQLite。
 
 **异常**:
-- `DataProviderError`: 保存失败时抛出
+- `DataProviderError`: `_cache` 为空或保存失败时抛出
+
+**说明**:
+- 在一个 SQLite 事务中先清空 `plugin_data`、`active_instances`、`plugins`，再按 `_cache` 内容重新插入。
+- 执行后清空 LRU 缓存，确保缓存与数据库一致。
+- 该路径在正常使用中频率极低；日常写操作由 `set_plugin_data` 通过点写完成。
 
 **示例**:
 ```python

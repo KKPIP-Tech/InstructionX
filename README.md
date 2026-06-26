@@ -10,7 +10,7 @@
 [![PySide6](https://img.shields.io/badge/PySide6-6.10+-green.svg)](https://doc.qt.io/qtforpython/)
 [![Platform](https://img.shields.io/badge/Platform-Windows-lightgrey.svg)](#)
 [![License](https://img.shields.io/badge/License-Modified%20Apache%202.0-orange.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/Alpha-1.0%20CE-red.svg)](#)
+[![Version](https://img.shields.io/badge/Alpha-1.0.2%20CE-red.svg)](#)
 
 <p>基于 PySide6 的插件式桌面应用框架，支持 LLM 集成、MCP 协议（Server/Client）、多会话管理与热插拔插件系统</p>
 
@@ -312,7 +312,7 @@ class MyPluginInfo(IPluginInfo):
 | 插件顺序 | `config/plugin_order.json` | 插件显示顺序配置 |
 | LLM 配置 | `config/llm_providers.json` | Provider API Key、Base URL 等 |
 | 模型缓存 | `config/llm_models_cache.json` | LLM 模型列表缓存 |
-| 插件数据 | `data/data.json` | 插件数据持久化存储 |
+| 插件数据 | `data/data.db` | 插件数据持久化存储（SQLite） |
 | 任务状态 | `data/tasks.json` | 后台任务状态持久化 |
 | 资源文件 | `data/assets/` | 插件资源文件存储 |
 | MCP 配置 | `config/mcp_config.json` | MCP Server/Client 连接配置 |

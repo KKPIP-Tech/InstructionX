@@ -91,7 +91,9 @@ class UsageRecordStore:
                     self._cache_dirty = False
                 self._pending_write = False
 
-        t = threading.Thread(target=save, daemon=True)
+        with self._file_lock:
+            self._pending_write = True
+        t = threading.Thread(target=save, daemon=True, name="UsageRecordStore-async-save")
         t.start()
 
     # ==================== 公开 API ====================

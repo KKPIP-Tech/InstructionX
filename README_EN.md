@@ -10,7 +10,7 @@
 [![PySide6](https://img.shields.io/badge/PySide6-6.10+-green.svg)](https://doc.qt.io/qtforpython/)
 [![Platform](https://img.shields.io/badge/Platform-Windows-lightgrey.svg)](#)
 [![License](https://img.shields.io/badge/License-Modified%20Apache%202.0-orange.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/Alpha-1.0%20CE-red.svg)](#)
+[![Version](https://img.shields.io/badge/Alpha-1.0.2%20CE-red.svg)](#)
 
 > A PySide6-based plugin desktop application framework with LLM integration, MCP Protocol (Server/Client), multi-conversation management, and hot-swappable plugin system
 
@@ -311,7 +311,7 @@ class MyPluginInfo(IPluginInfo):
 | Plugin Order | `config/plugin_order.json` | Plugin display order configuration |
 | LLM Config | `config/llm_providers.json` | Provider API Key, Base URL, etc. |
 | Model Cache | `config/llm_models_cache.json` | LLM model list cache |
-| Plugin Data | `data/data.json` | Plugin data persistent storage |
+| Plugin Data | `data/data.db` | Plugin data persistent storage (SQLite) |
 | Task Status | `data/tasks.json` | Background task state persistence |
 | Assets | `data/assets/` | Plugin asset file storage |
 | MCP Config | `config/mcp_config.json` | MCP Server/Client connection configuration |
