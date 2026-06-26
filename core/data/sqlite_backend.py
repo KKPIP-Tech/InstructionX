@@ -42,15 +42,19 @@ class _LRUCache:
     必须在 DataProvider 的 _file_lock（RLock）保护下进行。
     """
 
+    # 用于区分"缓存未命中"与"缓存值为 None/False/空"
+    MISSING = object()
+
     def __init__(self, capacity: int = 4096):
         self.capacity = capacity
         self._data: "OrderedDict[Tuple[str, str, str], Any]" = OrderedDict()
 
     def get(self, key: Tuple[str, str, str]) -> Any:
-        if key not in self._data:
-            return None
+        value = self._data.get(key, self.MISSING)
+        if value is self.MISSING:
+            return self.MISSING
         self._data.move_to_end(key)
-        return self._data[key]
+        return value
 
     def put(self, key: Tuple[str, str, str], value: Any) -> None:
         if key in self._data:
@@ -349,22 +353,34 @@ class SQLiteBackend:
             if self.json_file.exists():
                 json_data = self._parse_json_file()
 
-            conn = self._connect()
-            self._create_tables(conn)
+            try:
+                # DDL 会隐式提交 SQLite 事务，因此先单独执行 DDL
+                conn = self._connect()
+                self._create_tables(conn)
 
-            if json_data is not None:
-                migrated_from = self.json_file.name
-                self._migrate_json_to_sqlite(conn, json_data)
-            else:
-                migrated_from = "created"
+                # 数据迁移与元数据写入在同一个显式事务中，失败可整体回滚
+                with self.transaction() as txn:
+                    if json_data is not None:
+                        self._migrate_json_to_sqlite(txn, json_data)
+                    now = dt.datetime.now(dt.timezone.utc).isoformat()
+                    self._set_metadata(
+                        txn,
+                        schema_version=str(TARGET_SCHEMA_VERSION),
+                        migrated_from=self.json_file.name if json_data is not None else "created",
+                        migrated_at=now,
+                    )
 
-            now = dt.datetime.now(dt.timezone.utc).isoformat()
-            self._set_metadata(
-                conn,
-                schema_version=str(TARGET_SCHEMA_VERSION),
-                migrated_from=migrated_from,
-                migrated_at=now,
-            )
+                # SQLite 事务提交成功后，才重命名 JSON 备份
+                if json_data is not None:
+                    self.migrate_json_file_with_backup()
+            except Exception as e:
+                # 任何失败都关闭连接并删除不完整的数据库文件，
+                # 确保下次启动时仍可从原始 data.json 重试迁移
+                self.close()
+                self._delete_db_files()
+                if isinstance(e, SQLiteBackendError):
+                    raise
+                raise SQLiteBackendError(f"数据库初始化失败: {e}") from e
         else:
             conn = self._connect()
             self._create_tables(conn)
@@ -391,16 +407,20 @@ class SQLiteBackend:
     # -----------------------------------------------------------------------
 
     def _has_core_tables(self) -> bool:
-        """检查数据库是否已包含核心表。"""
+        """检查数据库是否已包含核心业务表（不含 db_metadata）。
+
+        注意：db_metadata 可能在早期数据库中不存在，因此只检查 plugins、
+        plugin_data、active_instances 三张表是否存在。
+        """
         if not self.db_file.exists():
             return False
         try:
             conn = self._connect()
             cur = conn.execute(
                 "SELECT name FROM sqlite_master WHERE type='table' AND name IN "
-                "('plugins', 'plugin_data', 'active_instances', 'db_metadata');"
+                "('plugins', 'plugin_data', 'active_instances');"
             )
-            return len(cur.fetchall()) == 4
+            return len(cur.fetchall()) == 3
         except Exception:
             return False
 
@@ -410,6 +430,17 @@ class SQLiteBackend:
                 self.temp_json_file.unlink()
         except Exception:
             pass
+
+    def _delete_db_files(self) -> None:
+        """删除数据库文件及其 WAL/SHM 附属文件。"""
+        base_name = self.db_file.name
+        for suffix in ("", "-wal", "-shm"):
+            path = self.db_file.parent / (base_name + suffix)
+            try:
+                if path.exists():
+                    path.unlink()
+            except Exception:
+                pass
 
     def _parse_json_file(self) -> Dict[str, Any]:
         import json as _json
@@ -435,7 +466,7 @@ class SQLiteBackend:
                 ('namespace', 'TEXT', 1, None, 0),
                 ('key', 'TEXT', 1, None, 0),
                 ('value_json', 'TEXT', 1, None, 0),
-                ('updated_at', 'INTEGER', 1, "strftime('%s','now')", 0),
+                ('updated_at', 'INTEGER', 1, "strftime('%s', 'now')", 0),
             },
             'active_instances': {
                 ('plugin_type', 'TEXT', 0, None, 1),
@@ -583,7 +614,7 @@ class SQLiteBackend:
     ) -> Any:
         cache_key = (instance_id, namespace, key)
         cached = self._value_cache.get(cache_key)
-        if cached is not None:
+        if cached is not _LRUCache.MISSING:
             return copy.deepcopy(cached)
 
         conn = self._connect()
@@ -624,7 +655,7 @@ class SQLiteBackend:
         for key, value_json in cur.fetchall():
             cache_key = (instance_id, namespace, key)
             cached = self._value_cache.get(cache_key)
-            if cached is not None:
+            if cached is not _LRUCache.MISSING:
                 result[key] = copy.deepcopy(cached)
             else:
                 value = _deserialize(value_json)
