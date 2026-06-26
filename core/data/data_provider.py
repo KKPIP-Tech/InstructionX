@@ -1,9 +1,9 @@
-"""
-DataProvider - 插件式桌面应用程序的数据中枢和 API 网关
+"""DataProvider - 插件式桌面应用程序的数据中枢和 API 网关
 
 提供数据持久化、缓存、插件管理、发布/订阅通信和资源管理功能。
 """
 
+import copy
 import os
 import json
 import threading
@@ -13,6 +13,8 @@ from enum import Enum
 
 from core.interfaces.i_data_provider import IDataProvider, DataNamespace as IDataNamespace
 from utils.logging_tools import LoggerManager, get_name
+
+from .sqlite_backend import SQLiteBackend, SQLiteBackendError
 
 
 class DataProviderError(Exception):
@@ -29,13 +31,14 @@ class DataNamespace(Enum):
 class DataProvider(IDataProvider):
     """
     数据提供者 - 单例模式
-    
+
     负责插件数据的持久化、缓存、管理和通信。
+    迁移后底层使用 SQLite，插件接口保持不变。
     """
-    
+
     _instance: Optional['DataProvider'] = None
     _lock: threading.Lock = threading.Lock()
-    
+
     def __new__(cls, *args, **kwargs):
         """单例模式实现"""
         if cls._instance is None:
@@ -43,11 +46,11 @@ class DataProvider(IDataProvider):
                 if cls._instance is None:
                     cls._instance = super().__new__(cls)
         return cls._instance
-    
+
     def __init__(self, data_dir: Optional[str] = None, data_filename: str = "data.json"):
         """
         初始化 DataProvider
-        
+
         Args:
             data_dir: 数据文件存储目录，默认为项目根目录下的 data 文件夹
             data_filename: 数据文件名，默认为 data.json
@@ -55,61 +58,56 @@ class DataProvider(IDataProvider):
         # 避免重复初始化
         if hasattr(self, '_initialized') and self._initialized:
             return
-        
+
+        # 后端选择开关：环境变量 INSTRUCTIONX_DATAPROVIDER_BACKEND=json 使用旧 JSON 后端
+        self._backend_type = os.environ.get("INSTRUCTIONX_DATAPROVIDER_BACKEND", "sqlite").lower()
+        self._use_json_backend = self._backend_type == "json"
+
         # 设置数据文件路径
         if data_dir is None:
-            # 默认使用项目根目录下的 data 文件夹
             self.data_dir = Path(__file__).parent.parent.parent / "data"
         else:
             self.data_dir = Path(data_dir)
-        
+
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.data_file = self.data_dir / data_filename
         self.temp_file = self.data_dir / f"{data_filename}.tmp"
-        
+
         # 资源文件目录
         self.assets_dir = self.data_dir / "assets" / "plugins"
         self.assets_dir.mkdir(parents=True, exist_ok=True)
-        
+
         # 线程安全锁
         self._file_lock = threading.RLock()
-        self._subscription_lock = threading.RLock()
-        
-        # 内存缓存
+        self._subscription_lock = threading.Lock()  # 普通 Lock，更快暴露死锁
+
+        # 内存缓存（全量字典缓存，用于 load_data / save_data / clear_cache 语义）
         self._cache: Optional[Dict[str, Any]] = None
         self._cache_dirty = True
-        
+
         # 订阅管理器: {(subscriber_id, target_plugin_id, target_key): callback}
         self._subscriptions: Dict[tuple, Callable] = {}
 
         # 日志管理器
         self._logger = LoggerManager()
 
+        if not self._use_json_backend:
+            self._backend = SQLiteBackend(data_dir, data_filename)
+            try:
+                self._backend.ensure_database()
+                # 若从 JSON 迁移成功，重命名 JSON 备份
+                self._backend.migrate_json_file_with_backup()
+            except SQLiteBackendError as e:
+                raise DataProviderError(str(e)) from e
+
         # 标记初始化完成
         self._initialized = True
-        
-        # 初始化数据文件（如果不存在）
-        self._ensure_data_file()
-    
-    def _ensure_data_file(self) -> None:
-        """确保数据文件存在，如果不存在则创建默认结构"""
-        if not self.data_file.exists():
-            default_data = {
-                "plugins": {},
-                "active_instances": {}
-            }
-            self._write_to_disk(default_data)
-    
-    def _read_from_disk(self) -> Dict[str, Any]:
-        """
-        从磁盘读取数据
-        
-        Returns:
-            数据字典
-            
-        Raises:
-            DataProviderError: 读取失败时抛出
-        """
+
+    # -------------------------------------------------------------------------
+    # JSON 后端兼容方法（应急回退）
+    # -------------------------------------------------------------------------
+
+    def _json_read_from_disk(self) -> Dict[str, Any]:
         with self._file_lock:
             try:
                 with open(self.data_file, 'r', encoding='utf-8') as f:
@@ -118,506 +116,420 @@ class DataProvider(IDataProvider):
                 raise DataProviderError(f"JSON 解析失败: {e}")
             except Exception as e:
                 raise DataProviderError(f"读取数据文件失败: {e}")
-    
-    def _write_to_disk(self, data: Dict[str, Any]) -> None:
-        """
-        原子写入数据到磁盘
-        
-        使用临时文件 + 原子重命名机制，防止程序崩溃时数据损坏
-        
-        Args:
-            data: 要写入的数据字典
-            
-        Raises:
-            DataProviderError: 写入失败时抛出
-        """
+
+    def _json_write_to_disk(self, data: Dict[str, Any]) -> None:
         with self._file_lock:
             try:
-                # 写入临时文件
                 with open(self.temp_file, 'w', encoding='utf-8') as f:
                     json.dump(data, f, ensure_ascii=False, indent=2)
-                
-                # 原子重命名（在 Windows 和 Unix 系统上都是原子操作）
                 os.replace(self.temp_file, self.data_file)
-                
             except Exception as e:
                 raise DataProviderError(f"写入数据文件失败: {e}")
-    
-    def load_data(self, force_reload: bool = False) -> Dict[str, Any]:
-        """
-        从磁盘加载数据到缓存
-        
-        Args:
-            force_reload: 是否强制重新加载，忽略缓存
-            
-        Returns:
-            数据字典
-        """
-        if self._cache is None or force_reload or self._cache_dirty:
-            self._cache = self._read_from_disk()
+
+    def _json_ensure_data_file(self) -> None:
+        if not self.data_file.exists():
+            default_data = {"plugins": {}, "active_instances": {}}
+            self._json_write_to_disk(default_data)
+
+    def _json_load_data(self) -> Dict[str, Any]:
+        if self._cache is None or self._cache_dirty:
+            self._cache = self._json_read_from_disk()
             self._cache_dirty = False
         return self._cache.copy() if self._cache else {}
-    
-    def save_data(self) -> None:
-        """
-        将当前缓存数据保存到磁盘
-        
-        Raises:
-            DataProviderError: 保存失败时抛出
-        """
+
+    def _json_save_data(self) -> None:
         if self._cache is None:
             raise DataProviderError("没有可保存的数据")
-        
-        self._write_to_disk(self._cache)
+        self._json_write_to_disk(self._cache)
         self._cache_dirty = False
-    
+
+    # -------------------------------------------------------------------------
+    # 公共方法：数据加载/保存/缓存
+    # -------------------------------------------------------------------------
+
+    def load_data(self, force_reload: bool = False) -> Dict[str, Any]:
+        if self._use_json_backend:
+            return self._json_load_data()
+
+        if self._cache is None or force_reload or self._cache_dirty:
+            with self._file_lock:
+                try:
+                    self._cache = self._backend.load_data()
+                except SQLiteBackendError as e:
+                    raise DataProviderError(str(e)) from e
+                self._cache_dirty = False
+        return copy.deepcopy(self._cache) if self._cache else {}
+
+    def save_data(self) -> None:
+        if self._use_json_backend:
+            self._json_save_data()
+            return
+
+        if self._cache is None:
+            raise DataProviderError("没有可保存的数据")
+        with self._file_lock:
+            try:
+                self._backend.save_data(self._cache)
+            except SQLiteBackendError as e:
+                raise DataProviderError(str(e)) from e
+            self._cache_dirty = False
+
     def clear_cache(self) -> None:
-        """清除缓存，下次读取时将重新从磁盘加载"""
         with self._file_lock:
             self._cache = None
             self._cache_dirty = True
-    
-    # ==================== 插件管理 ====================
-    
+            if not self._use_json_backend:
+                self._backend._value_cache.clear()
+
+
+    # -------------------------------------------------------------------------
+    # 公共方法：插件管理
+    # -------------------------------------------------------------------------
+
+    def _ensure_cache_loaded(self) -> None:
+        """确保 _cache 已加载（用于保持与旧实现一致的行为）。"""
+        if self._cache is None:
+            self.load_data()
+
     def register_plugin(self, instance_id: str, plugin_type: str) -> None:
-        """
-        注册插件实例
-        
-        Args:
-            instance_id: 插件实例的唯一标识符
-            plugin_type: 插件类型
-            
-        Raises:
-            DataProviderError: 插件已存在时抛出
-        """
-        data = self.load_data()
-        
-        if instance_id in data["plugins"]:
-            raise DataProviderError(f"插件 {instance_id} 已存在")
-        
-        data["plugins"][instance_id] = {
-            "type": plugin_type,
-            "active": False,
-            "private": {},
-            "public": {}
-        }
-        
-        self._cache = data
-        self.save_data()
-    
+        if self._use_json_backend:
+            data = self._json_load_data()
+            if instance_id in data["plugins"]:
+                raise DataProviderError(f"插件 {instance_id} 已存在")
+            data["plugins"][instance_id] = {
+                "type": plugin_type,
+                "active": False,
+                "private": {},
+                "public": {},
+            }
+            self._cache = data
+            self._json_save_data()
+            return
+
+        with self._file_lock:
+            try:
+                self._backend.register_plugin(instance_id, plugin_type)
+            except SQLiteBackendError as e:
+                raise DataProviderError(str(e)) from e
+            self._ensure_cache_loaded()
+            if instance_id not in self._cache["plugins"]:
+                self._cache["plugins"][instance_id] = {
+                    "type": plugin_type,
+                    "active": False,
+                    "private": {},
+                    "public": {},
+                }
+
     def unregister_plugin(self, instance_id: str) -> None:
-        """
-        注销插件实例
-        
-        Args:
-            instance_id: 插件实例的唯一标识符
-            
-        Raises:
-            DataProviderError: 插件不存在时抛出
-        """
-        data = self.load_data()
-        
-        if instance_id not in data["plugins"]:
-            raise DataProviderError(f"插件 {instance_id} 不存在")
-        
-        # 获取插件类型
-        plugin_type = data["plugins"][instance_id]["type"]
-        
-        # 从活跃实例中移除
-        if plugin_type in data["active_instances"]:
-            if data["active_instances"][plugin_type] == instance_id:
+        if self._use_json_backend:
+            data = self._json_load_data()
+            if instance_id not in data["plugins"]:
+                raise DataProviderError(f"插件 {instance_id} 不存在")
+            plugin_type = data["plugins"][instance_id]["type"]
+            if plugin_type in data["active_instances"] and data["active_instances"][plugin_type] == instance_id:
                 del data["active_instances"][plugin_type]
-        
-        # 移除插件数据
-        del data["plugins"][instance_id]
-        
-        # 移除所有相关订阅
+            del data["plugins"][instance_id]
+            self._cache = data
+            self._json_save_data()
+            self._remove_subscriptions_for_plugin(instance_id)
+            return
+
+        with self._file_lock:
+            try:
+                self._backend.unregister_plugin(instance_id)
+            except SQLiteBackendError as e:
+                raise DataProviderError(str(e)) from e
+            self._ensure_cache_loaded()
+            self._cache["plugins"].pop(instance_id, None)
+            for ptype, pid in list(self._cache["active_instances"].items()):
+                if pid == instance_id:
+                    del self._cache["active_instances"][ptype]
+        # 释放 _file_lock 后再清理订阅
         self._remove_subscriptions_for_plugin(instance_id)
-        
-        self._cache = data
-        self.save_data()
-    
+
     def get_active_instance(self, plugin_type: str) -> Optional[str]:
-        """
-        根据插件类型获取当前活跃的实例 ID
-        
-        Args:
-            plugin_type: 插件类型
-            
-        Returns:
-            活跃实例 ID，如果不存在则返回 None
-        """
-        data = self.load_data()
-        return data.get("active_instances", {}).get(plugin_type)
-    
+        if self._use_json_backend:
+            data = self._json_load_data()
+            return data.get("active_instances", {}).get(plugin_type)
+
+        with self._file_lock:
+            try:
+                return self._backend.get_active_instance(plugin_type)
+            except SQLiteBackendError as e:
+                raise DataProviderError(str(e)) from e
+
     def set_active_instance(self, instance_id: str) -> None:
-        """
-        将某实例标记为当前活跃实例
-        
-        Args:
-            instance_id: 插件实例的唯一标识符
-            
-        Raises:
-            DataProviderError: 插件不存在时抛出
-        """
-        data = self.load_data()
-        
-        if instance_id not in data["plugins"]:
-            raise DataProviderError(f"插件 {instance_id} 不存在")
-        
-        plugin_type = data["plugins"][instance_id]["type"]
-        
-        # 更新活跃实例
-        data["active_instances"][plugin_type] = instance_id
-        
-        # 更新插件的 active 标志
-        data["plugins"][instance_id]["active"] = True
-        
-        # 将同类型的其他插件标记为非活跃
-        for pid, plugin_data in data["plugins"].items():
-            if plugin_data["type"] == plugin_type and pid != instance_id:
-                plugin_data["active"] = False
-        
-        self._cache = data
-        self.save_data()
-    
-    # ==================== 数据访问 ====================
-    
-    def get_plugin_data(self, 
-                       instance_id: str, 
-                       key: str, 
+        if self._use_json_backend:
+            data = self._json_load_data()
+            if instance_id not in data["plugins"]:
+                raise DataProviderError(f"插件 {instance_id} 不存在")
+            plugin_type = data["plugins"][instance_id]["type"]
+            data["active_instances"][plugin_type] = instance_id
+            data["plugins"][instance_id]["active"] = True
+            for pid, plugin_data in data["plugins"].items():
+                if plugin_data["type"] == plugin_type and pid != instance_id:
+                    plugin_data["active"] = False
+            self._cache = data
+            self._json_save_data()
+            return
+
+        with self._file_lock:
+            try:
+                self._backend.set_active_instance(instance_id)
+            except SQLiteBackendError as e:
+                raise DataProviderError(str(e)) from e
+            self._ensure_cache_loaded()
+            plugin_type = self._backend.get_plugin_type(instance_id)
+            if plugin_type is None:
+                raise DataProviderError(f"插件 {instance_id} 不存在")
+            self._cache["plugins"][instance_id]["active"] = True
+            self._cache["active_instances"][plugin_type] = instance_id
+            for pid, plugin_data in self._cache["plugins"].items():
+                if plugin_data["type"] == plugin_type and pid != instance_id:
+                    plugin_data["active"] = False
+
+    # -------------------------------------------------------------------------
+    # 公共方法：数据访问
+    # -------------------------------------------------------------------------
+
+    def get_plugin_data(self,
+                       instance_id: str,
+                       key: str,
                        namespace: DataNamespace = DataNamespace.PRIVATE,
                        default: Any = None) -> Any:
-        """
-        获取插件数据
-        
-        Args:
-            instance_id: 插件实例 ID
-            key: 数据键
-            namespace: 命名空间（private 或 public）
-            default: 默认值，如果键不存在则返回该值
-            
-        Returns:
-            数据值
-            
-        Raises:
-            DataProviderError: 插件不存在时抛出
-        """
-        data = self.load_data()
-        
-        if instance_id not in data["plugins"]:
-            raise DataProviderError(f"插件 {instance_id} 不存在")
-        
         namespace_str = namespace.value
-        return data["plugins"][instance_id][namespace_str].get(key, default)
-    
-    def set_plugin_data(self, 
-                       instance_id: str, 
-                       key: str, 
+
+        if self._use_json_backend:
+            data = self._json_load_data()
+            if instance_id not in data["plugins"]:
+                raise DataProviderError(f"插件 {instance_id} 不存在")
+            return data["plugins"][instance_id][namespace_str].get(key, default)
+
+        with self._file_lock:
+            if not self._backend.plugin_exists(instance_id):
+                raise DataProviderError(f"插件 {instance_id} 不存在")
+            try:
+                return self._backend.get_plugin_data(instance_id, namespace_str, key, default)
+            except SQLiteBackendError as e:
+                raise DataProviderError(str(e)) from e
+
+    def set_plugin_data(self,
+                       instance_id: str,
+                       key: str,
                        value: Any,
                        namespace: DataNamespace = DataNamespace.PRIVATE,
                        notify: bool = True) -> None:
-        """
-        设置插件数据
-        
-        Args:
-            instance_id: 插件实例 ID
-            key: 数据键
-            value: 数据值
-            namespace: 命名空间（private 或 public）
-            notify: 是否通知订阅者（仅对 public 数据有效）
-            
-        Raises:
-            DataProviderError: 插件不存在时抛出
-        """
-        data = self.load_data()
-        
-        if instance_id not in data["plugins"]:
-            raise DataProviderError(f"插件 {instance_id} 不存在")
-        
         namespace_str = namespace.value
-        old_value = data["plugins"][instance_id][namespace_str].get(key)
-        data["plugins"][instance_id][namespace_str][key] = value
-        
-        self._cache = data
-        self.save_data()
-        
-        # 如果是 public 数据且需要通知
-        if namespace == DataNamespace.PUBLIC and notify:
-            self._notify_subscribers(instance_id, key, old_value, value)
-    
-    def get_all_plugin_data(self, 
-                           instance_id: str, 
-                           namespace: DataNamespace = DataNamespace.PRIVATE) -> Dict[str, Any]:
-        """
-        获取插件的所有数据（指定命名空间）
-        
-        Args:
-            instance_id: 插件实例 ID
-            namespace: 命名空间（private 或 public）
-            
-        Returns:
-            数据字典的副本
-            
-        Raises:
-            DataProviderError: 插件不存在时抛出
-        """
-        data = self.load_data()
-        
-        if instance_id not in data["plugins"]:
-            raise DataProviderError(f"插件 {instance_id} 不存在")
-        
-        namespace_str = namespace.value
-        return data["plugins"][instance_id][namespace_str].copy()
-    
-    # ==================== 发布/订阅模式 ====================
-    
-    def subscribe(self, 
-                 subscriber_id: str, 
-                 target_plugin_id: str, 
-                 target_key: str, 
-                 callback: Callable[[str, str, Any, Any], None]) -> None:
-        """
-        订阅其他插件的 public 数据变化
-        
-        Args:
-            subscriber_id: 订阅者插件 ID
-            target_plugin_id: 目标插件 ID
-            target_key: 要订阅的数据键
-            callback: 回调函数，签名为 callback(target_plugin_id, key, old_value, new_value)
-            
-        Raises:
-            DataProviderError: 目标插件不存在时抛出
 
-        注意: 系统不阻止订阅任意 key，仅在 namespace=PUBLIC 时才会触发回调通知。
-        """
-        data = self.load_data()
-        
-        # 验证目标插件存在
-        if target_plugin_id not in data["plugins"]:
-            raise DataProviderError(f"目标插件 {target_plugin_id} 不存在")
-        
+        if self._use_json_backend:
+            data = self._json_load_data()
+            if instance_id not in data["plugins"]:
+                raise DataProviderError(f"插件 {instance_id} 不存在")
+            old_value = data["plugins"][instance_id][namespace_str].get(key)
+            data["plugins"][instance_id][namespace_str][key] = value
+            self._cache = data
+            self._json_save_data()
+            if namespace == DataNamespace.PUBLIC and notify:
+                self._notify_subscribers(instance_id, key, old_value, value)
+            return
+
+        with self._file_lock:
+            if not self._backend.plugin_exists(instance_id):
+                raise DataProviderError(f"插件 {instance_id} 不存在")
+            # 获取旧值（用于回调）
+            try:
+                old_value = self._backend.get_plugin_data(instance_id, namespace_str, key)
+            except SQLiteBackendError as e:
+                raise DataProviderError(str(e)) from e
+            # 写入新值
+            try:
+                self._backend.set_plugin_data(instance_id, namespace_str, key, value)
+            except SQLiteBackendError as e:
+                raise DataProviderError(str(e)) from e
+            # 同步 _cache
+            self._ensure_cache_loaded()
+            self._cache["plugins"][instance_id][namespace_str][key] = copy.deepcopy(value)
+            new_value = copy.deepcopy(value)
+
+        # 释放 _file_lock 后再通知订阅者
+        if namespace_str == DataNamespace.PUBLIC.value and notify:
+            self._notify_subscribers(instance_id, key, old_value, new_value)
+
+    def get_all_plugin_data(self,
+                           instance_id: str,
+                           namespace: DataNamespace = DataNamespace.PRIVATE) -> Dict[str, Any]:
+        namespace_str = namespace.value
+
+        if self._use_json_backend:
+            data = self._json_load_data()
+            if instance_id not in data["plugins"]:
+                raise DataProviderError(f"插件 {instance_id} 不存在")
+            return data["plugins"][instance_id][namespace_str].copy()
+
+        with self._file_lock:
+            if not self._backend.plugin_exists(instance_id):
+                raise DataProviderError(f"插件 {instance_id} 不存在")
+            try:
+                return self._backend.get_all_plugin_data(instance_id, namespace_str)
+            except SQLiteBackendError as e:
+                raise DataProviderError(str(e)) from e
+
+
+    # -------------------------------------------------------------------------
+    # 公共方法：发布/订阅模式
+    # -------------------------------------------------------------------------
+
+    def subscribe(self,
+                 subscriber_id: str,
+                 target_plugin_id: str,
+                 target_key: str,
+                 callback: Callable[[str, str, Any, Any], None]) -> None:
+        if self._use_json_backend:
+            data = self._json_load_data()
+            if target_plugin_id not in data["plugins"]:
+                raise DataProviderError(f"目标插件 {target_plugin_id} 不存在")
+            with self._subscription_lock:
+                subscription_key = (subscriber_id, target_plugin_id, target_key)
+                self._subscriptions[subscription_key] = callback
+            return
+
+        # 在 _file_lock 保护下仅验证目标插件存在，然后释放锁再注册订阅
+        with self._file_lock:
+            try:
+                if not self._backend.plugin_exists(target_plugin_id):
+                    raise DataProviderError(f"目标插件 {target_plugin_id} 不存在")
+            except SQLiteBackendError as e:
+                raise DataProviderError(str(e)) from e
+
         with self._subscription_lock:
             subscription_key = (subscriber_id, target_plugin_id, target_key)
             self._subscriptions[subscription_key] = callback
-    
+
     def unsubscribe(self, subscriber_id: str, target_plugin_id: Optional[str] = None) -> None:
-        """
-        取消订阅
-        
-        Args:
-            subscriber_id: 订阅者插件 ID
-            target_plugin_id: 可选，目标插件 ID。如果为 None，则取消该订阅者的所有订阅
-        """
         with self._subscription_lock:
             if target_plugin_id is None:
-                # 移除该订阅者的所有订阅
                 keys_to_remove = [k for k in self._subscriptions.keys() if k[0] == subscriber_id]
                 for key in keys_to_remove:
                     del self._subscriptions[key]
             else:
-                # 移除该订阅者对特定插件的所有订阅
-                keys_to_remove = [k for k in self._subscriptions.keys() 
+                keys_to_remove = [k for k in self._subscriptions.keys()
                                  if k[0] == subscriber_id and k[1] == target_plugin_id]
                 for key in keys_to_remove:
                     del self._subscriptions[key]
-    
-    def publish(self, 
-                publisher_id: str, 
-                key: str, 
+
+    def publish(self,
+                publisher_id: str,
+                key: str,
                 value: Any,
                 namespace: DataNamespace = DataNamespace.PUBLIC) -> None:
-        """
-        发布数据更新（等同于 set_plugin_data 的别名）
-        
-        Args:
-            publisher_id: 发布者插件 ID
-            key: 数据键
-            value: 数据值
-            namespace: 命名空间（默认为 public）
-        """
         self.set_plugin_data(publisher_id, key, value, namespace, notify=True)
-    
-    def _notify_subscribers(self, 
-                          publisher_id: str, 
-                          key: str, 
-                          old_value: Any, 
+
+    def _notify_subscribers(self,
+                          publisher_id: str,
+                          key: str,
+                          old_value: Any,
                           new_value: Any) -> None:
-        """
-        通知所有订阅者
-        
-        Args:
-            publisher_id: 发布者插件 ID
-            key: 数据键
-            old_value: 旧值
-            new_value: 新值
-        """
         with self._subscription_lock:
-            # 查找所有匹配的订阅
             for (subscriber_id, target_plugin_id, target_key), callback in self._subscriptions.items():
                 if target_plugin_id == publisher_id and target_key == key:
                     try:
                         callback(target_plugin_id, key, old_value, new_value)
                     except Exception as e:
                         self._logger.warning(get_name(), f'Subscriber {subscriber_id} callback failed: {e}')
-    
+
     def _remove_subscriptions_for_plugin(self, instance_id: str) -> None:
-        """
-        移除与指定插件相关的所有订阅
-        
-        Args:
-            instance_id: 插件实例 ID
-        """
         with self._subscription_lock:
-            # 移除该插件作为订阅者的订阅
-            keys_to_remove = [k for k in self._subscriptions.keys() if k[0] == instance_id]
+            keys_to_remove = [k for k in self._subscriptions.keys() if k[0] == instance_id or k[1] == instance_id]
             for key in keys_to_remove:
                 del self._subscriptions[key]
-            
-            # 移除其他插件对该插件的订阅
-            keys_to_remove = [k for k in self._subscriptions.keys() if k[1] == instance_id]
-            for key in keys_to_remove:
-                del self._subscriptions[key]
-    
-    # ==================== 资源文件管理 ====================
-    
-    def save_asset(self, 
-                  plugin_id: str, 
-                  filename: str, 
+
+    # -------------------------------------------------------------------------
+    # 公共方法：资源文件管理
+    # -------------------------------------------------------------------------
+
+    def save_asset(self,
+                  plugin_id: str,
+                  filename: str,
                   content: bytes) -> str:
-        """
-        保存资源文件
-        
-        Args:
-            plugin_id: 插件 ID
-            filename: 文件名
-            content: 文件内容（bytes）
-            
-        Returns:
-            相对路径（相对于 assets 目录）
-            
-        Raises:
-            DataProviderError: 保存失败时抛出
-        """
         try:
-            # 创建插件专属目录
             plugin_dir = self.assets_dir / plugin_id
             plugin_dir.mkdir(parents=True, exist_ok=True)
-            
-            # 保存文件
             file_path = plugin_dir / filename
             with open(file_path, 'wb') as f:
                 f.write(content)
-            
-            # 返回相对路径
             relative_path = f"assets/plugins/{plugin_id}/{filename}"
             return relative_path
-            
         except Exception as e:
             raise DataProviderError(f"保存资源文件失败: {e}")
-    
+
     def get_asset_path(self, relative_path: str) -> str:
-        """
-        将相对路径转换为绝对路径
-        
-        Args:
-            relative_path: 相对路径（例如：assets/plugins/plugin_id/filename.ext）
-            
-        Returns:
-            绝对路径
-            
-        Raises:
-            DataProviderError: 路径无效时抛出
-        """
         try:
-            # 确保相对路径不包含危险的路径遍历
             normalized_path = Path(relative_path).as_posix()
             if ".." in normalized_path.split("/"):
                 raise DataProviderError(f"无效的相对路径: {relative_path}")
-            
             absolute_path = self.data_dir / relative_path
-            
             if not absolute_path.exists():
                 raise DataProviderError(f"资源文件不存在: {absolute_path}")
-            
             return str(absolute_path.resolve())
-            
         except Exception as e:
             if isinstance(e, DataProviderError):
                 raise
             raise DataProviderError(f"获取资源路径失败: {e}")
-    
+
     def load_asset(self, relative_path: str) -> bytes:
-        """
-        加载资源文件内容
-        
-        Args:
-            relative_path: 相对路径
-            
-        Returns:
-            文件内容（bytes）
-            
-        Raises:
-            DataProviderError: 加载失败时抛出
-        """
         try:
             absolute_path = self.get_asset_path(relative_path)
-            
             with open(absolute_path, 'rb') as f:
                 return f.read()
-                
         except Exception as e:
             if isinstance(e, DataProviderError):
                 raise
             raise DataProviderError(f"加载资源文件失败: {e}")
-    
+
     def get_plugin_assets_dir(self, plugin_id: str) -> str:
-        """
-        获取插件的资源目录路径
-        
-        Args:
-            plugin_id: 插件 ID
-            
-        Returns:
-            资源目录的绝对路径
-        """
         plugin_dir = self.assets_dir / plugin_id
         plugin_dir.mkdir(parents=True, exist_ok=True)
         return str(plugin_dir.resolve())
-    
-    # ==================== 工具方法 ====================
-    
+
+    # -------------------------------------------------------------------------
+    # 公共方法：工具方法
+    # -------------------------------------------------------------------------
+
     def get_all_plugins(self) -> Dict[str, Dict[str, Any]]:
-        """
-        获取所有插件信息
-        
-        Returns:
-            插件信息字典 {instance_id: {type, active, private, public}}
-        """
-        data = self.load_data()
-        return data.get("plugins", {}).copy()
-    
+        if self._use_json_backend:
+            data = self._json_load_data()
+            return data.get("plugins", {}).copy()
+
+        with self._file_lock:
+            try:
+                return self._backend.get_all_plugins()
+            except SQLiteBackendError as e:
+                raise DataProviderError(str(e)) from e
+
     def get_plugin_info(self, instance_id: str) -> Optional[Dict[str, Any]]:
-        """
-        获取指定插件的信息
-        
-        Args:
-            instance_id: 插件实例 ID
-            
-        Returns:
-            插件信息字典，如果不存在则返回 None
-        """
-        data = self.load_data()
-        return data.get("plugins", {}).get(instance_id)
-    
+        if self._use_json_backend:
+            data = self._json_load_data()
+            return data.get("plugins", {}).get(instance_id)
+
+        with self._file_lock:
+            try:
+                return self._backend.get_plugin_info(instance_id)
+            except SQLiteBackendError as e:
+                raise DataProviderError(str(e)) from e
+
     def reset_all_data(self) -> None:
-        """重置所有数据（慎用！）"""
-        default_data = {
-            "plugins": {},
-            "active_instances": {}
-        }
-        self._cache = default_data
-        self.save_data()
+        if self._use_json_backend:
+            default_data = {"plugins": {}, "active_instances": {}}
+            self._cache = default_data
+            self._json_save_data()
+            self.clear_cache()
+            return
+
+        with self._file_lock:
+            try:
+                self._backend.reset_all_data()
+            except SQLiteBackendError as e:
+                raise DataProviderError(str(e)) from e
         self.clear_cache()
 
 
