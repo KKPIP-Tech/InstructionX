@@ -281,9 +281,22 @@ def test_tab_switching_shows_correct_buttons(qtbot):
     assert panel.official_layout.itemAt(0).widget().skill_name == 'OfficialTab'
     assert panel.thirdparty_layout.itemAt(0).widget().skill_name == 'ThirdpartyTab'
 
-    # Find the tab widget
-    tab_widget = panel.findChild(QTabWidget)
-    assert tab_widget is not None
-    assert tab_widget.count() == 2
-    assert tab_widget.tabText(0) == '官方功能'
-    assert tab_widget.tabText(1) == '第三方功能'
+    # Verify the stacked widget and pill buttons exist
+    assert panel.stacked_widget is not None
+    assert panel.stacked_widget.count() == 2
+    assert panel.official_btn.text() == '官方功能'
+    assert panel.thirdparty_btn.text() == '第三方功能'
+
+    # Switch to thirdparty tab via pill button click
+    panel.thirdparty_btn.click()
+    assert panel.stacked_widget.currentIndex() == 1
+    assert panel.thirdparty_btn.property('active') == 'true'
+    assert panel.official_btn.property('active') == 'false'
+    assert panel.count_label.text() == '1 Plugins'
+
+    # Switch back to official tab
+    panel.official_btn.click()
+    assert panel.stacked_widget.currentIndex() == 0
+    assert panel.official_btn.property('active') == 'true'
+    assert panel.thirdparty_btn.property('active') == 'false'
+    assert panel.count_label.text() == '1 Plugins'

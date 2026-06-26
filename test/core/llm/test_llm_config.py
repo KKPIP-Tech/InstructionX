@@ -147,8 +147,8 @@ class TestProviderConfig:
 class TestLLMConfigCreateDefault:
     """Tests for LLMConfig._create_default_config()."""
 
-    def test_create_default_config_four_providers(self, mocker, tmp_path):
-        """_create_default_config() creates minimax, siliconflow, glm, ollama."""
+    def test_create_default_config_five_providers(self, mocker, tmp_path):
+        """_create_default_config() creates minimax, siliconflow, glm, ollama, openai."""
         config_dir = tmp_path / "config"
         config_dir.mkdir(parents=True, exist_ok=True)
         cfg_file = config_dir / "llm_providers.json"
@@ -161,11 +161,12 @@ class TestLLMConfigCreateDefault:
         from core.llm.config import LLMConfig
 
         cfg = LLMConfig()
-        assert len(cfg._providers) == 4
+        assert len(cfg._providers) == 5
         assert "minimax" in cfg._providers
         assert "siliconflow" in cfg._providers
         assert "glm" in cfg._providers
         assert "ollama" in cfg._providers
+        assert "openai" in cfg._providers
 
     def test_create_default_config_saves_to_disk(self, mocker, tmp_path):
         """_create_default_config() writes llm_providers.json to disk."""
@@ -184,7 +185,7 @@ class TestLLMConfigCreateDefault:
         assert cfg_file.exists()
         data = json.loads(cfg_file.read_text(encoding="utf-8"))
         assert "providers" in data
-        assert len(data["providers"]) == 4
+        assert len(data["providers"]) == 5
 
 
 class TestLLMConfigLoad:
@@ -320,16 +321,16 @@ class TestLLMConfigGet:
         cfg, _ = llm_config_with_default
         chat_providers = cfg.get_enabled_providers("chat")
         assert all(p.enabled_chat for p in chat_providers.values())
-        # All 4 default providers have enabled_chat=True
-        assert len(chat_providers) == 4
+        # All 5 default providers have enabled_chat=True
+        assert len(chat_providers) == 5
 
     def test_get_enabled_providers_embedding(self, llm_config_with_default):
         """get_enabled_providers('embedding') returns only providers with enabled_embedding=True."""
         cfg, _ = llm_config_with_default
         embed_providers = cfg.get_enabled_providers("embedding")
         assert all(p.enabled_embedding for p in embed_providers.values())
-        # All 4 default providers have enabled_embedding=True in default config
-        assert len(embed_providers) == 4
+        # All 5 default providers have enabled_embedding=True in default config
+        assert len(embed_providers) == 5
 
 
 class TestLLMConfigAddRemove:

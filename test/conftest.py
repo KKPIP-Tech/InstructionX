@@ -41,6 +41,7 @@ def reset_singletons():
     import core.task.task_storage
     import core.llm.llm_provider
     import core.llm.plugin_service
+    import core.llm.usage_record_store
 
     # 重置前先执行 shutdown（如果实例存在）
     for btm in [core.task.background_task.BackgroundTaskManager._instance]:
@@ -69,6 +70,9 @@ def reset_singletons():
     # 重置 TaskStorage
     core.task.task_storage.TaskStorage._instance = None
 
+    # 重置 UsageRecordStore
+    core.llm.usage_record_store.UsageRecordStore._instance = None
+
     # 重置 LLMProvider
     if core.llm.llm_provider.LLMProvider._instance is not None:
         try:
@@ -84,6 +88,14 @@ def reset_singletons():
     import core.mcp.manager as mcp_manager_module
     mcp_manager_module._module_instance = None
 
+    # 等待 UsageRecordStore 后台线程完成，避免测试间污染
+    import core.llm.usage_record_store as urs
+    if urs.UsageRecordStore._instance is not None:
+        try:
+            urs.UsageRecordStore._instance._pending_write = False
+        except Exception:
+            pass
+
     yield
 
     # 测试后清理
@@ -94,6 +106,16 @@ def reset_singletons():
         pass
     core.task.background_task.BackgroundTaskManager._instance = None
     core.task.background_task.BackgroundTaskManager._initialized = False
+
+    # 等待 UsageRecordStore 后台保存线程完成，避免写入真实 data/llm_usage.json
+    import threading
+    import time
+    for t in threading.enumerate():
+        if t.name == "UsageRecordStore-async-save":
+            try:
+                t.join(timeout=0.5)
+            except Exception:
+                pass
 
 
 # ============================================================================
