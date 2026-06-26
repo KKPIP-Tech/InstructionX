@@ -296,8 +296,8 @@ class ConversationManager:
         chat_pricing = provider_pricing.get("chat", {})
         input_price = model_pricing.get("input_per_1k", chat_pricing.get("input_per_1k", 0))
         output_price = model_pricing.get("output_per_1k", chat_pricing.get("output_per_1k", 0))
-        return (usage.input_tokens or 0) / 1000000 * input_price + \
-               (usage.output_tokens or 0) / 1000000 * output_price
+        return (usage.input_tokens or 0) / 1000 * input_price + \
+               (usage.output_tokens or 0) / 1000 * output_price
 
     def _build_usage_record(
         self,

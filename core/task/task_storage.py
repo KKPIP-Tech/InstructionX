@@ -4,6 +4,7 @@
 负责后台任务和定时任务数据的持久化存储。
 """
 
+import copy
 import os
 import json
 import threading
@@ -133,7 +134,7 @@ class TaskStorage:
         if self._cache is None or force_reload or self._cache_dirty:
             self._cache = self._read_from_disk()
             self._cache_dirty = False
-        return self._cache.copy() if self._cache else {"tasks": {}, "scheduled_tasks": {}}
+        return copy.deepcopy(self._cache) if self._cache else {"tasks": {}, "scheduled_tasks": {}, "long_running_tasks": {}}
 
     def save_data(self) -> None:
         """将当前缓存数据保存到磁盘"""
