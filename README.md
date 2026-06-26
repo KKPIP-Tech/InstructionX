@@ -312,7 +312,7 @@ class MyPluginInfo(IPluginInfo):
 | 插件顺序 | `config/plugin_order.json` | 插件显示顺序配置 |
 | LLM 配置 | `config/llm_providers.json` | Provider API Key、Base URL 等 |
 | 模型缓存 | `config/llm_models_cache.json` | LLM 模型列表缓存 |
-| 插件数据 | `data/data.json` | 插件数据持久化存储 |
+| 插件数据 | `data/data.db` | 插件数据持久化存储（SQLite） |
 | 任务状态 | `data/tasks.json` | 后台任务状态持久化 |
 | 资源文件 | `data/assets/` | 插件资源文件存储 |
 | MCP 配置 | `config/mcp_config.json` | MCP Server/Client 连接配置 |

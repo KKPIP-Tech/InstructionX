@@ -311,7 +311,7 @@ class MyPluginInfo(IPluginInfo):
 | Plugin Order | `config/plugin_order.json` | Plugin display order configuration |
 | LLM Config | `config/llm_providers.json` | Provider API Key, Base URL, etc. |
 | Model Cache | `config/llm_models_cache.json` | LLM model list cache |
-| Plugin Data | `data/data.json` | Plugin data persistent storage |
+| Plugin Data | `data/data.db` | Plugin data persistent storage (SQLite) |
 | Task Status | `data/tasks.json` | Background task state persistence |
 | Assets | `data/assets/` | Plugin asset file storage |
 | MCP Config | `config/mcp_config.json` | MCP Server/Client connection configuration |
