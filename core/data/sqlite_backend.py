@@ -407,7 +407,8 @@ class SQLiteBackend:
     def _parse_json_file(self) -> Dict[str, Any]:
         import json as _json
         try:
-            with open(self.json_file, 'r', encoding='utf-8') as f:
+            # utf-8-sig 兼容带 BOM 与不带 BOM 的 UTF-8 文件
+            with open(self.json_file, 'r', encoding='utf-8-sig') as f:
                 return _json.load(f)
         except _json.JSONDecodeError as e:
             raise SQLiteBackendError(f"JSON 解析失败: {e}")
