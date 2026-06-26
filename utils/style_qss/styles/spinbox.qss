@@ -52,21 +52,15 @@ QSpinBox::down-button:pressed, QDoubleSpinBox::down-button:pressed {
 }
 
 QSpinBox::up-arrow, QDoubleSpinBox::up-arrow {
-    image: none;
-    border-left: 3px solid transparent;
-    border-right: 3px solid transparent;
-    border-bottom: 4px solid {windowText};
-    width: 0px;
-    height: 0px;
+    image: url({spinBoxArrowUp});
+    width: 10px;
+    height: 6px;
 }
 
 QSpinBox::down-arrow, QDoubleSpinBox::down-arrow {
-    image: none;
-    border-left: 3px solid transparent;
-    border-right: 3px solid transparent;
-    border-top: 4px solid {windowText};
-    width: 0px;
-    height: 0px;
+    image: url({spinBoxArrowDown});
+    width: 10px;
+    height: 6px;
 }
 
 /* 日期时间选择框 */

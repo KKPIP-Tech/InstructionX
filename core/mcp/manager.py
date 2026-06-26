@@ -108,9 +108,9 @@ class MCPManager:
         """添加外部 MCP Server 配置"""
         with self._lock:
             # 避免重复
-            for existing in self._config.remote_servers:
+            for i, existing in enumerate(self._config.remote_servers):
                 if existing.server_id == config.server_id:
-                    existing = config
+                    self._config.remote_servers[i] = config
                     break
             else:
                 self._config.remote_servers.append(config)

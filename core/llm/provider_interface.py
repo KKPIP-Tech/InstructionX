@@ -185,8 +185,8 @@ class ModelInfo:
         support_function_calling: 是否支持函数调用
         context_length: 上下文窗口大小（token数）
         extra: 额外的模型参数
-        input_price_per_1k: 每千 token 输入价格（元）
-        output_price_per_1k: 每千 token 输出价格（元）
+        input_price_per_1k: 每百万 token 输入价格（元）
+        output_price_per_1k: 每百万 token 输出价格（元）
         provider: 所属提供商名称
     """
 
@@ -216,8 +216,8 @@ class ModelInfo:
             support_vision: 是否支持视觉，默认 False
             support_function_calling: 是否支持函数调用，默认 False
             context_length: 上下文窗口大小
-            input_price_per_1k: 每千 token 输入价格（元）
-            output_price_per_1k: 每千 token 输出价格（元）
+            input_price_per_1k: 每百万 token 输入价格（元）
+            output_price_per_1k: 每百万 token 输出价格（元）
             provider: 所属提供商名称
             **kwargs: 额外的模型参数
         """

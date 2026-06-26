@@ -74,6 +74,8 @@ class MiniMaxProvider(BaseProvider):
     # MiniMax 官方没有提供模型列表 API，使用预设列表
     # 参考: https://platform.minimaxi.com/docs/api-reference/api-overview
     CHAT_MODELS = [
+        "MiniMax-M2.7",
+        "MiniMax-M2.7-highspeed",
         "MiniMax-M2.5",
         "MiniMax-M2.5-highspeed",
         "MiniMax-M2.1",
@@ -87,6 +89,16 @@ class MiniMaxProvider(BaseProvider):
 
     # 预设模型详情（从官方文档获取）
     MODEL_DETAILS = {
+        "MiniMax-M2.7": {
+            "context_length": 204800,
+            "support_function_calling": True,
+            "description": "MiniMax 旗舰大模型，全面升级推理与多模态能力"
+        },
+        "MiniMax-M2.7-highspeed": {
+            "context_length": 204800,
+            "support_function_calling": True,
+            "description": "M2.7 极速版：效果不变，更快，更敏捷"
+        },
         "MiniMax-M2.5": {
             "context_length": 204800,
             "support_function_calling": True,

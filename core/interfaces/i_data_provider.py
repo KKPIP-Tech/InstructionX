@@ -152,6 +152,21 @@ class IDataProvider(ABC):
     # ==================== 工具方法 ====================
 
     @abstractmethod
+    def clear_cache(self) -> None:
+        """清除缓存，下次读取时将重新从磁盘加载"""
+        pass
+
+    @abstractmethod
+    def load_data(self, force_reload: bool = False) -> Dict[str, Any]:
+        """从磁盘加载数据到缓存"""
+        pass
+
+    @abstractmethod
+    def save_data(self) -> None:
+        """将当前缓存数据保存到磁盘"""
+        pass
+
+    @abstractmethod
     def get_all_plugins(self) -> Dict[str, Dict[str, Any]]:
         """获取所有插件信息"""
         pass

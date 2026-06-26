@@ -26,7 +26,7 @@ class SkillButton(QToolButton):
         self._process_display_text(name)
         self.setIconSize(QSize(28, 28))  # 图标尺寸
         self.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextUnderIcon)
-        self.setFixedSize(60, 70)  # 紧凑的按钮尺寸
+        self.setFixedSize(78, 64)  # 按钮尺寸
         self.setToolTip(f"{name}\n{description}")
 
         # 启用自动提升效果（悬停时突出显示）
@@ -53,37 +53,33 @@ class SkillButton(QToolButton):
         """
         处理显示文本
         - 允许插件设计者自行决定换行位置（使用 \n）
-        - 每行最多5个字，超出用...替代
+        - 默认单行模式，最多 10 个字符，超出用...替代
+        - 若包含换行符，最多显示两行，每行最多 8 个字符
         """
-        max_chars_per_line = 5
+        max_chars_single = 13
+        max_chars_per_line = 8
 
-        # 如果文本包含换行符，按换行符分割
+        # 如果文本包含换行符，按换行符分割（双行模式）
         if '\n' in text:
             lines = text.split('\n')
+            # 最多显示两行
+            if len(lines) > 2:
+                lines = lines[:2]
+            processed_lines = []
+            for line in lines:
+                line = line.strip()
+                if len(line) > max_chars_per_line:
+                    processed_lines.append(line[:max_chars_per_line] + "...")
+                else:
+                    processed_lines.append(line)
+            display_text = '\n'.join(processed_lines)
         else:
-            # 没有换行符，根据长度决定
-            if len(text) > max_chars_per_line:
-                # 尝试在中间位置分割
-                mid = len(text) // 2
-                lines = [text[:mid], text[mid:]]
+            # 单行模式
+            if len(text) > max_chars_single:
+                display_text = text[:max_chars_single] + "..."
             else:
-                lines = [text]
+                display_text = text
 
-        # 最多显示两行
-        if len(lines) > 2:
-            lines = lines[:2]
-
-        # 处理每一行，确保不超过5个字
-        processed_lines = []
-        for line in lines:
-            line = line.strip()
-            if len(line) > max_chars_per_line:
-                processed_lines.append(line[:max_chars_per_line] + "...")
-            else:
-                processed_lines.append(line)
-
-        # 合并成显示文本
-        display_text = '\n'.join(processed_lines)
         self.setText(display_text)
 
     def _apply_style(self):

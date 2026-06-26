@@ -119,7 +119,7 @@ class UsageStats:
         total_output_tokens: 总输出 token 数
         total_tokens: 总 token 数
         total_cost: 总费用（元）
-        request_count: 请求次数
+        request_count: 消息条数
         by_provider: 按 Provider 分组的费用统计
     """
     total_input_tokens: int = 0

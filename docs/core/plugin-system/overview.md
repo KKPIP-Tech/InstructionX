@@ -55,8 +55,8 @@ flowchart TD
     F -->|检查 entrance.py| G[动态导入模块]
     G --> H[查找 IPlugin 子类]
     H --> I[实例化插件]
-    I --> J[生成/加载 UUID]
-    J --> K[调用 on_plugin_loaded]
+    J[生成/加载 UUID] --> I[实例化插件]
+    I --> K[调用 on_plugin_loaded]
     K --> L[注册到 SkillsPanel]
 ```
 
@@ -79,26 +79,48 @@ def _load_plugin_from_directory(self, plugin_dir: Path) -> Optional[IPlugin]:
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
 
-    # 4. 查找 IPlugin 子类
+    # 4. 查找 IPlugin 子类（排除框架内置 IPlugin）
     for attr_name in dir(module):
         attr = getattr(module, attr_name)
         if isinstance(attr, type) and issubclass(attr, IPlugin) and attr is not IPlugin:
+            # 同时排除 core.interfaces.IPlugin 和 core.plugin.plugin_interface.IPlugin
             plugin_class = attr
             break
 
-    # 5. 实例化插件
-    plugin_instance = plugin_class()
-
-    # 6. 生成 UUID
+    # 5. 生成 UUID
     identity = PluginIdentity(plugin_dir)
     plugin_id = identity.load_or_create_id()
-    plugin_instance._plugin_id = plugin_id
 
-    # 7. 调用加载完成回调
+    # 6. 创建服务容器
+    services = self._create_plugin_services()
+
+    # 7. 实例化插件（尝试注入 services）
+    import inspect
+    sig = inspect.signature(plugin_class)
+    params = [p.name for p in sig.parameters.values()]
+    if 'services' in params:
+        plugin_instance = plugin_class(services=services)
+    else:
+        plugin_instance = plugin_class()
+
+    # 8. 设置实例属性
+    plugin_instance._plugin_dir = plugin_dir
+    plugin_instance._plugin_id = plugin_id
+    plugin_instance._services = services
+
+    # 9. 调用加载完成回调（不传参数，向后兼容旧插件）
     plugin_instance.on_plugin_loaded()
+
+    # 10. 维护注册表映射并尝试自动注册 API
+    plugin_instance._plugin_name = plugin_instance.plugin_name
+    self._plugin_registry[plugin_id] = plugin_instance
+    self._plugin_name_to_id[plugin_instance.plugin_name] = plugin_id
+    self._auto_register_plugin_api(plugin_dir, plugin_id)
 
     return plugin_instance
 ```
+
+> **注意**: `PluginManager` 调用 `on_plugin_loaded()` 时不传递任何参数。插件应通过 `self.plugin_id` 访问 UUID，通过 `self._services` 访问服务容器。详见 [IPlugin 接口](iplugin.md)。
 
 ---
 
@@ -212,14 +234,15 @@ classDiagram
     class IPlugin {
         <<abstract>>
         +plugin_name: str
-        +plugin_id: str
-        +skill_icon: QIcon
+        +plugin_id: Optional[str] (框架实现返回 self._plugin_id)
+        +skill_icon: Optional[QIcon]
         +skill_description: str
         +skill_tooltip: str
         +plugin_info: IPluginInfo
+        +llm_tools: List[Dict]
         +_create_widget(parent, data_provider): QWidget
-        +get_widget(parent, data_provider): QWidget
-        +on_plugin_loaded(): None
+        +get_widget(parent, data_provider): QWidget  (框架实现带缓存)
+        +on_plugin_loaded(): None  (调用时不传参)
     }
 
     class IPluginInfo {
@@ -256,7 +279,36 @@ classDiagram
 
     IPlugin --> PluginManager : 注册到
     IPlugin --> IPluginInfo : 通过 plugin_info 属性访问
+
+### 6.1 PluginServices 架构
+
+```mermaid
+graph LR
+    subgraph PluginServices [PluginServices 容器]
+        LLM[llm_facade<br/>LLMPluginService]
+        DP[data_provider<br/>DataProvider]
+        TM[task_manager<br/>BackgroundTaskManager]
+        LG[logger<br/>LoggerManager]
+        MCM[mcp_manager<br/>MCPManager]
+        MCC[mcp_client<br/>MCPClientManager]
+    end
+
+    PluginServices --> LLM
+    PluginServices --> DP
+    PluginServices --> TM
+    PluginServices --> LG
+    PluginServices --> MCM
+    PluginServices --> MCC
 ```
+
+| 服务字段 | 类型 | 说明 |
+|----------|------|------|
+| `llm_facade` | `LLMPluginService` | LLM 服务入口（单例） |
+| `data_provider` | `DataProvider` | 数据持久化服务 |
+| `task_manager` | `BackgroundTaskManager` | 后台任务管理 |
+| `logger` | `ILogger` | 日志服务 |
+| `mcp_manager` | `MCPManager` | MCP Server 管理器 |
+| `mcp_client` | `MCPClientManager` | MCP 外部连接管理器 |
 
 ---
 

@@ -8,6 +8,8 @@ from PySide6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QLabel
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QPixmap, QFont
 
+from core.version import get_instructionx_version_display
+
 
 def _get_logo_path():
     """获取 logo 图片路径"""
@@ -75,7 +77,7 @@ class AboutDialog(QDialog):
         layout.addWidget(name_label)
 
         # 版本号
-        version_label = QLabel("版本 0.1.0")
+        version_label = QLabel(get_instructionx_version_display())
         version_font = QFont()
         version_font.setPointSize(9)
         version_label.setFont(version_font)

@@ -64,9 +64,9 @@ sequenceDiagram
 ### 方式一：通过依赖注入（推荐）
 
 ```python
-from core.interfaces.i_plugin import IPlugin
-from core.interfaces.plugin_services import PluginServices
+from core.interfaces import IPlugin, PluginServices
 from core.llm import get_llm_plugin_service
+
 
 class MyPlugin(IPlugin):
     def __init__(self, services: PluginServices | None = None):
@@ -76,11 +76,14 @@ class MyPlugin(IPlugin):
                      else get_llm_plugin_service())
         self._services = services  # 可选，保存服务容器引用
 
-    def on_plugin_loaded(self, plugin_id, **kwargs):
-        # services 通过 __init__ 注入，存储在 self._services 中
+    def on_plugin_loaded(self):
+        # plugin_id 已由 PluginManager 设置（通过 self.plugin_id 访问）
+        # services 通过 __init__ 注入，同时 PluginManager 也会设置 self._services
         # 可通过 self._services.llm_facade 访问 LLM 服务
         pass
 ```
+
+> **注意**：即使 `__init__` 不接收 `services` 参数，`PluginManager` 仍会在实例化后通过 `self._services` 注入服务容器。
 
 ### 方式二：直接导入单例（兼容旧插件）
 
@@ -92,6 +95,23 @@ svc = get_llm_plugin_service()
 
 ---
 
+## PluginServices 服务容器
+
+`PluginServices` 是框架自动注入的服务容器，包含 6 个核心服务字段：
+
+| 字段 | 类型 | 说明 | 注入失败时 |
+|------|------|------|-----------|
+| `llm_facade` | `LLMPluginService` | LLM 服务入口（单例） | 不会失败 |
+| `data_provider` | `DataProvider` | 数据持久化服务 | `None` |
+| `task_manager` | `BackgroundTaskManager` | 后台任务管理 | `None` |
+| `logger` | `ILogger` | 日志服务（实际为 `LoggerManager` 单例） | `None` |
+| `mcp_manager` | `MCPManager` | MCP Server 管理器 | `None` |
+| `mcp_client` | `MCPClientManager` | MCP 外部连接管理器 | `None` |
+
+完整说明见 [插件系统概述](../core/plugin-system/overview.md)。
+
+---
+
 ## 对话管理
 
 ### 创建对话
@@ -100,7 +120,7 @@ svc = get_llm_plugin_service()
 conv_id = svc.create_conversation(
     system_prompt="你是一个代码助手",
     provider="siliconflow",  # 可选，默认 "default"
-    model="Pro/deepseek-ai/DeepSeek-V3",  # 可选
+    model="default",  # 可选，默认 "default"
     metadata=None,  # 可选，额外元数据字典
 )
 ```
@@ -188,14 +208,17 @@ resp = svc.chat([
     {"role": "user", "content": "你好"},
 ], tools=[...])  # 可选，显式传入工具定义（也可通过 executor.tools.register() 预先注册）
 print(resp.content)
-print(f"Token: {resp.usage.total_tokens}")  # Token 用量信息
+if resp.usage:
+    print(f"Token: {resp.usage.total_tokens}")  # Token 用量信息
 ```
 
 ### 发送消息（流式，无状态）
 
 ```python
-def callback(chunk):
-    print(chunk.content, end="", flush=True)
+def callback(chunk: str, done: bool):
+    print(chunk, end="", flush=True)
+    if done:
+        print()  # 流结束时换行
 
 content = svc.stream_chat([
     {"role": "user", "content": "写一个快排"},
@@ -272,7 +295,7 @@ msgs, results, final = executor.chat_with_tools_stream(
 
 ### 使用共享工具注册表
 
-参考 `plugin/sample_ai_plugin/tools.py`：
+通过 `get_shared_tool_registry()` 获取全局共享注册表，供多个插件共享工具：
 
 ```python
 registry = svc.get_shared_tool_registry()
@@ -405,9 +428,7 @@ if not ok:
 
 ## 完整示例
 
-参考 `plugin/sample_ai_plugin/` 目录下的示例插件源码：
-- `entrance.py` — 插件主入口，展示对话、流式、工具调用
-- `tools.py` — 共享工具注册示例
+参考 [KKPIP-Tech/InstructionX-Plugins](https://github.com/KKPIP-Tech/InstructionX-Plugins) 仓库中的示例插件源码，学习完整实现。
 
 ---
 
@@ -422,6 +443,8 @@ if not ok:
 | `ImageResult` | `types.py` | 图片生成结果，含 `url`、`base64`、`revised_prompt` |
 | `AudioResult` | `types.py` | TTS 结果，含 `audio_data`、`url`、`duration_seconds` |
 | `ProviderInfo` | `types.py` | Provider 信息，含各 capability 字段 |
+| `UsageRecord` | `types.py` | 单次请求持久化记录，含 `timestamp`、`duration_ms` |
+| `CacheInfo` | `types_cache.py` | 缓存信息，含 `cache_hit`、`cache_hit_rate` |
 | `UsageInfo` | `provider_interface.py` | 单次请求 Token 用量，含 `input_tokens`、`output_tokens`、`total_tokens` |
 
 ---
@@ -432,4 +455,9 @@ if not ok:
 - [LLM Provider 概述](../core/llm-provider/overview.md) — Provider 底层实现细节
 - [MCP 协议模块概述](../core/mcp/overview.md) — MCP Server 和 MCP Client 完整指南
 - [插件开发指南](../core/plugin-system/plugin-development.md)
+- [IPlugin 接口](../core/plugin-system/iplugin.md)
 - [PluginManager 架构](../core/plugin-system/plugin-manager.md)
+
+---
+
+*本文档由 Claude Code 自动生成*

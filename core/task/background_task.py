@@ -843,6 +843,7 @@ class BackgroundTaskManager(ITaskManager):
 
             # 清理
             self._running_long_running_tasks.clear()
+            self._running_tasks.clear()
             self._futures.clear()
 
         # 停止定时任务检查线程
@@ -850,8 +851,8 @@ class BackgroundTaskManager(ITaskManager):
 
         self._scheduler.stop()
 
-        # 关闭线程池，不等待任务完成
-        self._executor.shutdown(wait=False, cancel_futures=True)
+        # 关闭线程池，等待任务完成
+        self._executor.shutdown(wait=True, cancel_futures=True)
 
         # 等待一小段时间让线程退出
         time.sleep(0.5)

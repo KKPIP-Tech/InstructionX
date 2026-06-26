@@ -1,6 +1,6 @@
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout,
-    QTabWidget, QScrollArea,
+    QStackedWidget, QScrollArea, QPushButton, QLabel,
     QStyle
 )
 from PySide6.QtCore import Signal, Qt
@@ -37,24 +37,73 @@ class SkillsPanel(QWidget):
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
 
-        # 创建 Tab Widget
-        tab_widget = QTabWidget()
-        tab_widget.setTabPosition(QTabWidget.TabPosition.North)
-        tab_widget.setDocumentMode(True)  # 现代化外观
+        # ========== Header（Pill 切换区） ==========
+        header_widget = QWidget()
+        header_widget.setObjectName("skillsPanelHeader")
+        header_layout = QHBoxLayout(header_widget)
+        header_layout.setContentsMargins(10, 6, 10, 6)
+        header_layout.setSpacing(0)
 
-        # 创建两个标签页
-        self.official_tab = self._create_skills_tab("官方功能")
-        self.thirdparty_tab = self._create_skills_tab("第三方功能")
+        # Pill 容器
+        pill_container = QWidget()
+        pill_container.setObjectName("skillsPillContainer")
+        pill_layout = QHBoxLayout(pill_container)
+        pill_layout.setContentsMargins(4, 4, 4, 4)
+        pill_layout.setSpacing(4)
 
-        tab_widget.addTab(self.official_tab, "官方功能")
-        tab_widget.addTab(self.thirdparty_tab, "第三方功能")
+        # 官方功能按钮
+        self.official_btn = QPushButton("官方功能")
+        self.official_btn.setObjectName("skillsPillButton")
+        self.official_btn.setProperty("active", "true")
+        self.official_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.official_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.official_btn.clicked.connect(lambda: self._switch_tab(0))
 
-        main_layout.addWidget(tab_widget)
+        # 第三方功能按钮
+        self.thirdparty_btn = QPushButton("第三方功能")
+        self.thirdparty_btn.setObjectName("skillsPillButton")
+        self.thirdparty_btn.setProperty("active", "false")
+        self.thirdparty_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.thirdparty_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.thirdparty_btn.clicked.connect(lambda: self._switch_tab(1))
 
-    def _create_skills_tab(self, tab_name: str) -> QWidget:
-        """创建一个技能标签页"""
-        tab_widget = QWidget()
-        layout = QVBoxLayout(tab_widget)
+        pill_layout.addWidget(self.official_btn)
+        pill_layout.addWidget(self.thirdparty_btn)
+
+        # 分隔线
+        separator = QLabel("|")
+        separator.setObjectName("skillsSeparator")
+
+        # 计数标签
+        self.count_label = QLabel("0 Plugins")
+        self.count_label.setObjectName("skillsCountLabel")
+
+        header_layout.addWidget(pill_container)
+        header_layout.addSpacing(10)
+        header_layout.addWidget(separator)
+        header_layout.addSpacing(10)
+        header_layout.addWidget(self.count_label)
+        header_layout.addStretch()
+
+        main_layout.addWidget(header_widget)
+
+        # ========== 内容区（StackedWidget） ==========
+        self.stacked_widget = QStackedWidget()
+
+        # 官方功能页面
+        self.official_page, self.official_layout = self._create_skills_page()
+        self.stacked_widget.addWidget(self.official_page)
+
+        # 第三方功能页面
+        self.thirdparty_page, self.thirdparty_layout = self._create_skills_page()
+        self.stacked_widget.addWidget(self.thirdparty_page)
+
+        main_layout.addWidget(self.stacked_widget)
+
+    def _create_skills_page(self):
+        """创建一个技能页面（包含滚动区域和按钮布局）"""
+        page = QWidget()
+        layout = QVBoxLayout(page)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
@@ -68,20 +117,32 @@ class SkillsPanel(QWidget):
         container = QWidget()
         container.setObjectName("skillsContainer")
         container_layout = QHBoxLayout(container)
-        container_layout.setContentsMargins(6, 3, 6, 5)
-        container_layout.setSpacing(6)
+        container_layout.setContentsMargins(4, 2, 4, 2)
+        container_layout.setSpacing(4)
         container_layout.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
 
         scroll_area.setWidget(container)
         layout.addWidget(scroll_area)
 
-        # 保存布局引用，方便后续添加技能按钮
-        if "官方" in tab_name:
-            self.official_layout = container_layout
-        else:
-            self.thirdparty_layout = container_layout
+        return page, container_layout
 
-        return tab_widget
+    def _switch_tab(self, index: int):
+        """切换标签页"""
+        self.stacked_widget.setCurrentIndex(index)
+
+        is_official = (index == 0)
+        self.official_btn.setProperty("active", "true" if is_official else "false")
+        self.thirdparty_btn.setProperty("active", "false" if is_official else "true")
+
+        self.official_btn.style().unpolish(self.official_btn)
+        self.official_btn.style().polish(self.official_btn)
+        self.thirdparty_btn.style().unpolish(self.thirdparty_btn)
+        self.thirdparty_btn.style().polish(self.thirdparty_btn)
+
+        # 更新计数
+        target_layout = self.official_layout if is_official else self.thirdparty_layout
+        count = target_layout.count()
+        self.count_label.setText(f"{count} Plugins")
 
     def add_skill_button(self, plugin, is_official: bool):
         """
@@ -160,6 +221,10 @@ class SkillsPanel(QWidget):
             thirdparty_plugins = self.plugin_manager.get_thirdparty_plugins()
             for plugin in thirdparty_plugins:
                 self.add_skill_button(plugin, is_official=False)
+
+            # 更新当前标签页的计数
+            current_index = self.stacked_widget.currentIndex()
+            self._switch_tab(current_index)
 
         except Exception as e:
             self._logger.error(get_name(), f'Error loading skills from manager: {e}')

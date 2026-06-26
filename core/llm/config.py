@@ -182,6 +182,7 @@ class LLMConfig:
 
         读取 config/llm_providers.json 文件，解析并加载所有提供商配置。
         如果文件不存在，则创建默认配置。
+        如果文件存在但缺少新添加的默认提供商，自动补充。
 
         Raises:
             ConfigurationError: 配置文件格式错误时抛出
@@ -201,11 +202,168 @@ class LLMConfig:
         except Exception as e:
             raise ConfigurationError(f"Failed to load config: {e}")
 
+        # 检查并补充缺失的默认提供商
+        self._ensure_default_providers()
+
+    def _ensure_default_providers(self) -> None:
+        """检查并补充缺失的默认提供商
+
+        当配置文件已存在但缺少新添加的默认提供商时，自动补充。
+        同时更新配置文件。
+        """
+        defaults = self._get_default_providers()
+        added = False
+        for name, config_data in defaults.items():
+            if name not in self._providers:
+                self._providers[name] = ProviderConfig.from_dict(config_data)
+                added = True
+
+        if added:
+            self.save_config()
+
+    def _get_default_providers(self) -> Dict[str, Dict[str, Any]]:
+        """获取默认提供商配置字典
+
+        Returns:
+            Dict[str, Dict[str, Any]]: 提供商名称到配置字典的映射
+        """
+        return {
+            "minimax": {
+                "name": "MiniMax",
+                "provider_type": "minimax",
+                "api_key": "",
+                "base_url": "https://api.minimax.chat/v1",
+                "chat_model": "MiniMax-M2.5",
+                "embedding_model": "embedding-2",
+                "enabled_chat": True,
+                "enabled_embedding": True,
+                "support_vision": False
+            },
+            "siliconflow": {
+                "name": "SiliconFlow",
+                "provider_type": "siliconflow",
+                "api_key": "",
+                "base_url": "https://api.siliconflow.cn/v1",
+                "chat_model": "Pro/deepseek-ai/DeepSeek-V3",
+                "embedding_model": "BAAI/bge-m3",
+                "enabled_chat": True,
+                "enabled_embedding": True,
+                "support_vision": True
+            },
+            "glm": {
+                "name": "GLM",
+                "provider_type": "glm",
+                "api_key": "",
+                "base_url": "https://open.bigmodel.cn/api/paas/v4",
+                "chat_model": "glm-4",
+                "embedding_model": "embedding-3",
+                "enabled_chat": True,
+                "enabled_embedding": True,
+                "support_vision": True
+            },
+            "ollama": {
+                "name": "Ollama",
+                "provider_type": "ollama",
+                "api_key": "",
+                "base_url": "http://localhost:11434",
+                "chat_model": "llama3.1",
+                "embedding_model": "nomic-embed-text",
+                "enabled_chat": True,
+                "enabled_embedding": True,
+                "support_vision": True
+            },
+            "openai": {
+                "name": "OpenAI",
+                "provider_type": "openai",
+                "api_key": "",
+                "base_url": "https://api.openai.com/v1",
+                "chat_model": "gpt-4o",
+                "embedding_model": "text-embedding-3-small",
+                "enabled_chat": True,
+                "enabled_embedding": True,
+                "support_vision": True,
+                "custom_models": [
+                    {
+                        "id": "gpt-4o",
+                        "name": "GPT-4o",
+                        "context_length": 128000,
+                        "support_chat": True,
+                        "support_streaming": True,
+                        "support_embedding": False,
+                        "support_vision": True,
+                        "support_function_calling": True,
+                        "input_price_per_1k": 18,
+                        "output_price_per_1k": 72
+                    },
+                    {
+                        "id": "gpt-4o-mini",
+                        "name": "GPT-4o Mini",
+                        "context_length": 128000,
+                        "support_chat": True,
+                        "support_streaming": True,
+                        "support_embedding": False,
+                        "support_vision": True,
+                        "support_function_calling": True,
+                        "input_price_per_1k": 1,
+                        "output_price_per_1k": 4
+                    },
+                    {
+                        "id": "gpt-4-turbo",
+                        "name": "GPT-4 Turbo",
+                        "context_length": 128000,
+                        "support_chat": True,
+                        "support_streaming": True,
+                        "support_embedding": False,
+                        "support_vision": True,
+                        "support_function_calling": True,
+                        "input_price_per_1k": 50,
+                        "output_price_per_1k": 150
+                    },
+                    {
+                        "id": "gpt-3.5-turbo",
+                        "name": "GPT-3.5 Turbo",
+                        "context_length": 16385,
+                        "support_chat": True,
+                        "support_streaming": True,
+                        "support_embedding": False,
+                        "support_vision": False,
+                        "support_function_calling": True,
+                        "input_price_per_1k": 1,
+                        "output_price_per_1k": 2
+                    },
+                    {
+                        "id": "text-embedding-3-small",
+                        "name": "Text Embedding 3 Small",
+                        "context_length": 8192,
+                        "support_chat": False,
+                        "support_streaming": False,
+                        "support_embedding": True,
+                        "support_vision": False,
+                        "support_function_calling": False,
+                        "input_price_per_1k": 0.02,
+                        "output_price_per_1k": 0.0
+                    },
+                    {
+                        "id": "text-embedding-3-large",
+                        "name": "Text Embedding 3 Large",
+                        "context_length": 8192,
+                        "support_chat": False,
+                        "support_streaming": False,
+                        "support_embedding": True,
+                        "support_vision": False,
+                        "support_function_calling": False,
+                        "input_price_per_1k": 0.13,
+                        "output_price_per_1k": 0.0
+                    }
+                ]
+            }
+        }
+
     def _create_default_config(self) -> None:
         """创建默认配置文件
 
         在配置目录下创建 llm_providers.json 文件，包含默认的提供商配置。
-        默认包含 MiniMax、SiliconFlow、GLM、Ollama 四个提供商的模板配置。
+        默认包含 MiniMax、SiliconFlow、GLM、Ollama、OpenAI 五个提供商的模板配置。
 
         配置项说明:
             - api_key: 默认为空的，需要用户填写
@@ -218,52 +376,7 @@ class LLMConfig:
 
         # 默认配置模板
         default_config = {
-            "providers": {
-                "minimax": {
-                    "name": "MiniMax",
-                    "provider_type": "minimax",
-                    "api_key": "",
-                    "base_url": "https://api.minimax.chat/v1",
-                    "chat_model": "MiniMax-M2.5",
-                    "embedding_model": "embedding-2",
-                    "enabled_chat": True,
-                    "enabled_embedding": True,
-                    "support_vision": False
-                },
-                "siliconflow": {
-                    "name": "SiliconFlow",
-                    "provider_type": "siliconflow",
-                    "api_key": "",
-                    "base_url": "https://api.siliconflow.cn/v1",
-                    "chat_model": "Pro/deepseek-ai/DeepSeek-V3",
-                    "embedding_model": "BAAI/bge-m3",
-                    "enabled_chat": True,
-                    "enabled_embedding": True,
-                    "support_vision": True
-                },
-                "glm": {
-                    "name": "GLM",
-                    "provider_type": "glm",
-                    "api_key": "",
-                    "base_url": "https://open.bigmodel.cn/api/paas/v4",
-                    "chat_model": "glm-4",
-                    "embedding_model": "embedding-3",
-                    "enabled_chat": True,
-                    "enabled_embedding": True,
-                    "support_vision": True
-                },
-                "ollama": {
-                    "name": "Ollama",
-                    "provider_type": "ollama",
-                    "api_key": "",
-                    "base_url": "http://localhost:11434",
-                    "chat_model": "llama3.1",
-                    "embedding_model": "nomic-embed-text",
-                    "enabled_chat": True,
-                    "enabled_embedding": True,
-                    "support_vision": True
-                }
-            }
+            "providers": self._get_default_providers()
         }
 
         # 写入配置文件

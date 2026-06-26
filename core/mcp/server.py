@@ -75,7 +75,7 @@ class MCPHostServer:
         # 使用 FastMCP 的 tool 装饰器动态注册
         # 注意：FastMCP 的 add_tool 内部机制通过 mcp.tool() 装饰器实现，
         # 我们需要在装饰器下包装插件方法调用
-        from core.plugin.manager import get_plugin_manager
+        from core.plugin.manager import PluginManager
 
         def create_handler(p_id: str, m_name: str) -> Callable:
             async def handler(**kwargs: Any) -> Any:
@@ -83,7 +83,7 @@ class MCPHostServer:
                 try:
                     import anyio.to_thread
                     result = await anyio.to_thread.run_sync(
-                        get_plugin_manager().call_plugin_method,
+                        PluginManager().call_plugin_method,
                         "",  # caller_id（Server 模式不需要）
                         p_id,
                         m_name,

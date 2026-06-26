@@ -9,6 +9,8 @@ from copy import deepcopy
 import time
 from typing import Optional, Any, List, Dict
 from enum import Enum
+import ctypes
+from ctypes import wintypes
 
 import cv2
 import numpy as np
@@ -19,10 +21,10 @@ from PySide6.QtWidgets import (
     QMainWindow, QWidget, QSplitter,
     QHBoxLayout, QVBoxLayout, QLayoutItem,
     QFileDialog, QMessageBox, QDialog, QPushButton, QLabel,
-    QApplication, QMenu
+    QApplication, QMenu, QGraphicsDropShadowEffect
 )
 from PySide6.QtGui import (
-    QAction, QIcon, QCursor, QMouseEvent
+    QAction, QIcon, QCursor, QMouseEvent, QColor
 )
 from PySide6.QtCore import (
     Qt, QDateTime, QThread,
@@ -107,10 +109,21 @@ class InstructionXMainWindow(QMainWindow):
         # 应用容器样式
         self._update_container_style()
 
+        # 创建 Qt 阴影效果（替代 DWM 原生阴影，避免 WM_NCCALCSIZE 坐标错位）
+        self._shadow_effect = QGraphicsDropShadowEffect(self)
+        self._shadow_effect.setBlurRadius(20)
+        self._shadow_effect.setColor(QColor(0, 0, 0, 80))
+        self._shadow_effect.setOffset(0, 4)
+        self._container.setGraphicsEffect(self._shadow_effect)
+
         # 边缘 resize 相关变量
         self._resize_margin = 8  # 边缘检测区域宽度
         self._resize_dir = None  # 当前 resize 方向
         self._resize_start = None  # resize 起始位置和窗口大小
+
+        # 开启鼠标追踪，确保 hover 状态下鼠标移动也能触发 mouseMoveEvent，
+        # 从而及时更新边缘 resize 光标
+        self.setMouseTracking(True)
 
     # ===============================================================
     # GUI 界面
@@ -143,6 +156,15 @@ class InstructionXMainWindow(QMainWindow):
         self._menu_theme_action.triggered.connect(self._cycle_theme)
         menu_edit.addAction(self._menu_theme_action)
         self._update_theme_action_text()
+
+        # 分隔线
+        menu_edit.addSeparator()
+
+        # 从 GitHub 安装插件
+        menu_edit_github_install_action = QAction("从 GitHub 安装插件...", self)
+        menu_edit_github_install_action.setStatusTip("从 GitHub 仓库安装插件")
+        menu_edit_github_install_action.triggered.connect(self._open_github_plugin_install_dialog)
+        menu_edit.addAction(menu_edit_github_install_action)
 
         # -------------------------------------------------
         # 用户中心
@@ -191,8 +213,8 @@ class InstructionXMainWindow(QMainWindow):
         self.skills_panel = SkillsPanel(self._container)
         self.skills_panel.set_plugin_manager(self.plugin_manager)
         self.skills_panel.load_skills_from_manager()
-        self.skills_panel.setMaximumHeight(115)  # 设置最大高度
-        self.skills_panel.setMinimumHeight(105)  # 设置最小高度
+        self.skills_panel.setMaximumHeight(135)  # 设置最大高度
+        self.skills_panel.setMinimumHeight(125)  # 设置最小高度
         content_layout.addWidget(self.skills_panel)
 
         # 创建工作区（可伸缩）
@@ -254,6 +276,28 @@ class InstructionXMainWindow(QMainWindow):
         from ui.dialog.license_dialog import LicenseDialog
         dialog = LicenseDialog(self)
         dialog.exec()
+
+    def _open_github_plugin_install_dialog(self):
+        """打开从 GitHub 安装插件对话框"""
+        from ui.dialog.github_plugin_install_dialog import GitHubPluginInstallDialog
+        dialog = GitHubPluginInstallDialog(self)
+        dialog.plugin_installed.connect(self._on_github_plugin_installed)
+        dialog.exec()
+
+    def _on_github_plugin_installed(self, results):
+        """GitHub 插件安装完成后的回调"""
+        from core.plugin.github_plugin_installer import InstallResult
+        # 重新加载技能面板
+        self.skills_panel.load_skills_from_manager()
+
+        # 提示用户
+        success_count = sum(1 for r in results if isinstance(r, InstallResult) and r.success)
+        if success_count > 0:
+            QMessageBox.information(
+                self,
+                "安装成功",
+                f"成功安装 {success_count} 个插件，请刷新页面或重新启动应用以加载新插件。"
+            )
 
     def _load_saved_theme(self):
         """从 DataProvider 加载保存的主题设置"""
@@ -473,16 +517,18 @@ class InstructionXMainWindow(QMainWindow):
         window_bg = colors.get('window', '#202020')
         border_color = colors.get('borderLight', '#3C3C3C')
 
-        if self.isMaximized():
-            # 最大化时移除圆角
+        if self.isMaximized() or self.isFullScreen():
+            # 最大化/全屏时移除圆角和阴影
             self._container.setStyleSheet(f"""
                 QWidget#mainContainer {{
                     background-color: {window_bg};
                     border-radius: 0px;
                 }}
             """)
+            if hasattr(self, '_shadow_effect') and self._shadow_effect:
+                self._shadow_effect.setEnabled(False)
         else:
-            # 还原时显示圆角
+            # 还原时显示圆角和阴影
             self._container.setStyleSheet(f"""
                 QWidget#mainContainer {{
                     background-color: {window_bg};
@@ -490,14 +536,24 @@ class InstructionXMainWindow(QMainWindow):
                     border: 1px solid {border_color};
                 }}
             """)
+            if hasattr(self, '_shadow_effect') and self._shadow_effect:
+                self._shadow_effect.setEnabled(True)
+
+    def nativeEvent(self, eventType, message):
+        """
+        保留原生事件接口，当前不拦截任何消息。
+        先前拦截 WM_NCCALCSIZE 会导致 Qt 与 Windows 坐标系错位，
+        阴影改用 QGraphicsDropShadowEffect 实现。
+        """
+        return super().nativeEvent(eventType, message)
 
     def changeEvent(self, event):
-        """监听窗口状态变化，更新标题栏按钮"""
+        """监听窗口状态变化，更新标题栏按钮和阴影"""
         if event.type() == event.Type.WindowStateChange:
             colors = self._style_qss.colors()
             window_bg = colors.get('window', '#202020')
 
-            if self.isMaximized():
+            if self.isMaximized() or self.isFullScreen():
                 self._title_bar.set_maximized(True)
                 self._container.setStyleSheet(f"""
                     QWidget#mainContainer {{
@@ -505,6 +561,8 @@ class InstructionXMainWindow(QMainWindow):
                         border-radius: 0px;
                     }}
                 """)
+                if hasattr(self, '_shadow_effect') and self._shadow_effect:
+                    self._shadow_effect.setEnabled(False)
             else:
                 self._title_bar.set_maximized(False)
                 border_color = colors.get('borderLight', '#3C3C3C')
@@ -515,6 +573,8 @@ class InstructionXMainWindow(QMainWindow):
                         border: 1px solid {border_color};
                     }}
                 """)
+                if hasattr(self, '_shadow_effect') and self._shadow_effect:
+                    self._shadow_effect.setEnabled(True)
         super().changeEvent(event)
 
     # ===============================================================

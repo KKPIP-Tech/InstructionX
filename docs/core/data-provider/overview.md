@@ -19,9 +19,9 @@
 | 特性 | 说明 |
 |------|------|
 | **单例模式** | 全局唯一实例，确保数据一致性 |
-| **线程安全** | 使用 Lock（文件写入锁）+ RLock（订阅管理锁）双重锁机制 |
-| **原子写入** | 临时文件 + 原子重命名，防止数据损坏 |
-| **内存缓存** | 减少磁盘 I/O，提升性能 |
+| **线程安全** | 使用 `_file_lock`（RLock）保护数据库访问 + `_subscription_lock`（Lock）保护订阅表 |
+| **原子写入** | SQLite WAL 模式 + 显式事务，保证数据一致性 |
+| **内存缓存** | 全量字典缓存 + 按 key 的 LRU 反序列化缓存，减少 I/O 与重复解析 |
 | **命名空间隔离** | 严格区分私有数据和公共数据 |
 | **发布/订阅** | 支持插件间的实时数据通信 |
 | **资源管理** | 统一的插件资源文件存储 |
@@ -46,7 +46,7 @@ graph TB
     end
 
     subgraph Storage [持久化层]
-        JSON[data/data.json<br/>原子写入]
+        DB[data/data.db<br/>SQLite + WAL]
     end
 
     DP -->|读写数据| PA
@@ -54,7 +54,7 @@ graph TB
     DP -->|读写数据| PC
     PB -->|subscribe| DP
     PC -->|publish| DP
-    DP -->|保存| JSON
+    DP -->|保存| DB
 ```
 
 ---
@@ -181,8 +181,9 @@ class PublisherService:
 
 ```
 data/
-├── data.json
-├── data.json.tmp           # 临时文件（原子写入用）
+├── data.db                 # SQLite 主数据库
+├── data.db-wal             # WAL 日志（正常运行时自动生成）
+├── data.db-shm             # WAL 共享内存索引（正常运行时自动生成）
 └── assets/
     └── plugins/
         ├── plugin_uuid_1/
@@ -228,54 +229,78 @@ flowchart TD
     end
 
     subgraph Write [写入数据]
-        W1[set_plugin_data] --> W2[更新缓存]
-        W2 --> W3[save_data 写入磁盘]
+        W1[set_plugin_data] --> W2[点查/点写 SQLite]
+        W2 --> W3[更新 _cache 与 LRU 缓存]
         W3 --> W4{PUBLIC & notify?}
-        W4 -->|是| W5[_notify_subscribers 通知]
+        W4 -->|是| W5[释放 _file_lock 后通知]
         W4 -->|否| W6[结束]
     end
 ```
 
-### 7.2 原子写入机制
+### 7.2 SQLite 持久化机制
+
+迁移后，`DataProvider` 默认使用 SQLite 作为持久化后端：
+
+- 数据库文件：`data/data.db`
+- WAL 模式：`PRAGMA journal_mode = WAL;`
+- 外键约束：`PRAGMA foreign_keys = ON;`
+- 同步级别：`PRAGMA synchronous = NORMAL;`
+
+写操作（如 `set_plugin_data`）使用 `BEGIN IMMEDIATE` 开启显式事务，异常时自动回滚。全量写入（`save_data` / `reset_all_data`）同样运行在事务中，先清空子表再清空父表，最后重新插入。
 
 ```python
 def _write_to_disk(self, data):
-    """原子写入数据到磁盘"""
-
-    # 1. 写入临时文件
-    with open(temp_file, 'w') as f:
-        json.dump(data, f)
-
-    # 2. 原子重命名（在 Windows 和 Unix 上都是原子操作）
-    os.replace(temp_file, data_file)
+    """将完整字典结构写回 SQLite"""
+    with self._backend.transaction():
+        # 1. 先清空子表
+        txn.execute("DELETE FROM plugin_data;")
+        txn.execute("DELETE FROM active_instances;")
+        # 2. 再清空父表
+        txn.execute("DELETE FROM plugins;")
+        # 3. 重新插入 plugins、plugin_data、active_instances
+        ...
 ```
 
 ---
 
 ## 8. 数据结构
 
-### 8.1 data.json
+迁移后，数据持久化在 `data/data.db` 的以下表中。`DataProvider` 仍通过 `load_data()` / `save_data()` 暴露与旧 JSON 结构一致的字典视图。
 
-```json
-{
-    "plugins": {
-        "plugin-uuid-1": {
-            "type": "TaskManager",
-            "active": true,
-            "private": {
-                "config": {"theme": "dark"},
-                "cache": []
-            },
-            "public": {
-                "statistics": {"total": 10},
-                "status": "ready"
-            }
-        }
-    },
-    "active_instances": {
-        "TaskManager": "plugin-uuid-1"
-    }
-}
+### 8.1 SQLite 表结构
+
+```sql
+-- 插件实例主表
+CREATE TABLE plugins (
+    instance_id TEXT PRIMARY KEY,
+    plugin_type TEXT NOT NULL,
+    active      INTEGER NOT NULL DEFAULT 0 CHECK (active IN (0, 1))
+);
+
+-- 插件键值数据表
+CREATE TABLE plugin_data (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    instance_id TEXT NOT NULL,
+    namespace   TEXT NOT NULL CHECK (namespace IN ('private', 'public')),
+    key         TEXT NOT NULL,
+    value_json  TEXT NOT NULL,
+    updated_at  INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+    FOREIGN KEY (instance_id) REFERENCES plugins(instance_id) ON DELETE CASCADE,
+    UNIQUE (instance_id, namespace, key)
+);
+
+-- 活跃实例映射表
+CREATE TABLE active_instances (
+    plugin_type TEXT PRIMARY KEY,
+    instance_id TEXT NOT NULL,
+    FOREIGN KEY (instance_id) REFERENCES plugins(instance_id) ON DELETE CASCADE
+);
+
+-- 数据库元数据表
+CREATE TABLE db_metadata (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
 ```
 
 ---
@@ -287,9 +312,10 @@ def _write_to_disk(self, data):
 ```python
 class DataProvider:
     def __init__(self):
-        # 可重入锁 - 同一线程可多次获取
+        # 可重入锁 - 保护 SQLite 连接与缓存
         self._file_lock = threading.RLock()
-        self._subscription_lock = threading.RLock()
+        # 普通锁 - 订阅表操作不得与 _file_lock 同时持有
+        self._subscription_lock = threading.Lock()
 ```
 
 ### 9.2 注意事项

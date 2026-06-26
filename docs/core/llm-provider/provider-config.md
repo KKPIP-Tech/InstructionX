@@ -46,6 +46,7 @@ config = ProviderConfig(
 | `enabled_chat` | `bool` | 建议配置 | 是否启用 Chat 功能 |
 | `enabled_embedding` | `bool` | 建议配置 | 是否启用 Embedding 功能 |
 | `support_vision` | `bool` | 否 | 是否支持 Vision（默认 True） |
+| `cache_fields` | `dict` | 否 | 缓存字段配置（可选，用于 OpenAI 兼容接口的缓存偏好设置） |
 | `extra` | `dict` | 否 | 其他扩展配置（通过 `**kwargs` 吸收未定义字段，如 `timeout` 等） |
 
 ### 2.3 方法

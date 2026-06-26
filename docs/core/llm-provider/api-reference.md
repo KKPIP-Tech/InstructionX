@@ -99,12 +99,14 @@ msg.to_dict()
 from core.llm.provider_interface import UsageInfo
 
 # 属性
-usage.input_tokens   # int | None: 输入 token 数
-usage.output_tokens  # int | None: 输出 token 数
-usage.total_tokens   # int | None: 总 token 数
-usage.input_cost     # float | None: 输入费用（元）
-usage.output_cost    # float | None: 输出费用（元）
-usage.total_cost     # float | None: 总费用（元）
+usage.input_tokens         # int | None: 输入 token 数
+usage.output_tokens        # int | None: 输出 token 数
+usage.total_tokens         # int | None: 总 token 数
+usage.input_cost           # float | None: 输入费用（元）
+usage.output_cost          # float | None: 输出费用（元）
+usage.total_cost           # float | None: 总费用（元）
+usage.cache_read_tokens    # int | None: 缓存命中读取的 token 数
+usage.cache_creation_tokens # int | None: 缓存命中所节省的 token 数（模型生成）
 ```
 
 > **注意**: `UsageInfo` 通常作为 `ChatResponse.usage` 字段返回，也可由 `ConversationManager.send_message()` 等方法直接获取。
@@ -409,8 +411,6 @@ classDiagram
         +str current_embedding_model
         +List models
         +bool is_healthy
-        +str last_error
-        +int rate_limit_rpm
     }
 
     class ModelInfo {
@@ -422,7 +422,6 @@ classDiagram
         +bool support_vision
         +bool support_function_calling
         +int context_length
-        +str description
         +float input_price_per_1k
         +float output_price_per_1k
         +str provider
@@ -459,11 +458,9 @@ classDiagram
         +str current_embedding_model
         +List models
         +bool is_healthy
-        +str last_error
-        +int rate_limit_rpm
     }
 
-    note for ProviderInfo "ProviderInfo 描述一个运行时 Provider 实例\n由 LLMPluginService.get_available_providers() 返回\nis_healthy = 健康 / last_error = 最后错误信息"
+    note for ProviderInfo "ProviderInfo 描述一个运行时 Provider 实例\n由 LLMPluginService.get_available_providers() 返回"
 ```
 
 ## 4. LLMProvider 方法
@@ -1141,7 +1138,6 @@ classDiagram
     class ConversationManager {
         -Dict _conversations
         -LLMProvider _llm
-        -int _max_context
         +create_conversation(system_prompt?, provider, model, metadata?) str
         +send_message(conv_id, content, images?, ...) Tuple
         +stream_send_message(conv_id, content, images?, callback?, ...) Tuple
@@ -1149,7 +1145,6 @@ classDiagram
         +list_conversations() List
         +delete_conversation(conv_id) bool
         +get_usage_stats(conv_id?) UsageStats
-        -_maybe_truncate_history(conv, messages) void
     }
 
     class ToolCallExecutor {
@@ -1249,7 +1244,7 @@ flowchart TB
     TOOLS[chat_with_tools&#40;&#41; + messages]
     RESP3[自动处理两轮 + 返回 final_response]
     STATS[get_usage_stats&#40;conv_id&#41;]
-    RESP4[UsageStats - total_tokens, cost, request_count]
+    RESP4[UsageStats - total_tokens, cost, request_count（消息总条数）]
 
     START --> CREATE
     CREATE --> CONV_ID
@@ -1279,10 +1274,22 @@ def send_message(
     images: Optional[List[str]] = None,
     temperature: Optional[float] = None,
     max_tokens: Optional[int] = None,
+    tools: Optional[List[Dict]] = None,
 ) -> str
 ```
 
 同步发送消息，自动追加到对话历史。返回 LLM 响应内容。
+
+**参数**:
+
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| `conversation_id` | `str` | 对话 ID |
+| `content` | `str` | 消息内容 |
+| `images` | `Optional[List[str]]` | 图片 base64 列表（可选） |
+| `temperature` | `Optional[float]` | 采样温度 |
+| `max_tokens` | `Optional[int]` | 最大 token 数 |
+| `tools` | `Optional[List[Dict]]` | 工具定义列表（可选） |
 
 **示例**:
 ```python
@@ -1405,7 +1412,7 @@ def stream_chat(
 )
 ```
 
-流式版本 chat（无对话状态）。callback 签名: `(chunk: str, done: bool) -> None`。
+流式版本 chat（无对话状态）。callback 签名: `(ChatResponse) -> None`，每次接收一个 `ChatResponse` 对象，通过 `chunk.content` 获取文本内容。
 
 ### 5.4 工具调用
 
@@ -1614,7 +1621,7 @@ def get_usage_stats(conversation_id: Optional[str] = None) -> UsageStats
 
 获取用量统计。`conversation_id` 为 None 时返回全局统计。
 
-**返回字段**: `total_tokens`, `total_cost`, `request_count`, `by_provider`
+**返回字段**: `total_tokens`, `total_cost`, `request_count`（消息总条数）, `by_provider`
 
 #### validate_provider()
 
@@ -1627,7 +1634,7 @@ def validate_provider(provider: str) -> Tuple[bool, str]
 #### get_raw_provider()
 
 ```python
-def get_raw_provider(provider: str = "default") -> ILLM
+def get_raw_provider(provider: str = "default") -> Optional[ILLM]
 ```
 
 获取底层 `LLMProvider` 实例（供高级插件使用）。一般插件不应直接使用。
@@ -1639,8 +1646,7 @@ def get_raw_provider(provider: str = "default") -> ILLM
 > **内部组件**: 插件开发者通常通过 `LLMPluginService` 间接使用，详见 Section 5。
 
 `ConversationManager` 管理对话的完整生命周期：
-- 自动上下文截断（保留 system + 最近 2/3 消息，阈值 80%）
-- Token 估算（中文字符按 1:1 计，英文按 4:1 估算）
+- 自动管理历史消息追加（用户消息和助手回复）
 - 费用计算（基于 `DEFAULT_PRICING`）
 
 **Conversation 状态机**：
@@ -1662,18 +1668,10 @@ stateDiagram-v2
         Error --> [*]
     }
 
-    Active --> Truncated : _maybe_truncate_history() /\n 上下文超限
-    Truncated --> Active : 截断旧消息
-
     Active --> Deleted : delete_conversation()
     Deleted --> [*]
 
     Created --> Deleted : delete_conversation()
-
-    state Truncated {
-        [*] --> RemoveOldMessages : 保留 system + 最近 2/3 消息
-        RemoveOldMessages --> [*]
-    }
 ```
 
 **主要方法**:

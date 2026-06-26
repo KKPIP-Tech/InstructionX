@@ -40,7 +40,7 @@ class ConversationManager:
         """初始化对话管理器
 
         Args:
-            pricing: 定价表（格式：{provider: {chat: {input_per_1k, output_per_1k}}}）
+            pricing: 定价表（格式：{provider: {chat: {input_per_1k, output_per_1k}}}，单位：元/百万token）
             **kwargs: 兼容旧参数（如 max_context），已废弃但会被吸收
         """
         self._conversations: Dict[str, Conversation] = {}
@@ -278,6 +278,8 @@ class ConversationManager:
     ) -> Optional[float]:
         """估算单次请求费用
 
+        优先查找模型级别定价，再回退到 Provider 级别定价。
+
         Args:
             usage: 用量信息
             provider: Provider 名称
@@ -288,11 +290,14 @@ class ConversationManager:
         """
         if not usage or usage.total_tokens is None:
             return None
-        p = self._pricing.get(provider, {}).get("chat", {})
-        input_price = p.get("input_per_1k", 0)
-        output_price = p.get("output_per_1k", 0)
-        return (usage.input_tokens or 0) / 1000 * input_price + \
-               (usage.output_tokens or 0) / 1000 * output_price
+        provider_pricing = self._pricing.get(provider, {})
+        # 优先查找模型级别定价
+        model_pricing = provider_pricing.get("models", {}).get(model, {})
+        chat_pricing = provider_pricing.get("chat", {})
+        input_price = model_pricing.get("input_per_1k", chat_pricing.get("input_per_1k", 0))
+        output_price = model_pricing.get("output_per_1k", chat_pricing.get("output_per_1k", 0))
+        return (usage.input_tokens or 0) / 1000000 * input_price + \
+               (usage.output_tokens or 0) / 1000000 * output_price
 
     def _build_usage_record(
         self,

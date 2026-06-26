@@ -43,9 +43,12 @@
 
 ### 1.3 核心设计原则
 
-- **单例模式**：5 个核心服务（PluginManager、DataProvider、BackgroundTaskManager、LLMProvider、LLMPluginService）全部以单例形式运行
-  - `DataProvider`、`BackgroundTaskManager`、`LLMProvider`、`LLMPluginService` 使用 `__new__` + `threading.Lock` 双重检查锁定
+- **单例模式**：6 个核心服务 + 2 个内部单例，全部以单例形式运行
+  - **核心服务**：PluginManager、DataProvider、BackgroundTaskManager、LLMProvider、LLMPluginService、MCPManager
+  - `DataProvider`、`BackgroundTaskManager`、`LLMProvider` 使用 `__new__` + `threading.Lock` 双重检查锁定
   - `PluginManager` 使用 `__new__` + `_initialized` 标志简化模式（无独立 `_lock`）
+  - `LLMPluginService`、`MCPManager` 使用模块级锁 + 全局变量工厂函数（`get_llm_plugin_service()` / `get_mcp_manager()`）
+  - **内部单例**：`TaskStorage`（BackgroundTaskManager 内部使用）、`LoggerManager`（框架日志中枢）
 - **LLM 双重入口**：`LLMProvider` 为底层核心，`LLMPluginService` 为插件开发者入口，两者通过 `get_llm_provider()` / `get_llm_plugin_service()` 获取
 - **接口契约优于实现**：`core/interfaces/` 定义所有核心接口，插件通过接口与框架交互
 - **Widget 缓存复用**：IPlugin 的 `get_widget()` 实现控件缓存，避免重复创建
@@ -116,9 +119,7 @@ graph TB
 
     subgraph Plugins ["Plugins"]
         LLM_CHAT[llm_chat]
-        SAMPLE_AI[sample_ai_plugin]
-        STRING_TOOLS[string_tools]
-        API_DEMO[api_demo]
+        OTHER[第三方插件<br/>（通过 GitHub 安装）]
     end
 
     subgraph Utils ["Utils"]
@@ -184,19 +185,21 @@ graph LR
 | DataProvider | 数据持久化/PubSub | `DataProvider()` |
 | BackgroundTaskManager | 任务调度/执行 | `BackgroundTaskManager()` |
 | LLMProvider | LLM 多提供商门面 | `get_llm_provider()` |
+| LLMPluginService | LLM 插件服务层 | `get_llm_plugin_service()` |
+| MCPManager | MCP 协议协调器 | `get_mcp_manager()` |
 
 ### 2.3 单例实例一览
 
-| 单例 | 文件 | 用途 |
-|------|------|------|
-| PluginManager | `core/plugin/manager.py` | 插件生命周期管理 |
-| DataProvider | `core/data/data_provider.py` | 数据中枢与通信 |
-| TaskStorage | `core/task/task_storage.py` | 任务状态持久化 |
-| BackgroundTaskManager | `core/task/background_task.py` | 任务调度执行 |
-| LLMProvider | `core/llm/llm_provider.py` | LLM 核心层（底层） |
-| LLMPluginService | `core/llm/plugin_service.py` | LLM 插件服务层（开发者入口） |
-| LoggerManager | `utils/logging_tools.py` | 日志记录 |
-| StyleQSS | `utils/style_qss/__init__.py` | 样式管理 |
+| 单例 | 文件 | 用途 | 类型 |
+|------|------|------|------|
+| PluginManager | `core/plugin/manager.py` | 插件生命周期管理 | 核心服务 |
+| DataProvider | `core/data/data_provider.py` | 数据中枢与通信 | 核心服务 |
+| BackgroundTaskManager | `core/task/background_task.py` | 任务调度执行 | 核心服务 |
+| LLMProvider | `core/llm/llm_provider.py` | LLM 核心层（底层） | 核心服务 |
+| LLMPluginService | `core/llm/plugin_service.py` | LLM 插件服务层（开发者入口） | 核心服务 |
+| MCPManager | `core/mcp/manager.py` | MCP 协议协调器 | 核心服务 |
+| TaskStorage | `core/task/task_storage.py` | 任务状态持久化 | 内部单例 |
+| LoggerManager | `utils/logging_tools.py` | 日志记录 | 内部单例 |
 
 ---
 
@@ -307,16 +310,16 @@ def get_tool_executor() -> Any                                      # core/inter
 def get_shared_tool_registry() -> Any                              # core/interfaces/i_llm_facade.py:148
 def chat_with_tools(messages, provider="default", ...)             # core/interfaces/i_llm_facade.py:153
 def get_available_providers() -> List[Any]                          # core/interfaces/i_llm_facade.py:167
+def validate_provider(provider) -> Tuple[bool, str]                # core/interfaces/i_llm_facade.py:177
 def load_image_as_base64(file_path) -> str                         # core/interfaces/i_llm_facade.py:182
 ```
 
 **扩展方法**（仅在 `LLMPluginService` 实现类中可用，不在接口层定义）：
-- `validate_provider(provider)` — `core/llm/plugin_service.py:465`
 - `create_conversation(...)` — `core/llm/plugin_service.py:93`
 - `send_message(...)` — `core/llm/plugin_service.py:118`
 - `stream_send_message(...)` — `core/llm/plugin_service.py:147`
 - `get_usage_stats(conv_id)` — `core/llm/plugin_service.py:454`
-- `get_raw_provider(provider)` — `core/llm/plugin_service.py:480`
+- `get_raw_provider(provider)` — `core/llm/plugin_service.py:484`
 - `generate_image(...)` — `core/llm/plugin_service.py:346`
 - `text_to_speech(...)` — `core/llm/plugin_service.py:381`
 
@@ -327,13 +330,15 @@ def load_image_as_base64(file_path) -> str                         # core/interf
 ```python
 @dataclass
 class PluginServices:
-    data_provider: 'IDataProvider' = None
-    task_manager: 'ITaskManager' = None
-    llm_facade: 'ILLMFacade' = None
-    logger: 'ILogger' = None
+    llm_facade: "LLMPluginService"              # LLM 服务（必需字段）
+    data_provider: "DataProvider"               # 数据服务（必需字段）
+    task_manager: "BackgroundTaskManager"       # 任务服务（必需字段）
+    logger: "ILogger"                           # 日志服务（必需字段）
+    mcp_manager: "MCPManager" = field(default=None)       # MCP Server 管理器
+    mcp_client: "MCPClientManager" = field(default=None)  # MCP Client 管理器
 ```
 
-**使用方式**：PluginManager 通过 `_create_plugin_services()` 创建容器实例，在加载插件时通过 `services` 参数注入。详见 [PluginManager](docs/core/plugin-system/plugin-manager.md#39-依赖注入pluginservices)。
+**使用方式**：PluginManager 通过 `_create_plugin_services()` 创建容器实例，在加载插件时通过 `services` 参数注入。详见 [PluginManager](../core/plugin-system/plugin-manager.md)。
 
 ---
 
@@ -393,7 +398,7 @@ sequenceDiagram
 
 ### 4.3 Widget 缓存复用机制
 
-**文件**：`core/plugin/plugin_interface.py:80-108`
+**文件**：`core/plugin/plugin_interface.py:53-81`
 
 ```mermaid
 flowchart TD
@@ -408,7 +413,7 @@ flowchart TD
 
 ### 4.4 插件 API 注册与跨插件 RPC
 
-**文件**：`core/plugin/manager.py:408-713`
+**文件**：`core/plugin/manager.py`
 
 ```mermaid
 flowchart LR
@@ -416,7 +421,7 @@ flowchart LR
         A1[scan information.py] --> A2[find IPluginInfo subclass]
         A2 --> A3[read service_api dict]
         A3 --> A4[scan service.py]
-        A4 --> A5[find class named Service]
+        A4 --> A5[find class ending with 'Service']
         A5 --> A6[register_plugin_api]
     end
 
@@ -427,11 +432,11 @@ flowchart LR
     end
 ```
 
-**⚠️ API 注册硬编码限制**：`service.py` 中 Service 类必须**严格命名为 `Service`**（`manager.py:532` 的 `attr.__name__ == 'Service'` 判断）。
+**⚠️ API 注册类名偏好**：`service.py` 中的类优先选择**名称以 `Service` 结尾**的类（如 `MyService`），如果未找到，则回退到第一个有效候选类。不再强制要求类名严格为 `Service`。
 
 ### 4.5 MCP 函数工具导出
 
-**文件**：`core/plugin/manager.py:671-712`
+**文件**：`core/plugin/manager.py`
 
 ```python
 def get_all_function_tools(self) -> List[Dict[str, Any]]:
@@ -571,11 +576,11 @@ stateDiagram-v2
 
 ### 6.5 TaskScheduler 死代码问题
 
-**文件**：`core/task/scheduler.py` vs `core/task/background_task.py:391-420`
+**文件**：`core/task/scheduler.py` vs `core/task/background_task.py:396-425`
 
-`TaskScheduler` 在 `background_task.py:91` 被实例化为 `self._scheduler`，`104` 行调用 `self._scheduler.start()`。但 `scheduler.py:67-71` 的 `_check_and_run_tasks()` 方法体为空（只有 `pass`）。
+`TaskScheduler` 在 `background_task.py:91` 被实例化为 `self._scheduler`，`104` 行调用 `self._scheduler.start()`。但 `scheduler.py:67-74` 的 `_check_and_run_tasks()` 方法体为空（只有 `pass`）。
 
-**实际定时任务检查**由 `background_task.py:391` 的 `_check_scheduled_tasks()` daemon 线程承担，它使用 `SchedulerCallback` 类（`scheduler.py:74-150`）执行任务。
+**实际定时任务检查**由 `background_task.py:396` 的 `_check_scheduled_tasks()` daemon 线程承担，它使用 `SchedulerCallback` 类（`scheduler.py:77-153`）执行任务。
 
 **结论**：`TaskScheduler` 是一个**空壳类**，`SchedulerCallback` 是实际工作的组件。
 
@@ -844,23 +849,25 @@ sequenceDiagram
 - `background_task.py:104` 调用 `self._scheduler.start()`
 - 但 `_check_and_run_tasks()` 方法体为空（只有 `pass`）
 
-**实际工作者**：`background_task.py:391` 的 `_check_scheduled_tasks()` daemon 线程 + `scheduler.py:74` 的 `SchedulerCallback` 类。
+**实际工作者**：`background_task.py:396` 的 `_check_scheduled_tasks()` daemon 线程 + `scheduler.py:77` 的 `SchedulerCallback` 类。
 
 ### 12.3 _restore_all_scheduled_tasks() 未被调用
 
-`background_task.py:114` 定义了 `_restore_all_scheduled_tasks()` 方法，但 `__init__` 中从未调用。定时任务恢复通过 `register_scheduled_task_factory()` 自动触发（`background_task.py:312`）。
+`background_task.py:114` 定义了 `_restore_all_scheduled_tasks()` 方法，但 `__init__` 中从未调用。定时任务恢复通过 `register_scheduled_task_factory()` 自动触发（`background_task.py:317`）。
 
 ### 12.4 PluginServices DI 容器
 
 PluginManager 通过 `_create_plugin_services()` 创建 `PluginServices` 容器，并通过构造器参数注入到各插件中。新版插件通过 `self._services` 访问服务，旧版插件可通过直接导入单例兼容访问。
 
-### 12.5 API 注册硬编码类名
+### 12.5 API 注册类名偏好
 
-`core/plugin/manager.py:532`：
+`core/plugin/manager.py:585`：
 ```python
-if isinstance(attr, type) and attr.__name__ == 'Service':
+if attr.__name__.endswith('Service'):
+    service_class = attr
+    break
 ```
-必须严格命名为 `Service`，不支持自定义类名。
+优先选择名称以 `Service` 结尾的类，未找到时回退到第一个有效候选类。
 
 ---
 
@@ -873,7 +880,7 @@ plugin_name/
 ├── __init__.py          # 空文件，Python 包标识
 ├── entrance.py          # 必需：定义 IPlugin 子类
 ├── information.py       # 可选：定义 IPluginInfo 子类 + service_api
-├── service.py           # 可选：定义 Service 类（类名必须为 Service）
+├── service.py           # 可选：定义 Service 类（类名以 Service 结尾优先）
 └── assets/              # 可选：静态资源文件
 ```
 
@@ -928,7 +935,7 @@ class MyPluginInfo(IPluginInfo):
 ### 13.4 service.py 编写规范
 
 ```python
-# 类名必须严格为 "Service"
+# 类名建议以 "Service" 结尾（优先选择），未找到时回退到第一个有效类
 class Service:
     def __init__(self):
         pass
@@ -1016,12 +1023,17 @@ class Service:
 |------|---------|
 | `main_window.py` | InstructionXMainWindow 主窗口 |
 | `title_bar.py` | CustomTitleBar 自定义标题栏 |
+| `usage_panel.py` | UsagePanel 用量查询面板 |
 | `skills_panel/panel.py` | SkillsPanel 技能面板 |
 | `skills_panel/skill_button.py` | SkillButton 技能按钮 |
 | `work_area/work_area.py` | WorkArea 工作区 |
-| `dialog/llm_settings_dialog.py` | LLM 设置对话框 |
-| `dialog/plugin_order_dialog.py` | 插件排序对话框（拖拽） |
 | `dialog/about_dialog.py` | 关于对话框 |
+| `dialog/license_dialog.py` | 开源许可对话框 |
+| `dialog/llm_settings_dialog.py` | LLM 设置对话框 |
+| `dialog/llm_settings_components.py` | LLM 设置对话框组件 |
+| `dialog/llm_model_service_dialog.py` | 模型服务对话框 |
+| `dialog/plugin_order_dialog.py` | 插件排序对话框（拖拽） |
+| `dialog/github_plugin_install_dialog.py` | GitHub 插件安装对话框 |
 
 #### 工具层 (`utils/`)
 
@@ -1043,8 +1055,10 @@ class Service:
 | `config/plugin_order.json` | `{official_plugins: [uuid], thirdparty_plugins: [uuid]}` |
 | `config/llm_providers.json` | `{providers: {name: {api_key, base_url, chat_model, ...}}}` |
 | `config/llm_models_cache.json` | `{provider_name: [ModelInfo]}` |
+| `config/mcp_config.json` | `{server: {...}, remote_servers: [...]}` |
 | `data/data.json` | `{plugins: {id: {type, active, private, public}}, active_instances: {}}` |
 | `data/tasks.json` | `{tasks: {}, scheduled_tasks: {}, long_running_tasks: {}}` |
+| `data/llm_usage.json` | `[UsageRecord, ...]` |
 
 ### 附录 B：已知问题汇总
 
@@ -1054,7 +1068,7 @@ class Service:
 | 2 | TaskScheduler 是死代码 | 低 | `scheduler.py` 含空方法，实际由 daemon 线程执行 | 📝 已文档化 |
 | 3 | _restore_all_scheduled_tasks() 从未被调用 | 低 | 恢复由工厂注册自动触发，非全局恢复 | 📝 已文档化 |
 | 4 | PluginServices DI 已启用 | 低 | PluginManager._create_plugin_services() 已实现 DI 注入 | 📝 已完成 |
-| 5 | API 注册必须使用 'Service' 硬编码类名 | 低 | `manager.py:482` 含注释说明 | 📝 已文档化 |
+| 5 | API 注册优先选择名称以 'Service' 结尾的类 | 低 | `manager.py:585` 含注释说明 | 📝 已文档化 |
 | 6 | DAO/database 模块为占位桩 | 低 | 预留待 SQLite 迁移 | 📝 已知限制 |
 
 ---
@@ -1074,5 +1088,4 @@ class Service:
 
 ---
 
-*文档生成时间：2026-03-30*
-*基于代码版本：5da4584 (docs: 新增 UI 组件及架构文档)*
+*本文档由 Claude Code 自动生成*

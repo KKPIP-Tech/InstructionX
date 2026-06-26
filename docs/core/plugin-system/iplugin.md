@@ -9,23 +9,27 @@
 `IPlugin` 是所有插件必须继承的抽象基类，定义了插件的标准接口和行为。
 
 **文件位置**:
-- 抽象接口定义: `core/interfaces/i_plugin.py`（推荐导入）
-- 框架实现（含缓存）: `core/plugin/plugin_interface.py`（向后兼容）
+- 抽象接口定义: `core/interfaces/i_plugin.py`
+- 框架实现（含缓存）: `core/plugin/plugin_interface.py`（推荐导入）
 
 推荐导入方式:
 ```python
-from core.interfaces import IPlugin  # 推荐
-# 或向后兼容:
+from core.plugin import IPlugin              # 推荐：框架实现，含控件缓存和动态加载
+# 或等价路径:
 from core.plugin.plugin_interface import IPlugin
 ```
 
 > **重要**: 本文档混合描述了抽象接口规范和框架实现行为。以下标注了"框架实现"的内容
-> （如 `get_widget()`、控件缓存、`skill_icon` 动态加载等）定义在 `core/plugin/plugin_interface.py` 中，
-> 而非 `core/interfaces/i_plugin.py` 的抽象接口。
+> （如 `get_widget()`、控件缓存、`skill_icon` 动态加载等）定义在 `core/plugin/plugin_interface.py` 中。
+> `core/interfaces/i_plugin.py` 仅定义纯抽象接口（无缓存），供框架内部和高级场景使用。
+>
+> 插件开发者应始终从 `core.plugin` 或 `core.plugin.plugin_interface` 导入 `IPlugin`，
+> 以确保获得控件缓存、图标动态加载等完整框架能力。
 
-框架实现中额外提供的功能（`core/plugin/plugin_interface.py`）：
+框架实现（`core/plugin/plugin_interface.py`）在纯抽象接口基础上额外提供：
 - 控件缓存机制（`_cached_widget`）
 - 插件信息动态加载（`_load_plugin_info`）
+- `skill_icon` / `skill_description` 从 `information.py` 自动加载
 
 ---
 
@@ -245,7 +249,7 @@ def get_widget(self, parent=None, data_provider=None) -> QWidget:
 ### 3.3 on_plugin_loaded()
 
 ```python
-def on_plugin_loaded(self) -> None:
+def on_plugin_loaded(self, plugin_id: Optional[str] = None, **kwargs) -> None:
     """
     插件加载完成回调
 
@@ -256,10 +260,14 @@ def on_plugin_loaded(self) -> None:
     - 订阅其他插件的数据
 
     注意：
-    - 框架调用此方法时**不传任何参数**。
+    - 框架调用此方法时**不传任何参数**（向后兼容旧插件）。
     - plugin_id 通过 `self.plugin_id` 访问（而非通过形参）。
     - services 已通过 `self._services` 实例属性注入（由 PluginManager 设置）。
     - 此时插件的 UI 尚未创建，禁止在此方法中实例化 QWidget。
+
+    Args:
+        plugin_id: 插件唯一标识符（仅用于向后兼容，实际通过 self.plugin_id 访问）
+        **kwargs: 预留参数（services 等通过实例属性 self._services 访问）
 
     Example:
         def __init__(self, services=None):
@@ -267,7 +275,7 @@ def on_plugin_loaded(self) -> None:
             super().__init__()
             self._llm = services.llm_facade if services else None
 
-        def on_plugin_loaded(self):
+        def on_plugin_loaded(self, plugin_id=None, **kwargs):
             # plugin_id 通过 self.plugin_id 访问
             # services 已通过 self._services 访问
             print(f"插件 {self.plugin_id} 已加载")
@@ -439,10 +447,10 @@ class CustomPlugin(IPlugin):
 ### 6.1 entrance.py
 
 ```python
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel, QPushButton
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel, QPushButton, QTextEdit
 from PySide6.QtCore import Signal
 
-from core.interfaces import IPlugin  # 推荐导入路径
+from core.plugin import IPlugin  # 推荐导入路径（框架实现，含缓存）
 
 
 class TextFormattingPlugin(IPlugin):

@@ -54,6 +54,22 @@ class IPlugin(ABC):
         """
         pass
 
+    def get_widget(self, parent=None, data_provider=None) -> QWidget:
+        """
+        获取插件界面控件
+
+        默认实现直接调用 _create_widget。
+        子类可通过重写添加缓存机制（如 plugin_interface.IPlugin 所示）。
+
+        Args:
+            parent: 父控件
+            data_provider: 数据提供者实例
+
+        Returns:
+            插件的 Qt 用户界面控件
+        """
+        return self._create_widget(parent, data_provider)
+
     @property
     def skill_icon(self) -> Optional[QIcon]:
         """获取技能面板按钮图标"""
@@ -72,7 +88,7 @@ class IPlugin(ABC):
     @property
     def plugin_id(self) -> Optional[str]:
         """获取插件唯一标识符"""
-        return None
+        return getattr(self, '_plugin_id', None)
 
     def on_plugin_loaded(self, plugin_id: Optional[str] = None, **kwargs) -> None:
         """

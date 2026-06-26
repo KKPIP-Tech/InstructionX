@@ -16,8 +16,8 @@
 
 - **图标在上**: 按钮上方显示插件图标，下方显示插件名称
 - **激活状态**: 当前选中的插件按钮有高亮边框
-- **自动换行**: 长文本自动在合适位置换行，每行最多 5 个字符
-- **固定尺寸**: 60 x 70 像素，适合工具栏布局
+- **自动换行**: 长文本自动在合适位置换行，单行模式最多 13 字符，双行模式每行最多 8 字符
+- **固定尺寸**: 78 x 64 像素，适合工具栏布局
 
 ---
 
@@ -96,6 +96,17 @@ self.setToolTip(f"{name}\n{description}")
 
 **注意**: `SkillButton` 本身不感知 `IPlugin` 接口，tooltip 所需的数据由 `SkillsPanel` 从 `IPlugin` 相关属性中提取后，以普通字符串形式传入。`SkillsPanel` 构造 `SkillButton` 时的 description 参数来源为 `plugin.skill_description`。
 
+### skill_name / skill_description
+
+`SkillButton` 在构造函数中保存传入的 `name` 和 `description` 为实例属性：
+
+```python
+self.skill_name = name
+self.skill_description = description
+```
+
+这些属性主要用于调试和日志输出（如 `SkillsPanel._on_skill_clicked` 中的日志记录）。
+
 ---
 
 ## 5. 内部方法
@@ -105,14 +116,14 @@ self.setToolTip(f"{name}\n{description}")
 自动处理按钮文本的换行和截断：
 
 - 如果文本包含 `\n`，按换行符分割
-- 否则，如果长度 > 5，在文本中点处换行（midpoint split）
-- 每行最大 5 个字符，超出部分用 `...` 截断
+- 否则，如果长度 > 13（单行模式）或长度 > 8（双行模式），在文本中点处换行（midpoint split）
+- 单行模式每行最大 13 个字符，双行模式每行最大 8 个字符，超出部分用 `...` 截断
 - 最多显示 2 行
 
 **示例**:
 ```python
 # "LLM\nChat" -> 显示为两行
-# "文本格式化" -> 显示为 "文本..." 和 "格式化"
+# "超长插件名称" -> 显示为 "超长插" 和 "件名称"
 ```
 
 ### _apply_style()
@@ -134,7 +145,7 @@ self.setToolTip(f"{name}\n{description}")
 | 悬停状态 | 半透明背景高亮 |
 | 激活状态 | 边框高亮（accent 色） |
 
-样式文件位于 `utils/style_qss/styles/button.qss`：
+样式文件位于 `utils/style_qss/styles/custom.qss`：
 
 ```css
 SkillButton[active="true"] {

@@ -16,7 +16,7 @@
 - 字体文件存在性验证
 - 支持阿里巴巴普惠体多字重变体家族
 
-**支持字体**: 4 个字体家族，22 个字体文件
+**支持字体**: 5 个字体家族，22 个字体文件
 
 | 字体家族 | 变体数 | 文件类型 |
 |---------|--------|---------|
@@ -107,14 +107,16 @@ FontWeight.BLACK      # 115
 ```python
 from utils.font_map import FontInfo
 
-# FontInfo 字段
+# FontInfo 字段（dataclass）
 info.family          # FontFamily 枚举
 info.variant         # FontVariant 枚举
 info.weight          # int | None（仅阿里普惠体有效）
 info.relative_path   # str，相对于项目根目录的路径
 info.absolute_path   # str，绝对路径
+
+# FontInfo 属性（@property）
 info.font_family_name # str，字体家族显示名称
-info.font_style_name # str，Qt 样式名（Family Style）
+info.font_style_name  # str，Qt 样式名（Family Style）
 ```
 
 ### 2.6 FontMap

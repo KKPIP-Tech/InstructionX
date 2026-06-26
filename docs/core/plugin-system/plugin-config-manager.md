@@ -148,7 +148,7 @@ def apply_custom_order(self):
 2. 配置中存在但当前未加载的插件会被跳过
 3. **新安装的插件（UUID 不在配置中）自动追加到列表末尾**，而非插入到特定位置
 
-> 详细说明参见 [PluginManager.apply_custom_order()](./plugin-manager.md#apply_custom_order)
+> 详细说明参见 [PluginManager.apply_custom_order()](./plugin-manager.md)
 
 ### 重置顺序
 
@@ -165,8 +165,8 @@ config_manager.save_plugin_order([], [])  # 清空两个列表
 ## 6. 跨模块 API 说明
 
 > ⚠️ 以下两个方法不属于 `PluginConfigManager`，属于 `PluginManager`：
-> - `get_official_plugin_ids()` — 见 [PluginManager.get_official_plugin_ids()](./plugin-manager.md#get_official_plugin_ids)
-> - `get_thirdparty_plugin_ids()` — 见 [PluginManager.get_thirdparty_plugin_ids()](./plugin-manager.md#get_thirdparty_plugin_ids)
+> - `get_official_plugin_ids()` — 见 [PluginManager.get_official_plugin_ids()](./plugin-manager.md)
+> - `get_thirdparty_plugin_ids()` — 见 [PluginManager.get_thirdparty_plugin_ids()](./plugin-manager.md)
 
 ---
 

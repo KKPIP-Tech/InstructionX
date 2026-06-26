@@ -1,6 +1,6 @@
 # 对话框组件
 
-> InstructionX 应用程序中使用的四个对话框组件的完整说明
+> InstructionX 应用程序中使用的六个对话框组件的完整说明
 
 ---
 
@@ -25,7 +25,7 @@
 
 - 项目 Logo（居中显示）
 - 项目名称: "InstructionX - CE"（加粗，16pt）
-- 版本号: "版本 0.1.0"（次要样式）
+- 版本号: "版本 Alpha 1.0"（次要样式）
 - 版权声明: "© 2025-2026 dakuang. 保留所有权利。"
 - 专有软件声明:
   ```
@@ -169,7 +169,7 @@ if dialog.exec() == QDialog.DialogCode.Accepted:
 
 ### 3.4 功能特性
 
-- **拖拽排序**: 使用 `QListWidget` 的 `InternalMove` 拖拽模式
+- **拖拽排序**: 使用自定义 `OrderListWidget`（继承自 `QListWidget`）的 `InternalMove` 拖拽模式
 - **编号图标**: 每个插件项左侧显示编号图标（格式: 编号 + 插件图标）
 - **独立排序**: 官方插件和第三方插件分别独立排序
 - **重置功能**: 将排序恢复到默认顺序
@@ -229,8 +229,9 @@ if dialog.exec() == QDialog.DialogCode.Accepted:
 - **左栏**（170px）：15 个设置分类（模型服务、默认模型、常规设置、显示设置、数据设置、MCP 服务器等）
 - **中栏**（260px）：Provider 列表，含图标、名称、启用状态标签；支持添加新 Provider（按钮文字：`+ 添加`）
 - **右栏**：详情区，含 Logo、操作按钮、折叠模型分组（按 deepseek-ai / pro / 其他分组，源自 `_group_models` 方法按 model_id 关键字匹配）
-
 - **底部栏**：用量统计（格式：`用量: Token X | 费用 ¥X.XXXX | 请求 X 次`，人民币）、重置用量按钮、取消按钮、**保存** 按钮
+
+> **注意**：目前仅实现了"模型服务"分类的完整功能，其他分类选中后显示"功能开发中..."占位提示。
 
 ### 4.4 信号
 
@@ -263,11 +264,151 @@ dialog.exec()
 
 ---
 
-## 5. 相关文档
+## 5. GitHubPluginInstallDialog GitHub 插件安装对话框
+
+**文件位置**: `ui/dialog/github_plugin_install_dialog.py`
+
+### 5.1 概述
+
+`GitHubPluginInstallDialog` 是从 GitHub 仓库安装插件的对话框，支持单插件和多插件仓库的用户选择性安装。
+
+### 5.2 窗口属性
+
+| 属性 | 值 |
+|------|------|
+| 窗口类型 | QDialog |
+| 最小尺寸 | 600 x 450 |
+| 布局 | 垂直布局 + 堆叠窗口 |
+
+### 5.3 布局结构
+
+```
+┌─────────────────────────────────────────────┐
+│  从 GitHub 安装插件                           │
+├─────────────────────────────────────────────┤
+│  GitHub URL: [________________________] [检查] │
+│                                             │
+│  ── 插件信息 ──────────────────────────────  │
+│  将安装到: 第三方插件目录 (custom_plugin/)    │
+│                                             │
+│  单插件模式:                                 │
+│  ┌─────────────────────────────────────┐   │
+│  │ 名称: My Awesome Plugin               │   │
+│  │ 版本: release.1.0.0                   │   │
+│  │ 描述: 一个强大的插件...                │   │
+│  └─────────────────────────────────────┘   │
+│                                             │
+│  多插件模式:                                 │
+│  ☑ plugin-a  (Plugin A)                    │
+│  ☑ plugin-b  (Plugin B)                    │
+│  ☐ plugin-c  (Plugin C)  ← 未选中          │
+│                                             │
+│              [取消]  [安装]                  │
+└─────────────────────────────────────────────┘
+```
+
+### 5.4 功能特性
+
+- **仓库检查**: 输入 URL 后点击「检查」分析仓库类型
+- **单/多插件识别**: 自动识别单插件仓库（IXPlugin.json）或多插件仓库（IXRepo.json）
+- **选择性安装**: 多插件时显示复选框列表
+- **自动目录判定**: 根据 GitHub 组织自动判定安装目录（KKPIP-Tech → plugin/，其他 → custom_plugin/）
+- **后台下载**: 使用 QThread 后台下载，不阻塞 UI
+
+### 5.5 信号
+
+```python
+plugin_installed = Signal(list)  # List[InstallResult]
+```
+
+安装完成后发射，携带每个插件的安装结果。
+
+### 5.6 使用方式
+
+```python
+from ui.dialog.github_plugin_install_dialog import GitHubPluginInstallDialog
+
+dialog = GitHubPluginInstallDialog(parent_window)
+dialog.plugin_installed.connect(self._on_plugin_installed)
+dialog.exec()
+
+def _on_plugin_installed(self, results):
+    # 重新加载技能面板
+    self.skills_panel.load_skills_from_manager()
+```
+
+---
+
+## 6. LicenseDialog 许可信息对话框
+
+**文件位置**: `ui/dialog/license_dialog.py`
+
+### 6.1 概述
+
+`LicenseDialog` 是开源许可证信息展示对话框，以分类卡片列表的形式展示项目中使用的所有字体和第三方依赖的许可证详情。
+
+### 6.2 窗口属性
+
+| 属性 | 值 |
+|------|------|
+| 窗口类型 | QDialog |
+| 最小尺寸 | 900 x 600 |
+| 默认尺寸 | 950 x 650 |
+
+### 6.3 布局结构
+
+```
+┌────────────────────────────────────────────────────────────────────────────┐
+│  许可信息  Licenses                                                          │
+├──────────────────────┬─────────────────────────────────────────────────────┤
+│  [搜索名称...]        │                                                      │
+│  ─────────────────   │  MiniMax-Plus2 (MiniMax-M2.5)                       │
+│  字体项              │  ────────────────────────────                         │
+│  依赖项              │  [MIT]  v1.0.0 | 依赖                               │
+│  ...                 │  © xxxx                                             │
+│                      │  https://example.com                                │
+│                      │                                                      │
+│                      │  ┌──────────────────────────────────────────────┐   │
+│                      │  │  license 文件内容（等宽字体，可复制）          │   │
+│                      │  └──────────────────────────────────────────────┘   │
+│                      ├─────────────────────────────────────────────────────┤
+│                      │                    [复制全文] [打开文件夹] [关闭]    │
+└──────────────────────┴─────────────────────────────────────────────────────┘
+```
+
+- **左栏**（320px）：搜索框 + 滚动列表，每个列表项显示名称、许可证徽章、版本；支持按名称过滤
+- **右栏**：详情区，含标题、许可证标签、版本、分类、版权信息、链接，下方为许可文件内容（代码块样式，支持复制）
+- **底部栏**：操作按钮（复制全文、打开 licenses 文件夹、关闭）
+
+### 6.4 数据来源
+
+许可证数据从 `licenses/manifest.json` 读取，分为 `fonts`（字体）和 `dependencies`（依赖）两类。每项包含 `name`、`display_name`、`license_type`、`version`、`url`、`copyright` 等字段。
+
+### 6.5 功能特性
+
+- **搜索过滤**：输入名称实时过滤列表项（基于字符串包含匹配）
+- **空状态提示**：无匹配结果时显示"未找到匹配的许可证"
+- **许可证颜色标签**：根据许可证类型显示不同颜色的徽章（MIT/GPL/Apache 等）
+- **复制全文**：将当前显示的许可证全文复制到剪贴板，按钮文字临时变为"已复制！"
+- **打开文件夹**：直接打开 `licenses/` 目录
+
+### 6.6 使用方式
+
+```python
+from ui.dialog.license_dialog import LicenseDialog
+
+dialog = LicenseDialog(parent_window)
+dialog.exec()
+```
+
+---
+
+## 7. 相关文档
 
 - [主窗口](main-window.md)
 - [技能面板](skills-panel.md)
 - [插件系统概述](../core/plugin-system/overview.md)
+- [GitHub 插件安装器](../core/plugin-system/plugin-installer.md)
 
 ---
 

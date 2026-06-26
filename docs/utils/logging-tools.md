@@ -22,9 +22,23 @@
 
 ## 2. 核心组件
 
-### 2.1 LoggerManager
+### 2.1 ILogger 接口
 
-单例模式的日志管理器类，支持按指定格式记录日志到文件。
+**文件位置**: `utils/i_logger.py`
+
+日志记录器的抽象接口，定义了 `info`、`debug`、`warning`、`error`、`critical` 五个抽象方法。`LoggerManager` 继承自 `ILogger`，插件和核心服务可通过此接口进行日志记录，实现依赖注入。
+
+```python
+from utils.i_logger import ILogger
+
+class MyService:
+    def __init__(self, logger: ILogger):
+        self._logger = logger
+```
+
+### 2.2 LoggerManager
+
+单例模式的日志管理器类，继承自 `ILogger`，支持按指定格式记录日志到文件。
 
 ```python
 from utils import LoggerManager
@@ -33,7 +47,7 @@ from utils import LoggerManager
 logger = LoggerManager()
 ```
 
-### 2.2 get_name()
+### 2.3 get_name()
 
 自动获取当前调用位置的模块名称，无论是从类方法、函数还是主模块调用都能正确获取。
 

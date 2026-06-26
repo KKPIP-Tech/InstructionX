@@ -2,7 +2,10 @@
 StyleQSS 颜色定义
 """
 
-from PySide6.QtGui import QColor
+import base64
+import os
+from PySide6.QtGui import QColor, QImage, QPainter, QPolygonF
+from PySide6.QtCore import Qt, QPointF, QByteArray, QBuffer, QIODevice
 
 
 class StyleQSSColors:
@@ -20,8 +23,36 @@ class StyleQSSColors:
             'toolTipText': '#000000',
 
             # 技能面板专用
-            'skillPanel': '#F5F5F5',
+            'skillPanel': '#F5F7FA',
             'skillPanelTab': '#E8E8E8',
+            'skillPanelHeaderBg': '#EBEEF2',
+            'skillButtonHover': '#E8F4FD',
+            'skillButtonActiveText': '#0078D4',
+
+            # 列表控件专用
+            'listBg': '#FFFFFF',
+            'listBorder': '#D8D8D8',
+            'listText': '#000000',
+            'treeBranchArrow': '#6B7280',
+
+            # 卡片/面板专用
+            'cardBackground': '#FFFFFF',
+            'codeBackground': '#F5F5F5',
+
+            # 分割器专用
+            'splitterHandle': '#E5E7EB',
+
+            # 进度条专用
+            'progressBg': '#F8F9FA',
+            'progressBorder': '#E5E7EB',
+            'progressSuccess': '#10B981',
+            'progressWarning': '#F59E0B',
+            'progressError': '#EF4444',
+
+            # 菜单/工具栏专用
+            'menuBarBg': '#F0F2F5',
+            'menuPopupBg': '#FFFFFF',
+            'accentDim': 'rgba(0, 120, 212, 0.08)',
 
             # 控件色
             'button': '#F3F3F3',
@@ -80,8 +111,36 @@ class StyleQSSColors:
             'toolTipText': '#FFFFFF',
 
             # 技能面板专用
-            'skillPanel': "#454545",
+            'skillPanel': '#2C2C2C',
             'skillPanelTab': '#6A6A6A',
+            'skillPanelHeaderBg': '#363636',
+            'skillButtonHover': '#1A3A5C',
+            'skillButtonActiveText': '#FFFFFF',
+
+            # 列表控件专用
+            'listBg': '#1E1E1E',
+            'listBorder': '#2A2A2C',
+            'listText': '#B0B8BC',
+            'treeBranchArrow': '#9CA3AF',
+
+            # 卡片/面板专用
+            'cardBackground': '#2C2C2C',
+            'codeBackground': '#1E1E1E',
+
+            # 分割器专用
+            'splitterHandle': '#21262D',
+
+            # 进度条专用
+            'progressBg': '#161B22',
+            'progressBorder': '#21262D',
+            'progressSuccess': '#10B981',
+            'progressWarning': '#F59E0B',
+            'progressError': '#EF4444',
+
+            # 菜单/工具栏专用
+            'menuBarBg': '#22272E',
+            'menuPopupBg': '#1C2128',
+            'accentDim': 'rgba(0, 120, 212, 0.1)',
 
             # 控件色
             'button': '#2C2C2C',
@@ -115,7 +174,7 @@ class StyleQSSColors:
 
             # 专用
             'accent': '#0078D4',
-            'accentLight': '#4CC2FF',
+            'accentLight': '#1A3A5C',
             'accentDark': '#005A9E',
 
             # 控件状态填充
@@ -160,7 +219,52 @@ class StyleQSSColors:
         return colors.get(name, '#000000')
 
 
+def _ensure_arrow_images(theme: str, colors: dict) -> dict:
+    """生成主题色箭头 PNG 文件并返回绝对路径字典（正斜杠格式）"""
+    assets_dir = os.path.join(os.path.dirname(__file__), 'assets', 'arrows')
+    os.makedirs(assets_dir, exist_ok=True)
+
+    arrows = {
+        'spinBoxArrowUp': ('windowText', 'up'),
+        'spinBoxArrowDown': ('windowText', 'down'),
+        'comboBoxArrowDown': ('buttonText', 'down'),
+    }
+
+    result = {}
+    for var_name, (color_key, direction) in arrows.items():
+        color = colors.get(color_key, '#000000')
+        filename = f"{var_name}_{theme}.png"
+        filepath = os.path.join(assets_dir, filename)
+
+        if not os.path.exists(filepath):
+            img = QImage(10, 6, QImage.Format_ARGB32)
+            img.fill(Qt.transparent)
+            painter = QPainter(img)
+            painter.setRenderHint(QPainter.Antialiasing)
+            painter.setBrush(QColor(color))
+            painter.setPen(Qt.NoPen)
+
+            if direction == 'down':
+                polygon = QPolygonF([
+                    QPointF(0, 0), QPointF(10, 0), QPointF(5, 6)
+                ])
+            else:
+                polygon = QPolygonF([
+                    QPointF(0, 6), QPointF(10, 6), QPointF(5, 0)
+                ])
+            painter.drawPolygon(polygon)
+            painter.end()
+            img.save(filepath)
+
+        result[var_name] = filepath.replace('\\', '/')
+
+    return result
+
+
 # 导出颜色常量供 QSS 使用
 def get_color_dict(theme: str = 'light') -> dict:
     """获取颜色字典，用于 QSS 变量替换"""
-    return StyleQSSColors.get_colors(theme)
+    colors = StyleQSSColors.get_colors(theme)
+    arrow_paths = _ensure_arrow_images(theme, colors)
+    colors.update(arrow_paths)
+    return colors
