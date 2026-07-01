@@ -47,7 +47,7 @@ class ILLMFacade(ABC):
         model: Optional[str] = None,
         temperature: float = 0.7,
         max_tokens: Optional[int] = None,
-        callback: Optional[Callable[[ChatResponse], None]] = None,
+        callback: Optional[Callable[[str, bool], None]] = None,
         **kwargs
     ):
         """发送流式聊天请求（同步）"""

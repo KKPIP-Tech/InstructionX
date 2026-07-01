@@ -8,6 +8,7 @@
     - SiliconFlowProvider: SiliconFlow API
     - GLMProvider: 智谱 GLM 大模型
     - OllamaProvider: Ollama 本地大模型
+    - OpenAIProvider: OpenAI 兼容 API
 
 Classes:
     BaseProvider: 提供商抽象基类
@@ -15,6 +16,7 @@ Classes:
     SiliconFlowProvider: SiliconFlow 提供商实现
     GLMProvider: GLM 提供商实现
     OllamaProvider: Ollama 提供商实现
+    OpenAIProvider: OpenAI 兼容 API 实现
 
 Functions:
     register_provider: 提供商注册装饰器

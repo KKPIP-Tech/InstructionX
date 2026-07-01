@@ -139,7 +139,7 @@ class TaskStorage:
     def save_data(self) -> None:
         """将当前缓存数据保存到磁盘"""
         if self._cache is None:
-            self._cache = {"tasks": {}, "scheduled_tasks": {}}
+            self._cache = {"tasks": {}, "scheduled_tasks": {}, "long_running_tasks": {}}
 
         self._write_to_disk(self._cache)
         self._cache_dirty = False

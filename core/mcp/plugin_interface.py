@@ -17,7 +17,9 @@ class IMCPTool(ABC):
     """MCP 工具定义接口
 
     插件开发者可继承此类定义一个 MCP 工具。
-    框架会自动将其实例注册到 MCP Server。
+    注意：当前框架不会自动扫描并注册 IMCPTool 实例；如需暴露为 MCP 工具，
+    请通过 information.py 的 service_api 声明，或在 on_plugin_loaded() 中手动通过
+    self._services.mcp_manager 注册。
 
     用法::
 
