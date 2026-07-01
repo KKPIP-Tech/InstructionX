@@ -165,7 +165,7 @@ from core.plugin.plugin_icon import PluginIcon
 class MyPluginInfo(IPluginInfo):
     @property
     def version(self) -> PluginVersion:
-        return PluginVersion(1, 0, 0)
+        return PluginVersion(VersionType.RELEASE, 1, 0, 0)
 
     @property
     def developer(self) -> str:
@@ -358,7 +358,7 @@ class MyPlugin(IPlugin):
 
 *底层 LLM 代理*:
 - `chat(messages, provider, model, temperature, max_tokens, **kwargs)`: 同步聊天
-- `stream_chat(messages, provider, model, temperature, max_tokens, callback, **kwargs)`: 流式聊天
+- `stream_chat(messages, provider, model, temperature, max_tokens, callback, **kwargs)`: 流式聊天，`callback` 签名为 `(chunk: str, done: bool) -> None`
 - `embed(texts, provider, model, **kwargs)`: 文本嵌入
 - `get_models(provider)`: 获取模型列表
 - `get_provider(name)`: 获取 Provider 实例
@@ -454,7 +454,7 @@ svc = get_llm_plugin_service()
 | `chat(messages, ...)` | 直接 chat（无对话状态） |
 | `stream_chat(messages, callback, ...)` | 流式 chat（无对话状态） |
 | `chat_with_tools(messages, max_turns=5)` | 工具调用循环（返回消息列表、工具结果、最终响应） |
-| `chat_with_tools_stream(messages, callback, ...)` | 流式工具调用 |
+| `chat_with_tools_stream(messages, callback, ...)` | 流式工具调用（当前流式路径不会解析 `tool_calls`，实际暂不可用） |
 | `get_tool_executor()` | 获取 `ToolCallExecutor` 实例 |
 | `get_shared_tool_registry()` | 获取共享 `ToolRegistry`（所有插件的工具） |
 | `get_raw_provider(provider?)` | 获取底层 `ILLM` Provider（高级插件用） |

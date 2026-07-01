@@ -195,6 +195,8 @@ if dialog.exec() == QDialog.DialogCode.Accepted:
 
 `LLMModelServiceDialog` 是新版设置对话框，采用 **三栏布局**，提供更丰富的设置分类和 Provider 管理能力。
 
+> **注意**：`LLMModelServiceDialog` 当前尚未绑定到主窗口菜单。主窗口通过 **AI → LLM 设置...** 实际打开的是 `LLMSettingsDialog`（两栏布局）。此对话框可在代码中单独实例化使用，但目前不是用户菜单的默认入口。
+
 ### 4.2 窗口属性
 
 | 属性 | 值 |

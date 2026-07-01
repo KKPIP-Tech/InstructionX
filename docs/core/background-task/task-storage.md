@@ -211,7 +211,7 @@ def update_long_running_task(self, task: LongRunningTask)
 def load_data(self, force_reload: bool = False) -> Dict[str, Any]
 ```
 
-从磁盘加载数据到缓存。返回数据字典；若缓存为空则默认返回 `{"tasks": {}, "scheduled_tasks": {}}`，正常情况下数据包含键 `tasks`、`scheduled_tasks`、`long_running_tasks`。`force_reload=True` 时强制从磁盘重新读取。
+从磁盘加载数据到缓存。返回数据字典；若缓存为空则默认返回 `{"tasks": {}, "scheduled_tasks": {}, "long_running_tasks": {}}`，正常情况下数据包含键 `tasks`、`scheduled_tasks`、`long_running_tasks`。`force_reload=True` 时强制从磁盘重新读取。
 
 ### save_data()
 

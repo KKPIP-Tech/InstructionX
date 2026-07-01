@@ -20,7 +20,7 @@
 |------|------|
 | **单例模式** | 全局唯一实例，确保数据一致性 |
 | **线程安全** | 使用 `_file_lock`（RLock）保护数据库访问 + `_subscription_lock`（Lock）保护订阅表 |
-| **原子写入** | SQLite WAL 模式 + 显式事务，保证数据一致性 |
+| **原子写入** | SQLite WAL + 语句级/显式事务，保证数据一致性 |
 | **内存缓存** | 全量字典缓存 + 按 key 的 LRU 反序列化缓存，减少 I/O 与重复解析 |
 | **命名空间隔离** | 严格区分私有数据和公共数据 |
 | **发布/订阅** | 支持插件间的实时数据通信 |
@@ -246,7 +246,7 @@ flowchart TD
 - 外键约束：`PRAGMA foreign_keys = ON;`
 - 同步级别：`PRAGMA synchronous = NORMAL;`
 
-写操作（如 `set_plugin_data`）使用 `BEGIN IMMEDIATE` 开启显式事务，异常时自动回滚。全量写入（`save_data` / `reset_all_data`）同样运行在事务中，先清空子表再清空父表，最后重新插入。
+`set_plugin_data` 等单条写入使用 SQLite 语句级原子性（UPSERT）保证，不依赖显式事务。`save_data` / `reset_all_data` / `set_active_instance` 使用 `BEGIN IMMEDIATE` 显式事务，异常时自动回滚。
 
 ```python
 def _write_to_disk(self, data):
@@ -260,6 +260,14 @@ def _write_to_disk(self, data):
         # 3. 重新插入 plugins、plugin_data、active_instances
         ...
 ```
+
+### 7.3 JSON 应急回退
+
+设置环境变量 `INSTRUCTIONX_DATAPROVIDER_BACKEND=json` 可强制 `DataProvider` 回退到旧 JSON 后端（临时文件 + 原子重命名），主要用于应急排查。
+
+### 7.4 从 JSON 自动迁移
+
+首次启动时，如果检测到旧的 `data/data.json` 且 `data/data.db` 尚未初始化，`SQLiteBackend` 会自动将 JSON 数据导入 `data/data.db`。迁移成功后，原 `data.json` 会被重命名为 `data.json.migrated-<timestamp>.bak`；若迁移失败，不完整的数据库文件会被删除，下次启动仍可重试。
 
 ---
 

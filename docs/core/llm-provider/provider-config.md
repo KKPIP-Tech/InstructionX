@@ -80,7 +80,7 @@ from core.llm.config import LLMConfig
 config = LLMConfig()  # 加载 config/llm_providers.json
 ```
 
-构造函数加载 `config/llm_providers.json` 配置文件。如果文件不存在，自动创建包含 MiniMax、SiliconFlow、GLM、Ollama 四个默认 Provider 的配置。
+构造函数加载 `config/llm_providers.json` 配置文件。如果文件不存在，自动创建包含 MiniMax、SiliconFlow、GLM、Ollama、OpenAI 五个默认 Provider 的配置。
 
 ### 3.2 方法
 

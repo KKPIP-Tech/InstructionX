@@ -68,6 +68,7 @@ class TaskType(Enum):
 - **特点**: 按固定间隔重复执行
 - **适用场景**: 定期备份、自动同步等
 - **参数限制**: `SchedulerCallback.execute_scheduled_task()` 在执行时优先检查 `args`。当 `args` 和 `kwargs` 同时存在时，`kwargs` 会被忽略。如需同时使用两者，请在 `args` 中传递字典并在 `func` 内部解包。
+- **调度实现**: `TaskScheduler._check_and_run_tasks()` 当前为空实现（`pass`）。实际的定时任务检查与执行由 `BackgroundTaskManager._check_scheduled_tasks()` daemon 线程完成，该线程使用 `SchedulerCallback.should_run()` 判断到期，并通过 `SchedulerCallback.execute_scheduled_task()` 执行任务。
 - **示例**:
   ```python
   task_id = manager.register_scheduled_task(
@@ -125,7 +126,7 @@ class TaskStatus(Enum):
     STOPPED = "stopped"      # 已停止（长期任务被主动停止）
 ```
 
-> **注意**：`STOPPED` 状态在 `TaskStatus` 枚举中定义，但目前代码中尚未实际赋值。该状态预留用于长期任务的主动停止场景。
+> **注意**：`STOPPED` 枚举值在恢复长期任务时被用作过滤条件（`current_status in ("completed", "failed", "stopped")` 的任务不会被恢复），但任务对象不会通过 `mark_stopped()` 设置，目前也尚未在代码中为任务对象显式赋值。
 
 ### 3.2 状态转换图
 
@@ -139,7 +140,7 @@ stateDiagram-v2
     COMPLETED --> [*]
     FAILED --> [*]
     CANCELLED --> [*]
-    Note: STOPPED 状态预留但未在代码中实际赋值
+    Note: STOPPED 枚举用于恢复过滤，但任务对象不会通过 mark_stopped() 设置
 ```
 
 ---

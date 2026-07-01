@@ -38,7 +38,8 @@
 | PySide6 | 6.10.2 | Qt for Python，UI 框架 |
 | opencv-python | 4.13.0 | 图像处理（截图等） |
 | numpy | 2.4.2 | 数值计算 |
-| JSON | — | 所有持久化存储格式 |
+| SQLite + WAL | — | DataProvider 默认持久化后端（插件数据） |
+| JSON | — | TaskStorage 持久化格式；DataProvider 应急回退后端 |
 | Windows | 11 | 目标平台 |
 
 ### 1.3 核心设计原则
@@ -52,7 +53,7 @@
 - **LLM 双重入口**：`LLMProvider` 为底层核心，`LLMPluginService` 为插件开发者入口，两者通过 `get_llm_provider()` / `get_llm_plugin_service()` 获取
 - **接口契约优于实现**：`core/interfaces/` 定义所有核心接口，插件通过接口与框架交互
 - **Widget 缓存复用**：IPlugin 的 `get_widget()` 实现控件缓存，避免重复创建
-- **原子写入**：所有 JSON 持久化使用 temp-file + `os.replace()` 保证数据不损坏
+- **原子写入**：DataProvider 默认使用 SQLite WAL + 事务保证数据一致性；TaskStorage 等 JSON 持久化仍使用 temp-file + `os.replace()` 保证数据不损坏
 - **MCP 导出能力**：所有插件 API 可通过 `get_all_function_tools()` 导出为 OpenAI 风格的 function calling 工具
 
 ### 1.4 术语表
@@ -61,7 +62,7 @@
 |------|------|
 | IPlugin | 插件抽象基类，定义插件必须实现的契约 |
 | Widget 缓存 | IPlugin.get_widget() 的控件复用机制 |
-| Provider | LLM 提供商实现（MiniMax/GLM/SiliconFlow/Ollama） |
+| Provider | LLM 提供商实现（MiniMax/GLM/SiliconFlow/Ollama/OpenAI） |
 | MCP | Model Context Protocol，函数调用规范 |
 | QSS | Qt Style Sheets，Qt 样式表 |
 | 单例 | 全局唯一实例设计模式 |
@@ -98,11 +99,12 @@ graph TB
         subgraph CoreLLM ["LLM Layer"]
             LLMS[LLMPluginService<br/>插件开发者入口]
             LLMP[LLMProvider<br/>LLM 核心层]
-            subgraph CoreLLMProv ["Providers (全部4家)"]
+            subgraph CoreLLMProv ["Providers (全部5家)"]
                 MINIMAX[MiniMaxProvider]
                 GLM[GLMProvider]
                 SF[SiliconFlowProvider]
                 OLLAMA[OllamaProvider]
+                OPENAI[OpenAIProvider]
             end
         end
     end
@@ -172,7 +174,7 @@ graph LR
     PM -->|lifecycle| LLMP[LLMProvider]
     PM -->|lifecycle| LLMS[LLMPluginService]
 
-    DP -.->|persist| storage[data/data.json]
+    DP -.->|persist| storage[data/data.db]
     BTM -.->|persist| storage
     LLMP -.->|config| llmcfg[llm_providers.json]
     LLMS --> LLMP
@@ -453,7 +455,17 @@ def get_all_function_tools(self) -> List[Dict[str, Any]]:
 
 **核心职责**：插件数据的持久化、内存缓存、命名空间隔离、发布/订阅通信。
 
-**数据文件结构**：
+**持久化路径**：`data/data.db`（由 `core/data/data_provider.py` 确定；JSON 应急模式下为 `data/data.json`）
+
+**SQLite 表结构**（默认后端）：
+- `plugins`：插件实例元数据（`instance_id`, `plugin_type`, `active`）
+- `plugin_data`：插件键值数据（`instance_id`, `namespace`, `key`, `value`）
+- `active_instances`：当前活跃实例映射（`plugin_type`, `instance_id`）
+- `db_metadata`：schema 版本与迁移来源
+
+> 详细 schema 与迁移说明参见 [`docs/core/data-provider/overview.md`](../core/data-provider/overview.md)。
+
+**JSON 应急后端格式**（仅当 `INSTRUCTIONX_DATAPROVIDER_BACKEND=json` 时生效）：
 ```json
 {
   "plugins": {
@@ -468,12 +480,15 @@ def get_all_function_tools(self) -> List[Dict[str, Any]]:
 }
 ```
 
-**持久化路径**：`data/data.json`（由 `core/data/data_provider.py:62` 的 `Path(__file__).parent.parent.parent / "data"` 确定）
-
 ### 5.2 原子写入机制
 
+默认 SQLite 后端通过 `PRAGMA journal_mode = WAL` 与 SQLite 语句级/显式事务保证一致性：
+- `set_plugin_data` 等单条写入使用 UPSERT 语句级原子性。
+- `save_data` / `reset_all_data` / `set_active_instance` 使用 `BEGIN IMMEDIATE` 显式事务，异常时自动回滚。
+
+JSON 应急后端仍保留旧的原子写入实现：
 ```python
-# data_provider.py:122-144
+# 仅 INSTRUCTIONX_DATAPROVIDER_BACKEND=json 时生效
 def _write_to_disk(self, data):
     with open(self.temp_file, 'w') as f:   # 写入 data.json.tmp
         json.dump(data, f, ...)
@@ -621,7 +636,7 @@ graph LR
 
 模块导入时（`providers/__init__.py:89-92`）通过装饰器自动注册所有 Provider。
 
-### 7.3 四家提供商对比
+### 7.3 五家提供商对比
 
 | 提供商 | 配置文件键 | 模型获取方式 | 特殊处理 |
 |--------|-----------|------------|---------|
@@ -629,6 +644,7 @@ graph LR
 | GLM | `glm` | 预设列表（7 类模型，含视频/音频） | 支持 function calling |
 | SiliconFlow | `siliconflow` | API `/models` 动态获取 | 模型类型从 ID 推断 |
 | Ollama | `ollama` | API `/api/tags` 动态获取 | 不需要 api_key |
+| OpenAI | `openai` | API `/models` 动态获取 | OpenAI 兼容协议 |
 
 ### 7.4 BaseProvider 模板方法
 
@@ -674,6 +690,7 @@ classDiagram
     BaseProvider <|-- SiliconFlowProvider
     BaseProvider <|-- GLMProvider
     BaseProvider <|-- OllamaProvider
+    BaseProvider <|-- OpenAIProvider
 ```
 
 ---
@@ -879,8 +896,9 @@ if attr.__name__.endswith('Service'):
 plugin_name/
 ├── __init__.py          # 空文件，Python 包标识
 ├── entrance.py          # 必需：定义 IPlugin 子类
-├── information.py       # 可选：定义 IPluginInfo 子类 + service_api
-├── service.py           # 可选：定义 Service 类（类名以 Service 结尾优先）
+├── information.py       # 必需：定义 IPluginInfo 子类 + service_api
+├── service.py           # 必需：定义 Service 类（类名以 Service 结尾优先）
+├── config/              # 必需：插件配置文件目录
 └── assets/              # 可选：静态资源文件
 ```
 
@@ -978,12 +996,10 @@ class Service:
 
 | 文件 | 核心职责 |
 |------|---------|
-| `data_provider.py` | DataProvider 单例，pub/sub/原子写入 |
-| `task_storage.py` | TaskStorage 单例，任务 JSON 持久化 |
-| `dao.py` | **占位桩**，待 SQLite 迁移 |
-| `database_connection.py` | **占位桩** |
-| `database_manager.py` | **占位桩** |
-| `sql_map.py` | **预留框架**（`SQLMap` 类骨架，待 SQLite 迁移） |
+| `data_provider.py` | DataProvider 单例，pub/sub/原子写入/后端路由 |
+| `sqlite_backend.py` | SQLiteBackend：连接、DDL、事务、按 key CRUD、LRU 缓存、迁移 |
+| `sql_map.py` | SQLMap：SQL 语句集中管理 |
+| `schema_migrations.py` | Schema 版本注册表与迁移脚本 |
 
 #### 任务系统 (`core/task/`)
 
@@ -1016,6 +1032,7 @@ class Service:
 | `providers/glm.py` | GLMProvider 实现 |
 | `providers/siliconflow.py` | SiliconFlowProvider 实现 |
 | `providers/ollama.py` | OllamaProvider 实现 |
+| `providers/openai.py` | OpenAIProvider 实现 |
 
 #### UI 层 (`ui/`)
 
@@ -1056,7 +1073,8 @@ class Service:
 | `config/llm_providers.json` | `{providers: {name: {api_key, base_url, chat_model, ...}}}` |
 | `config/llm_models_cache.json` | `{provider_name: [ModelInfo]}` |
 | `config/mcp_config.json` | `{server: {...}, remote_servers: [...]}` |
-| `data/data.json` | `{plugins: {id: {type, active, private, public}}, active_instances: {}}` |
+| `data/data.db` | SQLite 数据库：plugins、plugin_data、active_instances 表 |
+| `data/data.json` | `{plugins: {id: {type, active, private, public}}, active_instances: {}}`（JSON 应急后端） |
 | `data/tasks.json` | `{tasks: {}, scheduled_tasks: {}, long_running_tasks: {}}` |
 | `data/llm_usage.json` | `[UsageRecord, ...]` |
 
@@ -1069,7 +1087,7 @@ class Service:
 | 3 | _restore_all_scheduled_tasks() 从未被调用 | 低 | 恢复由工厂注册自动触发，非全局恢复 | 📝 已文档化 |
 | 4 | PluginServices DI 已启用 | 低 | PluginManager._create_plugin_services() 已实现 DI 注入 | 📝 已完成 |
 | 5 | API 注册优先选择名称以 'Service' 结尾的类 | 低 | `manager.py:585` 含注释说明 | 📝 已文档化 |
-| 6 | DAO/database 模块为占位桩 | 低 | 预留待 SQLite 迁移 | 📝 已知限制 |
+| 6 | ~~DAO/database 模块为占位桩~~ | ~~低~~ | ~~SQLite 迁移已完成：`sqlite_backend.py` + `sql_map.py` + `schema_migrations.py`~~ | ✅ 已修复 |
 
 ---
 

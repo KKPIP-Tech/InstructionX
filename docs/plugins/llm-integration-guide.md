@@ -27,13 +27,14 @@ graph TB
         SiliconFlow[SiliconFlow]
         GLM[GLM]
         Ollama[Ollama]
+        OpenAI[OpenAI]
     end
 
     P1 & P2 -->|services.llm_facade| LPS
     LPS --> CM & TCE
     TCE --> TR
     LPS --> LP
-    LP -->|路由| MiniMax & SiliconFlow & GLM & Ollama
+    LP -->|路由| MiniMax & SiliconFlow & GLM & Ollama & OpenAI
 ```
 
 ### DI 初始化对比
@@ -173,7 +174,7 @@ flowchart TB
     STREAM[stream_send_message + callback]
     RESP2[callback 逐 chunk 调用]
     TOOLS[chat_with_tools + messages]
-    RESP3[自动处理两轮 + 返回 final_response]
+    RESP3[自动处理多轮（最多 max_turns）+ 返回 final_response]
     STATS[get_usage_stats]
     RESP4[UsageStats - total_tokens cost request_count]
 
@@ -292,6 +293,8 @@ msgs, results, final = executor.chat_with_tools_stream(
     max_turns=3,
 )
 ```
+
+> **限制说明**: 当前 `ToolCallExecutor` 在流式模式下不会解析响应中的 `tool_calls`，因此流式工具调用实际不可用。如需工具调用，请使用同步版本 `chat_with_tools()`。
 
 ### 使用共享工具注册表
 

@@ -52,9 +52,9 @@ InstructionX 是一个功能强大的**插件集成框架**，允许你根据实
 
 内置多厂商 LLM 对接能力，通过 `LLMPluginService` 提供完整的对话管理和工具调用自动化：
 
-- **多 Provider 支持**：MiniMax、SiliconFlow、智谱 GLM、Ollama 等
-- **对话管理**：多会话创建、切换、历史自动管理、上下文自动截断
-- **ToolCallExecutor**：自动处理工具调用两轮循环，插件只需注册工具
+- **多 Provider 支持**：MiniMax、SiliconFlow、智谱 GLM、Ollama、OpenAI 等
+- **对话管理**：多会话创建、切换、历史自动管理（上下文自动截断当前未实现）
+- **ToolCallExecutor**：自动处理工具调用多轮循环（默认最多 `max_turns=5` 轮），插件只需注册工具
 - **多模态支持**：图片理解（Vision）、图片生成、TTS 语音合成
 - **用量统计**：按对话和全局统计 Token 消耗、费用估算
 - **Embedding**：向量嵌入支持
@@ -72,7 +72,7 @@ InstructionX 是一个功能强大的**插件集成框架**，允许你根据实
 ### 💾 灵活的数据层
 
 **DataProvider** 提供健壮的数据持久化能力：
-- **原子写入**：使用临时文件 + 重命名机制，确保数据写入不会因意外中断而损坏
+- **SQLite WAL + 显式事务**：默认使用 SQLite WAL 模式与显式事务，确保数据写入不会因意外中断而损坏；可通过环境变量 `INSTRUCTIONX_DATAPROVIDER_BACKEND=json` 回退到 JSON 后端
 - **双命名空间**：PRIVATE 空间仅插件内部可用，PUBLIC 空间支持跨插件访问
 - **发布/订阅**：插件可以订阅数据变化，实现响应式交互
 - **内存缓存**：减少频繁磁盘 I/O，提升性能
@@ -240,8 +240,9 @@ graph TD
 ```
 my_plugin/
 ├── entrance.py      # 必需：插件入口，定义 IPlugin 子类
-├── service.py       # 可选：插件服务逻辑
-├── information.py   # 可选：插件元信息（版本、图标、API 定义等）
+├── service.py       # 必需：插件服务逻辑 / 接口层
+├── information.py   # 必需：插件元信息（版本、图标、API 定义等）
+├── config/          # 必需：插件配置文件目录
 └── assets/          # 可选：静态资源目录
 ```
 
@@ -312,7 +313,7 @@ class MyPluginInfo(IPluginInfo):
 | 插件顺序 | `config/plugin_order.json` | 插件显示顺序配置 |
 | LLM 配置 | `config/llm_providers.json` | Provider API Key、Base URL 等 |
 | 模型缓存 | `config/llm_models_cache.json` | LLM 模型列表缓存 |
-| 插件数据 | `data/data.db` | 插件数据持久化存储（SQLite） |
+| 插件数据 | `data/data.db` | 插件数据持久化存储（SQLite + WAL；可通过 `INSTRUCTIONX_DATAPROVIDER_BACKEND=json` 回退到 `data/data.json`） |
 | 任务状态 | `data/tasks.json` | 后台任务状态持久化 |
 | 资源文件 | `data/assets/` | 插件资源文件存储 |
 | MCP 配置 | `config/mcp_config.json` | MCP Server/Client 连接配置 |
@@ -353,7 +354,7 @@ InstructionX 采用**修改版 Apache License 2.0** 许可证：
 
 | 技术 | 用途 | 版本 |
 |------|------|------|
-| InstructionX CE | 应用版本 | 0.1.0 |
+| InstructionX CE | 应用版本 | Alpha 1.0.2 |
 | PySide6 | Qt GUI 框架 | >= 6.10 |
 | Python | 编程语言 | >= 3.14 |
 | requests | HTTP 请求 | - |
