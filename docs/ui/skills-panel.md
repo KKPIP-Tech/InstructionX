@@ -81,9 +81,9 @@ graph TB
 
 | 状态 | 说明 |
 |------|------|
-| 正常 | 默认透明背景，`transparent` 边框，`windowText` 颜色 |
-| 悬停 | 背景变为 `{controlFillHover}`，`border` 变为 1px `{borderLight}` |
-| 选中/活跃 | `2px` `{accent}` 边框，`{controlFillSelected}` 背景，`{accent}` 文字颜色，`font-weight: 500` |
+| 正常 | 默认透明背景，无边框，`windowText` 颜色 |
+| 悬停 | 背景变为 `{skillButtonHover}`，无边框 |
+| 选中/活跃 | 渐变背景 `qlineargradient`（左侧 4% 为 `{accent}`，其余为 `{controlFillSelected}`），无边框，`{skillButtonActiveText}` 文字颜色，`font-weight: 500` |
 
 ---
 
@@ -305,21 +305,25 @@ SkillsPanel 使用以下颜色变量：
 | 颜色变量 | 浅色主题 | 深色主题 | 用途 |
 |---------|---------|---------|------|
 | `skillPanel` | `#F5F7FA` | `#2C2C2C` | 面板背景 |
-| `skillPanelTab` | `#E8E8E8` | `#6A6A6A` | Tab 背景 |
+| `skillPanelHeaderBg` | `#EBEEF2` | `#363636` | Pill 按钮容器背景 |
 | `windowText` | `#000000` | `#FFFFFF` | 文字颜色 |
-| `accent` | `#0078D4` | `#0078D4` | 选中边框 |
-| `controlFillHover` | `rgba(0,0,0,12)` | `rgba(255,255,255,12)` | 悬停效果 |
+| `textSecondary` | `#666666` | `#999999` | Pill 按钮未激活文字 |
+| `accent` | `#0078D4` | `#0078D4` | 激活/选中强调色 |
+| `accentDark` | `#005A9E` | `#005A9E` | 激活 Pill 按钮悬停背景 |
+| `skillButtonHover` | `#E8F4FD` | `#1A3A5C` | 技能按钮悬停背景 |
+| `skillButtonActiveText` | `#0078D4` | `#FFFFFF` | 技能按钮激活文字 |
+| `controlFillHover` | `rgba(0,0,0,12)` | `rgba(255,255,255,12)` | 通用悬停效果 |
 
 ### 8.2 色彩层次
 
 SkillsPanel 与工作区保持色彩层次区分：
 
 **浅色模式：**
-- SkillsPanel: `#F5F5F5`（浅灰）
+- SkillsPanel: `#F5F7FA`（浅灰）
 - WorkArea: `#FFFFFF`（白色）
 
 **深色模式：**
-- SkillsPanel: `#454545`（深灰）
+- SkillsPanel: `#2C2C2C`（深灰）
 - WorkArea: `#202020`（深灰）
 
 ### 8.3 样式文件
@@ -332,29 +336,49 @@ SkillsPanel {
     background-color: {skillPanel};
     border-bottom: 1px solid {borderLight};
 }
-SkillsPanel QTabWidget::pane {
-    border: none;
-    background: {skillPanel};
+
+/* SkillsPanel 头部区域 */
+SkillsPanel QWidget#skillsPanelHeader {
+    background-color: {skillPanel};
 }
 
-/* Tab 样式 */
-SkillsPanel QTabBar::tab {
-    background: {skillPanelTab};
-    color: {windowText};
-    padding: 2px 10px;
-    margin-right: 1px;
-    border-top-left-radius: 3px;
-    border-top-right-radius: 3px;
-    min-height: 16px;
-    font-size: 11px;
+/* Pill 按钮容器 */
+SkillsPanel QWidget#skillsPillContainer {
+    background-color: {skillPanelHeaderBg};
+    border-radius: 14px;
+}
+
+/* Pill 按钮（官方功能 / 第三方功能 切换） */
+SkillsPanel QPushButton#skillsPillButton {
+    background-color: transparent;
+    color: {textSecondary};
     border: none;
+    border-radius: 10px;
+    padding: 4px 14px;
+    font-size: 12px;
+    font-weight: 500;
 }
-SkillsPanel QTabBar::tab:selected {
-    background: {skillPanel};
-    border-bottom: 2px solid {accent};
+SkillsPanel QPushButton#skillsPillButton:hover {
+    background-color: {controlFillHover};
 }
-SkillsPanel QTabBar::tab:hover:!selected {
-    background: {controlFillHover};
+SkillsPanel QPushButton#skillsPillButton[active="true"] {
+    background-color: {accent};
+    color: #FFFFFF;
+}
+SkillsPanel QPushButton#skillsPillButton[active="true"]:hover {
+    background-color: {accentDark};
+}
+
+/* 分隔线与计数标签 */
+SkillsPanel QLabel#skillsSeparator {
+    color: {borderLight};
+    font-size: 12px;
+    background: transparent;
+}
+SkillsPanel QLabel#skillsCountLabel {
+    color: {textSecondary};
+    font-size: 11px;
+    background: transparent;
 }
 
 /* 滚动区域样式 */
@@ -370,33 +394,35 @@ SkillsPanel QWidget#skillsContainer {
 
 /* 非激活状态的技能按钮 */
 SkillButton {
-    border: 1px solid transparent;
-    border-radius: 6px;
-    padding: 3px;
+    border: none;
+    border-radius: 8px;
+    padding: 2px;
     background-color: transparent;
     color: {windowText};
     text-align: top;
     font-size: 10px;
 }
 SkillButton:hover {
-    background-color: {controlFillHover};
-    border: 1px solid {borderLight};
+    background-color: {skillButtonHover};
+    border: none;
 }
 SkillButton:pressed {
     background-color: {controlFillPressed};
-    border: 1px solid {border};
+    border: none;
 }
 
 /* 激活状态的技能按钮（通过 setProperty("active", "true") 触发） */
 SkillButton[active="true"] {
-    border: 2px solid {accent};
-    border-radius: 6px;
-    padding: 2px;
-    background-color: {controlFillSelected};
-    color: {accent};
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+        stop:0 {accent}, stop:0.04 {accent},
+        stop:0.04 {controlFillSelected}, stop:1 {controlFillSelected});
+    border: none;
+    border-radius: 8px;
+    color: {skillButtonActiveText};
     text-align: top;
     font-weight: 500;
     font-size: 10px;
+    padding: 2px;
 }
 ```
 

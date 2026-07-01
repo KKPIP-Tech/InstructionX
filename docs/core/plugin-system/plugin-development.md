@@ -10,8 +10,8 @@
 my_plugin/                    # 插件文件夹（建议使用英文）
 ├── __init__.py              # Python 包标识（可为空）
 ├── entrance.py              # 插件入口（必需）
-├── service.py               # 业务逻辑（可选）
-├── information.py            # 插件元数据（可选）
+├── service.py               # 业务逻辑（必需）
+├── information.py            # 插件元数据（必需）
 ├── icons/                    # 图标目录（可选）
 │   └── icon.png
 └── assets/                   # 资源目录（可选）
@@ -66,7 +66,7 @@ class MyPlugin(IPlugin):
         print(f"插件 {self.plugin_name} 已加载")
 ```
 
-### 2.2 service.py（可选）
+### 2.2 service.py（必需）
 
 业务逻辑层，不依赖 UI，纯 Python 实现。
 
@@ -104,7 +104,7 @@ class Service:
         )
 ```
 
-### 2.3 information.py（可选）
+### 2.3 information.py（必需）
 
 插件元数据，定义 API 接口。
 

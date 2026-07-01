@@ -149,7 +149,7 @@ self._running_tasks: Dict                    # 运行中的任务
 self._scheduled_task_factories: Dict         # 定时任务工厂
 self._long_running_task_factories: Dict      # 长期任务工厂
 self._storage: TaskStorage                   # 任务持久化存储
-self._scheduler: TaskScheduler              # 任务调度器
+self._scheduler: TaskScheduler              # 任务调度器（当前为空实现，实际调度判断由 SchedulerCallback 完成）
 self._stop_event: threading.Event           # 优雅关闭事件
 self._is_shutdown: bool                     # 关闭标志
 ```
@@ -279,7 +279,9 @@ class PluginServices:
 
 ## 5. 数据存储结构
 
-### 5.1 data.json
+> 注意：DataProvider 默认使用 SQLite（`data/data.db` + WAL）持久化插件数据。以下 `data.json` 格式仅在使用环境变量 `INSTRUCTIONX_DATAPROVIDER_BACKEND=json` 切换到 JSON 应急后端时生效。
+
+### 5.1 data.json（JSON 应急后端格式）
 
 ```json
 {

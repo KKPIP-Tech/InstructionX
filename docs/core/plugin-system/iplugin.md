@@ -62,16 +62,17 @@ def plugin_id(self) -> Optional[str]:
     插件唯一标识符 (UUID)
 
     在插件加载时由 PluginManager 自动设置（存放在内部字段 `_plugin_id`）。
+    默认返回 `_plugin_id` 属性值，未设置时返回 `None`。
     可用于 DataProvider 等需要唯一标识的场景。
 
     Returns:
         UUID 字符串，如果未设置则返回 None
     """
-    return self._plugin_id
+    return getattr(self, '_plugin_id', None)
 ```
 
-> 注意: 上述 `return self._plugin_id` 行为定义在框架实现 `core/plugin/plugin_interface.py` 中。
-> 抽象接口 `core/interfaces/i_plugin.py` 中该属性直接返回 `None`。
+> 注意: 该属性默认实现返回 `_plugin_id` 属性值。框架实现 `core/plugin/plugin_interface.py`
+> 与抽象接口 `core/interfaces/i_plugin.py` 在未设置时均返回 `None`。
 > 插件应始终由 PluginManager 加载以确保 `plugin_id` 正确设置。
 
 ### 2.3 skill_icon

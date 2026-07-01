@@ -17,6 +17,7 @@
 - SiliconFlow
 - GLM (智谱AI)
 - Ollama (本地部署)
+- OpenAI
 
 **插件开发者入口**: 第三方插件开发者请使用 `LLMPluginService`（`core/llm/plugin_service.py`），通过 `get_llm_plugin_service()` 获取单例。`LLMPluginService` 整合了对话管理、工具调用自动化、多模态等完整能力，是插件开发者的唯一入口。
 
@@ -74,6 +75,7 @@ graph TB
         SiliconFlow[SiliconFlowProvider]
         GLM[GLMProvider]
         Ollama[OllamaProvider]
+        OpenAI[OpenAIProvider]
     end
 
     subgraph DT [Data Types Layer / 数据类型层]
@@ -95,6 +97,7 @@ graph TB
     BP --> SiliconFlow
     BP --> GLM
     BP --> Ollama
+    BP --> OpenAI
     CM --> TI
     TCE --> TI
     LPS1 -.->|"types"| TI
@@ -127,6 +130,7 @@ graph TB
         SiliconFlow[SiliconFlowProvider<br/>Chat+Embedding+Vision]
         GLM[GLMProvider<br/>Chat+Embedding+Vision]
         Ollama[OllamaProvider<br/>Chat+Embedding+Vision]
+        OpenAI[OpenAIProvider<br/>Chat+Embedding+Vision]
     end
 
     subgraph Cache [模型缓存]
@@ -139,11 +143,13 @@ graph TB
     Register -->|实例化| SiliconFlow
     Register -->|实例化| GLM
     Register -->|实例化| Ollama
+    Register -->|实例化| OpenAI
 
     MiniMax -->|缓存模型| ModelsCache
     SiliconFlow -->|缓存模型| ModelsCache
     GLM -->|缓存模型| ModelsCache
     Ollama -->|缓存模型| ModelsCache
+    OpenAI -->|缓存模型| ModelsCache
 ```
 
 ---
@@ -155,7 +161,7 @@ graph LR
     subgraph 五五原则
         A[① 插件开发者只与 LLMPluginService 交互]
         B[② ConversationManager 接管所有对话状态]
-        C[③ ToolCallExecutor 自动处理工具调用两轮循环]
+        C[③ ToolCallExecutor 自动处理工具调用多轮循环（默认最多 max_turns=5 轮）]
         D[④ PluginServices DI 允许插件独立测试]
         E[⑤ types.py 与 provider_interface.py 互补]
     end
@@ -173,7 +179,7 @@ graph LR
 |---|---|---|
 | ① | **单一入口** | 插件开发者只与 `LLMPluginService` 交互，不直接访问 `LLMProvider` |
 | ② | **状态封装** | `ConversationManager` 接管所有对话状态，插件无需管理历史 |
-| ③ | **工具自动化** | `ToolCallExecutor` 自动处理两轮调用循环，插件只需注册工具 |
+| ③ | **工具自动化** | `ToolCallExecutor` 自动处理多轮调用循环（默认最多 `max_turns=5` 轮），插件只需注册工具 |
 | ④ | **可测试性** | `PluginServices` DI 容器允许插件在无 API 环境下完成测试 |
 | ⑤ | **类型分离** | `types.py` 存放新增类型，`provider_interface.py` 存放 LLM 层核心类型 |
 
@@ -225,6 +231,7 @@ flowchart LR
 | SiliconFlow | ✅ | ✅ | ✅ | ✅ | OpenAI 兼容 |
 | GLM | ✅ | ✅ | ✅ | ✅ | OpenAI 兼容 |
 | Ollama | ✅ | ✅ | ✅ | ✅ | 私有协议 |
+| OpenAI | ✅ | ✅ | ✅ | ✅ | OpenAI 兼容 |
 
 > **注意**：MiniMax 官方文档明确说明当前不支持图像和音频类型的输入，因此 `support_vision = False`。
 
@@ -374,8 +381,8 @@ print(f"Token: {stats.total_tokens}, 费用: {stats.total_cost}元")
 | 方面 | 旧 API (LLMProvider.chat) | 新 API (LLMPluginService) |
 |---|---|---|
 | 对话历史 | 插件自行管理 List[Message] | 自动管理历史消息 |
-| 上下文窗口 | 插件自行计算 token | 无需手动计算 |
-| 工具调用 | 手动两轮循环 | ToolCallExecutor 自动处理 |
+| 上下文窗口 | 插件自行计算 token | `max_context` 会被吸收但不生效，自动截断尚未实现 |
+| 工具调用 | 手动循环 | ToolCallExecutor 自动处理多轮循环（默认最多 `max_turns=5` 轮） |
 | 流式输出 | 自行实现 QThread | stream_send_message 一行搞定 |
 | 费用统计 | 无 | 自动累计 |
 
@@ -387,8 +394,8 @@ LLM Provider 支持 **Function Calling**（函数调用），允许模型调用�
 
 有两种使用方式：
 
-1. **推荐：新方式（ToolCallExecutor）** — 自动处理两轮循环，插件只需注册工具
-2. **旧方式（手动两轮）** — 通过 `LLMProvider.chat()` 手动管理
+1. **推荐：新方式（ToolCallExecutor）** — 自动处理多轮循环（默认最多 `max_turns=5` 轮），插件只需注册工具
+2. **旧方式（手动循环）** — 通过 `LLMProvider.chat()` 手动管理
 
 ### 9.2 工具调用自动循环
 
@@ -436,7 +443,7 @@ flowchart TD
     style EXEC fill:#fbe,stroke:#333,stroke-width:2px
 ```
 
-### 9.3 推荐方式：ToolCallExecutor（自动两轮循环）
+### 9.3 推荐方式：ToolCallExecutor（最多 max_turns 轮循环）
 
 ```python
 from core.llm import get_llm_plugin_service
@@ -461,7 +468,7 @@ executor.tools.register(
     handler=get_weather,
 )
 
-# 自动完成两轮调用循环
+# 自动完成最多 max_turns 轮调用循环
 messages = [{"role": "user", "content": "北京今天天气怎么样？"}]
 final_msgs, tool_results, final_response = executor.chat_with_tools(
     messages, provider="minimax", max_turns=5
@@ -483,7 +490,9 @@ final_msgs, tool_results, final = executor.chat_with_tools_stream(
 )
 ```
 
-### 9.4 旧方式：手动两轮调用
+> **限制说明**: 当前 `ToolCallExecutor` 在 `stream=True` / `chat_with_tools_stream()` 时不会解析响应中的 `tool_calls`，因此流式工具调用实际不可用。如需工具调用，请使用同步版本 `chat_with_tools()`。
+
+### 9.4 旧方式：手动调用
 
 ```python
 from core.llm import get_llm_provider
@@ -567,6 +576,8 @@ if response.tool_calls:
 
 子类只需关注 Provider 特定的请求/响应格式差异。
 
+> **注意**: `BaseProvider._parse_stream_response()` 具备解析流式 `tool_calls` 的能力，但 `ToolCallExecutor` 的流式路径目前不会处理 `tool_calls`，因此流式工具调用功能暂不可用。
+
 ---
 
 ## 10. 配置管理
@@ -618,6 +629,17 @@ if response.tool_calls:
             "base_url": "http://localhost:11434",
             "chat_model": "llama3.1",
             "embedding_model": "nomic-embed-text",
+            "enabled_chat": true,
+            "enabled_embedding": true,
+            "support_vision": true
+        },
+        "openai": {
+            "name": "OpenAI",
+            "provider_type": "openai",
+            "api_key": "your-api-key",
+            "base_url": "https://api.openai.com/v1",
+            "chat_model": "gpt-4o",
+            "embedding_model": "text-embedding-3-small",
             "enabled_chat": true,
             "enabled_embedding": true,
             "support_vision": true
@@ -744,7 +766,7 @@ graph LR
     subgraph ✨ 新增模块
         TI[types.py<br/>• Conversation<br/>• ToolResult<br/>• UsageStats<br/>• ImageResult<br/>• AudioResult<br/>• StreamChunk<br/>• ProviderInfo]
         CM[conversation_manager.py<br/>• ConversationManager<br/>• 对话管理<br/>• 费用计算]
-        TCE[tool_call_executor.py<br/>• ToolRegistry<br/>• ToolCallExecutor<br/>• 自动两轮循环]
+        TCE[tool_call_executor.py<br/>• ToolRegistry<br/>• ToolCallExecutor<br/>• 自动多轮循环]
         PS[plugin_service.py<br/>• LLMPluginService<br/>• 对话 + 工具 + 多模态<br/>• 全局单例工厂]
         PR[pricing.py<br/>• DEFAULT_PRICING<br/>• 默认定价表]
     end

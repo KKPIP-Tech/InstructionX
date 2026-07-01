@@ -83,6 +83,7 @@ class SchedulerCallback:
 
     def __init__(self):
         self._lock = threading.Lock()
+        self._logger = LoggerManager()
 
     def execute_scheduled_task(
         self,

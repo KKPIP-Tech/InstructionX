@@ -15,8 +15,8 @@ memory: project
 **你绝对禁止修改以下目录下的任何文件：**
 - `core/`、`ui/`、`utils/`、`config/`、`docs/`、`workers/`、`assets/`、`font/`、`data/`、`licenses/`、`scripts/`、`logs/`、`main.py`、`pyproject.toml`、`requirements.txt`、`run.bat`、`run.ps1`
 - `.claude/` 目录下的任何文件
-- **InstructionX 框架的** `plugin/` 目录（这是框架内置插件目录，包含 KKPIP-Tech 官方的各种插件，如 `plugin/text-formatting/` 等）
-- **InstructionX 框架的** `custom_plugin/` 目录（这是框架内置的第三方插件目录）
+- **InstructionX 框架的** `plugin/` 目录（这是框架的官方插件目录，目前只包含 `__init__.py`，没有内置示例插件）
+- **InstructionX 框架的** `custom_plugin/` 目录（这是框架的第三方插件目录，目前只包含 `__init__.py`）
 
 **你只允许修改 `<开发者插件目录>`（开发者将其插件仓库克隆到框架后重命名的目录），该目录是你唯一的工作区域。**
 
@@ -26,28 +26,33 @@ memory: project
 
 ```
 InstructionX/
-└── plugin/                            # ← 框架的官方插件目录（禁止修改）
-    ├── text-formatting/              # ← 框架内置插件（禁止修改）
-    ├── another-official/             # ← 框架内置插件（禁止修改）
-    └── <开发者插件目录>/              # ← 开发者的插件集目录（你的工作区域）
-        ├── ixrepo.json               # 插件集描述文件
-        ├── plugin-a/                 # ← 插件 A（单插件时可能直接在根目录）
-        │   ├── ixplugin.json
-        │   ├── __init__.py
-        │   ├── entrance.py
-        │   ├── service.py
-        │   ├── information.py
-        │   ├── ui/
-        │   ├── function/
-        │   ├── icons/
-        │   ├── assets/
-        │   └── docs/
-        └── plugin-b/
-            ├── ixplugin.json
-            ├── ...
+├── plugin/                            # ← 框架的官方插件目录（禁止修改）
+│   └── __init__.py
+├── custom_plugin/                     # ← 框架的第三方插件目录（禁止修改）
+│   └── __init__.py
+└── <开发者插件目录>/                   # ← 开发者的插件集目录（你的工作区域）
+    ├── IXRepo.json                   # 插件集描述文件
+    ├── plugin-a/                     # ← 插件 A（单插件时可能直接在根目录）
+    │   ├── IXPlugin.json
+    │   ├── __init__.py
+    │   ├── entrance.py
+    │   ├── service.py                 # 接口层（**必需**），位于根目录，仅对外暴露API
+    │   ├── information.py             # 插件元数据（**必需**），继承 IPluginInfo
+    │   ├── config/                    # 配置文件目录（**必需**），禁止魔法数
+    │   ├── ui/
+    │   ├── function/
+    │   ├── icons/
+    │   ├── assets/
+    │   └── docs/
+    └── plugin-b/
+        ├── IXPlugin.json
+        ├── ...
 ```
 
-**重要**：`plugin/` 目录下可能存在多个插件（通过 `IXRepo.json` 组织），每个插件是独立子目录。你只工作在 `<开发者插件目录>/` 下的子插件目录中（如 `plugin-a/`、`plugin-b/`），**不修改**框架内置插件或 `<开发者插件目录>/` 自身根目录下的共享资源文件（`ixrepo.json` 等框架级配置文件除外）。
+**重要**：
+- `plugin/` 和 `custom_plugin/` 下只能有一级插件子目录，框架把每个一级子目录当作单个插件加载，不会递归扫描更深层级。
+- 在 `<开发者插件目录>/` 下，每个插件是独立子目录。你只工作在 `<开发者插件目录>/` 下的子插件目录中（如 `plugin-a/`、`plugin-b/`）。
+- 不要修改框架的 `plugin/` 和 `custom_plugin/` 目录本身。
 
 如果你需要创建或修改任何框架级文件（如 `core/`、`ui/` 等），立即停止并告知用户这不是你的职责范围。
 
@@ -164,11 +169,11 @@ InstructionX/
 
 #### 单插件仓库（IXPlugin.json）
 
-在 `<开发者插件目录>/`（即仓库根目录）创建 `IXPlugin.json`：
+在 `<开发者插件目录>/`（即仓库根目录）创建 `IXPlugin.json`（文件名大小写敏感，必须为大写 `IXPlugin.json`）：
 
 ```json
 {
-  "id": "<插件唯一ID，使用小写字母、数字、下划线、连字符>",
+  "id": "<插件唯一ID，使用字母、数字、下划线、连字符>",
   "name": "<插件显示名称>",
   "version": "<版本号，格式: <类型>.<大>.<小>.<补丁>，类型为 release|pre-release|beta|alpha|internal>",
   "main": "entrance.py",
@@ -183,10 +188,10 @@ InstructionX/
 **字段说明：**
 | 字段 | 类型 | 必需 | 说明 |
 |------|------|------|------|
-| `id` | string | 是 | 唯一标识符，只能包含字母、数字、下划线、短横线 |
+| `id` | string | 是 | 唯一标识符，只能包含字母、数字、下划线、连字符（允许大写字母） |
 | `name` | string | 是 | 显示名称 |
 | `version` | string | 是 | 格式：`<类型>.<大>.<小>.<补丁>`，类型为 `release`、`pre-release`、`beta`、`alpha`、`internal`；`<大>/<小>/<补丁>` 为非负整数，正则：`^(release|pre-release|beta|alpha|internal)\.\d+\.\d+\.\d+$` |
-| `main` | string | 是 | 入口文件路径，固定为 `entrance.py` |
+| `main` | string | 是 | 入口文件路径，当前固定为 `entrance.py` |
 | `description` | string | 否 | 简短描述 |
 | `author` | string | 否 | 作者 |
 | `homepage` | string | 否 | 插件主页 URL |
@@ -195,7 +200,7 @@ InstructionX/
 
 #### 插件集仓库（IXRepo.json + 每个插件/IXPlugin.json）
 
-1. 在 `<开发者插件目录>/` 创建 `IXRepo.json`：
+1. 在 `<开发者插件目录>/` 创建 `IXRepo.json`（文件名大小写敏感，必须为大写 `IXRepo.json`）：
 ```json
 {
   "plugins": [
@@ -221,7 +226,7 @@ InstructionX/
 
 ```
 <开发者插件目录>/                    # 例如 my-text-tool/
-├── ixplugin.json                   # 插件描述文件
+├── IXPlugin.json                   # 插件描述文件
 ├── __init__.py                     # Python 包标识（可为空）
 ├── entrance.py                     # 插件入口（必需），继承 IPlugin
 ├── service.py                      # 接口层（**必需**），位于根目录，仅对外暴露API
@@ -261,14 +266,14 @@ InstructionX/
 
 ```
 <开发者插件目录>/                    # 例如 kd-toolkit/
-├── ixrepo.json                    # 插件集描述文件（IXRepo.json）
+├── IXRepo.json                    # 插件集描述文件
 ├── plugin-a/                      # 插件 A 子目录（每个插件遵循单插件结构）
-│   ├── ixplugin.json
+│   ├── IXPlugin.json
 │   ├── __init__.py
 │   ├── entrance.py
-│   ├── service.py
-│   ├── information.py
-│   ├── config/
+│   ├── service.py                 # 接口层（**必需**）
+│   ├── information.py             # 插件元数据（**必需**）
+│   ├── config/                    # 配置文件目录（**必需**）
 │   │   └── default.json
 │   ├── style/                      # QSS 样式目录
 │   ├── ui/
@@ -277,11 +282,12 @@ InstructionX/
 │   ├── assets/
 │   └── docs/
 ├── plugin-b/
-│   ├── ixplugin.json
+│   ├── IXPlugin.json
 │   ├── ...
 ```
 
 **注意**：
+- 框架加载器只识别名为 `entrance.py` 的入口文件，其他文件名不会被视为插件入口
 - `service.py` 必须在插件根目录（与 `entrance.py` 同级），这是框架要求的入口文件的相对位置
 - `ui/` 和 `function/` 目录作为 `service.py` 的子模块目录，位于每个插件的根目录下
 
@@ -298,7 +304,7 @@ InstructionX/
 **职责划分原则**：
 - `entrance.py`：作为胶水层，实例化 Service 和 UI 组件，连接两者
 - `service.py`（位于根目录）：**仅**作为对 InstructionX 框架和必要交互的接口层，负责导入和组织 `function/` 子模块、对外暴露 API 方法；**禁止**写任何实际业务逻辑；**禁止**出现 UI 操作相关代码（如创建 QWidget、更新 UI 状态等），PySide6 类型定义、信号/slot 机制、枚举等除外；所有业务代码必须放在 `function/` 目录下
-- `information.py`（位于根目录，**必需**）：严格遵循 `docs/core/plugin-system/plugin-development.md` 中 `information.py` 的规范，继承 `IPluginInfo`，定义所有元数据字段
+- `information.py`（位于根目录**必需**）：严格遵循 `docs/core/plugin-system/plugin-development.md` 中 `information.py` 的规范，继承 `IPluginInfo`，定义所有元数据字段
 - `ui/` 目录：所有 PySide6/Qt 控件相关代码，**禁止**在此目录下写任何业务代码和业务逻辑（详见"强制性禁令 1"章节）
 - `function/` 目录：**所有**实际业务代码（数据处理、外部 API 调用、业务规则等），**禁止**在此目录下创建 QWidget
 
@@ -389,7 +395,7 @@ flowchart TD
 
 ## 约束总结
 
-1. **只修改 `<开发者插件目录>`** — 不碰任何框架代码和框架内置插件目录（`plugin/`、`custom_plugin/`）
+1. **只修改 `<开发者插件目录>`** — 不碰任何框架代码和框架插件目录（`plugin/`、`custom_plugin/`）
 2. **强制阅读所有文档** — 不阅读不开发
 3. **必要时阅读源码** — 深入理解时必须读代码
 4. **遵循第一性原则** — 开发前必须回答"这个插件解决什么问题、如何与框架交互、数据流向是什么"
@@ -399,11 +405,14 @@ flowchart TD
 8. **文档间有机联系** — 通过文档内引用链组织
 9. **不生成无用文档** — 不要创建空壳文档，每篇文档必须有实质内容
 10. **代码质量规范** — 遵循单一职责、函数拆分（≤20行）、状态机、解耦、注释、可维护性、可扩展性、可读性规范
-11. **目录结构规范** — `service.py` 和 `information.py` 必须在根目录，`ui/` 和 `function/` 子模块，`config/` 存放配置，`service.py` 仅作为框架接口层，禁止写业务逻辑和 UI 操作代码，`information.py` 必须严格遵循开发指南规范
+11. **目录结构规范** — `entrance.py`、`service.py`、`information.py`、`config/` 是必需的插件结构。`service.py` 和 `information.py` 必须在根目录，`ui/` 和 `function/` 作为子模块，`config/` 存放配置，`service.py` 仅作为框架接口层，禁止写业务逻辑和 UI 操作代码，`information.py` 必须严格遵循开发指南规范
 12. **多插件场景** — 插件集目录下每个插件是独立子目录，各自遵循单插件结构
 13. **service 约束** — `service.py` 禁止出现 UI 操作代码（创建/更新 QWidget 等），允许使用 PySide6 类型定义和信号/slot 机制，禁止写任何实际业务逻辑
 14. **配置规范** — 禁止出现魔法数，所有配置统一放入 `config/` 目录
-15. **MCP 工具定义** — 插件可通过继承 `IMCPTool`（来自 `core.mcp.plugin_interface`）定义 MCP 工具。继承后框架自动将实例注册到内置 MCP Server，无需手动调用注册方法。关键属性/方法：
+15. **MCP 工具定义** — `IMCPTool` / `IMCPClient` 接口存在，但框架目前**没有自动扫描注册** `IMCPTool` 实例的逻辑。如需让 LLM 调用插件功能，可：
+    - 通过 `information.py` 的 `service_api` 暴露方法，由 `PluginManager` 自动同步为 MCP 工具；
+    - 或在插件 `on_plugin_loaded()` 中手动通过 `self._services.mcp_manager` 注册 `IMCPTool` 实例。
+    `IMCPTool` 关键属性/方法：
     - `mcp_tool_name` — 工具名称（str），必须唯一
     - `mcp_tool_description` — 工具描述，LLM 会看到此描述
     - `mcp_tool_parameters` — JSON Schema 格式参数定义（Dict）
@@ -426,7 +435,7 @@ flowchart TD
 19. **LLM 工具调用** — `llm_facade.chat_with_tools(messages, max_turns)` 提供完整的 tool-calling 对话循环，自动处理多轮工具调用。`llm_facade.create_conversation()` / `send_message()` 管理对话生命周期，详细用法见 `docs/plugins/llm-integration-guide.md`。
 20. **长期任务与工厂** — `task_manager.register_long_running_task_factory()` 支持应用重启后自动恢复长期任务（需提供 `restore_callback`）。定时任务通过 `register_scheduled_task_factory()` 自动触发 `restore_scheduled_tasks()` 恢复，详细用法见 `docs/core/background-task/overview.md`。
 21. **DataProvider 高级用法** — `save_asset()` / `load_asset()` 管理资源文件；`get_plugin_assets_dir()` 获取资源目录；`set_active_instance()` / `get_active_instance()` 管理插件类型单例，详细用法见 `docs/core/data-provider/overview.md`。
-22. **IPluginInfo 可选字段** — `information.py` 中的 `Info` 类可覆盖 `dependencies`（声明对其他插件的依赖，格式 `{type_id: 版本约束}`）和 `tags`（用于分类和筛选的标签列表）。`information.py` 修改后框架下次访问时**自动重新加载**（mtime 缓存失效）。
+22. **IPluginInfo 可选字段** — `information.py` 中的 `Info` 类可覆盖 `dependencies`（声明 Python 包依赖，格式 `{package_name: 版本约束}`，如 `{"requests": ">=2.25.0"}`）和 `tags`（用于分类和筛选的标签列表）。`information.py` 修改后框架下次访问时**自动重新加载**（mtime 缓存失效）。
 23. **QSS 样式规范** — 禁止任何形式的内联样式（`setStyleSheet()` 传硬编码字符串视为内联）；所有自定义 QSS 样式文件必须放在 `style/` 目录下（`style/*.qss`）；自定义样式**禁止使用全局选择器**（如 `QPushButton`、`QLabel` 不带前缀），只允许带明确命名空间前缀的类选择器或子控件选择器，确保样式仅对本插件 widget 树生效，不影响其他插件和软件主题；样式文件加载后在插件 widget 销毁时需同步卸载。
 24. **UI 业务隔离禁令（最高优先级）** — `ui/` 目录及其所有子目录下的任何文件禁止编写任何业务代码和业务逻辑（数据处理、外部 I/O、业务规则、业务状态管理、直接调用框架服务等），所有业务必须委托至 `function/` 子模块（详见"强制性禁令 1"章节）
 25. **导入位置禁令（最高优先级）** — 所有 `import` 语句必须位于 Python 文件起始位置，严禁在函数/方法/类/条件分支/循环等任何位置嵌入导入；遇循环导入必须通过架构重构解决，**无任何例外**（详见"强制性禁令 2"章节）
@@ -439,7 +448,7 @@ flowchart TD
 - `service.py`（位于根目录）**仅**作为框架接口层，负责对外暴露 API；**禁止**出现 UI 操作相关代码（如创建 QWidget、更新 UI 状态等），PySide6 类型定义、信号/slot 机制除外；所有实际业务代码必须放在 `function/` 目录下
 - `function/` 目录中的各模块承担所有实际业务逻辑（数据处理、外部 API 调用、业务规则等）
 - `ui/main_widget.py` 中的主控件类只负责组装 UI 组件，不写业务逻辑
-- `information.py`（**必需**）中的 Info 类只负责元数据定义，**必须**严格遵循 `docs/core/plugin-system/plugin-development.md` 的规范
+- `information.py` 中的 Info 类只负责元数据定义，必须严格遵循 `docs/core/plugin-system/plugin-development.md` 的规范
 
 ### 函数拆分规范
 - **单个函数不得超过 20 行**，超过必须拆分
