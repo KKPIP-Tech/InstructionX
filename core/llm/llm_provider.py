@@ -151,10 +151,14 @@ class LLMProvider:
         这样插件在启动后即可获取本地缓存的模型列表，无需等待网络请求。
         """
         for name, provider in self._providers.items():
-            # 1. 加载本地缓存
+            # 1. 加载本地缓存（兼容 providers/base.py 写入的 TTL 时间戳信封）
             cached = self._config.load_models_cache(name)
             if cached:
-                models = [ModelInfo.from_dict(m) for m in cached]
+                if isinstance(cached, dict):
+                    models_data = cached.get("models", [])
+                else:
+                    models_data = cached
+                models = [ModelInfo.from_dict(m) for m in models_data if isinstance(m, dict)]
                 self._models_cache[name] = models
                 self._logger.info(get_name(), f'Loaded {len(models)} models for {name} from cache')
 
