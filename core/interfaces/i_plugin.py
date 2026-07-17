@@ -4,7 +4,6 @@ Plugin 插件抽象基类接口
 定义所有插件必须实现的接口规范，包括：
 - 插件名称属性
 - 控件创建方法
-- 缓存机制
 - 技能图标和描述获取
 - 生命周期回调
 - LLM 工具注册
@@ -12,10 +11,11 @@ Plugin 插件抽象基类接口
 
 from abc import ABC, abstractmethod
 from typing import Optional, Dict, Any, List, TYPE_CHECKING
-from PySide6.QtWidgets import QWidget
-from PySide6.QtGui import QIcon
 
+# 仅类型检查时导入，避免接口层在运行时牵入 PySide6
 if TYPE_CHECKING:
+    from PySide6.QtWidgets import QWidget
+    from PySide6.QtGui import QIcon
     from .i_plugin_info import IPluginInfo
     from .plugin_services import PluginServices
 
@@ -26,8 +26,8 @@ class IPlugin(ABC):
 
     所有插件必须继承此类并实现抽象方法。该类提供：
     - 插件唯一标识和名称管理
-    - 控件缓存机制，避免重复创建
-    - 技能图标和描述的动态加载（带缓存）
+    - 控件创建接口（控件缓存机制在 core.plugin.plugin_interface 的实现中提供，本基类不含缓存）
+    - 技能图标和描述的获取接口
     - 插件生命周期回调钩子
     """
 
@@ -38,12 +38,13 @@ class IPlugin(ABC):
         pass
 
     @abstractmethod
-    def _create_widget(self, parent=None, data_provider=None) -> QWidget:
+    def _create_widget(self, parent=None, data_provider=None) -> "QWidget":
         """
         创建插件用户界面控件
 
-        子类必须实现此方法以创建自己的 Qt 控件。该方法在插件首次激活时调用，
-        之后会通过缓存机制复用已创建的控件实例。
+        子类必须实现此方法以创建自己的 Qt 控件。
+        控件实例的缓存复用由 core.plugin.plugin_interface 中的实现负责，
+        本接口基类不提供缓存机制。
 
         Args:
             parent: 父控件，传递工作区的中心控件作为父容器
@@ -54,12 +55,13 @@ class IPlugin(ABC):
         """
         pass
 
-    def get_widget(self, parent=None, data_provider=None) -> QWidget:
+    def get_widget(self, parent=None, data_provider=None) -> "QWidget":
         """
         获取插件界面控件
 
-        默认实现直接调用 _create_widget。
-        子类可通过重写添加缓存机制（如 plugin_interface.IPlugin 所示）。
+        默认实现直接调用 _create_widget（本基类无缓存）。
+        缓存机制在 core.plugin.plugin_interface 的实现中提供，
+        子类也可通过重写本方法添加自定义缓存。
 
         Args:
             parent: 父控件
@@ -71,7 +73,7 @@ class IPlugin(ABC):
         return self._create_widget(parent, data_provider)
 
     @property
-    def skill_icon(self) -> Optional[QIcon]:
+    def skill_icon(self) -> Optional["QIcon"]:
         """获取技能面板按钮图标"""
         return None
 
