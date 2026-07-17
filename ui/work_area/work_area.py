@@ -21,7 +21,8 @@ class WorkArea:
         Args:
             parent: 父窗口 widget
         """
-        self.parent = parent
+        # 父窗口 widget 引用（全项目无外部访问，命名私有化）
+        self._parent_widget = parent
 
         # 创建工作区
         self.work_area = QWidget(parent)
@@ -58,8 +59,6 @@ class WorkArea:
                 widget = item.widget()
                 if widget:
                     widget.deleteLater()
-            if item:
-                del item
 
         # 如果需要清除高亮状态，通过回调处理
         if clear_highlight and hasattr(self, '_clear_highlight_callback'):
@@ -80,8 +79,6 @@ class WorkArea:
                     widget.hide()
                 # 不再调用 deleteLater()，保留 widget 实例以便缓存复用
                 # widget 会被 IPlugin 基类缓存，下次切换回来时直接使用
-            if item:
-                del item
 
     def add_widget(self, widget):
         """
