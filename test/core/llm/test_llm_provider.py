@@ -672,3 +672,72 @@ class TestAvailableProviders:
         # All actual registry keys should be present
         from core.llm.providers import PROVIDER_REGISTRY
         assert set(result) == set(PROVIDER_REGISTRY.keys())
+
+
+# ===========================================================================
+# 12. Parameter filtering and default resolution
+# ===========================================================================
+
+class TestChatParameterFiltering:
+    def test_filter_none_kwargs_removes_none_values(self):
+        """_filter_none_kwargs 剔除值为 None 的键。"""
+        import core.llm.llm_provider as lp_module
+        result = lp_module.LLMProvider._filter_none_kwargs({
+            "model": "m1",
+            "temperature": None,
+            "max_tokens": 100,
+            "top_p": None,
+        })
+        assert result == {"model": "m1", "max_tokens": 100}
+
+    def test_model_default_resolved_to_none(self, mocker):
+        """model='default' 会被解析为 None，不会传给底层 provider。"""
+        import core.llm.llm_provider as lp_module
+        from core.llm.provider_interface import Message
+
+        _make_provider(mocker)
+        inst = lp_module.LLMProvider()
+        inst._providers.clear()
+
+        mock_provider = MagicMock()
+        mock_response = MagicMock(content="ok", model="m", usage=None)
+        mock_provider.chat.return_value = mock_response
+        mock_provider.refresh_models.return_value = []
+        mock_provider.get_models.return_value = []
+        inst._providers["prov"] = mock_provider
+
+        inst.chat([Message("user", "hi")], provider="prov", model="default")
+
+        call_kwargs = mock_provider.chat.call_args.kwargs
+        assert "model" not in call_kwargs
+
+
+class TestStreamChatCallback:
+    def test_stream_callback_receives_chunks_and_done(self, mocker):
+        """stream_chat 正确调用 callback 并传递 chunk 和 done 标志。"""
+        import core.llm.llm_provider as lp_module
+        from core.llm.provider_interface import Message
+
+        _make_provider(mocker)
+        inst = lp_module.LLMProvider()
+        inst._providers.clear()
+
+        chunks = [MagicMock(content="hello ", done=False),
+                  MagicMock(content="world", done=False),
+                  MagicMock(content="", done=True)]
+        mock_provider = MagicMock()
+        mock_provider.stream_chat.return_value = iter(chunks)
+        mock_provider.refresh_models.return_value = []
+        mock_provider.get_models.return_value = []
+        inst._providers["prov"] = mock_provider
+
+        received = []
+        def cb(chunk, done):
+            received.append((chunk, done))
+
+        inst.stream_chat([Message("user", "hi")], provider="prov", callback=cb)
+
+        assert len(received) >= 2
+        texts = [c for c, d in received if c]
+        assert "".join(texts) == "hello world"
+        assert received[-1][1] is True
