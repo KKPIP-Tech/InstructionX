@@ -4,9 +4,7 @@
 包含：统计卡片、趋势图、筛选栏、明细表格。
 """
 
-import io
 import os
-import sys
 from datetime import datetime, timedelta
 from typing import List, Any, Optional, Dict
 
@@ -17,8 +15,8 @@ from PySide6.QtWidgets import (
     QFrame, QDateEdit, QLineEdit, QGroupBox,
     QAbstractItemView, QMessageBox,
 )
-from PySide6.QtCore import Qt, QDate, Signal, QTimer, QSize, QThread, QObject
-from PySide6.QtGui import QColor, QPixmap, QPainter, QFont, QFontDatabase
+from PySide6.QtCore import Qt, QDate, Signal, QTimer, QThread, QObject
+from PySide6.QtGui import QColor, QFont, QFontDatabase
 
 from core.llm.usage_record_store import get_usage_record_store
 from core.llm.types import UsageRecord
@@ -69,6 +67,42 @@ except ImportError:
     MATPLOTLIB_AVAILABLE = False
 
 
+# ===================================================================
+# 模块级工具函数
+# ===================================================================
+
+# ZenDots 字体只需注册一次（模块级缓存字体族名）
+_zendots_font_family: Optional[str] = None
+
+
+def _ensure_zendots_font() -> Optional[str]:
+    """注册 ZenDots 字体并返回字体族名（仅首次调用真正执行注册）"""
+    global _zendots_font_family
+    if _zendots_font_family is not None:
+        return _zendots_font_family
+
+    font_path = FontMap.get_path(FontFamily.ZEN_DOTS, FontVariant.REGULAR)
+    if font_path and os.path.exists(font_path):
+        font_id = QFontDatabase.addApplicationFont(font_path)
+        if font_id != -1:
+            families = QFontDatabase.applicationFontFamilies(font_id)
+            if families:
+                _zendots_font_family = families[0]
+    return _zendots_font_family
+
+
+def _local_tz():
+    """获取本地时区（aware），用于与 UTC aware 的记录时间戳比较"""
+    return datetime.now().astimezone().tzinfo
+
+
+def _to_local_time(ts: datetime) -> datetime:
+    """将记录时间戳转换为本地时间显示（aware 时转换，naive 原样返回）"""
+    if ts.tzinfo is not None:
+        return ts.astimezone()
+    return ts
+
+
 class ChartWorker(QObject):
     """图表生成工作线程"""
     
@@ -99,7 +133,8 @@ class ChartWorker(QObject):
             from collections import defaultdict
             daily = defaultdict(lambda: {"input": 0, "output": 0})
             for r in self._records:
-                day = r.timestamp.strftime("%m-%d")
+                # 记录时间戳为 UTC aware，聚合前转换为本地时间
+                day = _to_local_time(r.timestamp).strftime("%m-%d")
                 daily[day]["input"] += r.input_tokens
                 daily[day]["output"] += r.output_tokens
                 
@@ -183,31 +218,12 @@ class StatsCard(QFrame):
         layout.addStretch()
     
     def _apply_zendots_font(self):
-        """应用 ZenDots 字体到数值标签"""
-        font_path = FontMap.get_path(FontFamily.ZEN_DOTS, FontVariant.REGULAR)
-        print(f"[DEBUG] ZenDots font path: {font_path}")
-        print(f"[DEBUG] Font file exists: {os.path.exists(font_path) if font_path else False}")
-        
-        if font_path and os.path.exists(font_path):
-            # 加载字体文件
-            font_id = QFontDatabase.addApplicationFont(font_path)
-            print(f"[DEBUG] Font ID: {font_id}")
-            
-            if font_id != -1:
-                font_families = QFontDatabase.applicationFontFamilies(font_id)
-                print(f"[DEBUG] Font families: {font_families}")
-                
-                if font_families:
-                    font = QFont(font_families[0], 20)
-                    font.setWeight(QFont.Weight.Normal)
-                    self._value_label.setFont(font)
-                    print(f"[DEBUG] Applied font: {font_families[0]}")
-                else:
-                    print("[DEBUG] No font families found")
-            else:
-                print("[DEBUG] Failed to load font")
-        else:
-            print("[DEBUG] Font path not found or file does not exist")
+        """应用 ZenDots 字体到数值标签（字体注册为模块级一次性操作）"""
+        family = _ensure_zendots_font()
+        if family:
+            font = QFont(family, 20)
+            font.setWeight(QFont.Weight.Normal)
+            self._value_label.setFont(font)
 
     def _apply_style(self):
         """应用动态样式"""
@@ -227,11 +243,9 @@ class StatsCard(QFrame):
             title_color = "#6B7280"
             shadow = "0 2px 8px rgba(0, 0, 0, 0.1)"
         
-        # 先加载字体到系统
-        font_path = FontMap.get_path(FontFamily.ZEN_DOTS, FontVariant.REGULAR)
-        if font_path and os.path.exists(font_path):
-            QFontDatabase.addApplicationFont(font_path)
-        
+        # 确保 ZenDots 字体已注册（模块级一次性，重复调用直接命中缓存）
+        _ensure_zendots_font()
+
         self.setStyleSheet(f"""
             #statsCard {{
                 background-color: {bg_color};
@@ -294,10 +308,10 @@ class UsageChartWidget(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         
         if MATPLOTLIB_AVAILABLE:
-            # 创建 Matplotlib 图形
+            # 创建 Matplotlib 图形（DPI 随屏幕缩放，避免高分屏模糊）
             from matplotlib.figure import Figure
             from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
-            self._figure = Figure(figsize=(8, 3), dpi=100)
+            self._figure = Figure(figsize=(8, 3), dpi=100 * self.devicePixelRatioF())
             self._figure.set_facecolor('none')
             self._canvas = FigureCanvas(self._figure)
             self._canvas.setStyleSheet("background: transparent;")
@@ -337,8 +351,10 @@ class UsageChartWidget(QWidget):
         self._worker.chart_ready.connect(self._on_chart_ready)
         self._worker.error_occurred.connect(self._on_chart_error)
         self._thread.started.connect(self._worker.run)
+        # 信号驱动清理：线程结束后自动释放 worker 与线程对象，避免泄漏
         self._thread.finished.connect(self._worker.deleteLater)
-        
+        self._thread.finished.connect(self._thread.deleteLater)
+
         # 启动线程
         self._thread.start()
     
@@ -385,17 +401,17 @@ class UsageChartWidget(QWidget):
         x = range(len(days))
         width = 0.35
         
-        bars1 = ax.bar([i - width/2 for i in x], input_vals, width, 
-                       label='Input', color=input_color, alpha=0.85,
+        bars1 = ax.bar([i - width/2 for i in x], input_vals, width,
+                       label='输入', color=input_color, alpha=0.85,
                        edgecolor='none', linewidth=0)
         bars2 = ax.bar([i + width/2 for i in x], output_vals, width,
-                       label='Output', color=output_color, alpha=0.85,
+                       label='输出', color=output_color, alpha=0.85,
                        edgecolor='none', linewidth=0)
         
         # 设置标签
-        ax.set_xlabel('Date', color=text_color, fontsize=10)
-        ax.set_ylabel('Token Count', color=text_color, fontsize=10)
-        ax.set_title('Usage Trend (Input / Output)', color=text_color, fontsize=12, fontweight='bold', pad=15)
+        ax.set_xlabel('日期', color=text_color, fontsize=10)
+        ax.set_ylabel('Token 数', color=text_color, fontsize=10)
+        ax.set_title('用量趋势（输入 / 输出）', color=text_color, fontsize=12, fontweight='bold', pad=15)
         
         # 设置刻度
         ax.set_xticks(x)
@@ -425,11 +441,7 @@ class UsageChartWidget(QWidget):
         # 调整布局
         self._figure.tight_layout()
         self._canvas.draw()
-        
-        # 清理线程
-        if self._thread:
-            self._thread.quit()
-            self._thread.wait()
+        # 线程清理由 finished 信号驱动（deleteLater），此处无需 quit/wait
     
     def _setup_hover_interaction(self, ax, bars1, bars2, days, input_vals, output_vals, bg_color, text_color):
         """设置鼠标悬停交互"""
@@ -472,7 +484,7 @@ class UsageChartWidget(QWidget):
             if bar.contains(event)[0]:
                 day = days[i]
                 val = input_vals[i]
-                self._show_tooltip(event, f'Date: {day}\nInput: {val:,} tokens')
+                self._show_tooltip(event, f'日期: {day}\n输入: {val:,} tokens')
                 return
         
         # 检查输出 Token 条形图
@@ -480,7 +492,7 @@ class UsageChartWidget(QWidget):
             if bar.contains(event)[0]:
                 day = days[i]
                 val = output_vals[i]
-                self._show_tooltip(event, f'Date: {day}\nOutput: {val:,} tokens')
+                self._show_tooltip(event, f'日期: {day}\n输出: {val:,} tokens')
                 return
         
         # 隐藏提示框
@@ -541,7 +553,8 @@ class UsagePanel(QWidget):
         self._current_page = 0
         self._page_size = 50
         self._current_stats = {}
-        self._all_records: List[UsageRecord] = []
+        # 当前筛选条件下的总记录数（明细表格改为存储层分页，不再缓存全量记录）
+        self._total_count = 0
 
         self._init_ui()
         self._connect_signals()
@@ -589,6 +602,7 @@ class UsagePanel(QWidget):
         range_label.setObjectName("filterLabel")
         self._range_combo = QComboBox()
         self._range_combo.setObjectName("filterCombo")
+        self._range_combo.setAccessibleName("时间范围选择")
         self._range_combo.addItems(["近 7 天", "近 30 天", "自定义"])
         self._range_combo.setCurrentText("近 7 天")
         
@@ -601,6 +615,7 @@ class UsagePanel(QWidget):
         from_label.setObjectName("filterLabel")
         self._date_from = QDateEdit()
         self._date_from.setObjectName("filterDate")
+        self._date_from.setAccessibleName("起始日期")
         self._date_from.setCalendarPopup(True)
         self._date_from.setDate(QDate.currentDate().addDays(-7))
         self._date_from.setEnabled(False)
@@ -609,6 +624,7 @@ class UsagePanel(QWidget):
         to_label.setObjectName("filterLabel")
         self._date_to = QDateEdit()
         self._date_to.setObjectName("filterDate")
+        self._date_to.setAccessibleName("结束日期")
         self._date_to.setCalendarPopup(True)
         self._date_to.setDate(QDate.currentDate())
         self._date_to.setEnabled(False)
@@ -642,26 +658,31 @@ class UsagePanel(QWidget):
         provider_label.setObjectName("filterLabel")
         self._provider_combo = QComboBox()
         self._provider_combo.setObjectName("filterCombo")
-        self._provider_combo.addItems(["全部", "minimax", "siliconflow", "glm", "ollama"])
-        
+        self._provider_combo.setAccessibleName("Provider 筛选")
+        # Provider 选项不再硬编码，由 refresh_data 根据实际用量记录动态生成
+        self._provider_combo.addItems(["全部"])
+
         # Model 筛选
         model_label = QLabel("Model:")
         model_label.setObjectName("filterLabel")
         self._model_combo = QComboBox()
         self._model_combo.setObjectName("filterCombo")
+        self._model_combo.setAccessibleName("Model 筛选")
         self._model_combo.addItems(["全部"])
-        
+
         # 对话ID 筛选
         conv_label = QLabel("对话ID:")
         conv_label.setObjectName("filterLabel")
         self._conv_id_input = QLineEdit()
         self._conv_id_input.setObjectName("filterInput")
+        self._conv_id_input.setAccessibleName("对话 ID 筛选输入框")
         self._conv_id_input.setPlaceholderText("输入对话ID筛选...")
         self._conv_id_input.setMaximumWidth(200)
 
         # 刷新按钮
         self._refresh_btn = QPushButton("刷新")
         self._refresh_btn.setObjectName("refreshBtn")
+        self._refresh_btn.setAccessibleName("刷新用量数据")
         self._refresh_btn.setProperty("class", "primary")
 
         filter_layout.addWidget(provider_label)
@@ -682,6 +703,7 @@ class UsagePanel(QWidget):
         # ═══════════════════════════════════════════════════════════════
         self._table = QTableWidget()
         self._table.setObjectName("usageTable")
+        self._table.setAccessibleName("用量明细表格")
         self._table.setColumnCount(10)
         self._table.setHorizontalHeaderLabels([
             "时间", "Provider", "Model", "输入", "输出", "总Token",
@@ -727,6 +749,7 @@ class UsagePanel(QWidget):
         
         self._prev_btn = QPushButton("上一页")
         self._prev_btn.setObjectName("pageBtn")
+        self._prev_btn.setAccessibleName("上一页")
         self._prev_btn.setEnabled(False)
         
         self._page_label = QLabel("第 1 页")
@@ -735,6 +758,7 @@ class UsagePanel(QWidget):
         
         self._next_btn = QPushButton("下一页")
         self._next_btn.setObjectName("pageBtn")
+        self._next_btn.setAccessibleName("下一页")
         self._next_btn.setEnabled(False)
 
         page_layout.addStretch()
@@ -763,24 +787,26 @@ class UsagePanel(QWidget):
         self._next_btn.clicked.connect(self._next_page)
 
     def _get_date_range(self) -> tuple:
+        # 记录时间戳为 UTC aware，筛选边界需带本地时区才能正确比较
+        tz = _local_tz()
         today = datetime.now().date()
         text = self._range_combo.currentText()
         if text == "近 7 天":
             return (
-                datetime.combine(today - timedelta(days=7), datetime.min.time()),
-                datetime.combine(today, datetime.max.time()),
+                datetime.combine(today - timedelta(days=7), datetime.min.time(), tzinfo=tz),
+                datetime.combine(today, datetime.max.time(), tzinfo=tz),
             )
         elif text == "近 30 天":
             return (
-                datetime.combine(today - timedelta(days=30), datetime.min.time()),
-                datetime.combine(today, datetime.max.time()),
+                datetime.combine(today - timedelta(days=30), datetime.min.time(), tzinfo=tz),
+                datetime.combine(today, datetime.max.time(), tzinfo=tz),
             )
         else:
             d_from: Any = self._date_from.date().toPython()
             d_to: Any = self._date_to.date().toPython()
             return (
-                datetime.combine(d_from, datetime.min.time()),
-                datetime.combine(d_to, datetime.max.time()),
+                datetime.combine(d_from, datetime.min.time(), tzinfo=tz),
+                datetime.combine(d_to, datetime.max.time(), tzinfo=tz),
             )
 
     def _get_filters(self) -> dict:
@@ -812,6 +838,10 @@ class UsagePanel(QWidget):
             avg_dur_sec = avg_dur / 1000.0
             self._cards["avg_duration"].set_value(f"{avg_dur_sec:.2f}s")
 
+            # 说明：UsageRecordStore 暂无 count/distinct API，
+            # 图表聚合、Provider/Model 下拉选项与总条数仍需一次全量读取
+            # （瞬时使用、不在面板层缓存）；明细表格已改为存储层分页
+            # （limit/offset），翻页时只查询当前页。
             all_records = self._store.get_records(
                 start_time=start_time,
                 end_time=end_time,
@@ -820,8 +850,9 @@ class UsagePanel(QWidget):
                 conversation_id=filters["conversation_id"],
                 limit=None,
             )
-            self._all_records = all_records
+            self._total_count = len(all_records)
 
+            self._update_provider_options()
             self._update_model_options(all_records)
             self._chart_widget.update_chart(all_records, start_time, end_time)
 
@@ -832,6 +863,27 @@ class UsagePanel(QWidget):
 
         except Exception as e:
             QMessageBox.warning(self, "刷新失败", f"刷新用量数据失败:\n{str(e)}")
+
+    def _update_provider_options(self):
+        """根据实际用量记录动态生成 Provider 筛选选项（不再硬编码）"""
+        try:
+            start_time, end_time = self._get_date_range()
+            agg = self._store.aggregate(
+                start_time=start_time, end_time=end_time, group_by="provider"
+            )
+            providers = sorted(
+                g["group_key"] for g in agg.get("groups", []) if g.get("group_key")
+            )
+        except Exception:
+            providers = []
+
+        current = self._provider_combo.currentText()
+        self._provider_combo.blockSignals(True)
+        self._provider_combo.clear()
+        self._provider_combo.addItems(["全部"] + providers)
+        if current in ["全部"] + providers:
+            self._provider_combo.setCurrentText(current)
+        self._provider_combo.blockSignals(False)
 
     def _update_model_options(self, records: List[UsageRecord]):
         models = sorted(set(r.model for r in records if r.model))
@@ -844,14 +896,25 @@ class UsagePanel(QWidget):
         self._model_combo.blockSignals(False)
 
     def _update_table(self):
-        start = self._current_page * self._page_size
-        end = start + self._page_size
-        page_records = self._all_records[start:end]
+        """按当前页从存储层分页查询并填充明细表格"""
+        start_time, end_time = self._get_date_range()
+        filters = self._get_filters()
+        # 存储层分页：只取当前页数据
+        page_records = self._store.get_records(
+            start_time=start_time,
+            end_time=end_time,
+            provider=filters["provider"],
+            model=filters["model"],
+            conversation_id=filters["conversation_id"],
+            limit=self._page_size,
+            offset=self._current_page * self._page_size,
+        )
 
         self._table.setRowCount(len(page_records))
         for row, record in enumerate(page_records):
             items = [
-                record.timestamp.strftime("%Y-%m-%d %H:%M:%S"),
+                # 记录时间戳为 UTC aware，显示时转换为本地时间
+                _to_local_time(record.timestamp).strftime("%Y-%m-%d %H:%M:%S"),
                 record.provider,
                 record.model,
                 f"{record.input_tokens:,}",
@@ -877,9 +940,9 @@ class UsagePanel(QWidget):
                     
                 self._table.setItem(row, col, item)
 
-        total_pages = max(1, (len(self._all_records) + self._page_size - 1) // self._page_size)
+        total_pages = max(1, (self._total_count + self._page_size - 1) // self._page_size)
         self._page_label.setText(
-            f"第 {self._current_page + 1} / {total_pages} 页  (共 {len(self._all_records)} 条)"
+            f"第 {self._current_page + 1} / {total_pages} 页  (共 {self._total_count} 条)"
         )
         self._prev_btn.setEnabled(self._current_page > 0)
         self._next_btn.setEnabled(self._current_page < total_pages - 1)
@@ -890,7 +953,7 @@ class UsagePanel(QWidget):
             self._update_table()
 
     def _next_page(self):
-        total_pages = max(1, (len(self._all_records) + self._page_size - 1) // self._page_size)
+        total_pages = max(1, (self._total_count + self._page_size - 1) // self._page_size)
         if self._current_page < total_pages - 1:
             self._current_page += 1
             self._update_table()
