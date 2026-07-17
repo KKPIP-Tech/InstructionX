@@ -1,7 +1,8 @@
 """Ollama Provider 实现模块
 
 该模块提供 Ollama 本地大语言模型部署的接口实现。
-继承自 BaseProvider，实现聊天、嵌入、流式输出等功能。
+继承自 BaseProvider，聊天/流式接口复用基类模板方法，
+本模块保留 Ollama 特有的请求格式、响应解析与逐条嵌入实现。
 
 Ollama 是一款可以在本地运行大语言模型的工具，支持多种开源模型。
 该 Provider 连接到本地运行的 Ollama 服务（默认 http://localhost:11434）。
@@ -23,11 +24,11 @@ Classes:
     >>> response = provider.chat([Message("user", "你好")])
 """
 
-from typing import Dict, Any, Optional, List, Union, AsyncIterator
+import json
+from typing import Dict, Any, Optional, List, Union
 
 from .base import BaseProvider
-from ..provider_interface import Message, ChatResponse, EmbeddingResponse, ModelInfo
-from ..exceptions import APIError
+from ..provider_interface import ChatResponse, EmbeddingResponse, ModelInfo, UsageInfo
 
 
 class OllamaProvider(BaseProvider):
@@ -35,6 +36,8 @@ class OllamaProvider(BaseProvider):
 
     Ollama 本地大语言模型提供商实现，连接到本地运行的 Ollama 服务。
     支持从本地 API 获取模型列表，无需 API Key。
+    聊天/流式聊天/异步聊天使用基类模板方法（配合本类的
+    _prepare_chat_payload 与 _parse_chat_response 钩子）。
 
     Class Attributes:
         provider_type: 提供商类型标识 ("ollama")
@@ -154,7 +157,7 @@ class OllamaProvider(BaseProvider):
 
     def _prepare_chat_payload(
         self,
-        messages: List[Union[Message, Dict]],
+        messages: List[Union[Dict, Any]],
         model: Optional[str] = None,
         temperature: float = 0.7,
         max_tokens: Optional[int] = None,
@@ -165,6 +168,7 @@ class OllamaProvider(BaseProvider):
 
         准备发送给 Ollama API 的请求参数。
         需要将消息格式转换为 Ollama 特有的格式。
+        图片使用 Ollama 原生 images 字段（base64 字符串列表）。
 
         Args:
             messages: 消息列表
@@ -179,14 +183,14 @@ class OllamaProvider(BaseProvider):
         """
         prepared_messages = self._prepare_messages(messages)
 
-        # 转换消息格式为 Ollama 格式
+        # 转换消息格式为 Ollama 格式（保留原生 images 字段）
         ollama_messages = []
         for msg in prepared_messages:
             ollama_msg = {
                 "role": msg["role"],
                 "content": msg["content"]
             }
-            # 处理多模态图片
+            # 处理多模态图片（Ollama 原生格式）
             if "images" in msg and msg["images"]:
                 ollama_msg["images"] = msg["images"]
             ollama_messages.append(ollama_msg)
@@ -204,14 +208,71 @@ class OllamaProvider(BaseProvider):
             payload["options"]["num_predict"] = max_tokens
 
         payload.update(kwargs)
-        return payload
+        # 剔除 None 值，避免污染 API 请求
+        return {k: v for k, v in payload.items() if v is not None}
 
     # ==================== 响应解析 ====================
+
+    @staticmethod
+    def _parse_tool_calls(message: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """解析 Ollama 响应中的 tool_calls 并转换为统一契约格式
+
+        Ollama /api/chat 的 tool_calls 位于 message.tool_calls，
+        其 function.arguments 已是 dict，需要序列化为 JSON 字符串；
+        id 缺失时按 call_{name}_{i} 规则生成。
+
+        Args:
+            message: 响应中的 message 字典
+
+        Returns:
+            List[Dict]: OpenAI 风格 tool_calls 列表
+                [{"id": str, "type": "function",
+                  "function": {"name": str, "arguments": str(JSON)}}]
+        """
+        tool_calls = []
+        for i, tc in enumerate(message.get("tool_calls") or []):
+            function = tc.get("function") or {}
+            name = function.get("name", "")
+            arguments = function.get("arguments", "")
+            # Ollama 返回的 arguments 通常是 dict，统一为 JSON 字符串
+            if not isinstance(arguments, str):
+                arguments = json.dumps(arguments, ensure_ascii=False)
+            tool_calls.append({
+                "id": tc.get("id") or f"call_{name}_{i}",
+                "type": "function",
+                "function": {"name": name, "arguments": arguments},
+            })
+        return tool_calls
+
+    def _parse_usage(self, response: Dict[str, Any]) -> Optional[UsageInfo]:
+        """从 Ollama 响应中提取 usage 信息
+
+        Ollama 使用 prompt_eval_count / eval_count 字段统计 token 用量
+        （非流式响应与流式末尾块均在顶层返回）。
+
+        Args:
+            response: API 响应字典
+
+        Returns:
+            Optional[UsageInfo]: 用量信息，如果 API 未返回则返回 None
+        """
+        if "prompt_eval_count" in response or "eval_count" in response:
+            input_tokens = response.get("prompt_eval_count")
+            output_tokens = response.get("eval_count")
+            total_tokens = None
+            if input_tokens is not None or output_tokens is not None:
+                total_tokens = (input_tokens or 0) + (output_tokens or 0)
+            return UsageInfo(
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                total_tokens=total_tokens,
+            )
+        return super()._parse_usage(response)
 
     def _parse_chat_response(self, response: Dict[str, Any]) -> ChatResponse:
         """解析聊天响应
 
-        从 Ollama API 响应中提取聊天内容和思考过程（如果有）。
+        从 Ollama API 响应中提取聊天内容、思考过程（如果有）与 tool_calls。
 
         Args:
             response: API 响应字典
@@ -226,6 +287,7 @@ class OllamaProvider(BaseProvider):
             model=response.get("model", ""),
             role=message.get("role", "assistant"),
             reasoning_content=message.get("thinking", ""),
+            tool_calls=self._parse_tool_calls(message),
             usage=self._parse_usage(response),
             extra=response
         )
@@ -233,7 +295,8 @@ class OllamaProvider(BaseProvider):
     def _parse_stream_response(self, data: Dict) -> ChatResponse:
         """解析流式响应
 
-        从流式数据块中提取聊天内容和思考过程。
+        从流式数据块中提取聊天内容、思考过程与 tool_calls。
+        末尾块（done=true）中的 token 统计会映射进 usage。
 
         Args:
             data: 流式数据块
@@ -248,68 +311,15 @@ class OllamaProvider(BaseProvider):
             model=data.get("model", ""),
             role=message.get("role", "assistant"),
             reasoning_content=message.get("thinking", ""),
+            tool_calls=self._parse_tool_calls(message),
             usage=self._parse_usage(data),
             extra=data
         )
 
-    # ==================== 同步 API ====================
+    # 聊天/流式聊天/异步聊天/异步流式均使用基类模板方法默认实现
+    # （端点与解析钩子已由本类提供）
 
-    def chat(
-        self,
-        messages: List[Union[Message, Dict]],
-        model: Optional[str] = None,
-        temperature: float = 0.7,
-        max_tokens: Optional[int] = None,
-        **kwargs
-    ) -> ChatResponse:
-        """发送聊天请求（同步）
-
-        向 Ollama 本地服务发送聊天请求，获取完整的响应文本。
-
-        Args:
-            messages: 消息列表
-            model: 模型名称（可选，默认使用配置中的模型）
-            temperature: 温度参数（默认 0.7）
-            max_tokens: 最大生成 token 数（可选）
-            **kwargs: 其他参数
-
-        Returns:
-            ChatResponse: 聊天响应对象
-        """
-        payload = self._prepare_chat_payload(
-            messages, model, temperature, max_tokens, stream=False, **kwargs
-        )
-        response = self._make_request("POST", self._chat_endpoint, data=payload)
-        return self._parse_chat_response(response)
-
-    def stream_chat(
-        self,
-        messages: List[Union[Message, Dict]],
-        model: Optional[str] = None,
-        temperature: float = 0.7,
-        max_tokens: Optional[int] = None,
-        callback=None,
-        **kwargs
-    ):
-        """发送流式聊天请求（同步）
-
-        向 Ollama 本地服务发送流式聊天请求，逐块获取响应。
-
-        Args:
-            messages: 消息列表
-            model: 模型名称
-            temperature: 温度参数
-            max_tokens: 最大 token 数
-            callback: 可选的回调函数
-            **kwargs: 其他参数
-
-        Returns:
-            生成器: 流式响应生成器
-        """
-        payload = self._prepare_chat_payload(
-            messages, model, temperature, max_tokens, stream=True, **kwargs
-        )
-        return self._make_stream_request(self._chat_endpoint, payload, callback)
+    # ==================== 嵌入 API ====================
 
     def embed(
         self,
@@ -342,6 +352,8 @@ class OllamaProvider(BaseProvider):
                 "prompt": text,
             }
             payload.update(kwargs)
+            # 剔除 None 值，避免污染 API 请求
+            payload = {k: v for k, v in payload.items() if v is not None}
 
             response = self._make_request("POST", self._embedding_endpoint, data=payload)
 
@@ -353,62 +365,6 @@ class OllamaProvider(BaseProvider):
 
         return embeddings
 
-    # 使用基类统一的 get_models 实现
-
-    # ==================== 异步 API ====================
-
-    async def async_chat(
-        self,
-        messages: List[Union[Message, Dict]],
-        model: Optional[str] = None,
-        temperature: float = 0.7,
-        max_tokens: Optional[int] = None,
-        **kwargs
-    ) -> ChatResponse:
-        """异步发送聊天请求
-
-        Args:
-            messages: 消息列表
-            model: 模型名称
-            temperature: 温度参数
-            max_tokens: 最大 token 数
-            **kwargs: 其他参数
-
-        Returns:
-            ChatResponse: 聊天响应对象
-        """
-        payload = self._prepare_chat_payload(
-            messages, model, temperature, max_tokens, stream=False, **kwargs
-        )
-        response = await self._make_async_request("POST", self._chat_endpoint, data=payload)
-        return self._parse_chat_response(response)
-
-    async def async_stream_chat(
-        self,
-        messages: List[Union[Message, Dict]],
-        model: Optional[str] = None,
-        temperature: float = 0.7,
-        max_tokens: Optional[int] = None,
-        **kwargs
-    ) -> AsyncIterator[ChatResponse]:
-        """异步发送流式聊天请求
-
-        Args:
-            messages: 消息列表
-            model: 模型名称
-            temperature: 温度参数
-            max_tokens: 最大 token 数
-            **kwargs: 其他参数
-
-        Yields:
-            ChatResponse: 聊天响应块
-        """
-        payload = self._prepare_chat_payload(
-            messages, model, temperature, max_tokens, stream=True, **kwargs
-        )
-        async for response in self._make_async_stream_request(self._chat_endpoint, payload):
-            yield response
-
     async def async_embed(
         self,
         texts: Union[str, List[str]],
@@ -416,6 +372,8 @@ class OllamaProvider(BaseProvider):
         **kwargs
     ) -> List[EmbeddingResponse]:
         """异步发送嵌入请求
+
+        注意：Ollama 的嵌入 API 不支持批量处理，需要逐个请求。
 
         Args:
             texts: 文本或文本列表
@@ -437,6 +395,8 @@ class OllamaProvider(BaseProvider):
                 "prompt": text,
             }
             payload.update(kwargs)
+            # 剔除 None 值，避免污染 API 请求
+            payload = {k: v for k, v in payload.items() if v is not None}
 
             response = await self._make_async_request("POST", self._embedding_endpoint, data=payload)
 
@@ -448,20 +408,12 @@ class OllamaProvider(BaseProvider):
 
         return embeddings
 
-    async def async_get_models(self) -> List[ModelInfo]:
-        """异步获取可用模型列表
-
-        返回同步版本的结果。
-
-        Returns:
-            List[ModelInfo]: 模型信息列表
-        """
-        return self.get_models()
-
     def validate_config(self) -> bool:
-        """验证配置是否有效
+        """验证配置是否有效（仅格式校验，不代表连通性）
 
-        Ollama 不需要 API Key，只需确保 base_url 可用即可。
+        Ollama 不需要 API Key，只需确保 base_url 已设置。
+        注意：本方法不发起任何网络请求，返回 True 仅表示配置格式完整，
+        不代表本地 Ollama 服务实际可用。
 
         Returns:
             bool: 配置是否有效（base_url 是否设置）

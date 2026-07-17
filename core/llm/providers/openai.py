@@ -1,7 +1,9 @@
 """OpenAI 兼容 Provider 实现模块
 
 该模块提供标准 OpenAI API 的接口实现，支持用户通过配置自定义模型列表。
-继承自 BaseProvider，实现聊天、嵌入、流式输出等功能。
+继承自 BaseProvider，聊天、嵌入、流式输出等通用逻辑复用基类模板方法，
+本模块仅保留 OpenAI 特有的自定义模型列表、能力推断、
+流式 tool_calls 聚合、图像生成与语音合成实现。
 
 支持用户自定义模型列表（custom_models），使其可以适配任何 OpenAI 兼容端点：
 - OpenAI 官方 API
@@ -27,9 +29,15 @@ Classes:
 
 from typing import Dict, Any, Optional, List, Union, AsyncIterator
 
-from .base import BaseProvider
-from ..provider_interface import Message, ChatResponse, EmbeddingResponse, ModelInfo
-from ..exceptions import APIError
+import requests
+
+from .base import BaseProvider, _keyword_in_model
+from ..provider_interface import Message, ChatResponse, ModelInfo
+from ..exceptions import (
+    APIError, AuthenticationError, RateLimitError, ConfigurationError,
+    ConnectionError, TimeoutError
+)
+from ..types import ImageResult, AudioResult
 
 
 class OpenAIProvider(BaseProvider):
@@ -51,6 +59,8 @@ class OpenAIProvider(BaseProvider):
         - /chat/completions: 聊天完成
         - /embeddings: 嵌入生成
         - /models: 模型列表
+        - /images/generations: 图像生成
+        - /audio/speech: 语音合成
 
     使用示例:
         >>> from core.llm.providers.openai import OpenAIProvider
@@ -77,6 +87,14 @@ class OpenAIProvider(BaseProvider):
     support_embedding = True
     support_vision = True
 
+    # OpenAI 兼容 API 支持流式 usage 统计
+    _supports_stream_usage = True
+
+    # 图像生成 / 语音合成默认模型（可被配置 image_model / tts_model 覆盖）
+    DEFAULT_IMAGE_MODEL = "dall-e-3"
+    DEFAULT_TTS_MODEL = "tts-1"
+    DEFAULT_TTS_VOICE = "alloy"
+
     # ==================== 初始化 ====================
 
     def __init__(self, config: Optional[Dict[str, Any]] = None, provider_name: str = ""):
@@ -90,6 +108,8 @@ class OpenAIProvider(BaseProvider):
         self._chat_endpoint = "/chat/completions"
         self._embedding_endpoint = "/embeddings"
         self._models_endpoint = "/models"
+        self._image_endpoint = "/images/generations"
+        self._speech_endpoint = "/audio/speech"
 
     # ==================== 模型列表 ====================
 
@@ -147,8 +167,9 @@ class OpenAIProvider(BaseProvider):
 
     # ==================== 模型能力推断 ====================
 
+    # 关键词按非字母数字边界匹配，避免 "4o" 之类的子串误判
     VISION_KEYWORDS = ["vision", "gpt-4o", "4o"]
-    FC_KEYWORDS = ["gpt-4", "o3", "o1"]
+    FC_KEYWORDS = ["gpt-4", "gpt-4o", "o3", "o1"]
     EMBEDDING_KEYWORDS = ["embedding", "embed"]
 
     def _infer_capabilities(self, model_id: str) -> Dict[str, Any]:
@@ -161,10 +182,10 @@ class OpenAIProvider(BaseProvider):
             Dict[str, Any]: 能力字典
         """
         mid = model_id.lower()
-        is_embedding = any(k in mid for k in self.EMBEDDING_KEYWORDS)
+        is_embedding = any(_keyword_in_model(mid, k) for k in self.EMBEDDING_KEYWORDS)
         return {
-            "support_vision": any(k in mid for k in self.VISION_KEYWORDS) and not is_embedding,
-            "support_function_calling": any(k in mid for k in self.FC_KEYWORDS) and not is_embedding,
+            "support_vision": any(_keyword_in_model(mid, k) for k in self.VISION_KEYWORDS) and not is_embedding,
+            "support_function_calling": any(_keyword_in_model(mid, k) for k in self.FC_KEYWORDS) and not is_embedding,
             "context_length": self._estimate_context_length(model_id),
         }
 
@@ -212,7 +233,7 @@ class OpenAIProvider(BaseProvider):
                 continue
 
             caps = self._infer_capabilities(model_id)
-            is_embedding = any(k in model_id.lower() for k in self.EMBEDDING_KEYWORDS)
+            is_embedding = any(_keyword_in_model(model_id, k) for k in self.EMBEDDING_KEYWORDS)
 
             if is_embedding:
                 models.append(ModelInfo(
@@ -243,123 +264,80 @@ class OpenAIProvider(BaseProvider):
 
         return models
 
-    # ==================== 请求载荷准备 ====================
+    # ==================== 流式 tool_calls 聚合 ====================
 
-    def _prepare_chat_payload(
-        self,
-        messages: List[Union[Message, Dict]],
-        model: Optional[str] = None,
-        temperature: float = 0.7,
-        max_tokens: Optional[int] = None,
-        stream: bool = False,
-        **kwargs
-    ) -> Dict[str, Any]:
-        """准备聊天请求载荷
+    @staticmethod
+    def _merge_tool_call_deltas(acc: Dict[int, Dict[str, Any]], deltas: List[Dict]) -> None:
+        """按 index 聚合流式 tool_calls 增量分片
+
+        OpenAI 流式响应中 tool_calls 以分片形式下发，id/name 仅在首片出现，
+        arguments 为 JSON 字符串的连续片段，需要按 index 拼接。
 
         Args:
-            messages: 消息列表
-            model: 模型名称
-            temperature: 温度参数
-            max_tokens: 最大 token 数
-            stream: 是否流式输出
-            **kwargs: 其他参数
-
-        Returns:
-            Dict[str, Any]: 请求载荷字典
+            acc: 聚合状态字典（index -> 完整 tool_call）
+            deltas: 当前块的 tool_calls 增量列表
         """
-        prepared_messages = self._prepare_messages(messages)
+        for delta in deltas:
+            index = delta.get("index", 0)
+            slot = acc.setdefault(index, {
+                "id": "",
+                "type": "function",
+                "function": {"name": "", "arguments": ""},
+            })
+            if delta.get("id"):
+                slot["id"] = delta["id"]
+            if delta.get("type"):
+                slot["type"] = delta["type"]
+            function = delta.get("function") or {}
+            if function.get("name"):
+                slot["function"]["name"] += function["name"]
+            if function.get("arguments"):
+                slot["function"]["arguments"] += function["arguments"]
 
-        payload: Dict[str, Any] = {
-            "model": model or self.chat_model,
-            "messages": prepared_messages,
-            "temperature": temperature,
-            "stream": stream,
-        }
+    def _stream_with_tool_call_aggregation(self, stream):
+        """包装流式生成器，末块返回聚合后的完整 tool_calls 列表
 
-        if max_tokens:
-            payload["max_tokens"] = max_tokens
-
-        payload.update(kwargs)
-        return payload
-
-    # ==================== 响应解析 ====================
-
-    def _parse_chat_response(self, response: Dict[str, Any]) -> ChatResponse:
-        """解析聊天响应
+        中间块的 tool_calls 增量分片被聚合缓存，不再逐片外泄；
+        流结束时将完整 tool_calls 列表挂到最后一个响应块上。
 
         Args:
-            response: API 响应字典
+            stream: 原始流式响应生成器
 
-        Returns:
-            ChatResponse: 聊天响应对象
-
-        Raises:
-            APIError: 当响应为空时抛出
+        Yields:
+            ChatResponse: 聊天响应块（末块带完整 tool_calls）
         """
-        choices = response.get("choices", [])
-        if not choices:
-            raise APIError("Empty response from OpenAI")
+        acc: Dict[int, Dict[str, Any]] = {}
+        last_chunk: Optional[ChatResponse] = None
+        for chunk in stream:
+            if chunk.tool_calls:
+                self._merge_tool_call_deltas(acc, chunk.tool_calls)
+                chunk.tool_calls = []
+            last_chunk = chunk
+            yield chunk
+        if acc and last_chunk is not None:
+            last_chunk.tool_calls = [acc[i] for i in sorted(acc)]
 
-        choice = choices[0]
-        message = choice.get("message", {})
-
-        return ChatResponse(
-            content=message.get("content", ""),
-            model=response.get("model", ""),
-            role=message.get("role", "assistant"),
-            reasoning_content=message.get("reasoning_content", ""),
-            tool_calls=message.get("tool_calls", []),
-            usage=self._parse_usage(response),
-            extra=response
-        )
-
-    def _parse_stream_response(self, data: Dict) -> ChatResponse:
-        """解析流式响应
+    async def _astream_with_tool_call_aggregation(self, stream) -> AsyncIterator[ChatResponse]:
+        """异步版本的流式 tool_calls 聚合包装
 
         Args:
-            data: 流式数据块
+            stream: 原始异步流式响应迭代器
 
-        Returns:
-            ChatResponse: 聊天响应对象
+        Yields:
+            ChatResponse: 聊天响应块（末块带完整 tool_calls）
         """
-        if data.get("choices"):
-            choices = data.get("choices", [])
-            if choices:
-                choice = choices[0]
-                delta = choice.get("delta", {})
-                return ChatResponse(
-                    content=delta.get("content", ""),
-                    model=data.get("model", ""),
-                    role=delta.get("role", "assistant"),
-                    reasoning_content=delta.get("reasoning_content", ""),
-                    tool_calls=delta.get("tool_calls", []),
-                    usage=self._parse_usage(data),
-                    extra=data
-                )
-        return ChatResponse(
-            content="",
-            model=data.get("model", ""),
-            tool_calls=[],
-            usage=self._parse_usage(data),
-            extra=data
-        )
+        acc: Dict[int, Dict[str, Any]] = {}
+        last_chunk: Optional[ChatResponse] = None
+        async for chunk in stream:
+            if chunk.tool_calls:
+                self._merge_tool_call_deltas(acc, chunk.tool_calls)
+                chunk.tool_calls = []
+            last_chunk = chunk
+            yield chunk
+        if acc and last_chunk is not None:
+            last_chunk.tool_calls = [acc[i] for i in sorted(acc)]
 
     # ==================== 同步 API ====================
-
-    def chat(
-        self,
-        messages: List[Union[Message, Dict]],
-        model: Optional[str] = None,
-        temperature: float = 0.7,
-        max_tokens: Optional[int] = None,
-        **kwargs
-    ) -> ChatResponse:
-        """发送聊天请求（同步）"""
-        payload = self._prepare_chat_payload(
-            messages, model, temperature, max_tokens, stream=False, **kwargs
-        )
-        response = self._make_request("POST", self._chat_endpoint, data=payload)
-        return self._parse_chat_response(response)
 
     def stream_chat(
         self,
@@ -370,56 +348,18 @@ class OpenAIProvider(BaseProvider):
         callback=None,
         **kwargs
     ):
-        """发送流式聊天请求（同步）"""
+        """发送流式聊天请求（同步）
+
+        与基类实现的区别在于对流式 tool_calls 增量按 index 聚合，
+        末块返回完整的 tool_calls 列表。
+        """
         payload = self._prepare_chat_payload(
             messages, model, temperature, max_tokens, stream=True, **kwargs
         )
-        return self._make_stream_request(self._chat_endpoint, payload, callback)
-
-    def embed(
-        self,
-        texts: Union[str, List[str]],
-        model: Optional[str] = None,
-        **kwargs
-    ) -> List[EmbeddingResponse]:
-        """发送嵌入请求（同步）"""
-        if isinstance(texts, str):
-            texts = [texts]
-
-        payload = {
-            "model": model or self.embedding_model,
-            "input": texts,
-        }
-        payload.update(kwargs)
-
-        response = self._make_request("POST", self._embedding_endpoint, data=payload)
-
-        embeddings = response.get("data", [])
-        return [
-            EmbeddingResponse(
-                embedding=item.get("embedding", []),
-                model=response.get("model", ""),
-                extra=item
-            )
-            for item in embeddings
-        ]
+        stream = self._make_stream_request(self._chat_endpoint, payload, callback)
+        return self._stream_with_tool_call_aggregation(stream)
 
     # ==================== 异步 API ====================
-
-    async def async_chat(
-        self,
-        messages: List[Union[Message, Dict]],
-        model: Optional[str] = None,
-        temperature: float = 0.7,
-        max_tokens: Optional[int] = None,
-        **kwargs
-    ) -> ChatResponse:
-        """异步发送聊天请求"""
-        payload = self._prepare_chat_payload(
-            messages, model, temperature, max_tokens, stream=False, **kwargs
-        )
-        response = await self._make_async_request("POST", self._chat_endpoint, data=payload)
-        return self._parse_chat_response(response)
 
     async def async_stream_chat(
         self,
@@ -429,41 +369,136 @@ class OpenAIProvider(BaseProvider):
         max_tokens: Optional[int] = None,
         **kwargs
     ) -> AsyncIterator[ChatResponse]:
-        """异步发送流式聊天请求"""
+        """异步发送流式聊天请求
+
+        与基类实现的区别在于对流式 tool_calls 增量按 index 聚合，
+        末块返回完整的 tool_calls 列表。
+        """
         payload = self._prepare_chat_payload(
             messages, model, temperature, max_tokens, stream=True, **kwargs
         )
-        async for response in self._make_async_stream_request(self._chat_endpoint, payload):
-            yield response
+        stream = self._make_async_stream_request(self._chat_endpoint, payload)
+        async for chunk in self._astream_with_tool_call_aggregation(stream):
+            yield chunk
 
-    async def async_embed(
+    # ==================== 多模态：图像生成 / 语音合成 ====================
+
+    def generate_image(
         self,
-        texts: Union[str, List[str]],
+        prompt: str,
         model: Optional[str] = None,
+        size: Optional[str] = None,
         **kwargs
-    ) -> List[EmbeddingResponse]:
-        """异步发送嵌入请求"""
-        if isinstance(texts, str):
-            texts = [texts]
+    ) -> ImageResult:
+        """生成图像（POST /images/generations）
 
-        payload = {
-            "model": model or self.embedding_model,
-            "input": texts,
-        }
-        payload.update(kwargs)
+        Args:
+            prompt: 图像描述提示词
+            model: 图像生成模型（默认取配置 image_model 或 dall-e-3）
+            size: 图像尺寸（如 "1024x1024"）
+            **kwargs: 其他 API 参数（如 quality、n）
 
-        response = await self._make_async_request("POST", self._embedding_endpoint, data=payload)
+        Returns:
+            ImageResult: 图像生成结果（url 或 base64 至少其一有值）
 
-        embeddings = response.get("data", [])
-        return [
-            EmbeddingResponse(
-                embedding=item.get("embedding", []),
-                model=response.get("model", ""),
-                extra=item
+        Raises:
+            ConfigurationError: 未配置图像生成模型时抛出
+        """
+        model = model or self.config.get("image_model") or self.DEFAULT_IMAGE_MODEL
+        if not model:
+            raise ConfigurationError(
+                "未配置图像生成模型，请在提供商配置中设置 image_model "
+                "（如 dall-e-3）或调用时传入 model 参数"
             )
-            for item in embeddings
-        ]
 
-    async def async_get_models(self) -> List[ModelInfo]:
-        """异步获取可用模型列表"""
-        return self.get_models()
+        payload: Dict[str, Any] = {"model": model, "prompt": prompt}
+        if size:
+            payload["size"] = size
+        payload.update(kwargs)
+        # 剔除 None 值，避免污染 API 请求
+        payload = {k: v for k, v in payload.items() if v is not None}
+
+        response = self._make_request("POST", self._image_endpoint, data=payload)
+
+        data = response.get("data") or []
+        item = data[0] if data else {}
+        return ImageResult(
+            url=item.get("url"),
+            base64=item.get("b64_json"),
+            revised_prompt=item.get("revised_prompt"),
+            model=model,
+            provider=self.provider_type,
+        )
+
+    def text_to_speech(
+        self,
+        text: str,
+        model: Optional[str] = None,
+        voice: Optional[str] = None,
+        **kwargs
+    ) -> AudioResult:
+        """语音合成（POST /audio/speech，二进制响应）
+
+        Args:
+            text: 要合成的文本
+            model: TTS 模型（默认取配置 tts_model 或 tts-1）
+            voice: 声音名称（默认取配置 tts_voice 或 alloy）
+            **kwargs: 其他 API 参数（如 response_format、speed）
+
+        Returns:
+            AudioResult: 语音合成结果（audio_data 为音频字节流）
+
+        Raises:
+            ConfigurationError: 未配置 TTS 模型时抛出
+            AuthenticationError: API 密钥无效（401）
+            RateLimitError: 请求频率超限（429）
+            APIError: 其他 API 错误
+        """
+        model = model or self.config.get("tts_model") or self.DEFAULT_TTS_MODEL
+        if not model:
+            raise ConfigurationError(
+                "未配置语音合成模型，请在提供商配置中设置 tts_model "
+                "（如 tts-1）或调用时传入 model 参数"
+            )
+        voice = voice or self.config.get("tts_voice") or self.DEFAULT_TTS_VOICE
+
+        payload: Dict[str, Any] = {"model": model, "input": text, "voice": voice}
+        payload.update(kwargs)
+        # 剔除 None 值，避免污染 API 请求
+        payload = {k: v for k, v in payload.items() if v is not None}
+
+        url = f"{self.base_url}{self._speech_endpoint}"
+        try:
+            with self._session_lock:
+                response = self._get_session().post(
+                    url,
+                    json=payload,
+                    timeout=(self.connect_timeout, self.timeout),
+                )
+
+            if response.status_code == 401:
+                self.last_error = "Invalid API key"
+                raise AuthenticationError("Invalid API key", status_code=401, provider=self.provider_type)
+            elif response.status_code == 429:
+                self.last_error = "Rate limit exceeded"
+                raise RateLimitError("Rate limit exceeded", status_code=429, provider=self.provider_type)
+            elif response.status_code >= 400:
+                self.last_error = f"API request failed: {response.text}"
+                raise APIError(
+                    f"API request failed: {response.text}",
+                    status_code=response.status_code,
+                    provider=self.provider_type
+                )
+
+            self.last_error = None
+            return AudioResult(
+                audio_data=response.content,
+                model=model,
+                provider=self.provider_type,
+            )
+        except requests.exceptions.Timeout:
+            self.last_error = "Request timeout"
+            raise TimeoutError("Request timeout", provider=self.provider_type)
+        except requests.exceptions.ConnectionError:
+            self.last_error = "Connection failed"
+            raise ConnectionError("Connection failed", provider=self.provider_type)
