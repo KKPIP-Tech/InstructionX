@@ -291,7 +291,10 @@ class TestLLMConfigSave:
         data = json.loads(cfg_file.read_text(encoding="utf-8"))
         assert "providers" in data
         assert "newprovider" in data["providers"]
-        assert data["providers"]["newprovider"]["api_key"] == "xyz"
+        stored_key = data["providers"]["newprovider"]["api_key"]
+        assert stored_key == "b64:eHl6"
+        from core.llm.secure_keys import decode_secret
+        assert decode_secret(stored_key) == "xyz"
 
 
 class TestLLMConfigGet:

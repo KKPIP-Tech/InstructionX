@@ -258,11 +258,11 @@ class TestMCPBridgeRemoveTool:
         mock_manager.get_server.return_value = mock_server
 
         bridge = MCPBridge(mock_manager)
-        bridge._synced_tools["test-plugin.test-method"] = True
+        bridge._synced_tools["test-plugin__test-method"] = True
 
         bridge.remove_plugin_tool("test-plugin", "test-method")
 
-        mock_server.remove_tool.assert_called_once_with("test-plugin.test-method")
+        mock_server.remove_tool.assert_called_once_with("test-plugin__test-method")
 
     def test_remove_plugin_tool_removes_from_synced_tools(self):
         """Verify tool removed from _synced_tools."""

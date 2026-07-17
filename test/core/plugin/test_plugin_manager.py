@@ -536,7 +536,7 @@ class TestGetAllFunctionTools:
         assert len(tools) == 1
         tool = tools[0]
         assert tool["type"] == "function"
-        assert "tools-plugin-id.echo" in tool["function"]["name"]
+        assert "tools-plugin-id__echo" in tool["function"]["name"]
         assert "ToolsPlugin" in tool["function"]["description"]
         assert "echo a message" in tool["function"]["description"]
         assert "text" in tool["function"]["parameters"]["properties"]
@@ -610,3 +610,30 @@ class TestReloadPlugins:
         assert len(mgr._plugin_name_to_id) > 0
         # reload 后只有目录中的插件，手动注册的 API 应消失
         assert "manual-plugin-id" not in mgr._api_registry
+
+
+# ============================================================================
+# 11. sanitize_tool_name 测试
+# ============================================================================
+
+class TestSanitizeToolName:
+    """Tests for core.plugin.manager.sanitize_tool_name."""
+
+    def test_keeps_valid_characters(self):
+        """合法字符保持不变。"""
+        from core.plugin.manager import sanitize_tool_name
+        assert sanitize_tool_name("plugin__method-name123") == "plugin__method-name123"
+
+    def test_replaces_invalid_characters_with_underscore(self):
+        """非法字符替换为下划线。"""
+        from core.plugin.manager import sanitize_tool_name
+        assert sanitize_tool_name("plugin.id") == "plugin_id"
+        assert sanitize_tool_name("plugin/id@method") == "plugin_id_method"
+
+    def test_truncates_to_64_chars(self):
+        """结果超过 64 字符时截断。"""
+        from core.plugin.manager import sanitize_tool_name
+        long_name = "a" * 100
+        result = sanitize_tool_name(long_name)
+        assert len(result) == 64
+        assert result == "a" * 64
