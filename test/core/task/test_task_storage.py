@@ -182,3 +182,59 @@ class TestCacheBehavior:
         storage.save_task(BackgroundTask(task_id="t1"))
         storage.clear_cache()
         assert storage.get_task("t1") is not None
+
+
+class TestCleanupOldTasks:
+    def test_cleanup_old_tasks_removes_completed_records(self, storage):
+        """cleanup_old_tasks 删除超过保留天数的已完成任务。"""
+        from datetime import timedelta
+
+        old_completed = BackgroundTask(
+            task_id="old",
+            plugin_id="p1",
+            name="old-task",
+            status=TaskStatus.COMPLETED,
+            created_at=datetime.now() - timedelta(days=60),
+            finished_at=datetime.now() - timedelta(days=40),
+        )
+        recent_completed = BackgroundTask(
+            task_id="recent",
+            plugin_id="p1",
+            name="recent-task",
+            status=TaskStatus.COMPLETED,
+            created_at=datetime.now() - timedelta(days=5),
+            finished_at=datetime.now() - timedelta(days=1),
+        )
+        pending = BackgroundTask(
+            task_id="pending",
+            plugin_id="p1",
+            name="pending-task",
+            status=TaskStatus.PENDING,
+            created_at=datetime.now() - timedelta(days=60),
+        )
+        storage.save_task(old_completed)
+        storage.save_task(recent_completed)
+        storage.save_task(pending)
+
+        removed = storage.cleanup_old_tasks(max_age_days=30)
+        assert removed == 1
+        assert storage.get_task("old") is None
+        assert storage.get_task("recent") is not None
+        assert storage.get_task("pending") is not None
+
+    def test_cleanup_old_tasks_keeps_long_running_tasks(self, storage):
+        """cleanup_old_tasks 不清理长期任务记录。"""
+        from datetime import timedelta
+        from core.task.task_model import LongRunningTask
+
+        long_task = LongRunningTask(
+            task_id="long",
+            plugin_id="p1",
+            name="long-task",
+            current_status="running",
+            created_at=datetime.now() - timedelta(days=60),
+        )
+        storage.save_long_running_task(long_task)
+        removed = storage.cleanup_old_tasks(max_age_days=30)
+        assert removed == 0
+        assert storage.get_long_running_task("long") is not None

@@ -448,6 +448,18 @@ class TestAssets:
         with pytest.raises(DataProviderError):
             p.get_asset_path("assets/plugins/../secret.txt")
 
+    def test_save_asset_rejects_path_traversal(self, tmp_path):
+        """save_asset 拒绝包含 .. 的路径穿越文件名。"""
+        p = _provider(tmp_path)
+        with pytest.raises(DataProviderError):
+            p.save_asset("p1", "../secret.txt", b"leak")
+
+    def test_save_asset_rejects_empty_filename(self, tmp_path):
+        """save_asset 拒绝空文件名。"""
+        p = _provider(tmp_path)
+        with pytest.raises(DataProviderError):
+            p.save_asset("p1", "", b"content")
+
 
 # ---------------------------------------------------------------------------
 # Schema 升级
@@ -505,3 +517,5 @@ class TestSchemaUpgrade:
         cur = conn.execute("SELECT COUNT(*) FROM plugins;")
         assert cur.fetchone()[0] == 1
         conn.close()
+
+
