@@ -5,6 +5,7 @@ GitHub 插件安装器
 """
 
 import json
+import os
 import re
 import shutil
 import tempfile
@@ -22,13 +23,14 @@ from .dependency_manager import DependencyManager
 @dataclass
 class InstallResult:
     """插件安装结果"""
-    success: bool
+    success: bool = False
     message: str = ""
     plugin_id: Optional[str] = None
     plugin_name: Optional[str] = None
 
     @staticmethod
-    def success(plugin_id: str, plugin_name: str, message: str = "安装成功") -> "InstallResult":
+    def ok(plugin_id: str, plugin_name: str, message: str = "安装成功") -> "InstallResult":
+        """构造成功结果（原名 success，与字段同名会产生冲突，故改名为 ok）"""
         return InstallResult(
             success=True,
             message=message,
@@ -88,6 +90,12 @@ class GitHubPluginInstaller:
     PLUGIN_DESCRIPTOR_FILE = "IXPlugin.json"  # 单插件描述文件名
     REPO_INDEX_FILE = "IXRepo.json"          # 多插件仓库索引文件名
     KKPIP_TECH_ORG = "KKPIP-Tech"
+
+    # 下载与解压的安全上限
+    MAX_DOWNLOAD_SIZE = 200 * 1024 * 1024    # 仓库压缩包最大 200MB
+    MAX_EXTRACT_FILE_SIZE = 100 * 1024 * 1024  # 单个解压文件最大 100MB
+    MAX_EXTRACT_TOTAL_SIZE = 500 * 1024 * 1024  # 总解压大小最大 500MB
+    MAX_EXTRACT_FILE_COUNT = 20000           # 解压文件数量上限
 
     def __init__(self, plugin_manager=None):
         self._plugin_manager = plugin_manager
@@ -322,64 +330,159 @@ class GitHubPluginInstaller:
             # 清理临时目录
             self._cleanup_temp_dir(temp_dir)
 
+    def _get_default_branch(self, owner: str, repo: str) -> Optional[str]:
+        """通过 GitHub API 获取仓库默认分支
+
+        无认证、短超时请求；失败时静默返回 None，由调用方回退 main→master。
+        """
+        try:
+            response = requests.get(f"{self._gh_api_base}/repos/{owner}/{repo}", timeout=10)
+            if response.status_code == 200:
+                branch = response.json().get("default_branch")
+                if branch:
+                    return branch
+        except Exception:
+            pass  # 网络失败/限流时静默回退
+        return None
+
     def _download_repository(self, owner: str, repo: str) -> Optional[Path]:
-        """下载整个仓库到临时目录"""
+        """下载整个仓库到临时目录（流式下载 + 安全解压）"""
         temp_dir = None
+        completed = False
         try:
             # 创建临时目录
             temp_dir = Path(tempfile.mkdtemp(prefix=f"ix_plugin_{repo}_"))
 
-            # 使用 GitHub API 获取仓库信息
-            archive_url = f"https://github.com/{owner}/{repo}/archive/refs/heads/main.zip"
-            try:
-                response = requests.get(archive_url, timeout=60, stream=True)
-                if response.status_code == 404:
-                    # 尝试 master 分支
-                    archive_url = f"https://github.com/{owner}/{repo}/archive/refs/heads/master.zip"
-                    response = requests.get(archive_url, timeout=60, stream=True)
+            # 优先查询默认分支，失败时回退依次尝试 main、master
+            default_branch = self._get_default_branch(owner, repo)
+            candidate_branches = [default_branch] if default_branch else ["main", "master"]
 
-                if response.status_code != 200:
-                    self._logger.error(get_name(), f"Failed to download repo: {response.status_code}")
+            response = None
+            last_status = None
+            for branch in candidate_branches:
+                archive_url = f"https://github.com/{owner}/{repo}/archive/refs/heads/{branch}.zip"
+                try:
+                    resp = requests.get(archive_url, timeout=60, stream=True)
+                except Exception as e:
+                    self._logger.error(get_name(), f"Error downloading repository: {e}")
                     return None
+                if resp.status_code == 200:
+                    response = resp
+                    break
+                last_status = resp.status_code
+                resp.close()
+                if resp.status_code != 404:
+                    break
 
-                # 解压到临时目录
-                import zipfile
-                import io
-
-                zip_content = io.BytesIO(response.content)
-                with zipfile.ZipFile(zip_content) as zf:
-                    # 获取顶层目录名（通常是 repo-main 或 repo-master）
-                    all_names = zf.namelist()
-                    if not all_names:
-                        return None
-
-                    # 找到根目录
-                    root_prefix = all_names[0].split("/")[0] + "/"
-
-                    # 解压所有文件，保持结构
-                    for name in all_names:
-                        if name.startswith(root_prefix):
-                            target_name = name[len(root_prefix):]
-                            if target_name:
-                                target_path = temp_dir / target_name
-                                if name.endswith("/"):
-                                    target_path.mkdir(parents=True, exist_ok=True)
-                                else:
-                                    target_path.parent.mkdir(parents=True, exist_ok=True)
-                                    with zf.open(name) as src, open(target_path, "wb") as dst:
-                                        dst.write(src.read())
-
-                return temp_dir
-
-            except Exception as e:
-                self._logger.error(get_name(), f"Error downloading repository: {e}")
+            if response is None:
+                self._logger.error(get_name(), f"Failed to download repo: {last_status}")
                 return None
 
+            # 流式写入临时 zip 文件，避免整包读入内存，并限制下载大小
+            zip_path = temp_dir / "__repo_archive__.zip"
+            downloaded = 0
+            with response, open(zip_path, "wb") as f:
+                for chunk in response.iter_content(chunk_size=256 * 1024):
+                    if not chunk:
+                        continue
+                    downloaded += len(chunk)
+                    if downloaded > self.MAX_DOWNLOAD_SIZE:
+                        self._logger.error(
+                            get_name(),
+                            f"仓库压缩包超过大小上限 ({self.MAX_DOWNLOAD_SIZE // (1024 * 1024)}MB)"
+                        )
+                        return None
+                    f.write(chunk)
+
+            # 安全解压（zip-slip 校验 + 大小/数量限制）
+            if not self._safe_extract_zip(zip_path, temp_dir):
+                return None
+
+            # 解压成功后删除压缩包
+            try:
+                zip_path.unlink()
+            except OSError:
+                pass
+
+            completed = True
+            return temp_dir
+
         except Exception as e:
-            self._logger.error(get_name(), f"Error creating temp directory: {e}")
-            if temp_dir and temp_dir.exists():
-                shutil.rmtree(temp_dir, ignore_errors=True)
+            self._logger.error(get_name(), f"Error downloading repository: {e}")
             return None
+        finally:
+            # 所有失败路径都要清理临时目录（成功路径由调用方负责清理）
+            if not completed and temp_dir is not None and temp_dir.exists():
+                shutil.rmtree(temp_dir, ignore_errors=True)
+
+    def _safe_extract_zip(self, zip_path: Path, temp_dir: Path) -> bool:
+        """安全解压仓库 zip 到临时目录
+
+        防护：
+        - zip-slip：逐个 entry 校验 resolve 后的路径必须位于目标目录内
+        - 单文件大小、总解压大小、文件数量限制
+        """
+        import zipfile
+
+        try:
+            with zipfile.ZipFile(zip_path) as zf:
+                all_names = zf.namelist()
+                if not all_names:
+                    return False
+
+                # 找到根目录（通常是 repo-<branch>）
+                root_prefix = all_names[0].split("/")[0] + "/"
+                dest_root = temp_dir.resolve()
+
+                total_size = 0
+                file_count = 0
+                for info in zf.infolist():
+                    name = info.filename
+                    if not name.startswith(root_prefix):
+                        continue
+                    target_name = name[len(root_prefix):]
+                    if not target_name:
+                        continue
+
+                    # zip-slip 校验：解析后的绝对路径必须位于目标目录内
+                    target_path = (temp_dir / target_name).resolve()
+                    if target_path != dest_root and dest_root not in target_path.parents:
+                        self._logger.error(get_name(), f"拒绝解压越界路径: {name}")
+                        return False
+
+                    if name.endswith("/"):
+                        target_path.mkdir(parents=True, exist_ok=True)
+                        continue
+
+                    file_count += 1
+                    if file_count > self.MAX_EXTRACT_FILE_COUNT:
+                        self._logger.error(
+                            get_name(),
+                            f"解压文件数量超过上限 ({self.MAX_EXTRACT_FILE_COUNT})"
+                        )
+                        return False
+                    if info.file_size > self.MAX_EXTRACT_FILE_SIZE:
+                        self._logger.error(
+                            get_name(),
+                            f"文件 {name} 超过单文件大小上限 ({self.MAX_EXTRACT_FILE_SIZE // (1024 * 1024)}MB)"
+                        )
+                        return False
+                    total_size += info.file_size
+                    if total_size > self.MAX_EXTRACT_TOTAL_SIZE:
+                        self._logger.error(
+                            get_name(),
+                            f"解压总大小超过上限 ({self.MAX_EXTRACT_TOTAL_SIZE // (1024 * 1024)}MB)"
+                        )
+                        return False
+
+                    target_path.parent.mkdir(parents=True, exist_ok=True)
+                    with zf.open(info) as src, open(target_path, "wb") as dst:
+                        shutil.copyfileobj(src, dst)
+
+            return True
+        except Exception as e:
+            self._logger.error(get_name(), f"解压仓库失败: {e}")
+            return False
 
     def _install_from_multi_plugin_repo(
         self,
@@ -398,6 +501,7 @@ class GitHubPluginInstaller:
 
         results = []
         plugins_list = repo_index.get("plugins", [])
+        repo_root = repo_index_path.parent.resolve()
 
         for plugin_entry in plugins_list:
             plugin_path_str = plugin_entry.get("path", "")
@@ -407,7 +511,12 @@ class GitHubPluginInstaller:
             if selected_plugins is not None and plugin_path_str not in selected_plugins:
                 continue
 
-            plugin_dir = repo_index_path.parent / plugin_path_str
+            # 路径穿越防护：解析后的插件目录必须位于仓库根目录内
+            plugin_dir = (repo_index_path.parent / plugin_path_str).resolve()
+            if plugin_dir != repo_root and repo_root not in plugin_dir.parents:
+                results.append(InstallResult.error(f"插件路径越出仓库根目录，已拒绝: {plugin_path_str}"))
+                continue
+
             if not plugin_dir.exists():
                 results.append(InstallResult.error(f"插件目录不存在: {plugin_path_str}"))
                 continue
@@ -478,24 +587,39 @@ class GitHubPluginInstaller:
 
             # 确定目标目录
             target_plugin_dir = target_dir / actual_plugin_id
+            backup_dir = target_dir / f"{actual_plugin_id}.bak"
 
-            # 如果目标目录已存在，先移除（旧版本）
+            # 升级回滚保护：旧版本先重命名为 .bak，安装成功后再删除，失败时恢复
             if target_plugin_dir.exists():
-                shutil.rmtree(target_plugin_dir, ignore_errors=True)
+                if backup_dir.exists():
+                    shutil.rmtree(backup_dir, ignore_errors=True)
+                shutil.move(str(target_plugin_dir), str(backup_dir))
 
             # 创建目标目录
             target_dir.mkdir(parents=True, exist_ok=True)
 
-            # 复制插件文件
-            shutil.copytree(plugin_dir, target_plugin_dir)
+            try:
+                # 复制插件文件
+                shutil.copytree(plugin_dir, target_plugin_dir)
 
-            # 确保 __init__.py 存在
-            init_file = target_plugin_dir / "__init__.py"
-            if not init_file.exists():
-                init_file.write_text("")
+                # 确保 __init__.py 存在
+                init_file = target_plugin_dir / "__init__.py"
+                if not init_file.exists():
+                    init_file.write_text("")
+            except Exception:
+                # 安装失败：清理半成品目录并从 .bak 恢复旧版本
+                if target_plugin_dir.exists():
+                    shutil.rmtree(target_plugin_dir, ignore_errors=True)
+                if backup_dir.exists():
+                    shutil.move(str(backup_dir), str(target_plugin_dir))
+                raise
+
+            # 安装成功，删除旧版本备份
+            if backup_dir.exists():
+                shutil.rmtree(backup_dir, ignore_errors=True)
 
             self._logger.info(get_name(), f"插件已安装到 {target_plugin_dir}")
-            return InstallResult.success(actual_plugin_id, plugin_name, f"安装成功 ({dir_desc})")
+            return InstallResult.ok(actual_plugin_id, plugin_name, f"安装成功 ({dir_desc})")
 
         except Exception as e:
             self._logger.error(get_name(), f"安装插件失败: {e}")
