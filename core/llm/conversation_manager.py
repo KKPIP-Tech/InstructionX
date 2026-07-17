@@ -3,25 +3,84 @@
 管理对话的完整生命周期。
 插件开发者无需关心对话状态管理。
 
-注意：上下文窗口自动截断当前尚未实现，插件开发者需自行控制消息长度。
+特性：
+- 上下文窗口自动截断（基于 token 估算，保留 system prompt 与最近消息）
+- 消息"调用成功才入历史"（LLM 调用失败不产生孤儿消息）
+- 会话持久化（传入 storage_path 时启用，原子写 + 锁，变更即全量写）
+- 线程安全（内部字典与持久化均加锁）
 
 Classes:
     ConversationManager: 对话生命周期管理器
+
+Functions:
+    estimate_tokens: 文本 token 数估算器（可独立测试）
+    estimate_messages_tokens: 消息列表 token 数估算
 """
 
+import json
+import os
+import threading
 import uuid
 import logging
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Callable, TYPE_CHECKING
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Callable, Union
 
 from .types import Conversation, UsageStats, StreamChunk
-from .provider_interface import UsageInfo, Message, ChatResponse
+from .provider_interface import UsageInfo, Message
 from .llm_provider import get_llm_provider
-from .usage_record_store import get_usage_record_store
-from .types import UsageRecord
-import time
 
 logger = logging.getLogger(__name__)
+
+# 上下文截断时始终保留的最近消息条数
+_KEEP_RECENT_MESSAGES = 4
+
+# 默认最大上下文 token 数
+DEFAULT_MAX_CONTEXT_TOKENS = 120000
+
+
+def estimate_tokens(text: str) -> int:
+    """估算文本的 token 数
+
+    估算规则：中文/日文/韩文（CJK）字符按 ~1 token/字，
+    其他字符按 ~4 字符/token。
+
+    Args:
+        text: 待估算文本
+
+    Returns:
+        int: 估算的 token 数
+    """
+    if not text:
+        return 0
+    cjk_count = 0
+    for ch in text:
+        # CJK 统一表意文字、扩展A、日文平/片假名、韩文音节
+        if ('\u4e00' <= ch <= '\u9fff'
+                or '\u3400' <= ch <= '\u4dbf'
+                or '\u3040' <= ch <= '\u30ff'
+                or '\uac00' <= ch <= '\ud7a3'):
+            cjk_count += 1
+    other_count = len(text) - cjk_count
+    return cjk_count + (other_count + 3) // 4
+
+
+def estimate_messages_tokens(messages: List[Dict]) -> int:
+    """估算消息列表的总 token 数（含每条消息的结构开销）
+
+    Args:
+        messages: 消息字典列表
+
+    Returns:
+        int: 估算的总 token 数
+    """
+    total = 0
+    for m in messages:
+        content = m.get("content") if isinstance(m, dict) else getattr(m, "content", "")
+        if isinstance(content, str):
+            total += estimate_tokens(content)
+        total += 4  # 每条消息的 role/结构开销
+    return total
 
 
 class ConversationManager:
@@ -29,27 +88,48 @@ class ConversationManager:
 
     管理所有对话的生命周期：
     - 创建 / 获取 / 列出 / 删除对话
-    - 发送消息（同步 / 流式）
-    - Token 累计与用量记录
+    - 发送消息（同步 / 流式），上下文超限时自动截断
+    - Token 累计与费用估算
     - 用量统计查询
+    - 会话持久化（可选，传入 storage_path 启用）
+
+    消息历史语义：LLM 调用成功才把用户消息与助手回复写入历史，
+    调用失败时历史保持不变（无孤儿消息）。
     """
 
     def __init__(
         self,
         pricing: Optional[Dict[str, Dict]] = None,
+        max_context_tokens: Optional[int] = DEFAULT_MAX_CONTEXT_TOKENS,
+        storage_path: Optional[Union[str, Path]] = None,
         **kwargs,
     ):
         """初始化对话管理器
 
         Args:
-            pricing: 定价表（格式：{provider: {chat: {input_per_1k, output_per_1k}}}，单位：元/百万token）
+            pricing: 定价表。新契约单位：元/百万 tokens（per_1m），结构
+                {provider: {"models": {model: {"input": x, "output": y}},
+                            "chat": {"input": x, "output": y}}}
+                兼容旧格式（元/千 tokens，键 input_per_1k/output_per_1k）
+            max_context_tokens: 最大上下文 token 估算阈值，默认 120000；
+                发送前超出阈值时从最早的用户/助手消息开始丢弃
+                （system prompt 与最近几条消息保留）
+            storage_path: 会话持久化文件路径（如 data/conversations.json）；
+                为 None 时不持久化（纯内存模式）
             **kwargs: 兼容旧参数（如 max_context），已废弃但会被吸收
         """
         self._conversations: Dict[str, Conversation] = {}
+        self._lock = threading.RLock()
         self._llm = get_llm_provider()
         self._pricing = pricing or {}
         self._logger = logger
-        self._usage_store = get_usage_record_store()
+        self._max_context_tokens = (
+            max_context_tokens if max_context_tokens is not None
+            else DEFAULT_MAX_CONTEXT_TOKENS
+        )
+        self._storage_path = Path(storage_path) if storage_path else None
+        if self._storage_path:
+            self._load_conversations()
 
     # ==================== 对话 CRUD ====================
 
@@ -72,15 +152,17 @@ class ConversationManager:
             str: 新对话的唯一 ID
         """
         conv_id = str(uuid.uuid4())
-        self._conversations[conv_id] = Conversation(
-            id=conv_id,
-            created_at=datetime.now(),
-            updated_at=datetime.now(),
-            system_prompt=system_prompt,
-            provider=provider,
-            model=model,
-            metadata=metadata or {},
-        )
+        with self._lock:
+            self._conversations[conv_id] = Conversation(
+                id=conv_id,
+                created_at=datetime.now(),
+                updated_at=datetime.now(),
+                system_prompt=system_prompt,
+                provider=provider,
+                model=model,
+                metadata=metadata or {},
+            )
+        self._save_conversations()
         self._logger.info(f"Conversation created: {conv_id}")
         return conv_id
 
@@ -93,7 +175,8 @@ class ConversationManager:
         Returns:
             Optional[Conversation]: 对话对象，不存在则返回 None
         """
-        return self._conversations.get(conversation_id)
+        with self._lock:
+            return self._conversations.get(conversation_id)
 
     def list_conversations(self) -> List[Conversation]:
         """列出所有对话
@@ -101,10 +184,11 @@ class ConversationManager:
         Returns:
             List[Conversation]: 对话列表
         """
-        return list(self._conversations.values())
+        with self._lock:
+            return list(self._conversations.values())
 
     def delete_conversation(self, conversation_id: str) -> bool:
-        """删除对话
+        """删除对话（同步从持久化文件中删除）
 
         Args:
             conversation_id: 对话 ID
@@ -112,11 +196,13 @@ class ConversationManager:
         Returns:
             bool: 是否成功删除
         """
-        if conversation_id in self._conversations:
+        with self._lock:
+            if conversation_id not in self._conversations:
+                return False
             del self._conversations[conversation_id]
-            self._logger.info(f"Conversation deleted: {conversation_id}")
-            return True
-        return False
+        self._save_conversations()
+        self._logger.info(f"Conversation deleted: {conversation_id}")
+        return True
 
     # ==================== 发送消息 ====================
 
@@ -129,59 +215,62 @@ class ConversationManager:
         max_tokens: Optional[int] = None,
         tools: Optional[List[Dict]] = None,
     ) -> tuple[str, Optional[UsageInfo]]:
-        """同步发送消息，自动追加到历史
+        """同步发送消息，调用成功后自动追加到历史
+
+        上下文超出 max_context_tokens 时自动从最早的用户/助手消息开始截断
+        （system prompt 与最近消息保留）。LLM 调用失败时历史保持不变。
 
         Args:
             conversation_id: 对话 ID
             content: 消息内容
             images: 图片 base64 列表（可选）
-            temperature: 温度参数
-            max_tokens: 最大 token 数
-            tools: 工具定义列表
+            temperature: 温度参数（可选，None 表示不指定）
+            max_tokens: 最大 token 数（可选，None 表示不指定）
+            tools: 工具定义列表（可选）
 
         Returns:
             tuple[str, Optional[UsageInfo]]: (响应内容, 用量信息)
         """
         conv = self._get_or_raise(conversation_id)
 
+        # 基于历史构建请求消息（此时不写入历史，调用成功才入历史）
         messages = conv.to_llm_format()
         user_msg: Dict[str, Any] = {"role": "user", "content": content}
         if images:
             user_msg["images"] = images
         messages.append(user_msg)
-        conv.add_message("user", content, images=images if images else None)
+        messages = self._truncate_messages(messages)
 
         msg_objs = [Message(**m) if isinstance(m, dict) else m for m in messages]
-        t0 = time.perf_counter()
+        # None 表示"不指定"，不传给底层（避免写入 payload 变成 null）
+        call_kwargs: Dict[str, Any] = {}
+        if temperature is not None:
+            call_kwargs["temperature"] = temperature
+        if max_tokens is not None:
+            call_kwargs["max_tokens"] = max_tokens
+        if tools is not None:
+            call_kwargs["tools"] = tools
+
+        # "default" 原样透传，由 LLMProvider 层解析；用量记录也在该层完成
         response = self._llm.chat(
             messages=msg_objs,
-            provider=conv.provider if conv.provider != "default" else None,
-            model=conv.model if conv.model != "default" else None,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            tools=tools,
+            provider=conv.provider or "default",
+            model=conv.model or "default",
+            conversation_id=conversation_id,
+            **call_kwargs,
         )
-        duration_ms = (time.perf_counter() - t0) * 1000
 
-        conv.add_message("assistant", response.content,
-                         getattr(response, 'usage', None))
-        if response.usage:
-            cost = self._estimate_cost(response.usage, conv.provider, conv.model)
+        # 调用成功才写入历史（避免孤儿消息）
+        usage = getattr(response, 'usage', None)
+        conv.add_message("user", content, images=images if images else None)
+        conv.add_message("assistant", response.content, usage)
+        if usage:
+            cost = self._estimate_cost(usage, conv.provider, conv.model)
             if cost:
                 conv.total_cost += cost
+        self._save_conversations()
 
-        record = self._build_usage_record(
-            usage=getattr(response, 'usage', None),
-            conversation_id=conversation_id,
-            provider=conv.provider,
-            model=conv.model,
-            is_stream=False,
-            duration_ms=duration_ms,
-        )
-        if record:
-            self._usage_store.record(record)
-
-        return response.content, getattr(response, 'usage', None)
+        return response.content, usage
 
     def stream_send_message(
         self,
@@ -195,14 +284,18 @@ class ConversationManager:
     ) -> tuple[str, Optional[UsageInfo]]:
         """流式发送消息，逐 chunk 通过 callback 回调
 
+        与 send_message 语义一致：LLM 调用成功才把消息写入历史。
+        底层流式回调契约 (chunk_text: str, done: bool) 在此适配为
+        对外的 StreamChunk 回调。
+
         Args:
             conversation_id: 对话 ID
             content: 消息内容
             images: 图片 base64 列表（可选）
-            callback: 流式回调函数
-            temperature: 温度参数
-            max_tokens: 最大 token 数
-            tools: 工具定义列表
+            callback: 流式回调函数（接收 StreamChunk）
+            temperature: 温度参数（可选，None 表示不指定）
+            max_tokens: 最大 token 数（可选，None 表示不指定）
+            tools: 工具定义列表（可选）
 
         Returns:
             tuple[str, Optional[UsageInfo]]: (完整响应内容, 用量信息)
@@ -214,19 +307,32 @@ class ConversationManager:
         if images:
             user_msg["images"] = images
         messages.append(user_msg)
+        messages = self._truncate_messages(messages)
 
-        full_content = []
+        full_content: List[str] = []
         last_usage: Optional[UsageInfo] = None
 
-        def stream_callback(cr: ChatResponse, done: bool):
+        def stream_callback(chunk: Any, done: bool):
+            """适配底层 (str, bool) 回调契约为对外 StreamChunk 回调
+
+            防御性兼容底层误传 ChatResponse 的情况（提取其 content/usage）。
+            """
             nonlocal last_usage
-            full_content.append(cr.content)
-            if cr.usage:
-                last_usage = cr.usage
+            if isinstance(chunk, str):
+                text = chunk
+            else:
+                text = getattr(chunk, "content", "") or ""
+                if not isinstance(text, str):
+                    text = str(text)
+                chunk_usage = getattr(chunk, "usage", None)
+                if isinstance(chunk_usage, UsageInfo):
+                    last_usage = chunk_usage
+            full_content.append(text)
             sc = StreamChunk(
-                content=cr.content,
+                content=text,
                 done=done,
                 full_response="".join(full_content),
+                usage=last_usage,
             )
             if callback:
                 try:
@@ -235,42 +341,90 @@ class ConversationManager:
                     self._logger.error(f"Stream callback error: {e}")
 
         msg_objs = [Message(**m) if isinstance(m, dict) else m for m in messages]
+        call_kwargs: Dict[str, Any] = {}
+        if temperature is not None:
+            call_kwargs["temperature"] = temperature
+        if max_tokens is not None:
+            call_kwargs["max_tokens"] = max_tokens
+        if tools is not None:
+            call_kwargs["tools"] = tools
 
-        t0 = time.perf_counter()
         try:
-            self._llm.stream_chat(
+            result = self._llm.stream_chat(
                 messages=msg_objs,
                 callback=stream_callback,
-                provider=conv.provider if conv.provider != "default" else None,
-                model=conv.model if conv.model != "default" else None,
-                temperature=temperature,
-                max_tokens=max_tokens,
-                tools=tools,
+                provider=conv.provider or "default",
+                model=conv.model or "default",
+                conversation_id=conversation_id,
+                **call_kwargs,
             )
         except Exception as e:
             sc = StreamChunk(content="", done=True, error=str(e))
             if callback:
-                callback(sc)
+                try:
+                    callback(sc)
+                except Exception:
+                    pass
             raise
-        duration_ms = (time.perf_counter() - t0) * 1000
 
-        final_content = "".join(full_content)
+        # 修复后的 LLMProvider.stream_chat 返回完整文本；
+        # 防御底层未返回文本时回退到回调拼接结果
+        final_content = result if isinstance(result, str) else "".join(full_content)
+
+        # 调用成功才写入历史（与 send_message 语义一致）
         conv.add_message("user", content, images=images if images else None)
         if final_content:
             conv.add_message("assistant", final_content, last_usage)
-
-        record = self._build_usage_record(
-            usage=last_usage,
-            conversation_id=conversation_id,
-            provider=conv.provider,
-            model=conv.model,
-            is_stream=True,
-            duration_ms=duration_ms,
-        )
-        if record:
-            self._usage_store.record(record)
+        if last_usage:
+            cost = self._estimate_cost(last_usage, conv.provider, conv.model)
+            if cost:
+                conv.total_cost += cost
+        self._save_conversations()
 
         return final_content, last_usage
+
+    # ==================== 内部方法 ====================
+
+    def _truncate_messages(self, messages: List[Dict]) -> List[Dict]:
+        """按 max_context_tokens 截断消息列表
+
+        保留全部 system 消息与最近 _KEEP_RECENT_MESSAGES 条消息，
+        从最早的用户/助手消息开始丢弃，直到估算总 token 低于阈值。
+
+        Args:
+            messages: 完整消息列表
+
+        Returns:
+            List[Dict]: 截断后的消息列表
+        """
+        if not self._max_context_tokens:
+            return messages
+        if estimate_messages_tokens(messages) <= self._max_context_tokens:
+            return messages
+
+        system_msgs = [m for m in messages
+                       if isinstance(m, dict) and m.get("role") == "system"]
+        convo_msgs = [m for m in messages
+                      if not (isinstance(m, dict) and m.get("role") == "system")]
+
+        dropped = 0
+        while len(convo_msgs) > _KEEP_RECENT_MESSAGES:
+            if estimate_messages_tokens(system_msgs + convo_msgs) <= self._max_context_tokens:
+                break
+            convo_msgs.pop(0)
+            dropped += 1
+
+        if dropped:
+            self._logger.info(
+                f"Context truncated: dropped {dropped} oldest messages "
+                f"(max_context_tokens={self._max_context_tokens})"
+            )
+        if estimate_messages_tokens(system_msgs + convo_msgs) > self._max_context_tokens:
+            self._logger.warning(
+                "Context still exceeds max_context_tokens after truncation "
+                "(system prompt 或最近消息过长)"
+            )
+        return system_msgs + convo_msgs
 
     def _estimate_cost(
         self,
@@ -278,9 +432,12 @@ class ConversationManager:
         provider: str,
         model: str
     ) -> Optional[float]:
-        """估算单次请求费用
+        """估算单次请求费用（元）
 
         优先查找模型级别定价，再回退到 Provider 级别定价。
+        新契约：键 "input"/"output"，单位 元/百万 tokens（per_1m），
+        费用 = tokens / 1_000_000 × 单价；
+        兼容旧格式：键 "input_per_1k"/"output_per_1k"，单位 元/千 tokens。
 
         Args:
             usage: 用量信息
@@ -296,39 +453,19 @@ class ConversationManager:
         # 优先查找模型级别定价
         model_pricing = provider_pricing.get("models", {}).get(model, {})
         chat_pricing = provider_pricing.get("chat", {})
+        input_tokens = usage.input_tokens or 0
+        output_tokens = usage.output_tokens or 0
+        # 新契约：per_1m（元/百万 tokens）
+        if any(k in model_pricing or k in chat_pricing for k in ("input", "output")):
+            input_price = model_pricing.get("input", chat_pricing.get("input", 0))
+            output_price = model_pricing.get("output", chat_pricing.get("output", 0))
+            return (input_tokens / 1_000_000 * input_price
+                    + output_tokens / 1_000_000 * output_price)
+        # 旧格式回退：per_1k（元/千 tokens）
         input_price = model_pricing.get("input_per_1k", chat_pricing.get("input_per_1k", 0))
         output_price = model_pricing.get("output_per_1k", chat_pricing.get("output_per_1k", 0))
-        return (usage.input_tokens or 0) / 1000 * input_price + \
-               (usage.output_tokens or 0) / 1000 * output_price
-
-    def _build_usage_record(
-        self,
-        usage,
-        conversation_id: str,
-        provider: str,
-        model: str,
-        is_stream: bool,
-        duration_ms: float,
-    ) -> Optional[UsageRecord]:
-        """构建用量记录"""
-        if usage is None:
-            return None
-        import uuid
-        cached_tokens = getattr(usage, 'cache_read_tokens', 0) or 0
-        return UsageRecord(
-            id=uuid.uuid4().hex,
-            timestamp=datetime.now(),
-            conversation_id=conversation_id,
-            provider=provider or "",
-            model=model or "",
-            input_tokens=usage.input_tokens or 0,
-            output_tokens=usage.output_tokens or 0,
-            total_tokens=usage.total_tokens or 0,
-            cached_tokens=cached_tokens,
-            cache_hit=cached_tokens > 0,
-            is_stream=is_stream,
-            duration_ms=round(duration_ms, 2),
-        )
+        return (input_tokens / 1000 * input_price
+                + output_tokens / 1000 * output_price)
 
     def _get_or_raise(self, conversation_id: str) -> Conversation:
         """获取对话，不存在则抛出 ValueError
@@ -342,33 +479,91 @@ class ConversationManager:
         Raises:
             ValueError: 对话不存在
         """
-        conv = self._conversations.get(conversation_id)
+        with self._lock:
+            conv = self._conversations.get(conversation_id)
         if not conv:
             raise ValueError(f"Conversation not found: {conversation_id}")
         return conv
+
+    # ==================== 会话持久化 ====================
+
+    def _load_conversations(self) -> None:
+        """从持久化文件加载会话（初始化时自动调用）
+
+        文件不存在或损坏时按空会话处理，不抛出异常。
+        """
+        if not self._storage_path or not self._storage_path.exists():
+            return
+        try:
+            with open(self._storage_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except (json.JSONDecodeError, IOError) as e:
+            self._logger.warning(f"会话持久化文件读取失败，按空会话处理: {e}")
+            return
+        loaded = 0
+        with self._lock:
+            for d in data.get("conversations", []):
+                try:
+                    conv = Conversation.from_dict(d)
+                    self._conversations[conv.id] = conv
+                    loaded += 1
+                except Exception as e:
+                    self._logger.warning(f"跳过损坏的会话记录: {e}")
+        if loaded:
+            self._logger.info(
+                f"Loaded {loaded} conversations from {self._storage_path}")
+
+    def _save_conversations(self) -> None:
+        """把全部会话原子写入持久化文件（临时文件 + os.replace）
+
+        每次对话变更后全量写（会话数量少，简单可靠）。
+        未配置 storage_path 时为空操作。
+        """
+        if not self._storage_path:
+            return
+        with self._lock:
+            data = {
+                "version": 1,
+                "conversations": [c.to_dict() for c in self._conversations.values()],
+            }
+            try:
+                self._storage_path.parent.mkdir(parents=True, exist_ok=True)
+                temp_file = self._storage_path.with_suffix(".json.tmp")
+                with open(temp_file, "w", encoding="utf-8") as f:
+                    json.dump(data, f, ensure_ascii=False, indent=2)
+                os.replace(temp_file, self._storage_path)
+            except IOError as e:
+                self._logger.error(f"会话持久化写入失败: {e}")
 
     # ==================== 用量统计 ====================
 
     def get_usage_stats(
         self,
         conversation_id: Optional[str] = None
-    ) -> UsageStats:
+    ) -> Optional[UsageStats]:
         """获取用量统计
 
         Args:
             conversation_id: 对话 ID（可选，为 None 时返回全局统计）
 
         Returns:
-            UsageStats: 用量统计
+            Optional[UsageStats]: 用量统计；指定了不存在的 conversation_id
+                时返回 None。request_count 语义为消息条数。
         """
         stats = UsageStats()
-        convs = ([self._conversations[conversation_id]]
-                 if conversation_id else self._conversations.values())
-        for conv in convs:
-            stats.total_tokens += conv.total_tokens
-            stats.total_cost += conv.total_cost
-            stats.by_provider[conv.provider] = (
-                stats.by_provider.get(conv.provider, 0) + conv.total_cost
-            )
-        stats.request_count = sum(len(c.messages) for c in convs)
+        with self._lock:
+            if conversation_id:
+                conv = self._conversations.get(conversation_id)
+                if conv is None:
+                    return None
+                convs = [conv]
+            else:
+                convs = list(self._conversations.values())
+            for conv in convs:
+                stats.total_tokens += conv.total_tokens
+                stats.total_cost += conv.total_cost
+                stats.by_provider[conv.provider] = (
+                    stats.by_provider.get(conv.provider, 0) + conv.total_cost
+                )
+            stats.request_count = sum(len(c.messages) for c in convs)
         return stats

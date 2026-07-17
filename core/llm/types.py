@@ -87,6 +87,58 @@ class Conversation:
             if usage.total_cost:
                 self.total_cost += usage.total_cost
 
+    def to_dict(self) -> Dict[str, Any]:
+        """序列化为可 JSON 持久化的字典
+
+        Returns:
+            Dict[str, Any]: 包含全部会话字段的字典（时间字段为 ISO 格式字符串）
+        """
+        return {
+            "id": self.id,
+            "created_at": self.created_at.isoformat(),
+            "updated_at": self.updated_at.isoformat(),
+            "system_prompt": self.system_prompt,
+            "messages": self.messages,
+            "total_tokens": self.total_tokens,
+            "total_cost": self.total_cost,
+            "provider": self.provider,
+            "model": self.model,
+            "metadata": self.metadata,
+        }
+
+    @classmethod
+    def from_dict(cls, d: Dict[str, Any]) -> "Conversation":
+        """从字典反序列化为 Conversation 对象
+
+        Args:
+            d: to_dict() 产出的字典
+
+        Returns:
+            Conversation: 会话对象
+        """
+        def _parse_dt(value) -> datetime:
+            if isinstance(value, datetime):
+                return value
+            if isinstance(value, str):
+                try:
+                    return datetime.fromisoformat(value)
+                except ValueError:
+                    pass
+            return datetime.now()
+
+        return cls(
+            id=d.get("id", ""),
+            created_at=_parse_dt(d.get("created_at")),
+            updated_at=_parse_dt(d.get("updated_at")),
+            system_prompt=d.get("system_prompt"),
+            messages=list(d.get("messages", [])),
+            total_tokens=d.get("total_tokens", 0),
+            total_cost=d.get("total_cost", 0.0),
+            provider=d.get("provider", ""),
+            model=d.get("model", ""),
+            metadata=dict(d.get("metadata", {})),
+        )
+
 
 @dataclass
 class ToolResult:
