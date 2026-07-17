@@ -467,3 +467,95 @@ class TestChatWithToolsStream:
 
         # stream_chat should have been called (since tools are registered)
         mock_llm.stream_chat.assert_called_once()
+
+
+# ===========================================================================
+# Test: ToolRegistry — replace parameter
+# ===========================================================================
+
+class TestToolRegistryReplace:
+    def test_register_replace_false_raises_on_duplicate(self):
+        """replace=False 时重复注册同名工具抛出 ValueError。"""
+        registry = ToolRegistry()
+
+        def h1(): pass
+        def h2(): pass
+
+        registry.register("tool", "desc", {}, h1)
+        with pytest.raises(ValueError, match="Tool already registered: tool"):
+            registry.register("tool", "new desc", {}, h2)
+
+    def test_register_replace_true_overwrites_handler(self):
+        """replace=True 时覆盖旧处理函数。"""
+        registry = ToolRegistry()
+
+        def h1(): return "old"
+        def h2(): return "new"
+
+        registry.register("tool", "desc", {}, h1)
+        registry.register("tool", "desc", {}, h2, replace=True)
+
+        assert registry.get_handler("tool") is h2
+        assert registry.get_tools()[0]["function"]["description"] == "desc"
+
+
+# ===========================================================================
+# Test: ToolCallExecutor — invalid arguments & parallel tool calls
+# ===========================================================================
+
+class TestToolCallExecutorEdgeCases:
+    def test_invalid_arguments_produces_error_tool_result(self):
+        """参数 JSON 非法时，ToolResult 携带错误信息。"""
+        response = ChatResponse(
+            content="",
+            model="test",
+            tool_calls=[{
+                "id": "call_1",
+                "function": {"name": "calc", "arguments": "not json"}
+            }]
+        )
+        final_response = ChatResponse(content="done", model="test", tool_calls=[])
+        mock_llm = MagicMock()
+        mock_llm.chat.side_effect = [response, final_response]
+
+        registry = ToolRegistry()
+        registry.register("calc", "calc", {}, lambda **kw: "ok")
+
+        executor = ToolCallExecutor(llm_service=mock_llm, tool_registry=registry)
+        _, tool_results, _ = executor.chat_with_tools([{"role": "user", "content": "x"}])
+
+        assert len(tool_results) == 1
+        assert tool_results[0].error is not None
+        assert "invalid arguments JSON" in tool_results[0].error
+        assert tool_results[0].arguments == {}
+
+    def test_parallel_tool_calls_produce_single_assistant_message(self):
+        """多个 tool_calls 合并为一条 assistant 消息后紧跟多条 tool 消息。"""
+        tool_response = ChatResponse(
+            content="",
+            model="test",
+            tool_calls=[
+                {"id": "call_a", "function": {"name": "add", "arguments": '{"x":1}'}},
+                {"id": "call_b", "function": {"name": "sub", "arguments": '{"x":2}'}},
+            ]
+        )
+        final_response = ChatResponse(content="ok", model="test", tool_calls=[])
+        mock_llm = MagicMock()
+        mock_llm.chat.side_effect = [tool_response, final_response]
+
+        registry = ToolRegistry()
+        registry.register("add", "add", {}, lambda x: x + 1)
+        registry.register("sub", "sub", {}, lambda x: x - 1)
+
+        executor = ToolCallExecutor(llm_service=mock_llm, tool_registry=registry)
+        messages = [{"role": "user", "content": "calc"}]
+        result_msgs, tool_results, _ = executor.chat_with_tools(messages)
+
+        roles = [m["role"] for m in result_msgs]
+        # 期望序列：user, assistant(携带2个tool_calls), tool, tool, assistant(最终回复)
+        assert roles == ["user", "assistant", "tool", "tool", "assistant"]
+        assistant_msg = result_msgs[1]
+        assert len(assistant_msg["tool_calls"]) == 2
+        tool_ids = [m["tool_call_id"] for m in result_msgs if m["role"] == "tool"]
+        assert set(tool_ids) == {"call_a", "call_b"}
+        assert len(tool_results) == 2
