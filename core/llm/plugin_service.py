@@ -1,7 +1,7 @@
 """LLM 插件服务层 — 第三方插件开发者主入口
 
 这是插件开发者使用 LLM 能力的唯一入口，整合了：
-- 对话管理（历史、费用；上下文自动截断当前未实现）
+- 对话管理（历史、费用、上下文自动截断、会话持久化）
 - 工具调用自动化
 - 向量嵌入
 - 多模态（图像生成、语音合成）
@@ -36,9 +36,11 @@
 """
 
 import base64
+import copy
 import threading
 import logging
 import mimetypes
+from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from .conversation_manager import ConversationManager
@@ -51,8 +53,14 @@ from .provider_interface import Message
 from .llm_provider import get_llm_provider
 from .config import LLMConfig
 from .pricing import DEFAULT_PRICING
+from .exceptions import ConfigurationError
 
 logger = logging.getLogger(__name__)
+
+# 会话持久化默认路径：项目根目录/data/conversations.json
+_DEFAULT_CONVERSATION_STORAGE = (
+    Path(__file__).resolve().parent.parent.parent / "data" / "conversations.json"
+)
 
 
 class LLMPluginService:
@@ -80,8 +88,9 @@ class LLMPluginService:
         """
         self._llm = get_llm_provider()
         self._config = LLMConfig()
-        # 构建定价表，将 custom_models 中的模型级别定价同步注入
-        effective_pricing = (pricing or DEFAULT_PRICING).copy()
+        # 构建定价表（深拷贝，避免污染全局 DEFAULT_PRICING），
+        # 并将 custom_models 中的模型级别定价同步注入（仅在构造时执行一次）
+        effective_pricing = copy.deepcopy(pricing or DEFAULT_PRICING)
         for name, cfg in self._config.get_all_providers().items():
             custom_models = cfg.extra.get("custom_models", []) if hasattr(cfg, "extra") else []
             if not custom_models:
@@ -94,16 +103,25 @@ class LLMPluginService:
                 model_id = m.get("id")
                 if not model_id:
                     continue
-                input_price = m.get("input_price_per_1k", 0)
-                output_price = m.get("output_price_per_1k", 0)
-                if input_price or output_price:
+                # 新契约：per_1m（元/百万 tokens），键 input/output
+                if "input" in m or "output" in m:
                     effective_pricing[name]["models"][model_id] = {
-                        "input_per_1k": input_price,
-                        "output_per_1k": output_price,
+                        "input": m.get("input", 0),
+                        "output": m.get("output", 0),
                     }
+                else:
+                    # 旧字段回退：per_1k（元/千 tokens）
+                    input_price = m.get("input_price_per_1k", 0)
+                    output_price = m.get("output_price_per_1k", 0)
+                    if input_price or output_price:
+                        effective_pricing[name]["models"][model_id] = {
+                            "input_per_1k": input_price,
+                            "output_per_1k": output_price,
+                        }
         self._conversation_mgr = ConversationManager(
-            max_context=max_context,
+            max_context_tokens=max_context,
             pricing=effective_pricing,
+            storage_path=_DEFAULT_CONVERSATION_STORAGE,
         )
         self._tool_executor = ToolCallExecutor(self)
         self._shared_tool_registry = ToolRegistry()
@@ -238,13 +256,19 @@ class LLMPluginService:
             ChatResponse: LLM 响应对象
         """
         msg_objs = [Message(**m) if isinstance(m, dict) else m for m in messages]
+        # "default" 原样透传，由 LLMProvider 层解析；None 可选参数不下传
+        call_kwargs: Dict[str, Any] = {}
+        if temperature is not None:
+            call_kwargs["temperature"] = temperature
+        if max_tokens is not None:
+            call_kwargs["max_tokens"] = max_tokens
+        if tools is not None:
+            call_kwargs["tools"] = tools
         return self._llm.chat(
             messages=msg_objs,
-            provider=provider if provider != "default" else None,
-            model=model if model != "default" else None,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            tools=tools,
+            provider=provider,
+            model=model,
+            **call_kwargs,
         )
 
     def stream_chat(
@@ -256,7 +280,7 @@ class LLMPluginService:
         temperature: Optional[float] = None,
         max_tokens: Optional[int] = None,
         tools: Optional[List[Dict]] = None,
-    ):
+    ) -> str:
         """流式 chat（无对话状态管理）
 
         Args:
@@ -267,16 +291,25 @@ class LLMPluginService:
             temperature: 温度参数
             max_tokens: 最大 token 数
             tools: 工具定义列表
+
+        Returns:
+            str: 拼接后的完整响应文本
         """
         msg_objs = [Message(**m) if isinstance(m, dict) else m for m in messages]
-        self._llm.stream_chat(
+        # "default" 原样透传，由 LLMProvider 层解析；None 可选参数不下传
+        call_kwargs: Dict[str, Any] = {}
+        if temperature is not None:
+            call_kwargs["temperature"] = temperature
+        if max_tokens is not None:
+            call_kwargs["max_tokens"] = max_tokens
+        if tools is not None:
+            call_kwargs["tools"] = tools
+        return self._llm.stream_chat(
             messages=msg_objs,
             callback=callback,
-            provider=provider if provider != "default" else None,
-            model=model if model != "default" else None,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            tools=tools,
+            provider=provider,
+            model=model,
+            **call_kwargs,
         )
 
     # ==================== 工具调用 ====================
@@ -358,10 +391,11 @@ class LLMPluginService:
         Returns:
             List[List[float]]: 嵌入向量列表
         """
+        # "default" 原样透传，由 LLMProvider 层解析
         return self._llm.embed(
             texts=texts,
-            provider=provider if provider != "default" else None,
-            model=model if model != "default" else None,
+            provider=provider,
+            model=model,
         )
 
     # ==================== 多模态 ====================
@@ -385,20 +419,40 @@ class LLMPluginService:
 
         Returns:
             ImageResult: 生成的图像结果
+
+        Raises:
+            ConfigurationError: Provider 不存在时抛出
+            NotImplementedError: Provider 不支持图像生成时抛出（错误信息
+                会列出当前支持图像生成的 Provider）
         """
-        p = self._llm.get_provider(provider)
+        # "default" 走 LLMProvider 的 default 选择逻辑解析
+        resolved = self._llm.resolve_provider_name(provider, feature="chat")
+        p = self._llm.get_provider(resolved)
+        if p is None:
+            raise ConfigurationError(f"Provider not found: {resolved}")
         if not hasattr(p, 'generate_image'):
+            supported = [n for n, inst in self._llm.get_all_providers().items()
+                         if hasattr(inst, 'generate_image')]
+            hint = (f"，当前支持图像生成的 Provider: {', '.join(supported)}"
+                    if supported else "（当前没有任何 Provider 支持图像生成）")
             raise NotImplementedError(
-                f"Provider {provider} does not support image generation"
+                f"Provider '{resolved}' 不支持图像生成{hint}"
             )
         result = p.generate_image(prompt=prompt, model=model,
                                    size=size, quality=quality)
+        # 契约：provider 返回 types.ImageResult；兼容返回 dict 的旧实现
+        if isinstance(result, ImageResult):
+            if not result.provider:
+                result.provider = resolved
+            if not result.model:
+                result.model = model or ""
+            return result
         return ImageResult(
             url=result.get("url"),
             base64=result.get("b64_json"),
             revised_prompt=result.get("revised_prompt"),
             model=model or "",
-            provider=provider,
+            provider=resolved,
         )
 
     def text_to_speech(
@@ -418,22 +472,51 @@ class LLMPluginService:
 
         Returns:
             AudioResult: 语音合成结果
+
+        Raises:
+            ConfigurationError: Provider 不存在时抛出
+            NotImplementedError: Provider 不支持语音合成时抛出（错误信息
+                会列出当前支持 TTS 的 Provider）
         """
-        p = self._llm.get_provider(provider)
+        # "default" 走 LLMProvider 的 default 选择逻辑解析
+        resolved = self._llm.resolve_provider_name(provider, feature="chat")
+        p = self._llm.get_provider(resolved)
+        if p is None:
+            raise ConfigurationError(f"Provider not found: {resolved}")
         if not hasattr(p, 'text_to_speech'):
+            supported = [n for n, inst in self._llm.get_all_providers().items()
+                         if hasattr(inst, 'text_to_speech')]
+            hint = (f"，当前支持语音合成的 Provider: {', '.join(supported)}"
+                    if supported else "（当前没有任何 Provider 支持语音合成）")
             raise NotImplementedError(
-                f"Provider {provider} does not support TTS"
+                f"Provider '{resolved}' 不支持语音合成{hint}"
             )
         result = p.text_to_speech(text=text, model=model, voice=voice)
+        # 契约：provider 返回 types.AudioResult；兼容返回 dict 的旧实现
+        if isinstance(result, AudioResult):
+            if not result.provider:
+                result.provider = resolved
+            if not result.model:
+                result.model = model or ""
+            return result
         return AudioResult(
             audio_data=result.get("audio"),
             url=result.get("url"),
             duration_seconds=result.get("duration"),
             model=model or "",
-            provider=provider,
+            provider=resolved,
         )
 
     # ==================== 辅助方法 ====================
+
+    @property
+    def last_stream_response(self) -> Any:
+        """最近一次流式请求的聚合响应（供工具调用执行器提取 tool_calls）
+
+        Returns:
+            底层 LLMProvider 的 last_stream_response（ChatResponse 或 None）
+        """
+        return getattr(self._llm, "last_stream_response", None)
 
     def load_image_as_base64(self, file_path: str) -> str:
         """加载图片文件为 base64 字符串
@@ -455,8 +538,14 @@ class LLMPluginService:
             List[ProviderInfo]: Provider 信息列表
         """
         result = []
+        # 真实健康状态（LLMProvider 的轻量健康跟踪）；底层未实现时回退默认
+        get_health = getattr(self._llm, "get_provider_health", None)
         for name, p in self._llm.get_all_providers().items():
             models = self._llm.get_cached_models(name)
+            if callable(get_health):
+                is_healthy, last_error = get_health(name)
+            else:
+                is_healthy, last_error = True, None
             result.append(ProviderInfo(
                 name=name,
                 provider_type=getattr(p, "PROVIDER_TYPE", name),
@@ -470,18 +559,19 @@ class LLMPluginService:
                 current_chat_model=getattr(p, "chat_model", ""),
                 current_embedding_model=getattr(p, "embedding_model", ""),
                 models=models,
-                is_healthy=True,
+                is_healthy=is_healthy,
+                last_error=last_error,
             ))
         return result
 
-    def get_usage_stats(self, conversation_id: Optional[str] = None) -> UsageStats:
+    def get_usage_stats(self, conversation_id: Optional[str] = None) -> Optional[UsageStats]:
         """获取用量统计
 
         Args:
             conversation_id: 对话 ID（可选，为 None 时返回全局统计）
 
         Returns:
-            UsageStats: 用量统计
+            Optional[UsageStats]: 用量统计；指定的对话不存在时返回 None
         """
         return self._conversation_mgr.get_usage_stats(conversation_id)
 
@@ -511,9 +601,9 @@ class LLMPluginService:
         Returns:
             ILLM: 底层 Provider 实例
         """
-        return self._llm.get_provider(
-            provider if provider != "default" else None
-        )
+        # "default" 先经 LLMProvider 的 default 选择逻辑解析
+        resolved = self._llm.resolve_provider_name(provider, feature="chat")
+        return self._llm.get_provider(resolved)
 
 
 # ==================== 全局单例工厂函数 ====================
