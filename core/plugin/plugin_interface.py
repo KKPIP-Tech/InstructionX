@@ -14,6 +14,7 @@
 
 import sys
 import os
+import traceback
 import importlib.util
 from abc import ABC
 from typing import Optional, Tuple, TYPE_CHECKING
@@ -65,6 +66,7 @@ class IPlugin(_BaseIPlugin):
             插件的 Qt 用户界面控件
         """
         # 缓存命中且父控件未变，直接返回缓存的控件
+        # 注意：本方法必须在 GUI 线程中调用（QWidget.setParent 跨线程调用是未定义行为）
         if self._cached_widget is not None and self._cached_parent is parent:
             return self._cached_widget
 
@@ -112,14 +114,20 @@ class IPlugin(_BaseIPlugin):
                 return self._info_cache[1]
 
             # 重新加载
-            module_name = f"{plugin_dir.name}_information"
-            spec = importlib.util.spec_from_file_location(module_name, info_file)
-            if not (spec and spec.loader):
-                return None
+            # 模块命名与 PluginManager 一致（{parent}.{name}.information），
+            # 避免与 manager 加载的模块产生双实例；已有实例则复用
+            parent_pkg = plugin_dir.parent.name
+            module_name = f"{parent_pkg}.{plugin_dir.name}.information"
+            if module_name in sys.modules:
+                module = sys.modules[module_name]
+            else:
+                spec = importlib.util.spec_from_file_location(module_name, info_file)
+                if not (spec and spec.loader):
+                    return None
 
-            module = importlib.util.module_from_spec(spec)
-            sys.modules[module_name] = module
-            spec.loader.exec_module(module)
+                module = importlib.util.module_from_spec(spec)
+                sys.modules[module_name] = module
+                spec.loader.exec_module(module)
 
             from .plugin_info_interface import IPluginInfo
             plugin_info_class = None
@@ -139,7 +147,11 @@ class IPlugin(_BaseIPlugin):
             self._info_cache_path = str(info_file)
             return plugin_info
 
-        except (ImportError, AttributeError, Exception):
+        except Exception as e:
+            self._logger.warning(
+                get_name(),
+                f'Failed to load plugin info: {e}\n{traceback.format_exc()}'
+            )
             return None
 
     @property
