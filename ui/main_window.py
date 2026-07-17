@@ -4,32 +4,20 @@
 定义应用程序主窗口类，包含菜单栏、主布局和插件系统集成。
 """
 
-import os
-from copy import deepcopy
-import time
-from typing import Optional, Any, List, Dict
-from enum import Enum
-import ctypes
-from ctypes import wintypes
-
-import cv2
-import numpy as np
+from typing import Optional
 
 # ===================================================================
 # PySide 相关
 from PySide6.QtWidgets import (
-    QMainWindow, QWidget, QSplitter,
-    QHBoxLayout, QVBoxLayout, QLayoutItem,
-    QFileDialog, QMessageBox, QDialog, QPushButton, QLabel,
-    QApplication, QMenu, QGraphicsDropShadowEffect
+    QMainWindow, QWidget,
+    QVBoxLayout,
+    QDialog, QLabel,
+    QApplication, QGraphicsDropShadowEffect
 )
 from PySide6.QtGui import (
-    QAction, QIcon, QCursor, QMouseEvent, QColor
+    QAction, QCursor, QMouseEvent, QColor
 )
-from PySide6.QtCore import (
-    Qt, QDateTime, QThread,
-    Signal, Slot, QObject
-)
+from PySide6.QtCore import Qt
 
 # ===================================================================
 # 自定义工具
@@ -40,6 +28,7 @@ from ui.title_bar import CustomTitleBar
 from core.plugin.manager import PluginManager
 from core.data.data_provider import DataProvider, DataNamespace
 from utils.style_qss import get_style_qss
+from utils.logging_tools import LoggerManager, get_name
 
 
 class InstructionXMainWindow(QMainWindow):
@@ -54,11 +43,6 @@ class InstructionXMainWindow(QMainWindow):
     负责初始化插件系统、响应技能点击、管理工作区内容。
     """
 
-    # LLM Provider 切换 Signal，供其他组件监听
-    llm_provider_changed = Signal(str, str)  # (provider_name, model_name)
-
-    _LLM_PREF_KEY = "__app_llm__"
-
     def __init__(self):
         """
         初始化主窗口
@@ -67,6 +51,8 @@ class InstructionXMainWindow(QMainWindow):
         """
 
         super().__init__()
+
+        self._logger = LoggerManager()
 
         # 设置无边框窗口
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
@@ -110,6 +96,9 @@ class InstructionXMainWindow(QMainWindow):
         self._update_container_style()
 
         # 创建 Qt 阴影效果（替代 DWM 原生阴影，避免 WM_NCCALCSIZE 坐标错位）
+        # 性能取舍：QGraphicsDropShadowEffect 需对整个容器做离屏渲染，
+        # 低端机器上略有开销；但可彻底规避 DWM 方案的坐标错位问题，
+        # 且 blurRadius 控制在 20 以限制渲染成本。
         self._shadow_effect = QGraphicsDropShadowEffect(self)
         self._shadow_effect.setBlurRadius(20)
         self._shadow_effect.setColor(QColor(0, 0, 0, 80))
@@ -245,12 +234,19 @@ class InstructionXMainWindow(QMainWindow):
         if plugin_widget:
             self.work_area.add_widget(plugin_widget)
         else:
-            # 如果插件 widget 创建失败，显示错误信息
-            error_label = QLabel(f"无法加载插件：{plugin.plugin_name}")
+            # 如果插件 widget 创建失败，显示错误信息，并附带“重试”链接
+            # （保持向工作区添加 QLabel 的接口约定，重试通过链接触发）
+            error_label = QLabel(
+                f"无法加载插件：{plugin.plugin_name}　<a href='retry'>点击重试</a>"
+            )
             error_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
             error_label.setProperty("error", "true")
             error_label.style().unpolish(error_label)
             error_label.style().polish(error_label)
+            error_label.setToolTip("加载失败，点击“点击重试”重新加载插件")
+            error_label.linkActivated.connect(
+                lambda _link, p=plugin: self._on_skill_clicked(p)
+            )
             self.work_area.add_widget(error_label)
 
     def _open_plugin_order_dialog(self):
@@ -286,18 +282,10 @@ class InstructionXMainWindow(QMainWindow):
 
     def _on_github_plugin_installed(self, results):
         """GitHub 插件安装完成后的回调"""
-        from core.plugin.github_plugin_installer import InstallResult
         # 重新加载技能面板
         self.skills_panel.load_skills_from_manager()
-
-        # 提示用户
-        success_count = sum(1 for r in results if isinstance(r, InstallResult) and r.success)
-        if success_count > 0:
-            QMessageBox.information(
-                self,
-                "安装成功",
-                f"成功安装 {success_count} 个插件，请刷新页面或重新启动应用以加载新插件。"
-            )
+        # 注意：安装结果提示由 GitHubPluginInstallDialog 统一弹出，
+        # 此处不再重复弹窗（避免安装成功时出现双弹窗）。
 
     def _load_saved_theme(self):
         """从 DataProvider 加载保存的主题设置"""
@@ -306,22 +294,23 @@ class InstructionXMainWindow(QMainWindow):
             # 注册应用配置插件（如果不存在）
             try:
                 provider.register_plugin("__app_config__", "AppConfig")
-            except:
-                pass  # 已存在则忽略
-            
+            except Exception:
+                pass  # 已注册过属正常情况，忽略
+
             # 读取保存的主题
             saved_theme = provider.get_plugin_data(
                 "__app_config__", "theme",
                 DataNamespace.PRIVATE, "auto"
             )
-            
+
             # 如果保存的主题不是 auto，则应用它
             if saved_theme != "auto":
                 from utils.style_qss import set_style_qss_theme
                 self._current_theme = saved_theme
                 set_style_qss_theme(QApplication.instance(), saved_theme)  # type: ignore
-        except Exception:
-            pass  # 如果加载失败，使用默认主题
+        except Exception as e:
+            # 加载失败时使用默认主题，但不静默吞掉错误
+            self._logger.warning(get_name(), f"加载保存的主题设置失败，使用默认主题: {e}")
 
     def _save_theme(self, theme: str):
         """保存主题设置到 DataProvider"""
@@ -330,15 +319,16 @@ class InstructionXMainWindow(QMainWindow):
             # 确保应用配置插件已注册
             try:
                 provider.register_plugin("__app_config__", "AppConfig")
-            except:
-                pass  # 已存在则忽略
-            
+            except Exception:
+                pass  # 已注册过属正常情况，忽略
+
             provider.set_plugin_data(
                 "__app_config__", "theme",
                 theme, DataNamespace.PRIVATE, notify=False
             )
-        except Exception:
-            pass  # 如果保存失败，忽略错误
+        except Exception as e:
+            # 保存失败不阻断主题切换，但记录日志便于排查
+            self._logger.warning(get_name(), f"保存主题设置失败: {e}")
 
     def _update_theme_action_text(self):
         """更新主题菜单项文字，显示当前主题"""
@@ -404,113 +394,6 @@ class InstructionXMainWindow(QMainWindow):
         usage_action.triggered.connect(self._open_usage_panel)
         self._ai_menu.addAction(usage_action)
 
-    def _rebuild_quick_provider_menu(self):
-        """动态构建快速切换 Provider 子菜单"""
-        from core.llm import get_llm_plugin_service
-        svc = get_llm_plugin_service()
-        providers = svc.get_available_providers()
-        saved_provider, _ = self._load_llm_preference()
-
-        self._quick_provider_menu.clear()
-        self._quick_provider_actions.clear()
-
-        if not providers:
-            a = QAction("无可用 Provider", self)
-            a.setEnabled(False)
-            self._quick_provider_menu.addAction(a)
-            return
-
-        for p in providers:
-            if not p.enabled_chat:
-                continue
-            action = QAction(p.name, self)
-            action.setCheckable(True)
-            action.setChecked(p.name == saved_provider)
-            action.setData(p.name)
-
-            # 能力标记
-            flags = []
-            if p.supports_vision:
-                flags.append("👁")
-            if p.supports_function_calling:
-                flags.append("🔧")
-            display_name = p.name
-            if flags:
-                display_name = f"{p.name} ({' '.join(flags)})"
-            if not p.is_healthy:
-                display_name += " ⚠️"
-            action.setText(display_name)
-
-            action.triggered.connect(
-                lambda checked, name=p.name: self._on_quick_switch_provider(name)
-            )
-            self._quick_provider_menu.addAction(action)
-            self._quick_provider_actions[p.name] = action
-
-    def _on_quick_switch_provider(self, provider_name: str):
-        """快速切换 Provider"""
-        for name, action in self._quick_provider_actions.items():
-            action.setChecked(name == provider_name)
-
-        _, saved_model = self._load_llm_preference()
-        self._save_llm_preference(provider_name, saved_model)
-        self.llm_provider_changed.emit(provider_name, saved_model)
-
-
-    def _show_llm_usage_stats(self):
-        """显示用量统计对话框"""
-        from core.llm import get_llm_plugin_service
-        from PySide6.QtWidgets import QDialog, QVBoxLayout, QLabel
-
-        svc = get_llm_plugin_service()
-        stats = svc.get_usage_stats()
-
-        dialog = QDialog(self)
-        dialog.setWindowTitle("LLM 用量统计")
-        dialog.setMinimumWidth(320)
-        layout = QVBoxLayout(dialog)
-        layout.addWidget(QLabel(f"总 Token: {stats.total_tokens:,}"))
-        layout.addWidget(QLabel(f"总费用: ¥{stats.total_cost:.4f}"))
-        layout.addWidget(QLabel(f"请求次数: {stats.request_count}"))
-        if stats.by_provider:
-            layout.addWidget(QLabel("─── 按 Provider ───"))
-            for p, cost in stats.by_provider.items():
-                layout.addWidget(QLabel(f"  {p}: ¥{cost:.4f}"))
-        dialog.exec()
-
-    # ===============================================================
-    # LLM Preference 管理
-    # ===============================================================
-
-    def _load_llm_preference(self) -> tuple:
-        """加载上次选中的 provider 和 model"""
-        dp = DataProvider()
-        try:
-            dp.register_plugin(self._LLM_PREF_KEY, "LLMPrefs")
-        except:
-            pass  # 已存在则忽略
-        provider = dp.get_plugin_data(
-            self._LLM_PREF_KEY, "provider", DataNamespace.PRIVATE, ""
-        )
-        model = dp.get_plugin_data(
-            self._LLM_PREF_KEY, "model", DataNamespace.PRIVATE, ""
-        )
-        return provider, model
-
-    def _save_llm_preference(self, provider: str, model: str):
-        """保存选中的 provider 和 model"""
-        dp = DataProvider()
-        try:
-            dp.register_plugin(self._LLM_PREF_KEY, "LLMPrefs")
-        except:
-            pass  # 已存在则忽略
-        dp.set_plugin_data(
-            self._LLM_PREF_KEY, "provider", provider, DataNamespace.PRIVATE
-        )
-        dp.set_plugin_data(
-            self._LLM_PREF_KEY, "model", model, DataNamespace.PRIVATE
-        )
-
     def _update_container_style(self):
         """更新容器样式（圆角/最大化状态），适配当前主题"""
         colors = self._style_qss.colors()
@@ -550,31 +433,9 @@ class InstructionXMainWindow(QMainWindow):
     def changeEvent(self, event):
         """监听窗口状态变化，更新标题栏按钮和阴影"""
         if event.type() == event.Type.WindowStateChange:
-            colors = self._style_qss.colors()
-            window_bg = colors.get('window', '#202020')
-
-            if self.isMaximized() or self.isFullScreen():
-                self._title_bar.set_maximized(True)
-                self._container.setStyleSheet(f"""
-                    QWidget#mainContainer {{
-                        background-color: {window_bg};
-                        border-radius: 0px;
-                    }}
-                """)
-                if hasattr(self, '_shadow_effect') and self._shadow_effect:
-                    self._shadow_effect.setEnabled(False)
-            else:
-                self._title_bar.set_maximized(False)
-                border_color = colors.get('borderLight', '#3C3C3C')
-                self._container.setStyleSheet(f"""
-                    QWidget#mainContainer {{
-                        background-color: {window_bg};
-                        border-radius: 8px;
-                        border: 1px solid {border_color};
-                    }}
-                """)
-                if hasattr(self, '_shadow_effect') and self._shadow_effect:
-                    self._shadow_effect.setEnabled(True)
+            self._title_bar.set_maximized(self.isMaximized() or self.isFullScreen())
+            # 容器圆角/阴影样式统一由 _update_container_style 处理，避免重复代码
+            self._update_container_style()
         super().changeEvent(event)
 
     # ===============================================================
@@ -709,11 +570,18 @@ class InstructionXMainWindow(QMainWindow):
         if 'bottom' in direction:
             new_height = start_geo.height() + delta.y()
 
-        # 应用最小尺寸限制
+        # 应用最小尺寸限制；从左/上边缘缩放被钳制时同步回推 x/y，
+        # 否则窗口右/下边缘会随鼠标继续移动，造成窗口整体漂移
         min_w = self.minimumWidth()
         min_h = self.minimumHeight()
-        new_width = max(new_width, min_w)
-        new_height = max(new_height, min_h)
+        if new_width < min_w:
+            if 'left' in direction:
+                new_x = start_geo.x() + start_geo.width() - min_w
+            new_width = min_w
+        if new_height < min_h:
+            if 'top' in direction:
+                new_y = start_geo.y() + start_geo.height() - min_h
+            new_height = min_h
 
         # 调整窗口位置和大小
         self.setGeometry(new_x, new_y, new_width, new_height)
