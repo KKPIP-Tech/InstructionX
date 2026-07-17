@@ -225,9 +225,9 @@ config/*
 !.gitkeep
 
 
-plugin/
-!__init__.py
-!.gitkeep
+# 官方插件安装目录(保留 __init__.py 的跟踪状态,不跟踪安装进来的插件内容)
+plugin/*/
+.playwright-mcp/
 
 # 忽略 ShowDoc 文档目录
 ShowDoc/
