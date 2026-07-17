@@ -103,11 +103,18 @@ class LLMPluginService:
                 model_id = m.get("id")
                 if not model_id:
                     continue
-                # 新契约：per_1m（元/百万 tokens），键 input/output
+                # 定价键优先级(均为 per_1m 元/百万 tokens):
+                #   简写 input/output > 标准 input_price_per_1m/output_price_per_1m
+                #   > 旧键 input_price_per_1k/output_price_per_1k(per_1k 回退)
                 if "input" in m or "output" in m:
                     effective_pricing[name]["models"][model_id] = {
                         "input": m.get("input", 0),
                         "output": m.get("output", 0),
+                    }
+                elif "input_price_per_1m" in m or "output_price_per_1m" in m:
+                    effective_pricing[name]["models"][model_id] = {
+                        "input": m.get("input_price_per_1m", 0),
+                        "output": m.get("output_price_per_1m", 0),
                     }
                 else:
                     # 旧字段回退：per_1k（元/千 tokens）
