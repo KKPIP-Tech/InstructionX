@@ -1,7 +1,8 @@
 """SiliconFlow Provider 实现模块
 
 该模块提供 SiliconFlow API 的接口实现。
-继承自 BaseProvider，实现聊天、嵌入、流式输出等功能。
+继承自 BaseProvider，聊天、嵌入、流式输出等通用逻辑复用基类模板方法，
+本模块仅保留模型能力推断、模型列表解析与图像生成实现。
 
 SiliconFlow API 文档: https://docs.siliconflow.cn/cn/api-reference/models/get-model-list
 
@@ -21,11 +22,12 @@ Classes:
     >>> response = provider.chat([Message("user", "你好")])
 """
 
-from typing import Dict, Any, Optional, List, Union, AsyncIterator
+from typing import Dict, Any, Optional, List
 
-from .base import BaseProvider
-from ..provider_interface import Message, ChatResponse, EmbeddingResponse, ModelInfo
-from ..exceptions import APIError
+from .base import BaseProvider, _keyword_in_model
+from ..provider_interface import ModelInfo
+from ..exceptions import ConfigurationError
+from ..types import ImageResult
 
 
 class SiliconFlowProvider(BaseProvider):
@@ -33,6 +35,8 @@ class SiliconFlowProvider(BaseProvider):
 
     SiliconFlow 大语言模型提供商实现，通过统一的 API 接口访问多种开源模型。
     支持从 API 动态获取模型列表。
+    聊天/嵌入/流式响应解析直接使用基类的 OpenAI 兼容实现
+    （含 tool_calls 解析与 Vision 消息转换）。
 
     Class Attributes:
         provider_type: 提供商类型标识 ("siliconflow")
@@ -46,6 +50,7 @@ class SiliconFlowProvider(BaseProvider):
         - /chat/completions: 聊天完成
         - /embeddings: 嵌入生成
         - /models: 模型列表
+        - /images/generations: 图像生成
 
     使用示例:
         >>> from core.llm.providers.siliconflow import SiliconFlowProvider
@@ -68,6 +73,9 @@ class SiliconFlowProvider(BaseProvider):
     support_embedding = True
     support_vision = True
 
+    # 图像生成默认模型（可被配置 image_model 覆盖）
+    DEFAULT_IMAGE_MODEL = "Kwai-Kolors/Kolors"
+
     # ==================== 初始化 ====================
 
     def __init__(self, config: Optional[Dict[str, Any]] = None, provider_name: str = ""):
@@ -82,9 +90,11 @@ class SiliconFlowProvider(BaseProvider):
         self._chat_endpoint = "/chat/completions"
         self._embedding_endpoint = "/embeddings"
         self._models_endpoint = "/models"
+        self._image_endpoint = "/images/generations"
 
     # ==================== 模型能力推断 ====================
 
+    # 关键词按非字母数字边界匹配，避免 "fc"/"vl" 之类的子串误判
     VISION_KEYWORDS = ["vision", "vl", "4v", "qwen2-vl", "cogview", "llava", "internvl"]
     FC_KEYWORDS = ["function", "fc", "tool", "deepseek"]
     RERANK_KEYWORDS = ["rerank"]
@@ -102,8 +112,8 @@ class SiliconFlowProvider(BaseProvider):
         """
         mid = model_id.lower()
         return {
-            "support_vision": any(k in mid for k in self.VISION_KEYWORDS),
-            "support_function_calling": any(k in mid for k in self.FC_KEYWORDS),
+            "support_vision": any(_keyword_in_model(mid, k) for k in self.VISION_KEYWORDS),
+            "support_function_calling": any(_keyword_in_model(mid, k) for k in self.FC_KEYWORDS),
             "context_length": self._estimate_context_length(model_id),
         }
 
@@ -178,7 +188,7 @@ class SiliconFlowProvider(BaseProvider):
 
             # 根据模型 ID 判断类型
             is_embedding = "embedding" in model_id.lower() or "bge-" in model_id.lower()
-            is_rerank = any(x in model_id.lower() for x in self.RERANK_KEYWORDS)
+            is_rerank = any(_keyword_in_model(model_id, x) for x in self.RERANK_KEYWORDS)
 
             if is_embedding:
                 models.append(ModelInfo(
@@ -222,310 +232,54 @@ class SiliconFlowProvider(BaseProvider):
 
         return models
 
-    # ==================== 请求载荷准备 ====================
+    # 聊天/嵌入/流式/异步接口均使用基类模板方法默认实现
+    # （OpenAI 兼容格式，含 tool_calls 解析与 Vision 消息转换）
 
-    def _prepare_chat_payload(
+    # ==================== 多模态：图像生成 ====================
+
+    def generate_image(
         self,
-        messages: List[Union[Message, Dict]],
+        prompt: str,
         model: Optional[str] = None,
-        temperature: float = 0.7,
-        max_tokens: Optional[int] = None,
-        stream: bool = False,
+        size: Optional[str] = None,
         **kwargs
-    ) -> Dict[str, Any]:
-        """准备聊天请求载荷
-
-        准备发送给 SiliconFlow API 的请求参数。
+    ) -> ImageResult:
+        """生成图像（POST /images/generations）
 
         Args:
-            messages: 消息列表
-            model: 模型名称
-            temperature: 温度参数
-            max_tokens: 最大 token 数
-            stream: 是否流式输出
-            **kwargs: 其他参数
+            prompt: 图像描述提示词
+            model: 图像生成模型（默认取配置 image_model 或 Kwai-Kolors/Kolors）
+            size: 图像尺寸（如 "1024x1024"）
+            **kwargs: 其他 API 参数（如 batch_size、num_inference_steps）
 
         Returns:
-            Dict[str, Any]: 请求载荷字典
-        """
-        prepared_messages = self._prepare_messages(messages)
-
-        payload: Dict[str, Any] = {
-            "model": model or self.chat_model,
-            "messages": prepared_messages,
-            "temperature": temperature,
-            "stream": stream,
-        }
-
-        if max_tokens:
-            payload["max_tokens"] = max_tokens
-
-        payload.update(kwargs)
-        return payload
-
-    # ==================== 响应解析 ====================
-
-    def _parse_chat_response(self, response: Dict[str, Any]) -> ChatResponse:
-        """解析聊天响应
-
-        从 SiliconFlow API 响应中提取聊天内容和思考过程。
-
-        Args:
-            response: API 响应字典
-
-        Returns:
-            ChatResponse: 聊天响应对象
+            ImageResult: 图像生成结果（url 或 base64 至少其一有值）
 
         Raises:
-            APIError: 当响应为空时抛出
+            ConfigurationError: 未配置图像生成模型时抛出
         """
-        choices = response.get("choices", [])
-        if not choices:
-            raise APIError("Empty response from SiliconFlow")
-
-        choice = choices[0]
-        message = choice.get("message", {})
-
-        return ChatResponse(
-            content=message.get("content", ""),
-            model=response.get("model", ""),
-            role=message.get("role", "assistant"),
-            reasoning_content=message.get("reasoning_content", ""),
-            tool_calls=message.get("tool_calls", []),
-            usage=self._parse_usage(response),
-            extra=response
-        )
-
-    def _parse_stream_response(self, data: Dict) -> ChatResponse:
-        """解析流式响应
-
-        从流式数据块中提取聊天内容和思考过程。
-
-        Args:
-            data: 流式数据块
-
-        Returns:
-            ChatResponse: 聊天响应对象
-        """
-        if data.get("choices"):
-            choices = data.get("choices", [])
-            if choices:
-                choice = choices[0]
-                delta = choice.get("delta", {})
-                return ChatResponse(
-                    content=delta.get("content", ""),
-                    model=data.get("model", ""),
-                    role=delta.get("role", "assistant"),
-                    reasoning_content=delta.get("reasoning_content", ""),
-                    tool_calls=delta.get("tool_calls", []),
-                    usage=self._parse_usage(data),
-                    extra=data
-                )
-        return ChatResponse(
-            content="",
-            model=data.get("model", ""),
-            tool_calls=[],
-            usage=self._parse_usage(data),
-            extra=data
-        )
-
-    # ==================== 同步 API ====================
-
-    def chat(
-        self,
-        messages: List[Union[Message, Dict]],
-        model: Optional[str] = None,
-        temperature: float = 0.7,
-        max_tokens: Optional[int] = None,
-        **kwargs
-    ) -> ChatResponse:
-        """发送聊天请求（同步）
-
-        向 SiliconFlow API 发送聊天请求，获取完整的响应文本。
-
-        Args:
-            messages: 消息列表
-            model: 模型名称（可选，默认使用配置中的模型）
-            temperature: 温度参数（默认 0.7）
-            max_tokens: 最大生成 token 数（可选）
-            **kwargs: 其他参数
-
-        Returns:
-            ChatResponse: 聊天响应对象
-        """
-        payload = self._prepare_chat_payload(
-            messages, model, temperature, max_tokens, stream=False, **kwargs
-        )
-        response = self._make_request("POST", self._chat_endpoint, data=payload)
-        return self._parse_chat_response(response)
-
-    def stream_chat(
-        self,
-        messages: List[Union[Message, Dict]],
-        model: Optional[str] = None,
-        temperature: float = 0.7,
-        max_tokens: Optional[int] = None,
-        callback=None,
-        **kwargs
-    ):
-        """发送流式聊天请求（同步）
-
-        向 SiliconFlow API 发送流式聊天请求，逐块获取响应。
-
-        Args:
-            messages: 消息列表
-            model: 模型名称
-            temperature: 温度参数
-            max_tokens: 最大 token 数
-            callback: 可选的回调函数
-            **kwargs: 其他参数
-
-        Returns:
-            生成器: 流式响应生成器
-        """
-        payload = self._prepare_chat_payload(
-            messages, model, temperature, max_tokens, stream=True, **kwargs
-        )
-        return self._make_stream_request(self._chat_endpoint, payload, callback)
-
-    def embed(
-        self,
-        texts: Union[str, List[str]],
-        model: Optional[str] = None,
-        **kwargs
-    ) -> List[EmbeddingResponse]:
-        """发送嵌入请求（同步）
-
-        将文本转换为向量嵌入。
-
-        Args:
-            texts: 单个文本或文本列表
-            model: 嵌入模型名称（可选，默认使用配置中的模型）
-            **kwargs: 其他参数
-
-        Returns:
-            List[EmbeddingResponse]: 嵌入响应列表
-        """
-        if isinstance(texts, str):
-            texts = [texts]
-
-        payload = {
-            "model": model or self.embedding_model,
-            "input": texts,
-        }
-        payload.update(kwargs)
-
-        response = self._make_request("POST", self._embedding_endpoint, data=payload)
-
-        embeddings = response.get("data", [])
-        return [
-            EmbeddingResponse(
-                embedding=item.get("embedding", []),
-                model=response.get("model", ""),
-                extra=item
+        model = model or self.config.get("image_model") or self.DEFAULT_IMAGE_MODEL
+        if not model:
+            raise ConfigurationError(
+                "未配置图像生成模型，请在提供商配置中设置 image_model "
+                "（如 Kwai-Kolors/Kolors）或调用时传入 model 参数"
             )
-            for item in embeddings
-        ]
 
-    # 使用基类统一的 get_models 实现
-
-    # ==================== 异步 API ====================
-
-    async def async_chat(
-        self,
-        messages: List[Union[Message, Dict]],
-        model: Optional[str] = None,
-        temperature: float = 0.7,
-        max_tokens: Optional[int] = None,
-        **kwargs
-    ) -> ChatResponse:
-        """异步发送聊天请求
-
-        Args:
-            messages: 消息列表
-            model: 模型名称
-            temperature: 温度参数
-            max_tokens: 最大 token 数
-            **kwargs: 其他参数
-
-        Returns:
-            ChatResponse: 聊天响应对象
-        """
-        payload = self._prepare_chat_payload(
-            messages, model, temperature, max_tokens, stream=False, **kwargs
-        )
-        response = await self._make_async_request("POST", self._chat_endpoint, data=payload)
-        return self._parse_chat_response(response)
-
-    async def async_stream_chat(
-        self,
-        messages: List[Union[Message, Dict]],
-        model: Optional[str] = None,
-        temperature: float = 0.7,
-        max_tokens: Optional[int] = None,
-        **kwargs
-    ) -> AsyncIterator[ChatResponse]:
-        """异步发送流式聊天请求
-
-        Args:
-            messages: 消息列表
-            model: 模型名称
-            temperature: 温度参数
-            max_tokens: 最大 token 数
-            **kwargs: 其他参数
-
-        Yields:
-            ChatResponse: 聊天响应块
-        """
-        payload = self._prepare_chat_payload(
-            messages, model, temperature, max_tokens, stream=True, **kwargs
-        )
-        async for response in self._make_async_stream_request(self._chat_endpoint, payload):
-            yield response
-
-    async def async_embed(
-        self,
-        texts: Union[str, List[str]],
-        model: Optional[str] = None,
-        **kwargs
-    ) -> List[EmbeddingResponse]:
-        """异步发送嵌入请求
-
-        Args:
-            texts: 文本或文本列表
-            model: 嵌入模型名称
-            **kwargs: 其他参数
-
-        Returns:
-            List[EmbeddingResponse]: 嵌入响应列表
-        """
-        if isinstance(texts, str):
-            texts = [texts]
-
-        payload = {
-            "model": model or self.embedding_model,
-            "input": texts,
-        }
+        payload: Dict[str, Any] = {"model": model, "prompt": prompt}
+        if size:
+            payload["image_size"] = size  # SiliconFlow 使用 image_size 字段
         payload.update(kwargs)
+        # 剔除 None 值，避免污染 API 请求
+        payload = {k: v for k, v in payload.items() if v is not None}
 
-        response = await self._make_async_request("POST", self._embedding_endpoint, data=payload)
+        response = self._make_request("POST", self._image_endpoint, data=payload)
 
-        embeddings = response.get("data", [])
-        return [
-            EmbeddingResponse(
-                embedding=item.get("embedding", []),
-                model=response.get("model", ""),
-                extra=item
-            )
-            for item in embeddings
-        ]
-
-    async def async_get_models(self) -> List[ModelInfo]:
-        """异步获取可用模型列表
-
-        返回同步版本的结果（因为底层也是调用同步 API）。
-
-        Returns:
-            List[ModelInfo]: 模型信息列表
-        """
-        return self.get_models()
+        data = response.get("data") or response.get("images") or []
+        item = data[0] if data else {}
+        return ImageResult(
+            url=item.get("url"),
+            base64=item.get("b64_json"),
+            revised_prompt=item.get("revised_prompt"),
+            model=model,
+            provider=self.provider_type,
+        )

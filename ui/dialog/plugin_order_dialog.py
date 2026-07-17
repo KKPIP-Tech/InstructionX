@@ -10,7 +10,7 @@ from PySide6.QtWidgets import (
     QPushButton, QFrame, QAbstractItemView, QAbstractItemDelegate, QStyle
 )
 from PySide6.QtCore import Qt, QSize, QMimeData, QByteArray, QRect
-from PySide6.QtGui import QFont, QDrag, QPixmap, QPainter, QIcon, QColor, QFontMetrics
+from PySide6.QtGui import QFont, QDrag, QPixmap, QPainter, QIcon, QColor, QFontMetrics, QPalette
 
 from core.plugin.manager import PluginManager
 
@@ -190,7 +190,8 @@ class PluginOrderDialog(QDialog):
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
         # 绘制序号文字（纯文本，无背景）
-        painter.setPen(QColor("#333333"))
+        # 使用调色板前景色，保证深色主题下可见（硬编码深色在深色主题下不可见）
+        painter.setPen(self.palette().color(QPalette.ColorRole.WindowText))
         font = QFont()
         font.setBold(True)
         font.setPointSize(10)
@@ -324,7 +325,9 @@ class PluginOrderDialog(QDialog):
 
     def _reset_order(self):
         """重置为默认顺序"""
-        # 清空当前顺序
+        # 注意：此处跨两级访问 plugin_manager.config_manager——
+        # PluginManager 未暴露“清空顺序”的公开接口，直接复用其内部
+        # config_manager.save_plugin_order([], []) 语义（行为不变）。
         self.plugin_manager.config_manager.save_plugin_order([], [])
 
         # 重新加载插件（使用默认顺序）

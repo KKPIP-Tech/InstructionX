@@ -185,8 +185,8 @@ class ModelInfo:
         support_function_calling: 是否支持函数调用
         context_length: 上下文窗口大小（token数）
         extra: 额外的模型参数
-        input_price_per_1k: 每百万 token 输入价格（元）
-        output_price_per_1k: 每百万 token 输出价格（元）
+        input_price_per_1k: 每百万 token 输入价格（元）（属性名为历史遗留，实际单位为 per_1m）
+        output_price_per_1k: 每百万 token 输出价格（元）（属性名为历史遗留，实际单位为 per_1m）
         provider: 所属提供商名称
     """
 
@@ -216,8 +216,8 @@ class ModelInfo:
             support_vision: 是否支持视觉，默认 False
             support_function_calling: 是否支持函数调用，默认 False
             context_length: 上下文窗口大小
-            input_price_per_1k: 每百万 token 输入价格（元）
-            output_price_per_1k: 每百万 token 输出价格（元）
+            input_price_per_1k: 每百万 token 输入价格（元）（per_1m，属性名为历史遗留）
+            output_price_per_1k: 每百万 token 输出价格（元）（per_1m，属性名为历史遗留）
             provider: 所属提供商名称
             **kwargs: 额外的模型参数
         """
@@ -431,9 +431,11 @@ class ILLM(ABC):
         pass
 
     def validate_config(self) -> bool:
-        """验证配置是否有效
+        """验证配置是否有效（仅格式校验，不代表连通性）
 
         检查提供商的必需配置项是否已填写。
+        注意：本方法不发起任何网络请求，返回 True 仅表示配置格式完整，
+        不代表 API 服务实际可用。
 
         Returns:
             bool: 配置是否有效（api_key 或 base_url 至少有一个）
@@ -590,14 +592,20 @@ class ILLM(ABC):
             self._session.close()
             self._session = None
         if self._async_session:
+            import asyncio
             try:
-                import asyncio
                 loop = asyncio.get_running_loop()
                 loop.create_task(self._async_session.close())
             except RuntimeError:
-                # No running event loop, use synchronous close
-                pass
+                # 无运行中的事件循环：新建临时循环完成关闭，避免 session 泄漏
+                try:
+                    asyncio.run(self._async_session.close())
+                except Exception:
+                    # session 原属事件循环已销毁，无法安全关闭，放弃以避免异常
+                    pass
             self._async_session = None
+            if hasattr(self, "_async_session_loop"):
+                self._async_session_loop = None
 
     async def async_close(self):
         """关闭异步连接

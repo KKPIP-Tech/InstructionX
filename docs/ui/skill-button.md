@@ -141,22 +141,51 @@ self.skill_description = description
 
 | 状态 | 说明 |
 |------|------|
-| 普通状态 | 默认透明背景 |
-| 悬停状态 | 半透明背景高亮 |
-| 激活状态 | 边框高亮（accent 色） |
+| 普通状态 | 默认透明背景，无边框 |
+| 悬停状态 | `{skillButtonHover}` 背景高亮，无边框 |
+| 激活状态 | 渐变背景 `qlineargradient`（左侧 4% 为 `{accent}`，其余为 `{controlFillSelected}`），无边框，`{skillButtonActiveText}` 文字颜色 |
 
 样式文件位于 `utils/style_qss/styles/custom.qss`：
 
 ```css
-SkillButton[active="true"] {
-    border: 2px solid {accent};
-    border-radius: 6px;
+/* 非激活状态 */
+SkillButton {
+    border: none;
+    border-radius: 8px;
     padding: 2px;
-    background-color: {controlFillSelected};
-    color: {accent};
+    background-color: transparent;
+    color: {windowText};
+    text-align: top;
+    font-size: 10px;
+}
+SkillButton:hover {
+    background-color: {skillButtonHover};
+    border: none;
+}
+SkillButton:pressed {
+    background-color: {controlFillPressed};
+    border: none;
+}
+
+/* 激活状态 */
+SkillButton[active="true"] {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+        stop:0 {accent}, stop:0.04 {accent},
+        stop:0.04 {controlFillSelected}, stop:1 {controlFillSelected});
+    border: none;
+    border-radius: 8px;
+    color: {skillButtonActiveText};
     text-align: top;
     font-weight: 500;
     font-size: 10px;
+    padding: 2px;
+}
+SkillButton[active="true"]:hover {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+        stop:0 {accent}, stop:0.04 {accent},
+        stop:0.04 {controlFillSelected}, stop:1 {controlFillSelected});
+    border: none;
+    padding: 2px;
 }
 ```
 

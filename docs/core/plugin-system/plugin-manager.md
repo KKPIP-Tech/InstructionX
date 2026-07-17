@@ -514,7 +514,7 @@ plugin._services = services  # 框架内部赋值（强制注入，与构造器�
 plugin.on_plugin_loaded()
 ```
 
-**注入时机说明**: `_create_plugin_services()` 在 `_load_plugin_from_directory()` 遍历每个插件时调用，而非全局一次性创建。这意味着每个插件加载时共享同一个 `PluginServices` 实例（DI 容器），因此旧版插件即便不使用 DI 也能通过 `get_llm_plugin_service()` 等单例函数访问服务。
+**注入时机说明**: `_create_plugin_services()` 在 `_load_plugin_from_directory()` 遍历每个插件时调用，因此**每个插件都会获得一个独立的 `PluginServices` 实例**。容器内部的各个核心服务（如 `llm_facade`、`data_provider`、`task_manager`、`mcp_manager`、`mcp_client`）本身是单例或由全局管理器提供，因此插件之间共享的是这些核心服务实例，而不是共享同一个 `PluginServices` 容器对象。这种设计让每个插件拥有独立的服务容器引用，同时保证核心服务状态全局一致。
 
 > **注意**：无论插件的 `__init__` 是否接收 `services` 参数，`PluginManager` 都会在实例化后通过
 > `plugin_instance._services = services` 强制注入服务容器。因此插件始终可以通过 `self._services`

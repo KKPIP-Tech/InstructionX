@@ -47,4 +47,19 @@ def create_qss_palette(theme: str = 'light') -> QPalette:
     palette.setColor(QPalette.ColorRole.Text, parse_color(colors['text']))
     palette.setColor(QPalette.ColorRole.PlaceholderText, parse_color(colors['textDisabled']))
 
+    # Disabled 颜色组：文本/按钮文本降灰，背景使用浅一档颜色，高亮降透明
+    disabled = QPalette.ColorGroup.Disabled
+    disabled_text = parse_color(colors['textDisabled'])
+    palette.setColor(disabled, QPalette.ColorRole.WindowText, disabled_text)
+    palette.setColor(disabled, QPalette.ColorRole.Text, disabled_text)
+    palette.setColor(disabled, QPalette.ColorRole.ButtonText, disabled_text)
+    palette.setColor(disabled, QPalette.ColorRole.PlaceholderText, disabled_text)
+    palette.setColor(disabled, QPalette.ColorRole.Window, parse_color(colors['window']))
+    palette.setColor(disabled, QPalette.ColorRole.Base, parse_color(colors['alternateBase']))
+    palette.setColor(disabled, QPalette.ColorRole.Button, parse_color(colors['button']))
+    disabled_highlight = parse_color(colors['highlight'])
+    disabled_highlight.setAlpha(120)  # 降透明表示禁用态高亮
+    palette.setColor(disabled, QPalette.ColorRole.Highlight, disabled_highlight)
+    palette.setColor(disabled, QPalette.ColorRole.HighlightedText, parse_color(colors['highlightedText']))
+
     return palette

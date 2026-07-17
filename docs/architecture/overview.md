@@ -14,7 +14,7 @@
 |------|------|
 | **PySide6** | Qt 图形界面框架 |
 | **Python 3.14** | 编程语言 |
-| **JSON** | 数据持久化 |
+| **SQLite** | 数据持久化（默认 SQLite + WAL；JSON 仅应急回退） |
 | **Threading** | 多线程支持 |
 
 ---
@@ -25,7 +25,7 @@
 graph TB
     subgraph MainWindow ["应用主窗口 InstructionXMainWindow"]
         direction TB
-        Menu[菜单栏] --> SP[SkillsPanel<br/>技能面板 最小105px / 最大115px]
+        Menu[菜单栏] --> SP[SkillsPanel<br/>技能面板 高度最小125px / 最大135px]
         SP --> Divider[分割线]
         Divider --> WA[WorkArea<br/>工作区]
     end
@@ -56,7 +56,9 @@ graph TB
     end
 
     subgraph Storage ["持久化层"]
-        DataJSON[data/data.json]
+        DB[data/data.db]
+        DBWAL[data.db-wal]
+        DBSHM[data.db-shm]
         TasksJSON[data/tasks.json]
         Assets[data/assets/]
         LLMConfig[config/llm_providers.json]
@@ -78,7 +80,9 @@ graph TB
     LLMP -->|LLM API| LLMConfig
     PM -->|插件加载| Plugins
     PM -->|MCP 工具同步| MCPM
-    DP -->|数据持久化| Storage
+    DP -->|数据持久化| DB
+    DBWAL -.->|WAL| DB
+    DBSHM -.->|WAL| DB
     BTM -->|任务存储| TasksJSON
     MCPM -->|配置| MCPConfig
 ```
@@ -105,7 +109,7 @@ graph TB
 **文件位置**: `core/data/data_provider.py`
 
 **职责**:
-- 插件数据持久化（JSON 文件 + 原子写入）
+- 插件数据持久化（SQLite + WAL，保留 JSON 应急开关）
 - 内存缓存管理
 - 命名空间隔离（PRIVATE / PUBLIC）
 - 发布/订阅通信机制
@@ -132,7 +136,7 @@ graph TB
 - `core/llm/plugin_service.py` — LLM 插件服务层（插件开发者入口）
 
 **LLMProvider（核心层）**:
-- 多提供商管理（MiniMax、SiliconFlow、GLM、Ollama）
+- 多提供商管理（MiniMax、SiliconFlow、GLM、Ollama、OpenAI）
 - 统一 API 接口（chat、stream_chat、embed）
 - 模型列表获取与缓存
 - Function Calling 支持
@@ -151,7 +155,7 @@ graph TB
 
 **职责**:
 - 对话生命周期管理（创建、更新、查询）
-- 自动上下文截断（保留 system + 最近 2/3 消息，超阈值 80% 自动截断）
+- 上下文截断（当前未实现：`max_context` 参数会被吸收但不生效）
 - Token 估算（中文字符按 1:1 计，英文按 4:1 估算）
 - 费用计算（基于 `DEFAULT_PRICING` 定价表）
 
@@ -271,7 +275,7 @@ sequenceDiagram
 
     A->>DP: set_plugin_data()
     DP->>DP: 更新缓存
-    DP->>DP: 写入磁盘
+    DP->>DP: 写入 SQLite
     A->>DP: get_plugin_data()
     DP-->>A: 返回数据
 
@@ -326,10 +330,10 @@ InstructionX/
 │   │   └── github_plugin_installer.py  # GitHub 插件安装器
 │   ├── data/                 # 数据层实现
 │   │   ├── data_provider.py # DataProvider（核心）
-│   │   ├── dao.py           # 预留：DAO 扩展
-│   │   ├── database_connection.py  # 预留：数据库连接
-│   │   ├── database_manager.py     # 预留：数据库管理
-│   │   └── sql_map.py       # 预留：SQL 映射
+│   │   ├── sqlite_backend.py # SQLite 后端（连接、DDL、事务、CRUD）
+│   │   ├── sql_map.py       # SQL 语句映射
+│   │   ├── schema_migrations.py # Schema 版本与迁移脚本
+│   │   └── __init__.py
 │   ├── task/                 # 后台任务实现
 │   │   ├── background_task.py
 │   │   ├── task_model.py
@@ -358,7 +362,8 @@ InstructionX/
 │           ├── minimax.py
 │           ├── siliconflow.py
 │           ├── glm.py
-│           └── ollama.py
+│           ├── ollama.py
+│           └── openai.py
 │
 ├── ui/                       # UI 模块
 │   ├── main_window.py       # 主窗口
@@ -386,7 +391,9 @@ InstructionX/
 ├── custom_plugin/            # 第三方插件（通过 GitHub 安装器获取，不再捆绑）
 │
 ├── data/                     # 数据存储
-│   ├── data.json
+│   ├── data.db               # SQLite 主数据库
+│   ├── data.db-wal           # WAL 日志（运行时自动生成）
+│   ├── data.db-shm           # WAL 共享内存索引（运行时自动生成）
 │   ├── tasks.json
 │   ├── llm_usage.json
 │   └── assets/
@@ -488,21 +495,17 @@ def get_mcp_manager() -> "MCPManager":
 
 ### 7.2 线程安全
 
-- DataProvider 使用双 `RLock`（`_file_lock` 文件写入锁 + `_subscription_lock` 订阅管理锁）双重锁机制（`core/data/data_provider.py:75-76`）
+- DataProvider 使用 `_file_lock`（`RLock`）保护数据库访问与缓存 + `_subscription_lock`（`Lock`）保护订阅表（`core/data/data_provider.py:81-82`）
 - BackgroundTaskManager 使用线程池
 
 ### 7.3 原子写入
 
-数据持久化采用临时文件 + 原子重命名：
+`DataProvider` 默认使用 SQLite 事务保证原子性：
 
-```python
-# 写入临时文件
-with open(temp_file, 'w') as f:
-    json.dump(data, f)
+- 单条写入（`set_plugin_data`）由 SQLite 语句级原子性（UPSERT）保证。
+- 全量写入（`save_data` / `reset_all_data`）与活跃实例切换（`set_active_instance`）使用 `BEGIN IMMEDIATE` 显式事务，异常时自动回滚。
 
-# 原子重命名
-os.replace(temp_file, data_file)
-```
+临时文件 + 原子重命名机制仍保留在 `TaskStorage` 等以 JSON 为后端的组件中使用。
 
 ---
 

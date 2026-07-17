@@ -55,7 +55,7 @@ class SkillsPanel(QWidget):
         self.official_btn = QPushButton("官方功能")
         self.official_btn.setObjectName("skillsPillButton")
         self.official_btn.setProperty("active", "true")
-        self.official_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        # 可访问性：保留默认可聚焦策略，支持键盘 Tab 导航
         self.official_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.official_btn.clicked.connect(lambda: self._switch_tab(0))
 
@@ -63,7 +63,7 @@ class SkillsPanel(QWidget):
         self.thirdparty_btn = QPushButton("第三方功能")
         self.thirdparty_btn.setObjectName("skillsPillButton")
         self.thirdparty_btn.setProperty("active", "false")
-        self.thirdparty_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        # 可访问性：保留默认可聚焦策略，支持键盘 Tab 导航
         self.thirdparty_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.thirdparty_btn.clicked.connect(lambda: self._switch_tab(1))
 
@@ -180,22 +180,14 @@ class SkillsPanel(QWidget):
 
     def _on_skill_clicked(self, button, plugin):
         """处理技能按钮点击事件"""
-        self._logger.debug(get_name(), f"_on_skill_clicked: 点击按钮 '{button.skill_name}'")
-
-        # 打印当前状态
-        current_active = self._active_button
-        self._logger.debug(get_name(), f"_on_skill_clicked: 当前 _active_button = {current_active.skill_name if current_active else None}")
-
         # 清除之前的激活状态
         if self._active_button and self._active_button != button:
-            self._logger.debug(get_name(), f"_on_skill_clicked: 清除之前激活按钮 '{self._active_button.skill_name}'")
             self._active_button.set_active(False)
 
         # 设置新按钮为激活状态
         if button and isinstance(button, SkillButton):
             button.set_active(True)
             self._active_button = button
-            self._logger.debug(get_name(), f"_on_skill_clicked: 设置新激活按钮 '{button.skill_name}'")
 
         self.skill_clicked.emit(plugin)
 
@@ -238,21 +230,14 @@ class SkillsPanel(QWidget):
 
     def _clear_all_active_states(self):
         """清除所有按钮的激活状态"""
-        self._logger.debug(get_name(), "_clear_all_active_states: 开始清除所有高亮")
-
-        active_count = 0
         for layout in [self.official_layout, self.thirdparty_layout]:
             for i in range(layout.count()):
                 item = layout.itemAt(i)
                 if item:
                     widget = item.widget()
                     if isinstance(widget, SkillButton):
-                        if widget.is_active():
-                            active_count += 1
-                            self._logger.debug(get_name(), f"_clear_all_active_states: 清除按钮 '{widget.skill_name}' 高亮")
                         widget.set_active(False)
 
-        self._logger.debug(get_name(), f"_clear_all_active_states: 完成，共清除 {active_count} 个按钮, _active_button 设置为 None")
         self._active_button = None
 
     def clear_active_state(self):

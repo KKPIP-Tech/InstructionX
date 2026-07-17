@@ -41,9 +41,13 @@ DataProvider(data_dir: Optional[str] = None, data_filename: str = "data.json")
 
 **参数**:
 - `data_dir`: 数据文件存储目录，默认为项目根目录下的 `data` 文件夹
-- `data_filename`: 数据文件名，默认为 `data.json`
+- `data_filename`: 数据文件名，默认为 `data.json`。默认后端为 SQLite，该文件名仅用于推导数据库文件名；回退到 JSON 后端时则作为实际 JSON 文件名
 
-**数据库文件路径推导**:
+**后端选择**:
+- 默认使用 **SQLite** 后端，数据库文件由 `data_filename` 推导（见下表），启用 WAL 模式
+- 设置环境变量 `INSTRUCTIONX_DATAPROVIDER_BACKEND=json` 可回退到旧 JSON 后端（临时文件 + 原子重命名），仅建议应急排查使用
+
+**数据库文件路径推导**（SQLite 后端）:
 - 若 `data_filename` 以 `.json` 结尾，数据库文件名为 `data_filename[:-5] + ".db"`
 - 否则，数据库文件名为 `data_filename + ".db"`
 
@@ -57,14 +61,25 @@ DataProvider(data_dir: Optional[str] = None, data_filename: str = "data.json")
 
 **示例**:
 ```python
-# 使用默认路径
+# 使用默认路径（SQLite）
 provider = DataProvider()
 # 数据库文件: data/data.db
 
 # 自定义路径
 provider = DataProvider(data_dir="/custom/path", data_filename="my_data.json")
 # 数据库文件: /custom/path/my_data.db
+
+# 回退到 JSON 后端（需先设置环境变量）
+# import os
+# os.environ["INSTRUCTIONX_DATAPROVIDER_BACKEND"] = "json"
+# provider = DataProvider()
 ```
+
+**环境变量**:
+
+| 环境变量 | 取值 | 说明 |
+|----------|------|------|
+| `INSTRUCTIONX_DATAPROVIDER_BACKEND` | `sqlite`（默认） / `json` | 指定 `DataProvider` 持久化后端。`sqlite` 使用 `data/data.db` + WAL；`json` 回退到旧 JSON 文件后端 |
 
 ---
 

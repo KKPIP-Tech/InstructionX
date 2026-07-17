@@ -133,9 +133,9 @@ plugin_name/
 ├── __init__.py           # Python 包标识（可为空）
 ├── entrance.py           # 插件入口（必需）
 │                          # 继承 IPlugin，实现 UI
-├── service.py            # 业务逻辑（可选）
+├── service.py            # 业务逻辑（必需）
 │                          # 定义可被调用的方法
-├── information.py        # 插件元数据（可选）
+├── information.py        # 插件元数据（必需）
 │                          # 继承 IPluginInfo，定义 API
 ├── icons/                # 图标目录（可选）
 │   └── icon.png
@@ -148,8 +148,8 @@ plugin_name/
 | 文件 | 必需 | 职责 | 关键内容 |
 |------|------|------|---------|
 | **entrance.py** | ✅ 是 | UI 入口 | 继承 `IPlugin`，实现 `_create_widget()` |
-| **service.py** | ❌ 否 | 业务逻辑 | 定义可被外部调用的方法 |
-| **information.py** | ❌ 否 | 元数据 | 继承 `IPluginInfo`，定义 `service_api` |
+| **service.py** | ✅ 是 | 业务逻辑 | 定义可被外部调用的方法 |
+| **information.py** | ✅ 是 | 元数据 | 继承 `IPluginInfo`，定义 `service_api` |
 
 ---
 
@@ -159,22 +159,16 @@ plugin_name/
 
 ```mermaid
 flowchart TD
-    A[插件加载时] --> B{information.py 存在?}
+    A[插件加载时] --> B[导入 information.py]
 
-    B -->|否| Z[跳过]
-    B -->|是| C{service.py 存在?}
-
-    C -->|否| Z
-    C -->|是| D[导入 information.py]
-
-    D --> E[查找 IPluginInfo 子类]
-    E --> F[获取 service_api 字典]
-    F --> G[导入 service.py]
-    G --> H[查找 Service 类]
-    H --> I[注册到 _api_registry]
+    B --> C[查找 IPluginInfo 子类]
+    C --> D[获取 service_api 字典]
+    D --> E[导入 service.py]
+    E --> F[查找 Service 类]
+    F --> G[注册到 _api_registry]
 ```
 
-> **前置条件**：`information.py` 和 `service.py` 必须同时存在，缺一不可。只有 `entrance.py` 是必需的。
+> **前置条件**：`entrance.py`、`service.py`、`information.py` 三者均为必需文件。插件缺少其中任何一个都将导致加载失败。
 
 ### 4.2 service_api 定义示例
 

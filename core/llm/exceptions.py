@@ -6,7 +6,7 @@
 异常层次:
     LLMException (基类)
     ├── ConfigurationError (配置错误)
-    ├── AuthenticationError (认证错误)
+    ├── AuthenticationError (认证错误，自带 status_code/provider 属性)
     ├── APIError (API调用错误)
     │   └── RateLimitError (速率限制)
     ├── InvalidRequestError (无效请求)
@@ -54,8 +54,28 @@ class AuthenticationError(LLMException):
     - API 密钥为空
     - API 密钥格式错误
     - API 密钥已过期或被撤销
+
+    Attributes:
+        message: 错误消息描述
+        status_code: HTTP 响应状态码（可选，通常为 401）
+        provider: 抛出异常的 LLM 提供商名称（可选）
+
+    Note:
+        保持直接继承 LLMException（而非 APIError），以便调用方区分
+        认证失败与一般 API 错误；属性签名与 APIError 对齐。
     """
-    pass
+
+    def __init__(self, message: str, status_code: Optional[int] = None, provider: Optional[str] = None):
+        """初始化认证错误异常
+
+        Args:
+            message: 错误消息描述
+            status_code: HTTP 响应状态码（通常为 401）
+            provider: LLM 提供商名称
+        """
+        super().__init__(message)
+        self.status_code = status_code
+        self.provider = provider
 
 
 class APIError(LLMException):

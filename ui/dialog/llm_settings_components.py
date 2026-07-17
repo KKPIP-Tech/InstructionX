@@ -1,4 +1,4 @@
-# src/ui/dialog/llm_settings_components.py
+# ui/dialog/llm_settings_components.py
 """LLM 设置中心自定义组件 - 支持深色模式."""
 
 from typing import Optional, Callable, List
@@ -17,6 +17,15 @@ from utils.style_qss import get_style_qss
 def get_current_colors() -> dict:
     """获取当前主题颜色."""
     return get_style_qss().colors()
+
+
+# Provider 启用状态标签配色（区分明/暗主题背景）
+STATUS_ENABLED_COLOR = "#16A34A"        # 启用：绿色文字
+STATUS_ENABLED_BG_LIGHT = "#DCFCE7"    # 启用：浅色主题背景
+STATUS_ENABLED_BG_DARK = "#166534"     # 启用：深色主题背景
+STATUS_DISABLED_COLOR = "#9CA3AF"      # 未启用：灰色文字
+STATUS_DISABLED_BG_LIGHT = "#F3F4F6"   # 未启用：浅色主题背景
+STATUS_DISABLED_BG_DARK = "#4B5563"    # 未启用：深色主题背景
 
 
 class ProviderListItemWidget(QWidget):
@@ -96,13 +105,14 @@ class ProviderListItemWidget(QWidget):
         self._status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._status_label.setFixedHeight(20)
         
-        # 使用更明显的颜色
+        # 状态颜色使用模块级常量（区分明/暗主题）
+        is_light = get_style_qss().theme() == 'light'
         if self._is_enabled:
-            status_color = "#16A34A"  # 绿色
-            status_bg = "#DCFCE7" if get_style_qss().theme() == 'light' else "#166534"
+            status_color = STATUS_ENABLED_COLOR
+            status_bg = STATUS_ENABLED_BG_LIGHT if is_light else STATUS_ENABLED_BG_DARK
         else:
-            status_color = "#9CA3AF"  # 灰色
-            status_bg = "#F3F4F6" if get_style_qss().theme() == 'light' else "#4B5563"
+            status_color = STATUS_DISABLED_COLOR
+            status_bg = STATUS_DISABLED_BG_LIGHT if is_light else STATUS_DISABLED_BG_DARK
             
         self._status_label.setStyleSheet(f"""
             QLabel {{

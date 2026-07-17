@@ -1076,7 +1076,7 @@ def available_providers(self) -> List[str]
 **示例**:
 ```python
 print(provider.available_providers)
-# ['minimax', 'siliconflow', 'glm', 'ollama']
+# ['minimax', 'siliconflow', 'glm', 'ollama', 'openai']
 ```
 
 ---
@@ -1188,7 +1188,7 @@ classDiagram
     ToolCallExecutor --> LLMProvider : delegates to
 
     note for LLMPluginService "插件开发者唯一入口\n① 对话管理器\n② 底层 LLM 的代理"
-    note for ConversationManager "插件无需自行管理：\n• 对话历史\n• 上下文截断\n• token 累计\n• 费用估算"
+    note for ConversationManager "插件无需自行管理：\n• 对话历史\n• token 累计\n• 费用估算\n（上下文截断当前未实现）"
     note for ToolRegistry "持有 tools 列表（发给 LLM）\n+ handlers 映射（实际执行）"
 ```
 
@@ -1242,7 +1242,7 @@ flowchart TB
     STREAM[stream_send_message&#40;&#41; + conv_id + callback]
     RESP2[callback 逐 chunk 调用]
     TOOLS[chat_with_tools&#40;&#41; + messages]
-    RESP3[自动处理两轮 + 返回 final_response]
+    RESP3[自动处理多轮（最多 max_turns）+ 返回 final_response]
     STATS[get_usage_stats&#40;conv_id&#41;]
     RESP4[UsageStats - total_tokens, cost, request_count（消息总条数）]
 
@@ -1274,7 +1274,6 @@ def send_message(
     images: Optional[List[str]] = None,
     temperature: Optional[float] = None,
     max_tokens: Optional[int] = None,
-    tools: Optional[List[Dict]] = None,
 ) -> str
 ```
 
@@ -1289,7 +1288,6 @@ def send_message(
 | `images` | `Optional[List[str]]` | 图片 base64 列表（可选） |
 | `temperature` | `Optional[float]` | 采样温度 |
 | `max_tokens` | `Optional[int]` | 最大 token 数 |
-| `tools` | `Optional[List[Dict]]` | 工具定义列表（可选） |
 
 **示例**:
 ```python
@@ -1315,15 +1313,12 @@ sequenceDiagram
     CM->>CM: _get_or_raise(conv_id)
     CM->>CM: conv.to_llm_format()
     Note over CM: 组装 messages\n追加 user message
-    CM->>CM: _maybe_truncate_history()
-    Note over CM: 检查 token 数\n必要时截断
+    Note over CM: 当前版本不执行上下文截断
 
     CM->>LLP: chat(messages, provider, model, ...)
-    LLP->>BP: chat(messages, tools?)
+    LLP->>BP: chat(messages, ...)
 
-    opt 有 tools
-        BP->>BP: _prepare_chat_payload(tools=tools)
-    end
+    Note over LLP,BP: send_message 不接收 tools 参数
 
     BP->>Remote: POST /v1/chat/completions
     Remote-->>BP: ChatCompletion Response\n{data, usage: {...}}
@@ -1412,7 +1407,7 @@ def stream_chat(
 )
 ```
 
-流式版本 chat（无对话状态）。callback 签名: `(ChatResponse) -> None`，每次接收一个 `ChatResponse` 对象，通过 `chunk.content` 获取文本内容。
+流式版本 chat（无对话状态）。callback 签名: `(str, bool) -> None`，每次接收文本片段 `chunk`，`done` 标记是否结束。
 
 ### 5.4 工具调用
 
@@ -1428,7 +1423,7 @@ def chat_with_tools(
 ) -> Tuple[List[Dict], List[ToolResult], Any]
 ```
 
-自动处理工具调用两轮循环。返回 `(最终消息列表, 工具结果列表, 最终响应)`。
+自动处理工具调用多轮循环（默认最多 `max_turns=5` 轮）。返回 `(最终消息列表, 工具结果列表, 最终响应)`。
 
 **示例**:
 ```python
@@ -1535,6 +1530,8 @@ def chat_with_tools_stream(
 ```
 
 流式版本的 chat_with_tools。
+
+> **限制说明**: 当前 `ToolCallExecutor` 的流式路径不会解析响应中的 `tool_calls`，因此流式工具调用实际不可用。如需工具调用，请使用同步版本 `chat_with_tools()`。
 
 #### get_tool_executor()
 

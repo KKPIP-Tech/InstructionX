@@ -370,7 +370,7 @@ class MyPlugin(IPlugin):
 
 ### 7.2 通过 IMCPTool 定义 MCP 工具
 
-插件开发者可继承 `IMCPTool` 定义自己的 MCP 工具。框架会自动将其注册到 MCP Server：
+`IMCPTool` 接口已定义，插件开发者可继承它声明 MCP 工具。但当前 `PluginManager` / `MCPBridge` 尚未实现自动扫描和注册 `IMCPTool` 实例，因此继承该接口不会自动将工具暴露到 MCP Server。如需暴露插件 API，请通过 `information.py` 中的 `service_api` 定义。
 
 ```python
 from core.mcp.plugin_interface import IMCPTool

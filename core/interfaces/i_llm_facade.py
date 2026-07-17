@@ -8,12 +8,24 @@ LLM Facade 接口
 """
 
 from abc import ABC, abstractmethod
-from typing import Dict, Any, Optional, List, Union, Callable, Tuple
+from typing import Dict, Any, Optional, List, Union, Callable, Tuple, TYPE_CHECKING
 
-# 复用现有的数据类型
-from core.llm.provider_interface import (
-    Message, ChatResponse, EmbeddingResponse, ModelInfo, UsageInfo
-)
+# 复用现有的数据类型（仅类型检查时导入，避免接口层在运行时牵入 core.llm 重量依赖）
+if TYPE_CHECKING:
+    from core.llm.provider_interface import (
+        Message, ChatResponse, EmbeddingResponse, ModelInfo, UsageInfo
+    )
+
+
+# 延迟导出的 LLM 数据类型，保持 `from core.interfaces.i_llm_facade import Message` 可用
+_LLM_TYPE_NAMES = {"Message", "ChatResponse", "EmbeddingResponse", "ModelInfo", "UsageInfo"}
+
+
+def __getattr__(name: str) -> Any:
+    if name in _LLM_TYPE_NAMES:
+        from core.llm import provider_interface
+        return getattr(provider_interface, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 class ILLMFacade(ABC):
@@ -29,25 +41,25 @@ class ILLMFacade(ABC):
     @abstractmethod
     def chat(
         self,
-        messages: List[Union[Message, Dict]],
+        messages: List[Union["Message", Dict]],
         provider: str = "default",
         model: Optional[str] = None,
         temperature: float = 0.7,
         max_tokens: Optional[int] = None,
         **kwargs
-    ) -> ChatResponse:
+    ) -> "ChatResponse":
         """发送聊天请求（同步）"""
         pass
 
     @abstractmethod
     def stream_chat(
         self,
-        messages: List[Union[Message, Dict]],
+        messages: List[Union["Message", Dict]],
         provider: str = "default",
         model: Optional[str] = None,
         temperature: float = 0.7,
         max_tokens: Optional[int] = None,
-        callback: Optional[Callable[[ChatResponse], None]] = None,
+        callback: Optional[Callable[[str, bool], None]] = None,
         **kwargs
     ):
         """发送流式聊天请求（同步）"""
@@ -60,12 +72,12 @@ class ILLMFacade(ABC):
         provider: str = "default",
         model: Optional[str] = None,
         **kwargs
-    ) -> List[EmbeddingResponse]:
+    ) -> List["EmbeddingResponse"]:
         """发送文本嵌入请求（同步）"""
         pass
 
     @abstractmethod
-    def get_models(self, provider: Optional[str] = None) -> Dict[str, List[ModelInfo]]:
+    def get_models(self, provider: Optional[str] = None) -> Dict[str, List["ModelInfo"]]:
         """获取可用模型列表"""
         pass
 
@@ -80,7 +92,7 @@ class ILLMFacade(ABC):
         pass
 
     @abstractmethod
-    def get_cached_models(self, provider_name: str) -> List[ModelInfo]:
+    def get_cached_models(self, provider_name: str) -> List["ModelInfo"]:
         """获取指定提供商的缓存模型列表"""
         pass
 

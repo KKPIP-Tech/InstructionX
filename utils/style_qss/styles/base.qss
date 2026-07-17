@@ -28,14 +28,16 @@ QFrame[frameShape="4"], QFrame[frameShape="5"] {
     border-radius: {radius};
 }
 
-/* 聚焦边框动画 */
-QWidget:focus {
-    outline: none;
-}
-
-QWidget:focus-visible {
-    outline: 2px solid {accent};
-    outline-offset: -2px;
+/* 键盘焦点指示：Qt Style Sheets 不支持 :focus-visible（会被静默忽略），
+   统一使用 :focus 伪状态，为输入类控件提供可见焦点边框（配合上方 outline 重置） */
+QLineEdit:focus, QTextEdit:focus, QPlainTextEdit:focus,
+QComboBox:focus, QSpinBox:focus, QDoubleSpinBox:focus,
+QDateEdit:focus, QTimeEdit:focus, QDateTimeEdit:focus,
+QPushButton:focus, QToolButton:focus, QCheckBox:focus, QRadioButton:focus,
+QSlider:focus, QTabBar:focus,
+QListWidget:focus, QTreeWidget:focus, QTableWidget:focus {
+    border: 2px solid {accent};
+    border-radius: {radius};
 }
 
 /* 拖拽区域 */

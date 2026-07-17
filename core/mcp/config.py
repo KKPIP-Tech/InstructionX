@@ -10,11 +10,22 @@ from typing import Optional, Dict, List, Literal
 
 @dataclass
 class MCPServerConfig:
-    """MCP Server 配置（暴露本地工具给外部 MCP Client）"""
+    """MCP Server 配置（暴露本地工具给外部 MCP Client）
+
+    Attributes:
+        auth_token: HTTP 模式下的 Bearer 认证令牌；None 表示不启用认证
+                    （仅建议在本机回环地址下使用）。
+        exposed_plugins: 允许暴露为 MCP 工具的插件 ID 白名单；
+                         None 表示暴露全部插件（向后兼容默认行为）。
+        allowed_hosts: 允许的 HTTP Host 头白名单（保留项，暂未强制校验）。
+    """
     host: str = "127.0.0.1"
     port: int = 8765
     transport: Literal["stdio", "streamable-http"] = "stdio"
     enabled: bool = True
+    auth_token: Optional[str] = None
+    exposed_plugins: Optional[List[str]] = None
+    allowed_hosts: Optional[List[str]] = None
 
     def to_dict(self) -> Dict:
         return {
@@ -22,6 +33,9 @@ class MCPServerConfig:
             "port": self.port,
             "transport": self.transport,
             "enabled": self.enabled,
+            "auth_token": self.auth_token,
+            "exposed_plugins": self.exposed_plugins,
+            "allowed_hosts": self.allowed_hosts,
         }
 
     @classmethod
@@ -31,6 +45,9 @@ class MCPServerConfig:
             port=data.get("port", 8765),
             transport=data.get("transport", "stdio"),
             enabled=data.get("enabled", True),
+            auth_token=data.get("auth_token"),
+            exposed_plugins=data.get("exposed_plugins"),
+            allowed_hosts=data.get("allowed_hosts"),
         )
 
 

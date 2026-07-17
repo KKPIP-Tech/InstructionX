@@ -9,7 +9,9 @@ from PySide6.QtWidgets import (
     QWidget, QHBoxLayout, QLabel, QPushButton, QMenuBar, QApplication, QMenu
 )
 from PySide6.QtCore import Qt, QPoint, Signal
-from PySide6.QtGui import QMouseEvent, QPixmap, QPainter, QColor, QPen, QAction, QPalette
+from PySide6.QtGui import QMouseEvent, QPainter, QColor, QPen, QAction, QCursor
+
+from utils.style_qss import get_style_qss
 
 
 class IconButton(QPushButton):
@@ -45,7 +47,6 @@ class IconButton(QPushButton):
         cx, cy = w / 2, h / 2
 
         # 直接从主题系统获取当前主题的前景色，确保与 QSS 完全一致
-        from utils.style_qss import get_style_qss
         text_primary = get_style_qss().colors().get('textPrimary', '#000000')
         text_color = QColor(text_primary)
 
@@ -100,6 +101,8 @@ class CustomTitleBar(QWidget):
         self._is_maximized = False
         self._pre_max_geometry = None  # 记录最大化前的窗口几何信息
         self._menu_bar_inserted = False
+        self._move_mode = False  # 右键菜单“移动”模式标志
+        self._move_offset = None  # 移动模式下鼠标与窗口左上角的偏移
 
         self.setFixedHeight(40)
         self.setMouseTracking(True)
@@ -170,6 +173,8 @@ class CustomTitleBar(QWidget):
         self._btn_min = IconButton('minimize', self)
         self._btn_min.setFixedSize(w, h)
         self._btn_min.setObjectName("btnMinimize")
+        self._btn_min.setToolTip("最小化")
+        self._btn_min.setAccessibleName("最小化")
         self._btn_min.clicked.connect(self._parent_window.showMinimized)
         controls_layout.addWidget(self._btn_min)
 
@@ -177,6 +182,8 @@ class CustomTitleBar(QWidget):
         self._btn_max = IconButton('maximize', self)
         self._btn_max.setFixedSize(w, h)
         self._btn_max.setObjectName("btnMaximize")
+        self._btn_max.setToolTip("最大化/还原")
+        self._btn_max.setAccessibleName("最大化")
         self._btn_max.clicked.connect(self._toggle_maximize)
         controls_layout.addWidget(self._btn_max)
 
@@ -184,6 +191,8 @@ class CustomTitleBar(QWidget):
         self._btn_close = IconButton('close', self)
         self._btn_close.setFixedSize(w, h)
         self._btn_close.setObjectName("btnClose")
+        self._btn_close.setToolTip("关闭")
+        self._btn_close.setAccessibleName("关闭")
         self._btn_close.clicked.connect(self._parent_window.close)
         controls_layout.addWidget(self._btn_close)
 
@@ -196,10 +205,8 @@ class CustomTitleBar(QWidget):
     def _toggle_maximize(self):
         """切换最大化/还原/全屏"""
         if self._is_window_maximized_or_fullscreen():
-            if self._parent_window.isFullScreen():
-                self._parent_window.showNormal()
-            else:
-                self._parent_window.showNormal()
+            # 最大化与全屏统一通过 showNormal 还原
+            self._parent_window.showNormal()
             self._btn_max.set_icon_type("maximize")
             self._is_maximized = False
         else:
@@ -238,7 +245,8 @@ class CustomTitleBar(QWidget):
             return
         
         geo = self._parent_window.geometry()
-        ratio = (global_pos.x() - geo.x()) / geo.width()
+        # 防止窗口宽度为 0 时除零
+        ratio = (global_pos.x() - geo.x()) / geo.width() if geo.width() > 0 else 0.5
         
         self._parent_window.showNormal()
         self._btn_max.set_icon_type("maximize")
@@ -251,11 +259,23 @@ class CustomTitleBar(QWidget):
 
     # ========== 鼠标事件处理（窗口拖拽） ==========
     def mousePressEvent(self, event: QMouseEvent):
+        # 移动模式下，鼠标按下即结束移动模式
+        if self._move_mode:
+            self._move_mode = False
+            self._move_offset = None
+            event.accept()
+            return
         if event.button() == Qt.MouseButton.LeftButton:
             self._drag_pos = event.globalPosition().toPoint()
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event: QMouseEvent):
+        # 移动模式：无需按住鼠标，窗口跟随光标移动
+        if self._move_mode and self._move_offset is not None:
+            self._parent_window.move(QCursor.pos() - self._move_offset)
+            super().mouseMoveEvent(event)
+            return
+
         if self._drag_pos and event.buttons() == Qt.MouseButton.LeftButton:
             delta = QPoint(event.globalPosition().toPoint() - self._drag_pos)
 
@@ -304,14 +324,10 @@ class CustomTitleBar(QWidget):
         
         move_action = QAction("移动(M)", self)
         move_action.setEnabled(not is_max)
-        # 移动功能：模拟系统移动模式
+        # 移动功能：进入拖动模式，随后移动鼠标即可移动窗口，单击结束
         move_action.triggered.connect(self._start_system_move)
         menu.addAction(move_action)
-        
-        size_action = QAction("大小(S)", self)
-        size_action.setEnabled(not is_max)
-        # 大小调整通过边缘 resize 已实现
-        menu.addAction(size_action)
+        # 注：原“大小(S)”菜单项从未实现（窗口边缘拖拽已提供 resize 能力），已移除
         menu.addSeparator()
         
         minimize_action = QAction("最小化(N)", self)
@@ -331,6 +347,7 @@ class CustomTitleBar(QWidget):
         menu.exec(event.globalPos())
     
     def _start_system_move(self):
-        """开始模拟系统移动模式"""
-        self._drag_pos = self._parent_window.mapToGlobal(self._parent_window.rect().center())
+        """进入移动模式：移动鼠标即拖动窗口，下次鼠标按下结束"""
+        self._move_mode = True
+        self._move_offset = QCursor.pos() - self._parent_window.frameGeometry().topLeft()
 

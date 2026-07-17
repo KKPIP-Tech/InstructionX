@@ -6,6 +6,7 @@ MCP Manager 单例
 """
 
 import json
+import os
 import threading
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -52,7 +53,8 @@ class MCPManager:
     def __init__(self):
         self._lock = threading.Lock()
         self._config: MCPConfig = MCPConfig()
-        self._config_file = Path("config/mcp_config.json")
+        # 基于项目根推导配置路径（不依赖 CWD），环境变量可覆盖
+        self._config_file = self._resolve_config_file()
 
         # MCP Server
         self._server: Optional[MCPHostServer] = None
@@ -68,6 +70,18 @@ class MCPManager:
         self._load_config()
 
     # ─── 配置管理 ────────────────────────────────────────────────
+
+    @staticmethod
+    def _resolve_config_file() -> Path:
+        """解析配置文件路径
+
+        默认基于项目根（core/mcp/manager.py 上溯两级）推导，
+        环境变量 INSTRUCTIONX_MCP_CONFIG 可覆盖。
+        """
+        env_path = os.environ.get("INSTRUCTIONX_MCP_CONFIG")
+        if env_path:
+            return Path(env_path)
+        return Path(__file__).resolve().parents[2] / "config" / "mcp_config.json"
 
     def _load_config(self) -> None:
         """从配置文件加载 MCP 配置"""
@@ -140,6 +154,7 @@ class MCPManager:
                         name="InstructionX",
                         host=self._config.server.host,
                         port=self._config.server.port,
+                        auth_token=self._config.server.auth_token,
                     )
                     # 初始化桥接器
                     self._bridge = MCPBridge(self)
@@ -152,23 +167,35 @@ class MCPManager:
             transport: 传输方式，"stdio" 或 "streamable-http"。
                        如果为 None，使用配置中的默认值。
         """
+        if not self._config.server.enabled:
+            logger.info("MCP Server is disabled in config, skipping start")
+            return
+
         if self._server is None:
             self._init_server()
 
         trans = transport or self._config.server.transport
-
-        if trans == "stdio":
-            self._server.run_stdio()
-        elif trans == "streamable-http":
-            self._server.run_http()
-        else:
+        if trans not in ("stdio", "streamable-http"):
             raise ValueError(f"Unsupported transport: {trans}")
 
-        # 同步现有插件工具到 MCP Server
+        # 同步现有插件工具到 MCP Server（必须在 run 之前：
+        # stdio 模式的 run_stdio() 会阻塞，之后同步永远不会执行）
         if self._bridge:
             self._bridge.sync_plugin_api_to_mcp_server()
 
-        logger.info(f"MCP Server started with transport: {trans}")
+        if trans == "stdio":
+            # 注意：run_stdio() 会阻塞直到 Server 退出，不应在 Qt 主线程调用
+            logger.info("MCP Server starting with transport: stdio (blocking)")
+            self._server.run_stdio()
+            logger.info("MCP stdio Server exited")
+        else:
+            self._server.run_http()
+            if self._server.is_running:
+                logger.info(f"MCP Server started with transport: {trans}")
+            else:
+                logger.error(
+                    f"MCP Server failed to start with transport: {trans}"
+                )
 
     def stop_server(self) -> None:
         """停止 MCP Server"""
@@ -235,6 +262,12 @@ class MCPManager:
         Returns:
             server_id
         """
+        if not config.enabled:
+            logger.info(
+                f"Remote MCP server {config.server_id} is disabled, "
+                f"skipping connect"
+            )
+            return config.server_id
         client = self.get_client_manager(tool_registry)
         client.connect(config)
         return config.server_id

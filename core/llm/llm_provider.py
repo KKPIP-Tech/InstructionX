@@ -23,18 +23,19 @@ Functions:
     >>> provider = get_llm_provider()
     >>> # 发送聊天请求
     >>> response = provider.chat([Message("user", "你好")])
-    >>> # 流式输出
-    >>> for chunk in provider.stream_chat([Message("user", "你好")]):
-    ...     print(chunk.content, end="")
+    >>> # 流式输出（回调契约为 (chunk_text: str, done: bool)，返回完整文本）
+    >>> full = provider.stream_chat([Message("user", "你好")],
+    ...                             callback=lambda text, done: print(text, end=""))
 """
 
+import json
 import threading
 import time
-from datetime import datetime
-from typing import Dict, Any, Optional, List, Union, Callable, AsyncIterator, TYPE_CHECKING
+from datetime import datetime, timezone
+from typing import Dict, Any, Optional, List, Tuple, Union, Callable, AsyncIterator, TYPE_CHECKING
 
 from .config import LLMConfig, ProviderConfig
-from .provider_interface import ILLM, Message, ChatResponse, EmbeddingResponse, ModelInfo
+from .provider_interface import ILLM, Message, ChatResponse, EmbeddingResponse, ModelInfo, UsageInfo
 from .providers import get_provider_class, PROVIDER_REGISTRY
 from .exceptions import ConfigurationError
 from .usage_record_store import get_usage_record_store
@@ -115,6 +116,13 @@ class LLMProvider:
         self._models_cache: Dict[str, List[ModelInfo]] = {}  # 模型缓存
         self._logger = LoggerManager()
         self._usage_store = get_usage_record_store()
+        # 轻量健康跟踪：{provider_name: (是否健康, 最近错误信息)}
+        self._health: Dict[str, Tuple[bool, Optional[str]]] = {}
+        # "default" 粘性缓存：首次自动选择后记住，避免同一进程内漂移
+        self._default_chat_provider: Optional[str] = None
+        self._default_embedding_provider: Optional[str] = None
+        # 最近一次流式请求的聚合响应（供工具调用执行器提取 tool_calls）
+        self.last_stream_response: Optional[ChatResponse] = None
         self._init_providers()
         self._fetch_all_models()  # 启动时自动拉取模型列表
 
@@ -299,6 +307,7 @@ class LLMProvider:
             config: 提供商配置对象
         """
         self._config.add_provider(name, config)
+        self._health.pop(name, None)  # 重建实例，清除旧健康状态
         self._create_provider(name, config.to_dict())
 
     def remove_provider(self, name: str) -> bool:
@@ -317,6 +326,13 @@ class LLMProvider:
             provider.close()
             del self._providers[name]
 
+        # 清除健康状态与 "default" 粘性缓存（下次 default 调用重新选择）
+        self._health.pop(name, None)
+        if self._default_chat_provider == name:
+            self._default_chat_provider = None
+        if self._default_embedding_provider == name:
+            self._default_embedding_provider = None
+
         return self._config.remove_provider(name)
 
     def _record_usage(
@@ -326,16 +342,27 @@ class LLMProvider:
         model: str,
         is_stream: bool,
         duration_ms: float,
+        conversation_id: str = "",
     ) -> None:
-        """记录 API 用量到持久化存储"""
+        """记录 API 用量到持久化存储
+
+        Args:
+            response: 聊天响应对象（需携带真实的 UsageInfo 才记录）
+            provider: 实际解析出的提供商名称（不会是 "default"）
+            model: 实际使用的模型名称
+            is_stream: 是否为流式请求
+            duration_ms: 请求耗时（毫秒）
+            conversation_id: 关联的对话 ID，无对话上下文时为 ""
+        """
         usage = getattr(response, "usage", None)
-        if usage is None:
+        # 仅记录真实的 UsageInfo（防御 mock / 非标准响应造成的垃圾数据）
+        if usage is None or not isinstance(usage, UsageInfo):
             return
         cached_tokens = getattr(usage, "cache_read_tokens", 0) or 0
         record = UsageRecord(
             id="",
-            timestamp=datetime.now(),
-            conversation_id="",
+            timestamp=datetime.now(timezone.utc),  # UsageRecord 契约：UTC 时间戳
+            conversation_id=conversation_id,
             provider=provider,
             model=model,
             input_tokens=usage.input_tokens or 0,
@@ -359,8 +386,175 @@ class LLMProvider:
             provider.close()
 
         self._providers.clear()
+        # 同步清理模型缓存、健康状态与 "default" 粘性缓存，避免脏数据残留
+        self._models_cache.clear()
+        self._health.clear()
+        self._default_chat_provider = None
+        self._default_embedding_provider = None
+        self.last_stream_response = None
         self._config = LLMConfig()
         self._init_providers()
+
+    # ==================== 内部辅助方法 ====================
+
+    @staticmethod
+    def _filter_none_kwargs(params: Dict[str, Any]) -> Dict[str, Any]:
+        """剔除值为 None 的可选参数
+
+        None 表示"不指定"，不应写入 API payload（否则会变成 null 导致 400）。
+
+        Args:
+            params: 原始参数字典
+
+        Returns:
+            Dict[str, Any]: 仅包含非 None 值的参数字典
+        """
+        return {k: v for k, v in params.items() if v is not None}
+
+    def _resolve_default_provider(self, feature: str) -> str:
+        """解析 "default" 提供商名称（带粘性缓存）
+
+        首次自动选择后记住结果，后续 default 调用使用同一提供商；
+        该提供商被禁用或移除时自动重新选择。
+
+        Args:
+            feature: 功能类型，"chat" 或 "embedding"
+
+        Returns:
+            str: 实际提供商名称
+
+        Raises:
+            ConfigurationError: 没有启用的提供商时抛出
+        """
+        cache_attr = ("_default_chat_provider" if feature == "chat"
+                      else "_default_embedding_provider")
+        enabled = self.get_enabled_providers(feature)
+        if not enabled:
+            raise ConfigurationError(f"No enabled {feature} provider")
+        cached = getattr(self, cache_attr, None)
+        if cached and cached in enabled and cached in self._providers:
+            return cached
+        chosen = next(iter(enabled.keys()))
+        setattr(self, cache_attr, chosen)
+        return chosen
+
+    def resolve_provider_name(self, name: str, feature: str = "chat") -> str:
+        """解析提供商名称："default" 时按功能自动选择（带粘性缓存）
+
+        Args:
+            name: 提供商名称或 "default"
+            feature: 功能类型，"chat" 或 "embedding"
+
+        Returns:
+            str: 实际提供商名称（非 "default" 时原样返回）
+        """
+        if name == "default":
+            return self._resolve_default_provider(feature)
+        return name
+
+    def get_provider_health(self, name: str) -> Tuple[bool, Optional[str]]:
+        """获取指定提供商的健康状态
+
+        未调用过的提供商默认健康；同时参考 provider 实例的 last_error 属性。
+
+        Args:
+            name: 提供商名称
+
+        Returns:
+            Tuple[bool, Optional[str]]: (是否健康, 最近错误信息)
+        """
+        if name in self._health:
+            return self._health[name]
+        provider = self._providers.get(name)
+        err = getattr(provider, "last_error", None) if provider is not None else None
+        if err:
+            return False, str(err)
+        return True, None
+
+    @property
+    def last_errors(self) -> Dict[str, str]:
+        """聚合各提供商的最近错误信息（供 UI 展示真实错误）
+
+        合并 provider 实例的 last_error 属性与调用层健康跟踪中的错误。
+
+        Returns:
+            Dict[str, str]: {提供商名称: 错误信息}（仅包含有错误的提供商）
+        """
+        errors: Dict[str, str] = {}
+        for name, provider in self._providers.items():
+            err = getattr(provider, "last_error", None)
+            if err:
+                errors[name] = str(err)
+        for name, (ok, err) in self._health.items():
+            if not ok and err:
+                errors[name] = err
+        return errors
+
+    @staticmethod
+    def _extract_finish_reason(chunk: ChatResponse) -> Optional[str]:
+        """从流式响应块中提取 finish_reason
+
+        兼容两种位置：ChatResponse 自身属性 / extra 字典（含嵌套 extra）。
+
+        Args:
+            chunk: 流式响应块
+
+        Returns:
+            Optional[str]: finish_reason 字符串，未出现时为 None
+        """
+        fr = getattr(chunk, "finish_reason", None)
+        if isinstance(fr, str) and fr:
+            return fr
+        extra = getattr(chunk, "extra", None)
+        if isinstance(extra, dict):
+            fr = extra.get("finish_reason")
+            if isinstance(fr, str) and fr:
+                return fr
+            inner = extra.get("extra")
+            if isinstance(inner, dict):
+                fr = inner.get("finish_reason")
+                if isinstance(fr, str) and fr:
+                    return fr
+        return None
+
+    @staticmethod
+    def _merge_stream_tool_calls(agg: Dict[int, Dict[str, Any]], tool_calls) -> None:
+        """聚合流式响应块中的 tool_calls 增量（OpenAI 风格）
+
+        流式工具调用按 index 分片下发：id/name 通常只在首个分片出现，
+        arguments 以字符串片段逐块追加。非流式风格（单块完整 tool_calls）
+        走同一逻辑也能正确聚合。
+
+        Args:
+            agg: 聚合结果字典 {index: OpenAI 风格 tool_call}
+            tool_calls: 当前响应块携带的 tool_calls 列表
+        """
+        if not tool_calls or not isinstance(tool_calls, (list, tuple)):
+            return
+        for tc in tool_calls:
+            if not isinstance(tc, dict):
+                continue
+            idx = tc.get("index", 0)
+            if not isinstance(idx, int):
+                idx = 0
+            slot = agg.setdefault(idx, {
+                "id": "",
+                "type": "function",
+                "function": {"name": "", "arguments": ""},
+            })
+            tc_id = tc.get("id")
+            if tc_id:
+                slot["id"] = tc_id
+            fn = tc.get("function")
+            if isinstance(fn, dict):
+                name = fn.get("name")
+                if name:
+                    slot["function"]["name"] += name
+                arguments = fn.get("arguments")
+                if isinstance(arguments, str) and arguments:
+                    slot["function"]["arguments"] += arguments
+                elif isinstance(arguments, dict):
+                    slot["function"]["arguments"] = json.dumps(arguments, ensure_ascii=False)
 
     # ==================== 便捷方法 ====================
 
@@ -369,22 +563,24 @@ class LLMProvider:
         messages: List[Union[Message, Dict]],
         provider: str = "default",
         model: Optional[str] = None,
-        temperature: float = 0.7,
+        temperature: Optional[float] = None,
         max_tokens: Optional[int] = None,
+        conversation_id: str = "",
         **kwargs
     ) -> ChatResponse:
         """发送聊天请求（同步）
 
         向 LLM 发送聊天请求，获取完整的响应文本。
-        如果 provider 参数为 "default"，会自动选择第一个启用的提供商。
+        如果 provider 参数为 "default"，会自动选择启用的提供商（带粘性缓存）。
 
         Args:
             messages: 消息列表，支持 Message 对象或字典格式
-            provider: 提供商名称，"default" 自动选择第一个启用的提供商
-            model: 模型名称（可选，默认使用配置中的模型）
-            temperature: 温度参数，控制随机性，范围 0-2，默认 0.7
-            max_tokens: 最大生成 token 数（可选）
-            **kwargs: 其他提供商特定参数
+            provider: 提供商名称，"default" 自动选择启用的提供商
+            model: 模型名称（可选，"default" 或 None 表示使用配置中的模型）
+            temperature: 温度参数（可选，None 表示不指定，不写入 payload）
+            max_tokens: 最大生成 token 数（可选，None 表示不指定）
+            conversation_id: 关联的对话 ID（用于用量记录关联，可选）
+            **kwargs: 其他提供商特定参数（为 None 的值会被剔除）
 
         Returns:
             ChatResponse: 聊天响应对象
@@ -393,32 +589,45 @@ class LLMProvider:
             ConfigurationError: 当没有启用的提供商或提供商不存在时抛出
         """
         if provider == "default":
-            enabled = self.get_enabled_providers("chat")
-            if not enabled:
-                raise ConfigurationError("No enabled chat provider")
-            provider = list(enabled.keys())[0]
+            provider = self._resolve_default_provider("chat")
+        if model == "default":
+            model = None
 
         provider_instance = self.get_provider(provider)
         if not provider_instance:
             raise ConfigurationError(f"Provider not found: {provider}")
 
-        t0 = time.perf_counter()
-        response = provider_instance.chat(
-            messages=messages,
-            model=model,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            **kwargs
-        )
-        duration_ms = (time.perf_counter() - t0) * 1000
+        # 双保险：None 值不写入 payload（provider 层也会过滤）
+        call_kwargs = self._filter_none_kwargs({
+            "model": model,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+            **kwargs,
+        })
 
-        # 记录用量
+        t0 = time.perf_counter()
+        try:
+            response = provider_instance.chat(
+                messages=messages,
+                **call_kwargs,
+            )
+        except Exception as e:
+            self._health[provider] = (False, str(e))
+            raise
+        duration_ms = (time.perf_counter() - t0) * 1000
+        self._health[provider] = (True, None)
+
+        # 记录用量：provider/model 使用实际解析值（ChatResponse 携带的 model 优先）
+        actual_model = getattr(response, "model", None)
+        if not isinstance(actual_model, str) or not actual_model:
+            actual_model = model or getattr(provider_instance, "chat_model", "") or ""
         self._record_usage(
             response=response,
             provider=provider,
-            model=model or provider_instance.chat_model or "",
+            model=actual_model,
             is_stream=False,
             duration_ms=duration_ms,
+            conversation_id=conversation_id,
         )
 
         return response
@@ -428,74 +637,135 @@ class LLMProvider:
         messages: List[Union[Message, Dict]],
         provider: str = "default",
         model: Optional[str] = None,
-        temperature: float = 0.7,
+        temperature: Optional[float] = None,
         max_tokens: Optional[int] = None,
-        callback: Optional[Callable[[ChatResponse], None]] = None,
+        callback: Optional[Callable[[str, bool], None]] = None,
+        conversation_id: str = "",
         **kwargs
-    ):
-        """发送流式聊天请求（同步）
+    ) -> str:
+        """发送流式聊天请求（同步执行，真实消费流）
 
-        向 LLM 发送流式聊天请求，通过回调函数或迭代器逐步获取响应。
-        如果提供商不支持流式输出，会抛出 NotImplementedError。
+        迭代底层 provider 的流式生成器，将每个 ChatResponse 块适配为对外回调
+        契约 callback(chunk_text: str, done: bool)，并返回拼接的完整文本。
+        聚合后的完整响应（含 tool_calls / usage）存放在 last_stream_response。
 
         Args:
             messages: 消息列表
-            provider: 提供商名称
-            model: 模型名称
-            temperature: 温度参数
-            max_tokens: 最大 token 数
-            callback: 流式响应回调函数，每收到一个响应块调用一次
-            **kwargs: 其他参数
+            provider: 提供商名称，"default" 自动选择启用的提供商（带粘性缓存）
+            model: 模型名称（可选，"default" 或 None 表示使用配置中的模型）
+            temperature: 温度参数（可选，None 表示不指定）
+            max_tokens: 最大 token 数（可选，None 表示不指定）
+            callback: 流式回调 (chunk_text: str, done: bool)，每块调用一次；
+                流正常结束但未出现 finish_reason 块时，补发一次 ("", True)
+            conversation_id: 关联的对话 ID（用于用量记录关联，可选）
+            **kwargs: 其他参数（为 None 的值会被剔除）
 
         Returns:
-            流式响应生成器或回调调用结果
+            str: 拼接后的完整响应文本
 
         Raises:
             ConfigurationError: 当提供商不存在时抛出
             NotImplementedError: 当提供商不支持流式输出时抛出
         """
         if provider == "default":
-            enabled = self.get_enabled_providers("chat")
-            if not enabled:
-                raise ConfigurationError("No enabled chat provider")
-            provider = list(enabled.keys())[0]
+            provider = self._resolve_default_provider("chat")
+        if model == "default":
+            model = None
 
         provider_instance = self.get_provider(provider)
         if not provider_instance:
             raise ConfigurationError(f"Provider not found: {provider}")
 
+        call_kwargs = self._filter_none_kwargs({
+            "model": model,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+            **kwargs,
+        })
+
         t0 = time.perf_counter()
-        response_gen = provider_instance.stream_chat(
-            messages=messages,
-            model=model,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            callback=callback,
-            **kwargs
-        )
+        try:
+            # 不传底层 callback（其契约为 ChatResponse 块），在本层统一做适配
+            response_gen = provider_instance.stream_chat(
+                messages=messages,
+                **call_kwargs,
+            )
+        except Exception as e:
+            self._health[provider] = (False, str(e))
+            raise
 
-        # 包装生成器：记录流结束后的 usage
-        last_response = None
+        content_parts: List[str] = []
+        tool_calls_agg: Dict[int, Dict[str, Any]] = {}
+        last_usage: Optional[UsageInfo] = None
+        agg_model = ""
+        finished = False
 
-        def _wrapped():
-            nonlocal last_response
-            nonlocal t0
+        try:
+            for chunk in response_gen:
+                text = getattr(chunk, "content", "") or ""
+                if not isinstance(text, str):
+                    text = str(text)
+                content_parts.append(text)
+
+                # 结束标志：末块 finish_reason 有值
+                done = self._extract_finish_reason(chunk) is not None
+                # usage：部分 API 在流式末块返回 usage（契约：provider 层填充）
+                chunk_usage = getattr(chunk, "usage", None)
+                if isinstance(chunk_usage, UsageInfo):
+                    last_usage = chunk_usage
+                # model：取首个有效的字符串 model
+                chunk_model = getattr(chunk, "model", None)
+                if isinstance(chunk_model, str) and chunk_model:
+                    agg_model = chunk_model
+                # tool_calls 增量聚合（OpenAI 风格分片）
+                self._merge_stream_tool_calls(
+                    tool_calls_agg, getattr(chunk, "tool_calls", None))
+
+                if callback:
+                    try:
+                        callback(text, done)
+                    except Exception as cb_err:
+                        self._logger.warning(
+                            get_name(), f"stream_chat callback error: {cb_err}")
+                if done:
+                    finished = True
+        except Exception as e:
+            self._health[provider] = (False, str(e))
+            raise
+
+        duration_ms = (time.perf_counter() - t0) * 1000
+        full_text = "".join(content_parts)
+
+        if callback and not finished:
+            # 流正常结束但未出现 finish_reason 块：补发结束标志
             try:
-                for r in response_gen:
-                    last_response = r
-                    yield r
-            finally:
-                duration_ms = (time.perf_counter() - t0) * 1000
-                if last_response is not None:
-                    self._record_usage(
-                        response=last_response,
-                        provider=provider,
-                        model=model or provider_instance.chat_model or "",
-                        is_stream=True,
-                        duration_ms=duration_ms,
-                    )
+                callback("", True)
+            except Exception as cb_err:
+                self._logger.warning(
+                    get_name(), f"stream_chat callback error: {cb_err}")
 
-        return _wrapped()
+        aggregated = ChatResponse(
+            content=full_text,
+            model=(agg_model or model
+                   or getattr(provider_instance, "chat_model", "") or ""),
+            tool_calls=list(tool_calls_agg.values()),
+            usage=last_usage,
+        )
+        self.last_stream_response = aggregated
+
+        # 流式用量记录：仅当末块携带 usage 时记录；
+        # 部分 API 流式不返回 usage，此时保持不记录（与既有行为一致）
+        if last_usage is not None:
+            self._record_usage(
+                response=aggregated,
+                provider=provider,
+                model=aggregated.model,
+                is_stream=True,
+                duration_ms=duration_ms,
+                conversation_id=conversation_id,
+            )
+        self._health[provider] = (True, None)
+        return full_text
 
     def embed(
         self,
@@ -521,20 +791,25 @@ class LLMProvider:
             ConfigurationError: 当没有启用的嵌入提供商或提供商不存在时抛出
         """
         if provider == "default":
-            enabled = self.get_enabled_providers("embedding")
-            if not enabled:
-                raise ConfigurationError("No enabled embedding provider")
-            provider = list(enabled.keys())[0]
+            provider = self._resolve_default_provider("embedding")
+        if model == "default":
+            model = None
 
         provider_instance = self.get_provider(provider)
         if not provider_instance:
             raise ConfigurationError(f"Provider not found: {provider}")
 
-        return provider_instance.embed(
-            texts=texts,
-            model=model,
-            **kwargs
-        )
+        call_kwargs = self._filter_none_kwargs({"model": model, **kwargs})
+        try:
+            result = provider_instance.embed(
+                texts=texts,
+                **call_kwargs,
+            )
+        except Exception as e:
+            self._health[provider] = (False, str(e))
+            raise
+        self._health[provider] = (True, None)
+        return result
 
     def get_models(self, provider: Optional[str] = None) -> Dict[str, List[ModelInfo]]:
         """获取可用模型列表

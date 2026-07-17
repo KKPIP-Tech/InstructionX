@@ -23,9 +23,9 @@ InstructionX 是一个基于 PySide6 的**插件化桌面 AI 助手框架**。�
 | 层次 | 技术选型 |
 |------|---------|
 | UI 框架 | PySide6（Qt for Python） |
-| LLM 提供商 | REST API（GLM、MiniMax、SiliconFlow、Ollama） |
+| LLM 提供商 | REST API（GLM、MiniMax、SiliconFlow、Ollama、OpenAI） |
 | MCP 协议 | `mcp` Python SDK + FastMCP |
-| 数据持久化 | JSON 文件（`data/data.json`、`data/tasks.json`）+ SQLite |
+| 数据持久化 | SQLite（`data/data.db` + WAL）+ `data/tasks.json`；JSON 文件（`data/data.json`）仅作为 DataProvider 应急回退 |
 | 异步/并发 | `concurrent.futures.ThreadPoolExecutor` + `threading` |
 | 插件发现 | `importlib.util` 动态导入 |
 
@@ -56,6 +56,7 @@ graph TB
                     MM["minimax.py"]
                     SF["siliconflow.py"]
                     OL["ollama.py"]
+                    OA["openai.py"]
                 end
             end
 
@@ -254,8 +255,9 @@ sequenceDiagram
 
 **框架暴露的插件扩展点**：
 - 插件必须提供 `entrance.py`，其中定义继承自 `IPlugin` 的类
-- 插件可选择提供 `information.py`（定义 `IPluginInfo`）来暴露 API 方法
-- 插件可选择提供 `service.py`（定义 `*Service` 类）作为 API 方法的实际实现载体
+- 插件必须提供 `information.py`（定义 `IPluginInfo`）来暴露 API 方法
+- 插件必须提供 `service.py`（定义 `*Service` 类）作为 API 方法的实际实现载体
+- 插件必须提供 `config/` 目录存放配置文件
 - 插件通过 `on_plugin_loaded()` 注册定时任务工厂、订阅其他插件数据
 
 ---
@@ -298,7 +300,7 @@ sequenceDiagram
 
 #### 3.2.3 ConversationManager
 
-- **核心职责**：管理所有对话的**生命周期**（创建/发送/删除），包含历史消息管理、自动上下文截断、用量累计与持久化。
+- **核心职责**：管理所有对话的**生命周期**（创建/发送/删除），包含历史消息管理、用量累计与持久化。`max_context` 参数当前会被吸收但不生效，上下文自动截断尚未实现。
 - **关键 API**：
   - `create_conversation(system_prompt, provider, model)` → `conv_id`
   - `send_message(conv_id, content)` → `(response_content, usage_info)`
@@ -447,12 +449,12 @@ sequenceDiagram
   - `cancel_task(task_id)` / `get_task_status(task_id)`
   - `shutdown()`
 - **模块关系**：
-  - ⬅️ **我依赖**：`TaskStorage`（任务持久化）、`TaskScheduler`（定时调度）、`LoggerManager`（日志）、`ThreadPoolExecutor(max_workers=4)`
+  - ⬅️ **我依赖**：`TaskStorage`（任务持久化）、`SchedulerCallback`（定时调度判断）、`LoggerManager`（日志）、`ThreadPoolExecutor(max_workers=4)`
   - ➡️ **依赖我**：所有插件（通过 `PluginServices.task_manager` 注入）
 - **典型场景**：
   1. 插件在 `on_plugin_loaded()` 中调用 `services.task_manager.register_scheduled_task_factory(plugin_id, func, callback)` 注册工厂
   2. `restore_scheduled_tasks()` 从 `data/tasks.json` 恢复定时任务
-  3. 后台 daemon 线程每 1 秒检查到期任务，通过 `TaskScheduler` 判断是否应执行
+  3. 后台 daemon 线程每 1 秒检查到期任务，通过 `SchedulerCallback.should_run()` 判断是否应执行
 
 #### 3.4.2 TaskStorage
 
@@ -461,12 +463,13 @@ sequenceDiagram
   - ⬅️ **我依赖**：`LoggerManager`
   - ➡️ **依赖我**：`BackgroundTaskManager`
 
-#### 3.4.3 TaskScheduler
+#### 3.4.3 TaskScheduler / SchedulerCallback
 
-- **核心职责**：定时任务的**调度判断**（基于 cron 表达式或间隔秒数）和执行。
+- **`TaskScheduler` 当前状态**：`core/task/scheduler.py` 中的 `TaskScheduler._check_and_run_tasks()` 为空实现（`pass`），仅被实例化并启动，**不实际承担调度职责**。
+- **`SchedulerCallback` 实际职责**：定时任务的**调度判断**（基于 cron 表达式或间隔秒数）和回调执行。`BackgroundTaskManager._check_scheduled_tasks()` daemon 线程每 1 秒调用 `SchedulerCallback.should_run()` 判断到期任务，并通过 `SchedulerCallback.execute_scheduled_task()` 执行。
 - **模块关系**：
-  - ⬅️ **我依赖**：`BackgroundTaskManager`（执行回调）
-  - ➡️ **依赖我**：`BackgroundTaskManager`（使用调度器）
+  - ⬅️ **SchedulerCallback 依赖**：`BackgroundTaskManager`（执行回调）
+  - ➡️ **BackgroundTaskManager 依赖**：`SchedulerCallback`（使用调度判断）
 
 ---
 
@@ -485,7 +488,7 @@ sequenceDiagram
   - ⬅️ **我依赖**：`LoggerManager`（日志）
   - ➡️ **依赖我**：所有插件（通过 `PluginServices.data_provider` 注入）
 - **命名空间**：`DataNamespace.PRIVATE`（插件私有数据） vs `DataNamespace.PUBLIC`（共享数据，变更时通知订阅者）
-- **数据文件**：`data/data.json`，写入使用原子替换（临时文件 + `os.replace`）防止数据损坏。
+- **数据文件**：`data/data.db`（SQLite + WAL）。仅在环境变量 `INSTRUCTIONX_DATAPROVIDER_BACKEND=json` 启用 JSON 应急后端时，才使用 `data/data.json` 并通过原子替换（临时文件 + `os.replace`）写入。
 - **典型场景**：
   1. 插件 A 发布：`data_provider.publish("plugin-a-id", "result_key", {"status": "done"})`
   2. 插件 B 订阅：`data_provider.subscribe("plugin-b-id", "plugin-a-id", "result_key", callback)`
@@ -603,7 +606,7 @@ graph LR
 | **MCPBridge** | 插件 API ↔ MCP 工具桥接 | `sync_new_plugin_tool()` | `MCPManager` | `MCPManager` |
 | **MCPHostServer** | FastMCP Server 封装 | `add_tool()`, `run_stdio()`, `run_http()` | 无（延迟创建 FastMCP） | `MCPBridge`, `MCPManager` |
 | **MCPClientManager** | 外部 MCP Server 连接 | `connect()`, `disconnect()` | `ToolRegistry` | `MCPManager` |
-| **BackgroundTaskManager** | 任务执行引擎 | `register_async_task()`, `register_scheduled_task_factory()` | `TaskStorage`, `TaskScheduler`, `LoggerManager` | 所有插件 |
+| **BackgroundTaskManager** | 任务执行引擎 | `register_async_task()`, `register_scheduled_task_factory()` | `TaskStorage`, `SchedulerCallback`, `LoggerManager` | 所有插件 |
 | **TaskStorage** | 任务 JSON 持久化 | `save_task()`, `get_scheduled_tasks_by_plugin()` | `LoggerManager` | `BackgroundTaskManager` |
 | **DataProvider** | 数据持久化 + Pub/Sub | `get_plugin_data()`, `subscribe()`, `publish()` | `LoggerManager` | 所有插件 |
 | **InstructionXMainWindow** | 主窗口 + 插件协调 | `_on_skill_clicked()`, `_cycle_theme()` | `PluginManager`, `DataProvider`, `StyleQSS` | `main.py` |
@@ -736,7 +739,7 @@ class IDataProvider(ABC):
 
 3.  BackgroundTaskManager._check_scheduled_tasks() (daemon, every 1s)
        → SchedulerCallback.should_run(task)
-       → TaskSchedulerCallback.execute_scheduled_task(task, func, callback)
+       → SchedulerCallback.execute_scheduled_task(task, func, callback)
            → ThreadPoolExecutor.submit(func, args, kwargs)
            → Callback invoked on completion
        → task.calculate_next_run() → TaskStorage.update_scheduled_task(task)
@@ -829,7 +832,8 @@ class IDataProvider(ABC):
 | `config/plugin_order.json` | JSON | 插件显示顺序（UUID 列表） |
 | `config/mcp_config.json` | JSON | MCP Server/Client 配置 |
 | `config/llm_models_cache.json` | JSON | Provider 模型列表缓存 |
-| `data/data.json` | JSON | 插件数据（private/public）+ 活跃实例 |
+| `data/data.db` | SQLite | 插件数据（private/public）+ 活跃实例 |
+| `data/data.json` | JSON | JSON 应急后端的插件数据（private/public）+ 活跃实例 |
 | `data/tasks.json` | JSON | 定时/长期任务状态 |
 | `data/llm_usage.json` | JSON | 用量记录 |
 | `data/assets/plugins/{plugin_id}/` | 文件 | 插件资源文件 |

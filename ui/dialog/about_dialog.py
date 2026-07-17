@@ -31,7 +31,9 @@ class AboutDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("关于")
-        self.setFixedSize(400, 350)
+        # 使用最小尺寸而非固定尺寸，保证高 DPI/大字体下内容不被裁切
+        self.setMinimumSize(400, 350)
+        self.resize(400, 350)
         self.setModal(True)
         self.setWindowFlags(
             Qt.WindowType.Dialog
@@ -88,7 +90,7 @@ class AboutDialog(QDialog):
         layout.addWidget(version_label)
 
         # 版权信息
-        copyright_label = QLabel("© 2025-2026 dakuang. 保留所有权利。")
+        copyright_label = QLabel("© 2025-2026 dakuang 版权所有，保留所有权利。")
         copyright_font = QFont()
         copyright_font.setPointSize(8)
         copyright_label.setFont(copyright_font)
@@ -98,8 +100,12 @@ class AboutDialog(QDialog):
         copyright_label.style().polish(copyright_label)
         layout.addWidget(copyright_label)
 
-        # 专有软件声明
-        proprietary_label = QLabel("Proprietary software.\nCommercial use requires authorization if thresholds are exceeded.")
+        # 专有软件声明（中文摘要 + 英文法律声明）
+        proprietary_label = QLabel(
+            "本软件为专有软件，商业使用超过阈值需获得授权。\n"
+            "Proprietary software.\n"
+            "Commercial use requires authorization if thresholds are exceeded."
+        )
         proprietary_font = QFont()
         proprietary_font.setPointSize(7)
         proprietary_label.setFont(proprietary_font)

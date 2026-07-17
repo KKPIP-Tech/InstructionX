@@ -1,4 +1,6 @@
 import sys
+import traceback
+from pathlib import Path
 
 # ===================================================================
 # PySide 相关
@@ -40,9 +42,21 @@ def main():
     logger = LoggerManager()
     logger.info(get_name(), '程序启动')
 
+    # 未捕获异常兜底：先写入日志再走默认行为（pythonw 下槽函数异常不再静默）
+    def _excepthook(exc_type, exc_value, exc_tb):
+        try:
+            stack = ''.join(traceback.format_exception(exc_type, exc_value, exc_tb))
+            logger.critical(get_name(), f'未捕获异常:\n{stack}')
+        except Exception:
+            pass
+        sys.__excepthook__(exc_type, exc_value, exc_tb)
+
+    sys.excepthook = _excepthook
+
     # 创建并显示主窗口
     main_window = InstructionXMainWindow()
-    main_window.setWindowIcon(QIcon("ui/logo.ico"))
+    # 图标路径基于 main.py 所在目录推导，避免相对 CWD 失效
+    main_window.setWindowIcon(QIcon(str(Path(__file__).resolve().parent / "ui" / "logo.ico")))
     main_window.show()
     
     # 强制立即处理事件，显示启动画面

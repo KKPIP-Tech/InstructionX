@@ -6,6 +6,7 @@
 from enum import Enum
 from typing import Tuple
 from dataclasses import dataclass
+from functools import total_ordering
 
 
 class VersionType(Enum):
@@ -40,7 +41,8 @@ class VersionType(Enum):
         return display_map[self]
 
 
-@dataclass
+@total_ordering
+@dataclass(frozen=True)
 class PluginVersion:
     """
     插件版本号类
@@ -85,11 +87,11 @@ class PluginVersion:
             
             return cls(version_type, major, minor, patch)
         except ValueError as e:
-            if isinstance(e, ValueError) and "is not a valid" in str(e):
+            if "is not a valid" in str(e):
                 raise ValueError(
                     f"Invalid version type: {parts[0]}. "
                     f"Must be one of: {', '.join([vt.value for vt in VersionType])}"
-                )
+                ) from e
             raise
     
     def to_string(self) -> str:
@@ -133,17 +135,8 @@ class PluginVersion:
             return self.minor < other.minor
         return self.patch < other.patch
     
-    def __le__(self, other) -> bool:
-        return self == other or self < other
-    
-    def __gt__(self, other) -> bool:
-        return not self <= other
-    
-    def __ge__(self, other) -> bool:
-        return not self < other
-    
-    def __ne__(self, other) -> bool:
-        return not self == other
+    # __le__/__gt__/__ge__ 由 functools.total_ordering 根据 __eq__/__lt__ 自动派生，
+    # 对非 PluginVersion 类型一致地传播 NotImplemented/TypeError
     
     def get_display_version(self) -> str:
         """

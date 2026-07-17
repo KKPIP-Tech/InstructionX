@@ -42,20 +42,40 @@
     - core/llm: LLM 提供商模块（未在主模块导出，按需导入）
 """
 
-# ==================== 插件系统 ====================
+# ==================== 延迟导出（PEP 562） ====================
+#
+# 本包的公开符号通过模块级 __getattr__ 按需加载，避免 import core 或
+# import core.interfaces 时牵入 core.plugin / PySide6 等重量依赖。
+# 所有既有导入路径保持不变：
+#     from core import PluginManager, DataProvider, BackgroundTaskManager, ...
 
-from .plugin.manager import PluginManager
-from .plugin.plugin_interface import IPlugin
-from .plugin.plugin_info_interface import IPluginInfo
+_LAZY_EXPORTS = {
+    # 插件系统
+    "PluginManager": ("core.plugin.manager", "PluginManager"),
+    "IPlugin": ("core.plugin.plugin_interface", "IPlugin"),
+    "IPluginInfo": ("core.plugin.plugin_info_interface", "IPluginInfo"),
+    # 数据层
+    "DataProvider": ("core.data.data_provider", "DataProvider"),
+    "DataNamespace": ("core.data.data_provider", "DataNamespace"),
+    # 后台任务
+    "BackgroundTaskManager": ("core.task.background_task", "BackgroundTaskManager"),
+    "TaskType": ("core.task.task_model", "TaskType"),
+    "TaskStatus": ("core.task.task_model", "TaskStatus"),
+    "BackgroundTask": ("core.task.task_model", "BackgroundTask"),
+    "ScheduledTask": ("core.task.task_model", "ScheduledTask"),
+    "LongRunningTask": ("core.task.task_model", "LongRunningTask"),
+}
 
-# ==================== 数据层 ====================
 
-from .data.data_provider import DataProvider, DataNamespace
-
-# ==================== 后台任务 ====================
-
-from .task.background_task import BackgroundTaskManager
-from .task.task_model import TaskType, TaskStatus, BackgroundTask, ScheduledTask, LongRunningTask
+def __getattr__(name: str):
+    target = _LAZY_EXPORTS.get(name)
+    if target is None:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    import importlib
+    module = importlib.import_module(target[0])
+    value = getattr(module, target[1])
+    globals()[name] = value  # 缓存到模块命名空间，后续访问不再触发 __getattr__
+    return value
 
 
 __all__ = [

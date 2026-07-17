@@ -9,7 +9,7 @@
 [![Python](https://img.shields.io/badge/Python-3.14+-blue.svg)](https://www.python.org/)
 [![PySide6](https://img.shields.io/badge/PySide6-6.10+-green.svg)](https://doc.qt.io/qtforpython/)
 [![Platform](https://img.shields.io/badge/Platform-Windows-lightgrey.svg)](#)
-[![License](https://img.shields.io/badge/License-Modified%20Apache%202.0-orange.svg)](LICENSE)
+[![License](https://img.shields.io/badge/License-Commercial%20Source-orange.svg)](LICENSE)
 [![Version](https://img.shields.io/badge/Alpha-1.0.2%20CE-red.svg)](#)
 
 > A PySide6-based plugin desktop application framework with LLM integration, MCP Protocol (Server/Client), multi-conversation management, and hot-swappable plugin system
@@ -51,9 +51,9 @@ Built-in GitHub plugin installer for installing plugins from any GitHub URL:
 
 Built-in multi-provider LLM integration with `LLMPluginService` providing complete conversation management and automated tool calling:
 
-- **Multi-Provider Support**: MiniMax, SiliconFlow, Zhipu GLM, Ollama, and more
-- **Conversation Management**: Multi-session creation, switching, automatic history management, context auto-truncation
-- **ToolCallExecutor**: Automatic two-round tool calling loop, plugins only need to register tools
+- **Multi-Provider Support**: MiniMax, SiliconFlow, Zhipu GLM, Ollama, OpenAI, and more
+- **Conversation Management**: Multi-session creation, switching, automatic history management (context auto-truncation is not currently implemented)
+- **ToolCallExecutor**: Automatic multi-turn tool calling loop (default max_turns=5), plugins only need to register tools
 - **Multimodal Support**: Image understanding (Vision), image generation, TTS voice synthesis
 - **Usage Statistics**: Per-conversation and global Token consumption and cost estimation
 - **Embedding**: Vector embedding support
@@ -71,7 +71,7 @@ Full Model Context Protocol support through the official MCP SDK:
 ### 💾 Flexible Data Layer
 
 **DataProvider** provides robust data persistence capabilities:
-- **Atomic Writes**: Uses temporary file + rename mechanism to ensure data isn't corrupted by unexpected interruptions
+- **SQLite WAL + Explicit Transactions**: Uses SQLite WAL mode and explicit transactions by default to ensure data isn't corrupted by unexpected interruptions; set the environment variable `INSTRUCTIONX_DATAPROVIDER_BACKEND=json` to fall back to the JSON backend
 - **Dual Namespaces**: PRIVATE space is only accessible within a plugin, PUBLIC space supports cross-plugin access
 - **Pub/Sub**: Plugins can subscribe to data changes for reactive interactions
 - **Memory Cache**: Reduces frequent disk I/O for better performance
@@ -239,8 +239,9 @@ Each plugin can contain the following files:
 ```
 my_plugin/
 ├── entrance.py      # Required: Plugin entry, defines IPlugin subclass
-├── service.py       # Optional: Plugin service logic
-├── information.py   # Optional: Plugin metadata (version, icon, API definitions, etc.)
+├── service.py       # Required: Plugin service logic / interface layer
+├── information.py   # Required: Plugin metadata (version, icon, API definitions, etc.)
+├── config/          # Required: Plugin configuration directory
 └── assets/          # Optional: Static assets directory
 ```
 
@@ -311,7 +312,7 @@ class MyPluginInfo(IPluginInfo):
 | Plugin Order | `config/plugin_order.json` | Plugin display order configuration |
 | LLM Config | `config/llm_providers.json` | Provider API Key, Base URL, etc. |
 | Model Cache | `config/llm_models_cache.json` | LLM model list cache |
-| Plugin Data | `data/data.db` | Plugin data persistent storage (SQLite) |
+| Plugin Data | `data/data.db` | Plugin data persistent storage (SQLite + WAL; fallback to `data/data.json` via `INSTRUCTIONX_DATAPROVIDER_BACKEND=json`) |
 | Task Status | `data/tasks.json` | Background task state persistence |
 | Assets | `data/assets/` | Plugin asset file storage |
 | MCP Config | `config/mcp_config.json` | MCP Server/Client connection configuration |
@@ -321,12 +322,13 @@ class MyPluginInfo(IPluginInfo):
 
 ## License
 
-InstructionX is licensed under a **Modified Apache License 2.0**:
+InstructionX is licensed under the **InstructionX Commercial Source License** (this is not an open-source license):
 
-- ✅ **Personal Use**: Free to use
-- ✅ **Educational Use**: Requires written authorization
-- ❌ **Enterprise Use**: Prohibited without authorization
-- ❌ **Commercial Use**: Requires written authorization
+- ✅ **Personal, non-commercial use**: Free to use
+- ⚠️ **Organizational use**: Organizations with more than 100 global employees require written authorization
+- ⚠️ **Deployment scale**: More than 30 installed instances require written authorization
+- ❌ **SaaS / multi-tenant service**: Prohibited without authorization
+- ❌ **Redistribution**: Requires written authorization
 
 See [LICENSE](LICENSE) file for complete terms.
 
@@ -352,7 +354,7 @@ The project includes complete technical documentation (in Chinese) located in th
 
 | Technology | Purpose | Version |
 |------------|---------|---------|
-| InstructionX CE | Application version | 0.1.0 |
+| InstructionX CE | Application version | Alpha 1.0.2 |
 | PySide6 | Qt GUI framework | >= 6.10 |
 | Python | Programming language | >= 3.14 |
 | requests | HTTP requests | - |

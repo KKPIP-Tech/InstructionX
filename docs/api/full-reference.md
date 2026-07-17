@@ -333,7 +333,7 @@ from core.mcp import IMCPTool, IMCPClient
 | `chat(messages, provider?, model?, ...)` | 直接 chat（无对话状态） | ChatResponse |
 | `stream_chat(messages, callback, provider?, ...)` | 流式 chat（无对话状态），callback 签名为 `(chunk: str, done: bool)` | None |
 | `chat_with_tools(messages, provider?, model?, max_turns?, ...)` | 工具调用循环 | Tuple[List[Dict], List[ToolResult], Any] |
-| `chat_with_tools_stream(messages, callback, provider?, ...)` | 流式工具调用 | Tuple[List[Dict], List[ToolResult], str] |
+| `chat_with_tools_stream(messages, callback, provider?, ...)` | 流式工具调用（当前流式路径不会解析 `tool_calls`，实际暂不可用） | Tuple[List[Dict], List[ToolResult], str] |
 | `get_tool_executor()` | 获取工具调用执行器 | ToolCallExecutor |
 | `get_shared_tool_registry()` | 获取共享工具注册表 | ToolRegistry |
 | `get_raw_provider(provider="default")` | 获取底层 ILLM Provider（高级用） | ILLM |
@@ -623,7 +623,7 @@ task_id = task_manager.register_scheduled_task(
 | 方法 | 说明 |
 |------|------|
 | `chat(messages, provider, model, temperature, max_tokens, **kwargs)` | 同步聊天 |
-| `stream_chat(messages, provider, model, temperature, max_tokens, callback, **kwargs)` | 流式聊天（同步） |
+| `stream_chat(messages, provider, model, temperature, max_tokens, callback, **kwargs)` | 流式聊天（同步），`callback` 签名为 `(chunk: str, done: bool) -> None` |
 | `embed(texts, provider, model, **kwargs)` | 文本嵌入 |
 | `get_models(provider)` | 获取可用模型列表 |
 | `get_provider(name)` | 获取 Provider 实例 |

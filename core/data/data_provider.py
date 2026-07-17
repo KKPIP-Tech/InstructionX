@@ -7,11 +7,12 @@ import copy
 import os
 import json
 import threading
-from pathlib import Path
+from pathlib import Path, PurePath
 from typing import Dict, Any, Optional, Callable, List
-from enum import Enum
 
-from core.interfaces.i_data_provider import IDataProvider, DataNamespace as IDataNamespace
+# DataNamespace 单一来源在接口层，此处 re-export 以保持
+# `from core.data.data_provider import DataNamespace` 导入路径可用
+from core.interfaces.i_data_provider import IDataProvider, DataNamespace
 from utils.logging_tools import LoggerManager, get_name
 
 from .sqlite_backend import SQLiteBackend, SQLiteBackendError
@@ -20,12 +21,6 @@ from .sqlite_backend import SQLiteBackend, SQLiteBackendError
 class DataProviderError(Exception):
     """DataProvider 自定义异常类"""
     pass
-
-
-class DataNamespace(Enum):
-    """数据命名空间枚举"""
-    PRIVATE = "private"  # 仅插件内部使用
-    PUBLIC = "public"    # 允许其他插件访问
 
 
 class DataProvider(IDataProvider):
@@ -57,6 +52,13 @@ class DataProvider(IDataProvider):
         """
         # 避免重复初始化
         if hasattr(self, '_initialized') and self._initialized:
+            # 单例已初始化：后续传入的不同参数不会生效，记录 debug 日志提示
+            if data_dir is not None and Path(data_dir) != self.data_dir:
+                self._logger.debug(
+                    get_name(),
+                    f"DataProvider 单例已初始化（data_dir={self.data_dir}），"
+                    f"忽略本次传入的 data_dir 参数: {data_dir}"
+                )
             return
 
         # 后端选择开关：环境变量 INSTRUCTIONX_DATAPROVIDER_BACKEND=json 使用旧 JSON 后端
@@ -107,6 +109,8 @@ class DataProvider(IDataProvider):
 
     def _json_read_from_disk(self) -> Dict[str, Any]:
         with self._file_lock:
+            # 数据文件不存在时创建默认空结构（应急 JSON 后端首次读取）
+            self._json_ensure_data_file()
             try:
                 with open(self.data_file, 'r', encoding='utf-8') as f:
                     return json.load(f)
@@ -133,7 +137,9 @@ class DataProvider(IDataProvider):
         if self._cache is None or self._cache_dirty:
             self._cache = self._json_read_from_disk()
             self._cache_dirty = False
-        return self._cache.copy() if self._cache else {}
+        # 返回深拷贝（与 SQLite 路径一致），避免调用方修改嵌套结构污染缓存；
+        # 因此 register/set 等写路径必须将修改后的 data 重新赋值给 self._cache 才会生效
+        return copy.deepcopy(self._cache) if self._cache else {}
 
     def _json_save_data(self) -> None:
         if self._cache is None:
@@ -149,14 +155,16 @@ class DataProvider(IDataProvider):
         if self._use_json_backend:
             return self._json_load_data()
 
-        if self._cache is None or force_reload or self._cache_dirty:
-            with self._file_lock:
+        # 缓存命中判断与 deepcopy 都在锁内完成，避免并发 set_plugin_data
+        # 修改嵌套结构时 deepcopy 抛出 RuntimeError
+        with self._file_lock:
+            if self._cache is None or force_reload or self._cache_dirty:
                 try:
                     self._cache = self._backend.load_data()
                 except SQLiteBackendError as e:
                     raise DataProviderError(str(e)) from e
                 self._cache_dirty = False
-        return copy.deepcopy(self._cache) if self._cache else {}
+            return copy.deepcopy(self._cache) if self._cache else {}
 
     def save_data(self) -> None:
         if self._use_json_backend:
@@ -177,7 +185,7 @@ class DataProvider(IDataProvider):
             self._cache = None
             self._cache_dirty = True
             if not self._use_json_backend:
-                self._backend._value_cache.clear()
+                self._backend.clear_caches()
 
 
     # -------------------------------------------------------------------------
@@ -327,7 +335,8 @@ class DataProvider(IDataProvider):
             data["plugins"][instance_id][namespace_str][key] = value
             self._cache = data
             self._json_save_data()
-            if namespace == DataNamespace.PUBLIC and notify:
+            # 与 SQLite 路径统一使用 .value 比较
+            if namespace_str == DataNamespace.PUBLIC.value and notify:
                 self._notify_subscribers(instance_id, key, old_value, value)
             return
 
@@ -427,13 +436,20 @@ class DataProvider(IDataProvider):
                           key: str,
                           old_value: Any,
                           new_value: Any) -> None:
+        # 锁内快照匹配的回调列表后释放锁，锁外逐个执行回调，
+        # 避免回调中 unsubscribe/subscribe/再次 publish 时同线程死锁
         with self._subscription_lock:
-            for (subscriber_id, target_plugin_id, target_key), callback in self._subscriptions.items():
-                if target_plugin_id == publisher_id and target_key == key:
-                    try:
-                        callback(target_plugin_id, key, old_value, new_value)
-                    except Exception as e:
-                        self._logger.warning(get_name(), f'Subscriber {subscriber_id} callback failed: {e}')
+            callbacks = [
+                (subscriber_id, callback)
+                for (subscriber_id, target_plugin_id, target_key), callback in self._subscriptions.items()
+                if target_plugin_id == publisher_id and target_key == key
+            ]
+        for subscriber_id, callback in callbacks:
+            try:
+                callback(publisher_id, key, old_value, new_value)
+            except Exception as e:
+                # 单个回调异常不中断其他回调
+                self._logger.warning(get_name(), f'Subscriber {subscriber_id} callback failed: {e}')
 
     def _remove_subscriptions_for_plugin(self, instance_id: str) -> None:
         with self._subscription_lock:
@@ -445,19 +461,36 @@ class DataProvider(IDataProvider):
     # 公共方法：资源文件管理
     # -------------------------------------------------------------------------
 
+    @staticmethod
+    def _validate_asset_component(part: str, kind: str) -> None:
+        """校验资源路径片段（plugin_id / filename），与 get_asset_path 读侧校验对称。"""
+        if not part:
+            raise DataProviderError(f"无效的{kind}: 不能为空")
+        pure = PurePath(part)
+        if pure.is_absolute() or ".." in pure.parts:
+            raise DataProviderError(f"无效的{kind}: {part}")
+
     def save_asset(self,
                   plugin_id: str,
                   filename: str,
                   content: bytes) -> str:
         try:
-            plugin_dir = self.assets_dir / plugin_id
+            # 写侧路径消毒：禁止空名、绝对路径与 ".." 路径穿越
+            self._validate_asset_component(plugin_id, "插件 ID")
+            self._validate_asset_component(filename, "资源文件名")
+            plugin_dir = (self.assets_dir / plugin_id).resolve()
             plugin_dir.mkdir(parents=True, exist_ok=True)
-            file_path = plugin_dir / filename
+            file_path = (plugin_dir / filename).resolve()
+            # 规范化后必须仍位于插件资产目录内（防御分隔符/符号链接绕过）
+            if plugin_dir != file_path.parent and plugin_dir not in file_path.parents:
+                raise DataProviderError(f"无效的资源文件名: {filename}")
             with open(file_path, 'wb') as f:
                 f.write(content)
             relative_path = f"assets/plugins/{plugin_id}/{filename}"
             return relative_path
         except Exception as e:
+            if isinstance(e, DataProviderError):
+                raise
             raise DataProviderError(f"保存资源文件失败: {e}")
 
     def get_asset_path(self, relative_path: str) -> str:
@@ -529,114 +562,3 @@ class DataProvider(IDataProvider):
             except SQLiteBackendError as e:
                 raise DataProviderError(str(e)) from e
         self.clear_cache()
-
-
-# ==================== 演示代码 ====================
-
-def demo_callback(target_plugin_id: str, key: str, old_value: Any, new_value: Any):
-    """演示用的回调函数"""
-    logger = LoggerManager()
-    logger.info(get_name(), f"通知: 插件 '{target_plugin_id}' 的 '{key}' 从 '{old_value}' 变更为 '{new_value}'")
-
-
-if __name__ == "__main__":
-    logger = LoggerManager()
-    logger.info(get_name(), "=" * 60)
-    logger.info(get_name(), "DataProvider 演示程序")
-    logger.info(get_name(), "=" * 60)
-
-    # 创建 DataProvider 实例（单例）
-    provider = DataProvider()
-
-    # 重置数据以获得干净的演示环境
-    provider.reset_all_data()
-    logger.info(get_name(), "数据已重置")
-
-    # 注册插件 A（VideoEditor 类型）
-    plugin_a_id = "video-editor-001"
-    provider.register_plugin(plugin_a_id, "VideoEditor")
-    logger.info(get_name(), f"已注册插件 A: {plugin_a_id} (类型: VideoEditor)")
-
-    # 注册插件 B（Exporter 类型）
-    plugin_b_id = "exporter-001"
-    provider.register_plugin(plugin_b_id, "Exporter")
-    logger.info(get_name(), f"已注册插件 B: {plugin_b_id} (类型: Exporter)")
-
-    # 设置插件 A 为活跃实例
-    provider.set_active_instance(plugin_a_id)
-    logger.info(get_name(), "已将插件 A 设为 VideoEditor 类型的活跃实例")
-
-    # 插件 A 存储一些私有数据
-    provider.set_plugin_data(plugin_a_id, "project_name", "My Awesome Project", DataNamespace.PRIVATE)
-    provider.set_plugin_data(plugin_a_id, "resolution", "1920x1080", DataNamespace.PRIVATE)
-    logger.info(get_name(), "插件 A 存储了私有数据")
-
-    # 插件 A 存储一些公共数据
-    provider.set_plugin_data(plugin_a_id, "video_duration", 120, DataNamespace.PUBLIC)
-    provider.set_plugin_data(plugin_a_id, "frame_rate", 30, DataNamespace.PUBLIC)
-    logger.info(get_name(), "插件 A 存储了公共数据")
-
-    # 插件 B 订阅插件 A 的公共数据变化
-    provider.subscribe(plugin_b_id, plugin_a_id, "video_duration", demo_callback)
-    provider.subscribe(plugin_b_id, plugin_a_id, "frame_rate", demo_callback)
-    logger.info(get_name(), "插件 B 订阅了插件 A 的 'video_duration' 和 'frame_rate' 变化")
-
-    # 模拟数据变更
-    logger.info(get_name(), "-" * 60)
-    logger.info(get_name(), "模拟数据变更...")
-    logger.info(get_name(), "-" * 60)
-
-    provider.set_plugin_data(plugin_a_id, "video_duration", 150, DataNamespace.PUBLIC)
-    provider.set_plugin_data(plugin_a_id, "frame_rate", 60, DataNamespace.PUBLIC)
-
-    # 查询数据
-    logger.info(get_name(), "-" * 60)
-    logger.info(get_name(), "查询数据...")
-    logger.info(get_name(), "-" * 60)
-
-    duration = provider.get_plugin_data(plugin_a_id, "video_duration", DataNamespace.PUBLIC)
-    frame_rate = provider.get_plugin_data(plugin_a_id, "frame_rate", DataNamespace.PUBLIC)
-    logger.info(get_name(), f"插件 A 的公共数据: video_duration={duration}, frame_rate={frame_rate}")
-
-    # 保存资源文件
-    logger.info(get_name(), "-" * 60)
-    logger.info(get_name(), "保存资源文件...")
-    logger.info(get_name(), "-" * 60)
-
-    test_content = b"This is a test video thumbnail data."
-    relative_path = provider.save_asset(plugin_a_id, "thumbnail.png", test_content)
-    logger.info(get_name(), f"已保存资源文件: {relative_path}")
-
-    # 获取资源路径
-    absolute_path = provider.get_asset_path(relative_path)
-    logger.info(get_name(), f"资源文件绝对路径: {absolute_path}")
-
-    # 加载资源文件
-    loaded_content = provider.load_asset(relative_path)
-    logger.info(get_name(), f"已加载资源文件，内容: {loaded_content.decode()}")
-
-    # 获取所有插件信息
-    logger.info(get_name(), "-" * 60)
-    logger.info(get_name(), "所有插件信息:")
-    logger.info(get_name(), "-" * 60)
-
-    all_plugins = provider.get_all_plugins()
-    for pid, info in all_plugins.items():
-        logger.info(get_name(), f"插件 ID: {pid}, 类型: {info['type']}, 活跃: {info['active']}, 公共数据: {info['public']}, 私有数据: {info['private']}")
-
-    # 取消订阅
-    logger.info(get_name(), "-" * 60)
-    logger.info(get_name(), "取消订阅...")
-    logger.info(get_name(), "-" * 60)
-
-    provider.unsubscribe(plugin_b_id)
-    logger.info(get_name(), "已取消插件 B 的所有订阅")
-
-    # 再次变更数据（不会触发通知）
-    logger.info(get_name(), "模拟再次变更数据（已取消订阅，不应触发通知）...")
-    provider.set_plugin_data(plugin_a_id, "video_duration", 180, DataNamespace.PUBLIC)
-    logger.info(get_name(), "没有触发通知，符合预期")
-
-    logger.info(get_name(), "=" * 60)
-    logger.info(get_name(), "演示完成！")
-    logger.info(get_name(), "=" * 60)
