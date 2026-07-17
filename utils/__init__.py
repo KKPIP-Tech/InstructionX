@@ -6,6 +6,9 @@ _LAZY_EXPORTS = {
     "set_style_qss_theme": ("utils.themes", "set_style_qss_theme"),
     "LoggerManager": ("utils.logging_tools", "LoggerManager"),
     "get_name": ("utils.logging_tools", "get_name"),
+    "is_ui_thread": ("utils.thread_utils", "is_ui_thread"),
+    "run_in_ui_thread": ("utils.thread_utils", "run_in_ui_thread"),
+    "run_in_ui_thread_sync": ("utils.thread_utils", "run_in_ui_thread_sync"),
 }
 
 
@@ -24,5 +27,9 @@ __all__ = [
     "set_style_qss_theme",
 
     "LoggerManager",
-    "get_name"
+    "get_name",
+
+    "is_ui_thread",
+    "run_in_ui_thread",
+    "run_in_ui_thread_sync",
 ]
