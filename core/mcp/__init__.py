@@ -54,9 +54,10 @@ MCP (Model Context Protocol) 模块
             super().__init__()
             self._mcp_manager = services.mcp_manager if services else None
 
-        async def use_mcp_tools(self):
+        def use_mcp_tools(self):
             config = MCPRemoteServerConfig(...)
-            await self._mcp_manager.connect(config)
+            # connect() 是同步方法（内部桥接异步事件循环）
+            self._mcp_manager.connect(config)
 """
 
 from core.mcp.manager import MCPManager, get_mcp_manager

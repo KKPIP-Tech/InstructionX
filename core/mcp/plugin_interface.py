@@ -10,7 +10,9 @@ from abc import ABC, abstractmethod
 from typing import Any, Dict, List, TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from core.mcp.client import MCPRemoteServerConfig
+    # MCPRemoteServerConfig 实际定义在 core.mcp.config
+    # （core.mcp.client 保留了向后兼容的 re-export）
+    from core.mcp.config import MCPRemoteServerConfig
 
 
 class IMCPTool(ABC):
@@ -80,10 +82,14 @@ class IMCPTool(ABC):
 
 
 class IMCPClient(ABC):
-    """MCP Client 访问接口
+    """MCP Client 访问接口（预留接口）
 
     供插件开发者连接外部 MCP Server 并调用其工具。
     通过 PluginServices.mcp_client 注入。
+
+    注意：这是预留的抽象接口，当前框架注入的是具体类
+    MCPClientManager，其 connect()/disconnect() 为**同步方法**
+    （内部通过专用事件循环线程桥接异步 MCP SDK），调用时请勿加 await。
 
     用法::
 
@@ -92,8 +98,8 @@ class IMCPClient(ABC):
                 super().__init__()
                 self._mcp_client = services.mcp_client if services else None
 
-            async def connect_to_external(self):
-                from core.mcp.client import MCPRemoteServerConfig
+            def connect_to_external(self):
+                from core.mcp.config import MCPRemoteServerConfig
                 config = MCPRemoteServerConfig(
                     server_id="filesystem",
                     name="Filesystem",
@@ -101,7 +107,7 @@ class IMCPClient(ABC):
                     command="npx",
                     args=["-y", "@modelcontextprotocol/server-filesystem", "/tmp"],
                 )
-                await self._mcp_client.connect(config)
+                self._mcp_client.connect(config)  # 同步方法
     """
 
     @abstractmethod
