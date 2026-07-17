@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import Dict, Any, Optional, List
 
 from .exceptions import ConfigurationError
+from .secure_keys import encode_secret, decode_secret
 
 
 # ==================== 配置路径常量 ====================
@@ -236,6 +237,9 @@ class LLMConfig:
 
             providers = data.get("providers", {})
             for name, config_data in providers.items():
+                # 落盘的 api_key 可能是 Base64 编码(b64: 前缀),加载时解码回明文
+                config_data = dict(config_data)
+                config_data["api_key"] = decode_secret(config_data.get("api_key", ""))
                 self._providers[name] = ProviderConfig.from_dict(config_data)
         except Exception as e:
             raise ConfigurationError(f"Failed to load config: {e}")
@@ -432,12 +436,12 @@ class LLMConfig:
         """
         CONFIG_DIR.mkdir(parents=True, exist_ok=True)
 
-        data = {
-            "providers": {
-                name: config.to_dict()
-                for name, config in self._providers.items()
-            }
-        }
+        data = {"providers": {}}
+        for name, config in self._providers.items():
+            provider_dict = config.to_dict()
+            # api_key 落盘前做 Base64 编码(仅为编码非加密,内存中始终保持明文)
+            provider_dict["api_key"] = encode_secret(provider_dict.get("api_key", ""))
+            data["providers"][name] = provider_dict
 
         with open(CONFIG_FILE, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=4, ensure_ascii=False)
