@@ -7,47 +7,30 @@ import re
 from ..registry import QssRegistry
 
 # 样式文件加载顺序（对应文件名，不含 .qss 扩展名）
-_STYLE_FILES = [
-    'base',           # 基础设置
-    'custom',         # 自定义样式（可覆盖）
-    'label',          # 标签
-    'button',         # 按钮
-    'input',          # 输入控件
-    'spinbox',        # 数值选择
-    'combobox',       # 下拉框
-    'checkbox',       # 复选框
-    'radio',          # 单选按钮
-    'slider',         # 滑块
-    'progress',       # 进度条
-    'menu',           # 菜单
-    'toolbar',        # 工具栏
-    'scrollbar',      # 滚动条
-    'tab',            # 标签页
-    'groupbox',       # 分组框
-    'frame',          # 框架
-    'list',           # 列表视图
-    'header',         # 表头
-    'splitter',       # 分割器
-    'dialog',         # 对话框
-    'statusbar',      # 状态栏
-    'tooltip',        # 工具提示
-    'dock',           # 停靠窗口
-    'mainwindow',     # 主窗口
-    'titlebar',       # 自定义标题栏
-    'usage_panel',    # 用量查询面板
-]
+# 唯一事实来源是 QssRegistry._STYLE_PRIORITIES，此处仅做推导；新增样式文件只需在 registry 登记
+_STYLE_FILES = QssRegistry.style_file_order()
 
 
 def _remove_comments(qss: str) -> str:
-    """移除 QSS 注释，避免编码问题"""
+    """
+    移除 QSS 注释，避免编码问题
+
+    仅移除 /* ... */ 块注释、行首 // 注释（stripped 以 // 开头）以及
+    前置空白的行内 // 注释；url(http://...) 等 :// 形式不受影响。
+    """
     # 移除 /* ... */ 块注释
     qss = re.sub(r'/\*.*?\*/', '', qss, flags=re.DOTALL)
     # 移除单行注释
     lines = []
     for line in qss.split('\n'):
-        # 移除 // 注释
-        if '//' in line:
-            line = line[:line.index('//')]
+        # 行首注释：stripped 以 // 开头
+        if line.lstrip().startswith('//'):
+            lines.append('')
+            continue
+        # 行内注释：// 前置空白（url 中的 :// 前面是冒号，不会命中）
+        m = re.search(r'\s//', line)
+        if m:
+            line = line[:m.start()]
         lines.append(line)
     return '\n'.join(lines)
 
@@ -73,9 +56,8 @@ def init_styles():
         file_path = os.path.join(styles_dir, f'{style_name}.qss')
         if os.path.exists(file_path):
             qss_content = _load_qss_file(file_path)
-            # 根据文件名确定优先级
-            priority = _STYLE_FILES.index(style_name) * 10
-            QssRegistry.register(style_name, qss_content, priority)
+            # 优先级由 registry 单一事实来源推导
+            QssRegistry.register(style_name, qss_content, QssRegistry._get_priority(style_name))
 
 
 # 模块加载时自动初始化样式
