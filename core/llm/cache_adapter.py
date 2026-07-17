@@ -27,10 +27,11 @@ from .types_cache import CacheInfo, CacheType
 
 DEFAULT_CACHE_CONFIG: Dict[str, Dict[str, Any]] = {
     "minimax": {
-        "enabled": True,
-        "cached_tokens_path": "usage.cache_read_input_tokens",
+        # MiniMax 官方响应未返回缓存相关字段，禁用缓存统计
+        "enabled": False,
+        "cached_tokens_path": None,
         "total_tokens_path": "usage.prompt_tokens",
-        "cache_type": "prompt_cache",
+        "cache_type": "none",
         "ttl_seconds": None,
     },
     "openai": {
@@ -55,10 +56,11 @@ DEFAULT_CACHE_CONFIG: Dict[str, Dict[str, Any]] = {
         "ttl_seconds": 3600,  # 1小时
     },
     "glm": {
-        "enabled": True,
-        "cached_tokens_path": "usage.cache_read_input_tokens",
+        # GLM 官方响应未返回缓存相关字段，禁用缓存统计
+        "enabled": False,
+        "cached_tokens_path": None,
         "total_tokens_path": "usage.prompt_tokens",
-        "cache_type": "prompt_cache",
+        "cache_type": "none",
         "ttl_seconds": None,
     },
     "ollama": {
