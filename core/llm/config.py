@@ -38,6 +38,34 @@ CONFIG_FILE = CONFIG_DIR / "llm_providers.json"
 MODELS_CACHE_FILE = CONFIG_DIR / "llm_models_cache.json"
 
 
+# 定价字段迁移映射：旧键（元/千 tokens） -> 新键（元/百万 tokens）
+_PRICE_KEY_MIGRATION = (
+    ("input_price_per_1k", "input_price_per_1m"),
+    ("output_price_per_1k", "output_price_per_1m"),
+)
+
+
+def _migrate_price_keys(data: Dict[str, Any]) -> Dict[str, Any]:
+    """将定价字段从旧键 per_1k 迁移到新键 per_1m（×1000）
+
+    向后兼容处理：若字典中只有 per_1k 旧键，读取并乘以 1000 写入
+    per_1m 新键后移除旧键；若新键已存在，直接丢弃旧键。
+
+    Args:
+        data: 原始字典（不会被修改）
+
+    Returns:
+        Dict[str, Any]: 迁移后的新字典
+    """
+    data = dict(data)
+    for old_key, new_key in _PRICE_KEY_MIGRATION:
+        if old_key in data:
+            old_value = data.pop(old_key)
+            if new_key not in data and old_value is not None:
+                data[new_key] = old_value * 1000
+    return data
+
+
 class ProviderConfig:
     """单个 LLM 提供商的配置类
 
@@ -131,6 +159,16 @@ class ProviderConfig:
         Returns:
             ProviderConfig: 配置对象实例
         """
+        # 定价字段迁移：per_1k（元/千） -> per_1m（元/百万）
+        data = _migrate_price_keys(data)
+        # custom_models 内的定价字段同样迁移
+        custom_models = data.get("custom_models")
+        if isinstance(custom_models, list):
+            data["custom_models"] = [
+                _migrate_price_keys(m) if isinstance(m, dict) else m
+                for m in custom_models
+            ]
+
         # 已知的标准字段
         known_fields = {
             "name", "provider_type", "api_key", "base_url",
@@ -292,8 +330,8 @@ class LLMConfig:
                         "support_embedding": False,
                         "support_vision": True,
                         "support_function_calling": True,
-                        "input_price_per_1k": 18,
-                        "output_price_per_1k": 72
+                        "input_price_per_1m": 18,
+                        "output_price_per_1m": 72
                     },
                     {
                         "id": "gpt-4o-mini",
@@ -304,8 +342,8 @@ class LLMConfig:
                         "support_embedding": False,
                         "support_vision": True,
                         "support_function_calling": True,
-                        "input_price_per_1k": 1,
-                        "output_price_per_1k": 4
+                        "input_price_per_1m": 1.1,
+                        "output_price_per_1m": 4.4
                     },
                     {
                         "id": "gpt-4-turbo",
@@ -316,8 +354,8 @@ class LLMConfig:
                         "support_embedding": False,
                         "support_vision": True,
                         "support_function_calling": True,
-                        "input_price_per_1k": 50,
-                        "output_price_per_1k": 150
+                        "input_price_per_1m": 72,
+                        "output_price_per_1m": 216
                     },
                     {
                         "id": "gpt-3.5-turbo",
@@ -328,8 +366,8 @@ class LLMConfig:
                         "support_embedding": False,
                         "support_vision": False,
                         "support_function_calling": True,
-                        "input_price_per_1k": 1,
-                        "output_price_per_1k": 2
+                        "input_price_per_1m": 3.6,
+                        "output_price_per_1m": 10.8
                     },
                     {
                         "id": "text-embedding-3-small",
@@ -340,8 +378,8 @@ class LLMConfig:
                         "support_embedding": True,
                         "support_vision": False,
                         "support_function_calling": False,
-                        "input_price_per_1k": 0.02,
-                        "output_price_per_1k": 0.0
+                        "input_price_per_1m": 0.15,
+                        "output_price_per_1m": 0.0
                     },
                     {
                         "id": "text-embedding-3-large",
@@ -352,8 +390,8 @@ class LLMConfig:
                         "support_embedding": True,
                         "support_vision": False,
                         "support_function_calling": False,
-                        "input_price_per_1k": 0.13,
-                        "output_price_per_1k": 0.0
+                        "input_price_per_1m": 0.95,
+                        "output_price_per_1m": 0.0
                     }
                 ]
             }
