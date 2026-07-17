@@ -9,7 +9,7 @@
 [![Python](https://img.shields.io/badge/Python-3.14+-blue.svg)](https://www.python.org/)
 [![PySide6](https://img.shields.io/badge/PySide6-6.10+-green.svg)](https://doc.qt.io/qtforpython/)
 [![Platform](https://img.shields.io/badge/Platform-Windows-lightgrey.svg)](#)
-[![License](https://img.shields.io/badge/License-Modified%20Apache%202.0-orange.svg)](LICENSE)
+[![License](https://img.shields.io/badge/License-Commercial%20Source-orange.svg)](LICENSE)
 [![Version](https://img.shields.io/badge/Alpha-1.0.2%20CE-red.svg)](#)
 
 > A PySide6-based plugin desktop application framework with LLM integration, MCP Protocol (Server/Client), multi-conversation management, and hot-swappable plugin system
@@ -322,12 +322,13 @@ class MyPluginInfo(IPluginInfo):
 
 ## License
 
-InstructionX is licensed under a **Modified Apache License 2.0**:
+InstructionX is licensed under the **InstructionX Commercial Source License** (this is not an open-source license):
 
-- ✅ **Personal Use**: Free to use
-- ✅ **Educational Use**: Requires written authorization
-- ❌ **Enterprise Use**: Prohibited without authorization
-- ❌ **Commercial Use**: Requires written authorization
+- ✅ **Personal, non-commercial use**: Free to use
+- ⚠️ **Organizational use**: Organizations with more than 100 global employees require written authorization
+- ⚠️ **Deployment scale**: More than 30 installed instances require written authorization
+- ❌ **SaaS / multi-tenant service**: Prohibited without authorization
+- ❌ **Redistribution**: Requires written authorization
 
 See [LICENSE](LICENSE) file for complete terms.
 

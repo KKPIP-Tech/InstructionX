@@ -9,7 +9,7 @@
 [![Python](https://img.shields.io/badge/Python-3.14+-blue.svg)](https://www.python.org/)
 [![PySide6](https://img.shields.io/badge/PySide6-6.10+-green.svg)](https://doc.qt.io/qtforpython/)
 [![Platform](https://img.shields.io/badge/Platform-Windows-lightgrey.svg)](#)
-[![License](https://img.shields.io/badge/License-Modified%20Apache%202.0-orange.svg)](LICENSE)
+[![License](https://img.shields.io/badge/License-Commercial%20Source-orange.svg)](LICENSE)
 [![Version](https://img.shields.io/badge/Alpha-1.0.2%20CE-red.svg)](#)
 
 <p>基于 PySide6 的插件式桌面应用框架，支持 LLM 集成、MCP 协议（Server/Client）、多会话管理与热插拔插件系统</p>
@@ -323,12 +323,13 @@ class MyPluginInfo(IPluginInfo):
 
 ## 许可证
 
-InstructionX 采用**修改版 Apache License 2.0** 许可证：
+InstructionX 采用 **InstructionX Commercial Source License**(商业源码许可证,非开源许可证):
 
-- ✅ **个人使用**：免费使用
-- ✅ **教育用途**：需书面授权
-- ❌ **企业使用**：禁止未经授权使用
-- ❌ **商业用途**：需书面授权
+- ✅ **个人非商业使用**：免费使用
+- ⚠️ **组织使用**:全球员工超过 100 人的组织(含企业、非营利、教育、政府机构)需书面授权
+- ⚠️ **部署规模**：超过 30 个安装实例需书面授权
+- ❌ **SaaS/多租户服务**：未经授权禁止
+- ❌ **再分发**：需书面授权
 
 详见 [LICENSE](LICENSE) 文件了解完整条款。
 
