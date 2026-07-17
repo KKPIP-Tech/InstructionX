@@ -211,3 +211,27 @@ class TestPluginVersionString:
         """__repr__ returns PluginVersion('<string>') format."""
         v = PluginVersion.from_string("release.1.0.0")
         assert repr(v) == "PluginVersion('release.1.0.0')"
+
+
+class TestPluginVersionHashable:
+    """Tests for PluginVersion hashability (used as dict keys / set elements)."""
+
+    def test_can_be_used_as_dict_key(self):
+        """PluginVersion 可作为字典 key 使用。"""
+        v = PluginVersion.from_string("release.1.0.0")
+        d = {v: "value"}
+        assert d[v] == "value"
+
+    def test_same_versions_have_same_hash(self):
+        """相同版本对象哈希值相同。"""
+        v1 = PluginVersion.from_string("release.1.0.0")
+        v2 = PluginVersion.from_string("release.1.0.0")
+        assert hash(v1) == hash(v2)
+
+    def test_can_be_added_to_set(self):
+        """PluginVersion 可加入集合。"""
+        v1 = PluginVersion.from_string("release.1.0.0")
+        v2 = PluginVersion.from_string("release.1.0.0")
+        v3 = PluginVersion.from_string("release.1.0.1")
+        s = {v1, v2, v3}
+        assert len(s) == 2
