@@ -35,6 +35,7 @@ class ToolRegistry:
         description: str,
         parameters: Dict,
         handler: Callable,
+        replace: bool = False,
     ) -> None:
         """注册一个工具
 
@@ -43,9 +44,13 @@ class ToolRegistry:
             description: 工具描述（会发给 LLM）
             parameters: OpenAI 风格的 parameters schema
             handler: 实际执行的函数，签名为 handler(**kwargs) -> Any
+            replace: 为 True 时覆盖同名旧注册（用于 MCP 重连等重复注册场景）；
+                默认 False，重名抛出 ValueError
         """
         if name in self._tools:
-            raise ValueError(f"Tool already registered: {name}")
+            if not replace:
+                raise ValueError(f"Tool already registered: {name}")
+            logger.info(f"Tool re-registered (replace): {name}")
 
         self._tools[name] = {
             "type": "function",
@@ -173,24 +178,43 @@ class ToolCallExecutor:
             turn += 1
             logger.debug(f"Tool call turn {turn}/{max_turns}")
 
+            msg_objs = [Message(**m) if isinstance(m, dict) else m
+                        for m in messages]
             if stream:
-                content_chunks = []
+                content_chunks: List[str] = []
+
                 def _sc(chunk: str, done: bool):
                     content_chunks.append(chunk)
                     if stream_callback:
                         stream_callback(chunk, done)
-                msg_objs = [Message(**m) if isinstance(m, dict) else m
-                            for m in messages]
-                self._llm.stream_chat(
+
+                # 修复后的 stream_chat 真实发请求并返回完整文本
+                result = self._llm.stream_chat(
                     msg_objs, callback=_sc,
                     provider=provider, model=model, temperature=temperature,
                     tools=tools,
                 )
-                final_content = "".join(content_chunks)
+                final_content = (result if isinstance(result, str)
+                                 else "".join(content_chunks))
                 response = None
+                # 从底层聚合的流式响应中提取 tool_calls（LLMProvider.stream_chat
+                # 聚合后通过 last_stream_response 暴露）；底层未提供时视为无
+                # 工具调用，本轮正常结束
+                tool_calls: List[Dict] = []
+                aggregated = getattr(self._llm, "last_stream_response", None)
+                if aggregated is not None:
+                    raw_tcs = getattr(aggregated, "tool_calls", None)
+                    if raw_tcs:
+                        try:
+                            tool_calls = [tc for tc in raw_tcs
+                                          if isinstance(tc, dict)]
+                        except TypeError:
+                            tool_calls = []
+                if not tool_calls:
+                    messages.append({"role": "assistant",
+                                     "content": final_content})
+                    return messages, tool_results, final_content
             else:
-                msg_objs = [Message(**m) if isinstance(m, dict) else m
-                            for m in messages]
                 response = self._llm.chat(
                     msg_objs,
                     provider=provider, model=model, temperature=temperature,
@@ -198,79 +222,114 @@ class ToolCallExecutor:
                 )
                 final_content = (response.content
                                  if hasattr(response, 'content') else response)
+                tool_calls = []
+                if response and hasattr(response, 'tool_calls') and response.tool_calls:
+                    tool_calls = response.tool_calls
+                if not tool_calls:
+                    if response and hasattr(response, 'content'):
+                        messages.append({"role": "assistant",
+                                         "content": response.content})
+                    return messages, tool_results, response or final_content
 
-            tool_calls = []
-            if response and hasattr(response, 'tool_calls') and response.tool_calls:
-                tool_calls = response.tool_calls
+            # OpenAI 消息序列契约：一条 assistant 消息携带全部 tool_calls，
+            # 随后紧跟全部 tool 响应消息
+            normalized_calls: List[Dict] = []
+            for idx, tc in enumerate(tool_calls):
+                tc_fn = tc.get("function", {}) if isinstance(tc, dict) else {}
+                tool_name = tc_fn.get("name", "")
+                raw_arguments = tc_fn.get("arguments", "{}")
+                # 同名工具多次调用时 id 也要唯一
+                call_id = tc.get("id") or f"call_{tool_name}_{idx}"
+                normalized_calls.append({
+                    "id": call_id,
+                    "type": "function",
+                    "function": {
+                        "name": tool_name,
+                        "arguments": (raw_arguments
+                                      if isinstance(raw_arguments, str)
+                                      else json.dumps(raw_arguments,
+                                                      ensure_ascii=False)),
+                    },
+                })
+            messages.append({
+                "role": "assistant",
+                # GLM 兼容性：无文本时用空串而非 None
+                "content": final_content or "",
+                "tool_calls": normalized_calls,
+            })
 
-            if not tool_calls:
-                if response and hasattr(response, 'content'):
-                    messages.append({"role": "assistant",
-                                     "content": response.content})
-                return messages, tool_results, response or final_content
-
-            # 处理工具调用
-            for tc in tool_calls:
-                tool_name = tc.get("function", {}).get("name", "")
-                arguments = tc.get("function", {}).get("arguments", "{}")
-
+            # 逐个执行工具并追加 tool 响应消息
+            for idx, tc in enumerate(tool_calls):
+                normalized = normalized_calls[idx]
+                tool_name = normalized["function"]["name"]
+                raw_arguments = (tc.get("function", {}).get("arguments", "{}")
+                                 if isinstance(tc, dict) else "{}")
+                arguments = raw_arguments
+                invalid_arguments: Optional[str] = None
                 if isinstance(arguments, str):
                     try:
                         arguments = json.loads(arguments)
                     except json.JSONDecodeError:
+                        invalid_arguments = raw_arguments
                         arguments = {}
+                if not isinstance(arguments, dict):
+                    arguments = {}
 
-                handler = self._registry.get_handler(tool_name)
-                if not handler:
-                    result = f"Error: tool '{tool_name}' not found"
-                    logger.error(result)
+                error: Optional[str] = None
+                if invalid_arguments is not None:
+                    # 参数 JSON 非法：不静默以错误参数执行，
+                    # 把原始字符串放入 tool 响应告知模型重新生成
+                    result = (f"Error: invalid arguments JSON for tool "
+                              f"'{tool_name}': {invalid_arguments}")
+                    error = result
+                    logger.warning(
+                        f"Tool '{tool_name}' received invalid arguments "
+                        f"JSON: {invalid_arguments}")
                 else:
-                    try:
-                        sig = inspect.signature(handler)
-                        has_var_keyword = any(
-                            p.kind == inspect.Parameter.VAR_KEYWORD
-                            for p in sig.parameters.values()
-                        )
-                        if has_var_keyword:
-                            result = handler(**arguments)
-                        else:
-                            filtered_kwargs = {
-                                k: v for k, v in arguments.items()
-                                if k in sig.parameters
-                            }
-                            result = handler(**filtered_kwargs)
-                    except Exception as e:
-                        result = f"Error executing {tool_name}: {e}"
+                    handler = self._registry.get_handler(tool_name)
+                    if not handler:
+                        result = f"Error: tool '{tool_name}' not found"
+                        error = result
                         logger.error(result)
+                    else:
+                        try:
+                            sig = inspect.signature(handler)
+                            has_var_keyword = any(
+                                p.kind == inspect.Parameter.VAR_KEYWORD
+                                for p in sig.parameters.values()
+                            )
+                            if has_var_keyword:
+                                result = handler(**arguments)
+                            else:
+                                filtered_kwargs = {
+                                    k: v for k, v in arguments.items()
+                                    if k in sig.parameters
+                                }
+                                result = handler(**filtered_kwargs)
+                        except Exception as e:
+                            result = f"Error executing {tool_name}: {e}"
+                            error = result
+                            logger.error(result)
 
-                tool_result = ToolResult(
+                tool_results.append(ToolResult(
                     tool_name=tool_name,
                     arguments=arguments,
                     result=result,
-                    error=str(result) if str(result).startswith("Error") else None,
-                )
-                tool_results.append(tool_result)
-
-                messages.append({
-                    "role": "assistant",
-                    "content": None,
-                    "tool_calls": [{
-                        "id": tc.get("id", f"call_{tool_name}"),
-                        "type": "function",
-                        "function": {
-                            "name": tool_name,
-                            "arguments": (arguments if isinstance(arguments, str)
-                                         else json.dumps(arguments)),
-                        }
-                    }]
-                })
+                    error=error,
+                ))
                 messages.append({
                     "role": "tool",
-                    "tool_call_id": tc.get("id", f"call_{tool_name}"),
+                    "tool_call_id": normalized["id"],
                     "content": str(result),
                 })
 
         logger.warning(f"Tool call loop exceeded max_turns ({max_turns})")
+        # 追加说明消息：避免返回的 messages 以未配对的 tool 消息结尾，
+        # 保证可直接用于后续请求
+        messages.append({
+            "role": "assistant",
+            "content": f"已达到最大工具调用轮数（{max_turns}），停止继续调用工具。",
+        })
         return messages, tool_results, final_content
 
     def chat_with_tools_stream(
