@@ -271,6 +271,10 @@ class ProviderListItemWidget(QWidget):
         self._init_ui()
 
     def _init_ui(self):
+        # 立即应用样式，避免延迟渲染
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.setAutoFillBackground(True)
+
         layout = QHBoxLayout(self)
         layout.setContentsMargins(12, 6, 12, 6)
         layout.setSpacing(12)
@@ -507,6 +511,10 @@ class ModelItemWidget(QWidget):
         self._init_ui()
 
     def _init_ui(self):
+        # 立即应用样式，避免延迟渲染
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.setAutoFillBackground(True)
+
         colors = get_current_colors()
         text_primary = colors.get('textPrimary', '#333333')
         text_secondary = colors.get('textSecondary', '#999999')
@@ -516,20 +524,31 @@ class ModelItemWidget(QWidget):
         layout.setContentsMargins(16, 10, 16, 10)
         layout.setSpacing(12)
 
-        # 模型图标（蓝色圆形 M）
+        # 模型图标（蓝色圆形 M）- 使用 Frame 确保渲染
+        icon_frame = QFrame()
+        icon_frame.setFixedSize(36, 36)
+        icon_frame.setStyleSheet("""
+            QFrame {
+                background-color: #3B82F6;
+                border-radius: 18px;
+            }
+        """)
+        icon_layout = QVBoxLayout(icon_frame)
+        icon_layout.setContentsMargins(0, 0, 0, 0)
+        icon_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        
         icon_label = QLabel("M")
-        icon_label.setFixedSize(36, 36)
         icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         icon_label.setStyleSheet("""
             QLabel {
-                background-color: #3B82F6;
-                border-radius: 18px;
+                background-color: transparent;
                 color: white;
                 font-size: 16px;
                 font-weight: bold;
             }
         """)
-        layout.addWidget(icon_label)
+        icon_layout.addWidget(icon_label)
+        layout.addWidget(icon_frame)
 
         # 模型信息
         info_layout = QVBoxLayout()
@@ -574,17 +593,19 @@ class ModelItemWidget(QWidget):
             """)
             right_layout.addWidget(tag)
 
-        # 设置按钮（齿轮图标）
+        # 设置按钮（齿轮图标）- 使用工具提示确保显示完整
         self._edit_btn = QPushButton()
-        self._edit_btn.setFixedSize(28, 28)
+        self._edit_btn.setFixedSize(32, 32)
         self._edit_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._edit_btn.setText("⚙")
+        self._edit_btn.setToolTip("编辑模型")
         self._edit_btn.setStyleSheet(f"""
             QPushButton {{
                 border: none;
                 background-color: transparent;
-                font-size: 14px;
+                font-size: 16px;
                 color: {text_secondary};
+                padding: 4px;
             }}
             QPushButton:hover {{
                 background-color: {colors.get('controlFillHover', '#F5F5F5')};
@@ -620,7 +641,7 @@ class ModelItemWidget(QWidget):
 
 
 class ModelEditDialog(QDialog):
-    """模型编辑对话框 - 编辑模型详细配置."""
+    """模型编辑对话框 - 编辑模型详细配置（像素级匹配参考设计）."""
 
     def __init__(self, model_data: Optional[Dict[str, Any]] = None, parent=None):
         super().__init__(parent)
@@ -633,129 +654,387 @@ class ModelEditDialog(QDialog):
             'rerank': False,
             'embedding': False,
         }
+        # 立即应用样式，避免延迟渲染
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self._init_ui()
 
     def _init_ui(self):
         self.setWindowTitle("编辑模型")
         self.setModal(True)
-        self.setMinimumWidth(500)
+        self.setFixedWidth(520)
+        self.setMinimumHeight(600)
 
         colors = get_current_colors()
         text_primary = colors.get('textPrimary', '#333333')
         text_secondary = colors.get('textSecondary', '#999999')
         border_color = colors.get('borderLight', '#E0E0E0')
+        bg_color = colors.get('base', '#FFFFFF')
+        required_color = '#DC2626'
 
-        layout = QVBoxLayout(self)
-        layout.setSpacing(16)
-        layout.setContentsMargins(20, 20, 20, 20)
+        # 主容器（带边框）
+        main_container = QWidget()
+        main_container.setObjectName("modelEditContainer")
+        main_container.setStyleSheet(f"""
+            QWidget#modelEditContainer {{
+                background-color: {bg_color};
+                border: 1px solid {border_color};
+                border-radius: 8px;
+            }}
+        """)
 
-        # 模型 ID
+        main_layout = QVBoxLayout(main_container)
+        main_layout.setSpacing(16)
+        main_layout.setContentsMargins(24, 20, 24, 24)
+
+        # 标题行
+        title_layout = QHBoxLayout()
+        title_label = QLabel("编辑模型")
+        title_label.setStyleSheet(f"""
+            color: {text_primary};
+            font-size: 16px;
+            font-weight: 600;
+        """)
+        title_layout.addWidget(title_label)
+        title_layout.addStretch()
+
+        close_btn = QPushButton("×")
+        close_btn.setFixedSize(28, 28)
+        close_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        close_btn.setStyleSheet(f"""
+            QPushButton {{
+                border: none;
+                background-color: transparent;
+                font-size: 18px;
+                color: {text_secondary};
+            }}
+            QPushButton:hover {{
+                background-color: {colors.get('controlFillHover', '#F5F5F5')};
+                border-radius: 4px;
+            }}
+        """)
+        close_btn.clicked.connect(self.reject)
+        title_layout.addWidget(close_btn)
+        main_layout.addLayout(title_layout)
+
+        # 模型 ID（必填）
+        id_layout = QVBoxLayout()
+        id_layout.setSpacing(6)
+        id_label_layout = QHBoxLayout()
+        id_label_layout.setSpacing(4)
+        id_required = QLabel("*")
+        id_required.setStyleSheet(f"color: {required_color};")
+        id_label_layout.addWidget(id_required)
         id_label = QLabel("模型 ID")
         id_label.setStyleSheet(f"color: {text_primary}; font-weight: 500;")
-        layout.addWidget(id_label)
+        id_label_layout.addWidget(id_label)
+        id_help = QLabel("?")
+        id_help.setFixedSize(16, 16)
+        id_help.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        id_help.setStyleSheet(f"""
+            background-color: {border_color};
+            border-radius: 8px;
+            color: {text_secondary};
+            font-size: 10px;
+        """)
+        id_label_layout.addWidget(id_help)
+        id_label_layout.addStretch()
+        id_layout.addLayout(id_label_layout)
 
+        id_input_layout = QHBoxLayout()
         self._id_edit = QLineEdit()
-        self._id_edit.setPlaceholderText("例如：Pro/moonshotai/Kimi-K2.5")
+        self._id_edit.setPlaceholderText("Pro/moonshotai/Kimi-K2.5")
         self._id_edit.setText(self._model_data.get('id', ''))
-        layout.addWidget(self._id_edit)
-
-        # 模型名称
-        name_label = QLabel("模型名称")
-        name_label.setStyleSheet(f"color: {text_primary}; font-weight: 500;")
-        layout.addWidget(name_label)
-
-        self._name_edit = QLineEdit()
-        self._name_edit.setPlaceholderText("例如：Pro/moonshotai/Kimi-K2.5")
-        self._name_edit.setText(self._model_data.get('name', ''))
-        layout.addWidget(self._name_edit)
-
-        # 分组名称
-        group_label = QLabel("分组名称")
-        group_label.setStyleSheet(f"color: {text_primary}; font-weight: 500;")
-        layout.addWidget(group_label)
-
-        self._group_edit = QLineEdit()
-        self._group_edit.setPlaceholderText("例如：pro")
-        self._group_edit.setText(self._model_data.get('group', ''))
-        layout.addWidget(self._group_edit)
-
-        # 更多设置按钮
-        self._more_btn = QPushButton("更多设置")
-        self._more_btn.setCheckable(True)
-        self._more_btn.setStyleSheet(f"""
-            QPushButton {{
-                background-color: transparent;
+        self._id_edit.setStyleSheet(f"""
+            QLineEdit {{
+                padding: 10px 12px;
                 border: 1px solid {border_color};
                 border-radius: 6px;
-                padding: 6px 12px;
+                font-size: 13px;
+                color: {text_primary};
+            }}
+            QLineEdit:focus {{
+                border-color: #16A34A;
+            }}
+        """)
+        id_input_layout.addWidget(self._id_edit)
+
+        copy_btn = QPushButton()
+        copy_btn.setFixedSize(36, 36)
+        copy_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        copy_btn.setText("📋")
+        copy_btn.setToolTip("复制")
+        copy_btn.setStyleSheet(f"""
+            QPushButton {{
+                border: none;
+                background-color: transparent;
+                font-size: 14px;
+            }}
+            QPushButton:hover {{
+                background-color: {colors.get('controlFillHover', '#F5F5F5')};
+                border-radius: 4px;
+            }}
+        """)
+        id_input_layout.addWidget(copy_btn)
+        id_layout.addLayout(id_input_layout)
+        main_layout.addLayout(id_layout)
+
+        # 模型名称
+        name_layout = QVBoxLayout()
+        name_layout.setSpacing(6)
+        name_label_layout = QHBoxLayout()
+        name_label_layout.setSpacing(4)
+        name_label = QLabel("模型名称")
+        name_label.setStyleSheet(f"color: {text_primary}; font-weight: 500;")
+        name_label_layout.addWidget(name_label)
+        name_help = QLabel("?")
+        name_help.setFixedSize(16, 16)
+        name_help.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        name_help.setStyleSheet(f"""
+            background-color: {border_color};
+            border-radius: 8px;
+            color: {text_secondary};
+            font-size: 10px;
+        """)
+        name_label_layout.addWidget(name_help)
+        name_label_layout.addStretch()
+        name_layout.addLayout(name_label_layout)
+
+        self._name_edit = QLineEdit()
+        self._name_edit.setPlaceholderText("Pro/moonshotai/Kimi-K2.5")
+        self._name_edit.setText(self._model_data.get('name', ''))
+        self._name_edit.setStyleSheet(f"""
+            QLineEdit {{
+                padding: 10px 12px;
+                border: 1px solid {border_color};
+                border-radius: 6px;
+                font-size: 13px;
+                color: {text_primary};
+            }}
+            QLineEdit:focus {{
+                border-color: #16A34A;
+            }}
+        """)
+        name_layout.addWidget(self._name_edit)
+        main_layout.addLayout(name_layout)
+
+        # 分组名称
+        group_layout = QVBoxLayout()
+        group_layout.setSpacing(6)
+        group_label_layout = QHBoxLayout()
+        group_label_layout.setSpacing(4)
+        group_label = QLabel("分组名称")
+        group_label.setStyleSheet(f"color: {text_primary}; font-weight: 500;")
+        group_label_layout.addWidget(group_label)
+        group_help = QLabel("?")
+        group_help.setFixedSize(16, 16)
+        group_help.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        group_help.setStyleSheet(f"""
+            background-color: {border_color};
+            border-radius: 8px;
+            color: {text_secondary};
+            font-size: 10px;
+        """)
+        group_label_layout.addWidget(group_help)
+        group_label_layout.addStretch()
+        group_layout.addLayout(group_label_layout)
+
+        self._group_edit = QLineEdit()
+        self._group_edit.setPlaceholderText("pro")
+        self._group_edit.setText(self._model_data.get('group', ''))
+        self._group_edit.setStyleSheet(f"""
+            QLineEdit {{
+                padding: 10px 12px;
+                border: 1px solid {border_color};
+                border-radius: 6px;
+                font-size: 13px;
+                color: {text_primary};
+            }}
+            QLineEdit:focus {{
+                border-color: #16A34A;
+            }}
+        """)
+        group_layout.addWidget(self._group_edit)
+        main_layout.addLayout(group_layout)
+
+        # 更多设置 + 保存按钮行
+        action_layout = QHBoxLayout()
+        self._more_btn = QPushButton("更多设置 ▲")
+        self._more_btn.setCheckable(True)
+        self._more_btn.setChecked(False)
+        self._more_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._more_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {colors.get('controlFillHover', '#F5F5F5')};
+                border: none;
+                border-radius: 6px;
+                padding: 8px 16px;
                 color: {text_secondary};
+                font-size: 13px;
+            }}
+            QPushButton:hover {{
+                background-color: {colors.get('controlFillPressed', '#E8E8E8')};
             }}
         """)
         self._more_btn.clicked.connect(self._toggle_more_settings)
-        layout.addWidget(self._more_btn)
+        action_layout.addWidget(self._more_btn)
+        action_layout.addStretch()
+
+        save_btn = QPushButton("保存")
+        save_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        save_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: #16A34A;
+                color: white;
+                border: none;
+                border-radius: 6px;
+                padding: 8px 20px;
+                font-size: 13px;
+                font-weight: 500;
+            }}
+            QPushButton:hover {{
+                background-color: #15803D;
+            }}
+        """)
+        save_btn.clicked.connect(self.accept)
+        action_layout.addWidget(save_btn)
+        main_layout.addLayout(action_layout)
 
         # 更多设置区域
         self._more_widget = QWidget()
         self._more_widget.setVisible(False)
         more_layout = QVBoxLayout(self._more_widget)
         more_layout.setContentsMargins(0, 0, 0, 0)
-        more_layout.setSpacing(16)
+        more_layout.setSpacing(20)
 
         # 模型类型
+        type_layout = QVBoxLayout()
+        type_layout.setSpacing(10)
+        type_label_layout = QHBoxLayout()
+        type_label_layout.setSpacing(4)
         type_label = QLabel("模型类型")
         type_label.setStyleSheet(f"color: {text_primary}; font-weight: 500;")
-        more_layout.addWidget(type_label)
+        type_label_layout.addWidget(type_label)
+        type_warning = QLabel("⚠")
+        type_warning.setStyleSheet("color: #F59E0B;")
+        type_label_layout.addWidget(type_warning)
+        type_label_layout.addStretch()
+        type_layout.addLayout(type_label_layout)
 
+        # 能力标签
         self._capability_checkboxes = {}
         capabilities_layout = QHBoxLayout()
-        capabilities_layout.setSpacing(12)
+        capabilities_layout.setSpacing(10)
 
-        for cap_key, cap_name in [
-            ('vision', '视觉'),
-            ('web', '联网'),
-            ('reasoning', '推理'),
-            ('tools', '工具'),
-            ('rerank', '重排'),
-            ('embedding', '嵌入'),
-        ]:
+        capability_tags = [
+            ('vision', '视觉', '#EC4899', '#FCE7F3'),
+            ('web', '联网', '#8B5CF6', '#EDE9FE'),
+            ('reasoning', '推理', '#F59E0B', '#FEF3C7'),
+            ('tools', '工具', '#8B5CF6', '#EDE9FE'),
+            ('rerank', '重排', '#6B7280', '#F3F4F6'),
+            ('embedding', '嵌入', '#10B981', '#D1FAE5'),
+        ]
+
+        for cap_key, cap_name, fg_color, bg_color in capability_tags:
             cb = QCheckBox(cap_name)
             cb.setChecked(self._capabilities.get(cap_key, False))
             cb.stateChanged.connect(
                 lambda state, key=cap_key: self._on_capability_changed(key, state)
             )
             self._capability_checkboxes[cap_key] = cb
+            # 样式化为标签
+            cb.setStyleSheet(f"""
+                QCheckBox {{
+                    spacing: 6px;
+                    color: {fg_color};
+                    background-color: {bg_color};
+                    border: none;
+                    border-radius: 4px;
+                    padding: 6px 12px;
+                    font-size: 12px;
+                    font-weight: 500;
+                }}
+                QCheckBox::indicator {{
+                    width: 0px;
+                    height: 0px;
+                }}
+                QCheckBox:checked {{
+                    background-color: {fg_color};
+                    color: white;
+                }}
+            """)
             capabilities_layout.addWidget(cb)
 
         capabilities_layout.addStretch()
-        more_layout.addLayout(capabilities_layout)
+        type_layout.addLayout(capabilities_layout)
+        more_layout.addLayout(type_layout)
 
         # 支持增量文本输出
+        streaming_layout = QHBoxLayout()
+        streaming_layout.setSpacing(4)
         streaming_label = QLabel("支持增量文本输出")
         streaming_label.setStyleSheet(f"color: {text_primary}; font-weight: 500;")
-        more_layout.addWidget(streaming_label)
+        streaming_layout.addWidget(streaming_label)
+        streaming_help = QLabel("?")
+        streaming_help.setFixedSize(16, 16)
+        streaming_help.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        streaming_help.setStyleSheet(f"""
+            background-color: {border_color};
+            border-radius: 8px;
+            color: {text_secondary};
+            font-size: 10px;
+        """)
+        streaming_layout.addWidget(streaming_help)
+        streaming_layout.addStretch()
 
-        self._streaming_check = QCheckBox("启用")
+        self._streaming_check = QCheckBox()
         self._streaming_check.setChecked(
             self._model_data.get('support_streaming', True)
         )
-        more_layout.addWidget(self._streaming_check)
+        # 样式化为开关
+        self._streaming_check.setStyleSheet(f"""
+            QCheckBox {{
+                spacing: 0px;
+            }}
+            QCheckBox::indicator {{
+                width: 40px;
+                height: 22px;
+                border-radius: 11px;
+                background-color: {border_color};
+            }}
+            QCheckBox::indicator:checked {{
+                background-color: #16A34A;
+            }}
+        """)
+        streaming_layout.addWidget(self._streaming_check)
+        more_layout.addLayout(streaming_layout)
 
         # 币种
+        currency_layout = QHBoxLayout()
         currency_label = QLabel("币种")
         currency_label.setStyleSheet(f"color: {text_primary}; font-weight: 500;")
-        more_layout.addWidget(currency_label)
-
+        currency_layout.addWidget(currency_label)
+        currency_layout.addStretch()
         self._currency_combo = QComboBox()
         self._currency_combo.addItems(["$", "¥", "€"])
-        more_layout.addWidget(self._currency_combo)
+        self._currency_combo.setFixedWidth(80)
+        self._currency_combo.setStyleSheet(f"""
+            QComboBox {{
+                padding: 8px 12px;
+                border: 1px solid {border_color};
+                border-radius: 6px;
+                font-size: 13px;
+                color: {text_primary};
+            }}
+        """)
+        currency_layout.addWidget(self._currency_combo)
+        more_layout.addLayout(currency_layout)
 
         # 输入价格
-        price_layout = QVBoxLayout()
-        price_layout.setSpacing(8)
-
+        input_price_layout = QVBoxLayout()
+        input_price_layout.setSpacing(6)
         input_price_label = QLabel("输入价格")
         input_price_label.setStyleSheet(f"color: {text_primary}; font-weight: 500;")
-        price_layout.addWidget(input_price_label)
+        input_price_layout.addWidget(input_price_label)
 
         input_price_row = QHBoxLayout()
         self._input_price_spin = QDoubleSpinBox()
@@ -764,17 +1043,30 @@ class ModelEditDialog(QDialog):
             self._model_data.get('input_price_per_1m', 0.0)
         )
         self._input_price_spin.setDecimals(2)
+        self._input_price_spin.setFixedWidth(120)
+        self._input_price_spin.setStyleSheet(f"""
+            QDoubleSpinBox {{
+                padding: 8px 12px;
+                border: 1px solid {border_color};
+                border-radius: 6px;
+                font-size: 13px;
+                color: {text_primary};
+            }}
+        """)
         input_price_row.addWidget(self._input_price_spin)
         input_price_unit = QLabel("$ / 百万 Token")
         input_price_unit.setStyleSheet(f"color: {text_secondary};")
         input_price_row.addWidget(input_price_unit)
         input_price_row.addStretch()
-        price_layout.addLayout(input_price_row)
+        input_price_layout.addLayout(input_price_row)
+        more_layout.addLayout(input_price_layout)
 
         # 输出价格
+        output_price_layout = QVBoxLayout()
+        output_price_layout.setSpacing(6)
         output_price_label = QLabel("输出价格")
         output_price_label.setStyleSheet(f"color: {text_primary}; font-weight: 500;")
-        price_layout.addWidget(output_price_label)
+        output_price_layout.addWidget(output_price_label)
 
         output_price_row = QHBoxLayout()
         self._output_price_spin = QDoubleSpinBox()
@@ -783,38 +1075,30 @@ class ModelEditDialog(QDialog):
             self._model_data.get('output_price_per_1m', 0.0)
         )
         self._output_price_spin.setDecimals(2)
+        self._output_price_spin.setFixedWidth(120)
+        self._output_price_spin.setStyleSheet(f"""
+            QDoubleSpinBox {{
+                padding: 8px 12px;
+                border: 1px solid {border_color};
+                border-radius: 6px;
+                font-size: 13px;
+                color: {text_primary};
+            }}
+        """)
         output_price_row.addWidget(self._output_price_spin)
         output_price_unit = QLabel("$ / 百万 Token")
         output_price_unit.setStyleSheet(f"color: {text_secondary};")
         output_price_row.addWidget(output_price_unit)
         output_price_row.addStretch()
-        price_layout.addLayout(output_price_row)
+        output_price_layout.addLayout(output_price_row)
+        more_layout.addLayout(output_price_layout)
 
-        more_layout.addLayout(price_layout)
+        main_layout.addWidget(self._more_widget)
 
-        layout.addWidget(self._more_widget)
-
-        # 保存按钮
-        button_box = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Save
-        )
-        button_box.accepted.connect(self.accept)
-        save_btn = button_box.button(QDialogButtonBox.StandardButton.Save)
-        save_btn.setText("保存")
-        save_btn.setStyleSheet(f"""
-            QPushButton {{
-                background-color: #16A34A;
-                color: white;
-                border: none;
-                border-radius: 6px;
-                padding: 8px 16px;
-                font-weight: 500;
-            }}
-            QPushButton:hover {{
-                background-color: #15803D;
-            }}
-        """)
-        layout.addWidget(button_box)
+        # 设置对话框布局
+        dialog_layout = QVBoxLayout(self)
+        dialog_layout.setContentsMargins(0, 0, 0, 0)
+        dialog_layout.addWidget(main_container)
 
     def _toggle_more_settings(self):
         """切换更多设置区域的显示."""
