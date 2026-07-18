@@ -379,41 +379,61 @@ class ProviderListItemWidget(QWidget):
 
 
 class ModelGroupWidget(QWidget):
-    """模型分组容器 - 显示模型系列分组."""
+    """模型分组容器 - 显示模型系列分组（像素级匹配参考设计）."""
+
+    editModelClicked = Signal(dict)  # 编辑模型信号
+    deleteModelClicked = Signal(dict)  # 删除模型信号
 
     def __init__(self, group_name: str, models: List[Dict[str, Any]], parent=None):
         super().__init__(parent)
         self._group_name = group_name
         self._models = models
         self._expanded = True
+        # 立即应用样式，避免延迟渲染问题
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self._init_ui()
 
     def _init_ui(self):
         colors = get_current_colors()
         text_primary = colors.get('textPrimary', '#333333')
+        text_secondary = colors.get('textSecondary', '#999999')
         border_color = colors.get('borderLight', '#E0E0E0')
+        bg_color = colors.get('base', '#FFFFFF')
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 8)
         layout.setSpacing(0)
 
-        # 分组标题
+        # 分组标题栏
         header = QWidget()
+        header.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        header.setAutoFillBackground(True)
         header.setStyleSheet(f"""
             QWidget {{
-                background-color: {colors.get('controlFillHover', '#F5F5F5')};
+                background-color: {bg_color};
                 border: 1px solid {border_color};
-                border-radius: 6px;
+                border-top-left-radius: 6px;
+                border-top-right-radius: 6px;
             }}
         """)
         header_layout = QHBoxLayout(header)
         header_layout.setContentsMargins(12, 8, 12, 8)
 
+        # 下拉箭头（带圆形背景）
         self._arrow = QLabel("▼")
-        self._arrow.setFixedWidth(16)
-        self._arrow.setStyleSheet(f"color: {colors.get('textSecondary', '#999999')};")
+        self._arrow.setFixedSize(20, 20)
+        self._arrow.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._arrow.setStyleSheet(f"""
+            QLabel {{
+                background-color: {border_color};
+                border-radius: 10px;
+                color: {text_secondary};
+                font-size: 10px;
+            }}
+        """)
         header_layout.addWidget(self._arrow)
 
+        # 分组标题
         title = QLabel(self._group_name)
         title.setStyleSheet(f"""
             color: {text_primary};
@@ -422,21 +442,25 @@ class ModelGroupWidget(QWidget):
         """)
         header_layout.addWidget(title, stretch=1)
 
+        # 模型数量
         count_label = QLabel(str(len(self._models)))
         count_label.setStyleSheet(f"""
-            color: {colors.get('textSecondary', '#999999')};
+            color: {text_secondary};
             font-size: 11px;
         """)
         header_layout.addWidget(count_label)
 
         header.mousePressEvent = self._toggle_expand
+        header.setCursor(Qt.CursorShape.PointingHandCursor)
         layout.addWidget(header)
 
-        # 模型列表
+        # 模型列表内容区
         self._content = QWidget()
+        self._content.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self._content.setAutoFillBackground(True)
         self._content.setStyleSheet(f"""
             QWidget {{
-                background-color: transparent;
+                background-color: {bg_color};
                 border: 1px solid {border_color};
                 border-top: none;
                 border-bottom-left-radius: 6px;
@@ -447,9 +471,20 @@ class ModelGroupWidget(QWidget):
         content_layout.setContentsMargins(0, 0, 0, 0)
         content_layout.setSpacing(0)
 
-        for model in self._models:
+        for i, model in enumerate(self._models):
             item = ModelItemWidget(model, self._group_name)
+            # 连接信号
+            item.editClicked.connect(self.editModelClicked.emit)
+            item.deleteClicked.connect(self.deleteModelClicked.emit)
             content_layout.addWidget(item)
+            
+            # 添加分隔线（除了最后一项）
+            if i < len(self._models) - 1:
+                divider = QFrame()
+                divider.setFrameShape(QFrame.Shape.HLine)
+                divider.setFixedHeight(1)
+                divider.setStyleSheet(f"background-color: {border_color};")
+                content_layout.addWidget(divider)
 
         layout.addWidget(self._content)
 
@@ -460,7 +495,10 @@ class ModelGroupWidget(QWidget):
 
 
 class ModelItemWidget(QWidget):
-    """模型列表项 - 显示单个模型及其能力标签."""
+    """模型列表项 - 显示单个模型及其能力标签（像素级匹配参考设计）."""
+
+    editClicked = Signal(dict)  # 编辑按钮点击信号，携带模型数据
+    deleteClicked = Signal(dict)  # 删除按钮点击信号，携带模型数据
 
     def __init__(self, model: Dict[str, Any], group_name: str, parent=None):
         super().__init__(parent)
@@ -472,27 +510,25 @@ class ModelItemWidget(QWidget):
         colors = get_current_colors()
         text_primary = colors.get('textPrimary', '#333333')
         text_secondary = colors.get('textSecondary', '#999999')
+        border_color = colors.get('borderLight', '#E0E0E0')
 
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(32, 10, 12, 10)
+        layout.setContentsMargins(16, 10, 16, 10)
         layout.setSpacing(12)
 
-        # 模型图标（首字母）
-        icon_label = QLabel()
-        icon_label.setFixedSize(28, 28)
+        # 模型图标（蓝色圆形 M）
+        icon_label = QLabel("M")
+        icon_label.setFixedSize(36, 36)
         icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        initial = self._model.get('id', 'M')[:1].upper()
-        accent = colors.get('accent', '#4A90D9')
-        icon_label.setStyleSheet(f"""
-            QLabel {{
-                background-color: {accent};
-                border-radius: 14px;
+        icon_label.setStyleSheet("""
+            QLabel {
+                background-color: #3B82F6;
+                border-radius: 18px;
                 color: white;
-                font-size: 12px;
+                font-size: 16px;
                 font-weight: bold;
-            }}
+            }
         """)
-        icon_label.setText(initial)
         layout.addWidget(icon_label)
 
         # 模型信息
@@ -518,59 +554,69 @@ class ModelItemWidget(QWidget):
 
         layout.addLayout(info_layout, 1)
 
-        # 能力标签
-        tags_layout = QHBoxLayout()
-        tags_layout.setSpacing(6)
+        # 右侧区域：能力标签 + 操作按钮
+        right_layout = QHBoxLayout()
+        right_layout.setSpacing(6)
 
+        # 能力标签（紫色 tools 标签）
         capabilities = self._model.get('capabilities', [])
-        for cap in capabilities[:3]:  # 最多显示3个
-            tag = CapabilityTag(cap)
-            tags_layout.addWidget(tag)
+        for cap in capabilities[:2]:  # 最多显示2个
+            tag = QLabel(cap)
+            tag.setStyleSheet("""
+                QLabel {
+                    background-color: #EDE9FE;
+                    color: #8B5CF6;
+                    border-radius: 4px;
+                    padding: 4px 10px;
+                    font-size: 11px;
+                    font-weight: 500;
+                }
+            """)
+            right_layout.addWidget(tag)
 
-        layout.addLayout(tags_layout)
-
-        # 操作按钮
-        btn_layout = QHBoxLayout()
-        btn_layout.setSpacing(4)
-
-        edit_btn = QToolButton()
-        edit_btn.setText("⚙")
-        edit_btn.setFixedSize(28, 28)
-        edit_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        edit_btn.setStyleSheet(f"""
-            QToolButton {{
+        # 设置按钮（齿轮图标）
+        self._edit_btn = QPushButton()
+        self._edit_btn.setFixedSize(28, 28)
+        self._edit_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._edit_btn.setText("⚙")
+        self._edit_btn.setStyleSheet(f"""
+            QPushButton {{
                 border: none;
                 background-color: transparent;
                 font-size: 14px;
+                color: {text_secondary};
             }}
-            QToolButton:hover {{
+            QPushButton:hover {{
                 background-color: {colors.get('controlFillHover', '#F5F5F5')};
                 border-radius: 4px;
             }}
         """)
-        btn_layout.addWidget(edit_btn)
+        self._edit_btn.clicked.connect(lambda: self.editClicked.emit(self._model))
+        right_layout.addWidget(self._edit_btn)
 
-        delete_btn = QToolButton()
-        delete_btn.setText("−")
-        delete_btn.setFixedSize(28, 28)
-        delete_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        delete_btn.setStyleSheet(f"""
-            QToolButton {{
+        # 删除按钮（减号图标）
+        self._delete_btn = QPushButton()
+        self._delete_btn.setFixedSize(28, 28)
+        self._delete_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._delete_btn.setText("−")
+        self._delete_btn.setStyleSheet(f"""
+            QPushButton {{
                 border: none;
                 background-color: transparent;
-                font-size: 16px;
+                font-size: 18px;
                 font-weight: bold;
                 color: {text_secondary};
             }}
-            QToolButton:hover {{
+            QPushButton:hover {{
                 background-color: #FEE2E2;
                 border-radius: 4px;
                 color: #DC2626;
             }}
         """)
-        btn_layout.addWidget(delete_btn)
+        self._delete_btn.clicked.connect(lambda: self.deleteClicked.emit(self._model))
+        right_layout.addWidget(self._delete_btn)
 
-        layout.addLayout(btn_layout)
+        layout.addLayout(right_layout)
 
 
 class ModelEditDialog(QDialog):

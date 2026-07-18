@@ -1308,7 +1308,63 @@ class LLMSettingsDialog(QDialog):
         # 按名称排序分组
         for group_name in sorted(groups.keys()):
             group_widget = ModelGroupWidget(group_name, groups[group_name])
+            # 连接编辑和删除信号
+            group_widget.editModelClicked.connect(
+                lambda model, g=group_name: self._on_edit_model(provider_name, model)
+            )
+            group_widget.deleteModelClicked.connect(
+                lambda model, g=group_name: self._on_delete_model(provider_name, model)
+            )
             self._model_groups_layout.addWidget(group_widget)
+
+    def _on_edit_model(self, provider_name: str, model: Dict[str, Any]) -> None:
+        """编辑模型."""
+        from ui.dialog.llm_settings_components import ModelEditDialog
+        dialog = ModelEditDialog(model_data=model, parent=self)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            model_data = dialog.get_model_data()
+            # 更新模型数据
+            self._update_model_data(provider_name, model['id'], model_data)
+            self._populate_model_groups(provider_name, self._llm_config.get_provider(provider_name))
+            self._mark_dirty()
+
+    def _on_delete_model(self, provider_name: str, model: Dict[str, Any]) -> None:
+        """删除模型."""
+        reply = QMessageBox.question(
+            self,
+            "确认删除",
+            f"确定要删除模型「{model.get('name', model.get('id'))}」吗？",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            self._delete_model_data(provider_name, model['id'])
+            self._populate_model_groups(provider_name, self._llm_config.get_provider(provider_name))
+            self._mark_dirty()
+
+    def _update_model_data(self, provider_name: str, model_id: str, model_data: Dict[str, Any]) -> None:
+        """更新模型数据到配置."""
+        config = self._llm_config.get_provider(provider_name)
+        if not config:
+            return
+        # 更新自定义模型列表
+        custom_models = config.extra.get('custom_models', [])
+        for i, m in enumerate(custom_models):
+            if m.get('id') == model_id:
+                custom_models[i] = model_data
+                break
+        config.extra['custom_models'] = custom_models
+        self._llm_config.add_provider(provider_name, config)
+
+    def _delete_model_data(self, provider_name: str, model_id: str) -> None:
+        """从配置中删除模型数据."""
+        config = self._llm_config.get_provider(provider_name)
+        if not config:
+            return
+        # 从自定义模型列表中删除
+        custom_models = config.extra.get('custom_models', [])
+        config.extra['custom_models'] = [m for m in custom_models if m.get('id') != model_id]
+        self._llm_config.add_provider(provider_name, config)
 
     def _extract_model_group(self, model_id: str) -> str:
         """从模型 ID 提取系列/分组名称."""
