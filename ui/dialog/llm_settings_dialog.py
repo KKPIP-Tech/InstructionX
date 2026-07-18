@@ -1287,7 +1287,14 @@ class LLMSettingsDialog(QDialog):
                 seen_ids.add(m.id)
                 all_models.append(m)
 
-        if not all_models:
+        # 用户在编辑对话框中保存的修改（覆盖预设/抓取的默认属性）
+        overrides: Dict[str, Dict[str, Any]] = {}
+        if config:
+            for m in config.extra.get('custom_models', []):
+                if m.get('id'):
+                    overrides[m['id']] = m
+
+        if not all_models and not overrides:
             empty_label = QLabel("暂无模型，请点击「获取模型列表」")
             empty_label.setStyleSheet(f"color: {self._get_color('textSecondary', '#999999')};")
             self._model_groups_layout.addWidget(empty_label)
@@ -1298,13 +1305,45 @@ class LLMSettingsDialog(QDialog):
         for model in all_models:
             # 提取系列名称（如 Kimi K2, Qwen 等）
             group_name = self._extract_model_group(model.id)
-            if group_name not in groups:
-                groups[group_name] = []
-            groups[group_name].append({
+            display = {
                 'id': model.id,
                 'name': model.name or model.id,
                 'context_length': model.context_length,
                 'capabilities': self._get_model_capabilities(model),
+            }
+            # 应用用户编辑过的覆盖数据（模型类型、名称、分组、价格等）
+            override = overrides.pop(model.id, None)
+            if override:
+                display['name'] = override.get('name') or display['name']
+                if override.get('capabilities') is not None:
+                    display['capabilities'] = override['capabilities']
+                if override.get('context_length'):
+                    display['context_length'] = override['context_length']
+                display['group'] = override.get('group', '')
+                display['support_streaming'] = override.get('support_streaming', True)
+                display['currency'] = override.get('currency', '$')
+                display['input_price_per_1m'] = override.get('input_price_per_1m', 0.0)
+                display['output_price_per_1m'] = override.get('output_price_per_1m', 0.0)
+                group_name = override.get('group') or group_name
+            if group_name not in groups:
+                groups[group_name] = []
+            groups[group_name].append(display)
+
+        # 剩余的覆盖条目（用户手动添加、不在预设/抓取列表中的模型）
+        for model_id, override in overrides.items():
+            group_name = override.get('group') or self._extract_model_group(model_id)
+            if group_name not in groups:
+                groups[group_name] = []
+            groups[group_name].append({
+                'id': model_id,
+                'name': override.get('name') or model_id,
+                'context_length': override.get('context_length'),
+                'capabilities': override.get('capabilities', []),
+                'group': override.get('group', ''),
+                'support_streaming': override.get('support_streaming', True),
+                'currency': override.get('currency', '$'),
+                'input_price_per_1m': override.get('input_price_per_1m', 0.0),
+                'output_price_per_1m': override.get('output_price_per_1m', 0.0),
             })
 
         # 按名称排序分组
@@ -1349,12 +1388,15 @@ class LLMSettingsDialog(QDialog):
         config = self._llm_config.get_provider(provider_name)
         if not config:
             return
-        # 更新自定义模型列表
+        # 更新自定义模型列表；若该模型（如预设/抓取的模型）不在列表中，
+        # 则追加为覆盖条目，确保编辑结果持久化并能在列表中同步显示
         custom_models = config.extra.get('custom_models', [])
         for i, m in enumerate(custom_models):
             if m.get('id') == model_id:
                 custom_models[i] = model_data
                 break
+        else:
+            custom_models.append(model_data)
         config.extra['custom_models'] = custom_models
         self._llm_config.add_provider(provider_name, config)
 
@@ -1415,7 +1457,10 @@ class LLMSettingsDialog(QDialog):
         dialog = ModelEditDialog(parent=self)
         if dialog.exec() == QDialog.DialogCode.Accepted:
             model_data = dialog.get_model_data()
-            # TODO: 保存到 Provider 配置
+            if not model_data.get('id'):
+                return
+            # 保存到 Provider 配置（追加为自定义模型条目）
+            self._update_model_data(provider_name, model_data['id'], model_data)
             self._populate_model_groups(provider_name, self._llm_config.get_provider(provider_name))
             self._mark_dirty()
 
