@@ -541,6 +541,14 @@ class LLMSettingsDialog(QDialog):
         if self._enable_toggle:
             self._enable_toggle.setChecked(values.get("enabled_chat", False))
 
+    def _mark_dirty(self) -> None:
+        """标记为已修改."""
+        self._is_dirty = True
+        if self._save_btn:
+            self._save_btn.setEnabled(True)
+        if self._current_provider_name:
+            self._refresh_provider_item_widget(self._current_provider_name)
+
     def eventFilter(self, obj: QObject, event: QEvent) -> bool:
         """事件过滤器：监听 QListWidget 大小变化."""
         if (
@@ -630,7 +638,14 @@ class LLMSettingsDialog(QDialog):
         for name in self._llm_config.get_all_providers():
             cached = self._llm_config.load_models_cache(name)
             if cached:
-                self._fetched_models[name] = [ModelInfo.from_dict(m) for m in cached]
+                # 兼容 TTL 时间戳信封格式：{"timestamp": ..., "models": [...]}
+                if isinstance(cached, dict):
+                    models_data = cached.get("models", [])
+                else:
+                    models_data = cached
+                self._fetched_models[name] = [
+                    ModelInfo.from_dict(m) for m in models_data if isinstance(m, dict)
+                ]
         
         providers = self._llm_config.get_all_providers()
         if providers:
@@ -647,6 +662,13 @@ class LLMSettingsDialog(QDialog):
         self._provider_list_widget.clear()
         self._provider_items.clear()
 
+        # 获取各 provider 的 health 状态
+        health_map = {}
+        try:
+            health_map = self._llm_provider.get_provider_health()
+        except Exception:
+            pass
+
         providers = self._llm_config.get_all_providers()
         for name, config in providers.items():
             item = QListWidgetItem()
@@ -656,11 +678,22 @@ class LLMSettingsDialog(QDialog):
             self._provider_list_widget.addItem(item)
             
             logo_path = self._get_logo_path(config.provider_type)
+            
+            # 确定连接状态
+            health_status = None
+            if name in health_map:
+                is_healthy, _ = health_map[name]
+                health_status = "connected" if is_healthy else "failed"
+            
             widget = ProviderListItemWidget(
                 name=config.name or name,
                 logo_path=logo_path,
-                is_enabled=bool(config.enabled_chat)
+                is_enabled=bool(config.enabled_chat),
+                health_status=health_status
             )
+            # 连接开关信号
+            widget.toggled.connect(lambda checked, n=name: self._on_list_toggle_changed(n, checked))
+            
             self._provider_list_widget.setItemWidget(item, widget)
             self._provider_items[name] = item
 
@@ -682,13 +715,37 @@ class LLMSettingsDialog(QDialog):
         # 如果是当前选中的 provider，优先读取 UI 实时状态（配置可能未保存）
         if name == self._current_provider_name and self._enable_toggle is not None:
             is_enabled = self._enable_toggle.isChecked()
+        
+        # 获取连接状态
+        health_status = None
+        try:
+            health_map = self._llm_provider.get_provider_health()
+            if name in health_map:
+                is_healthy, _ = health_map[name]
+                health_status = "connected" if is_healthy else "failed"
+        except Exception:
+            pass
+        
         widget = ProviderListItemWidget(
             name=config.name or name,
             logo_path=logo_path,
-            is_enabled=is_enabled
+            is_enabled=is_enabled,
+            health_status=health_status
         )
+        widget.toggled.connect(lambda checked, n=name: self._on_list_toggle_changed(n, checked))
+        
         self._provider_list_widget.setItemWidget(item, widget)
         self._update_provider_list_item_sizes()
+
+    def _on_list_toggle_changed(self, provider_name: str, checked: bool) -> None:
+        """处理左侧列表中开关切换事件."""
+        # 如果切换的是当前选中的 provider，同步更新右侧详情页的开关
+        if provider_name == self._current_provider_name and self._enable_toggle is not None:
+            self._enable_toggle.setChecked(checked)
+        
+        # 标记为已修改并更新列表项状态
+        self._mark_dirty()
+        self._refresh_provider_item_widget(provider_name)
 
     # ------------------------------------------------------------------ #
     # Provider Selection                                                   #
@@ -775,7 +832,7 @@ class LLMSettingsDialog(QDialog):
         self._populate_model_combos(provider_name, config)
 
     def _build_header_section(self, config: ProviderConfig) -> None:
-        """构建头部区域：Logo + 名称 + 启用切换.
+        """构建头部区域：Logo + 名称 + 状态 + 操作按钮.
         
         Args:
             config: Provider 配置
@@ -805,13 +862,14 @@ class LLMSettingsDialog(QDialog):
             self._set_header_logo_fallback(config.name)
         header_layout.addWidget(self._header_logo_label)
 
-        # Name + subtitle
+        # Name + subtitle + status
         name_layout = QVBoxLayout()
         name_layout.setSpacing(4)
 
         text_primary = self._get_color('textPrimary', '#333333')
         text_secondary = self._get_color('textSecondary', '#666666')
         
+        # 名称行：名称
         name_label = QLabel(config.name or "")
         name_font = QFont()
         name_font.setPointSize(16)
@@ -819,45 +877,131 @@ class LLMSettingsDialog(QDialog):
         name_label.setFont(name_font)
         name_label.setStyleSheet(f"color: {text_primary};")
         name_layout.addWidget(name_label)
+        
+        # 启用状态行：开关 + 标签
+        enable_row = QHBoxLayout()
+        enable_row.setSpacing(8)
+        
+        # 启用开关 - 使用新的 ToggleSwitch 组件
+        from ui.dialog.llm_settings_components import ToggleSwitch
+        self._enable_toggle = ToggleSwitch(config.enabled_chat)
+        self._enable_toggle.setAccessibleName("启用供应商")
+        self._enable_toggle.toggled.connect(self._on_enable_toggle_changed)
+        enable_row.addWidget(self._enable_toggle)
+        
+        enable_label = QLabel("启用")
+        enable_label.setStyleSheet(f"color: {text_primary}; font-size: 12px;")
+        enable_row.addWidget(enable_label)
+        enable_row.addStretch()
+        
+        name_layout.addLayout(enable_row)
 
+        # 类型 + 连接状态
+        status_row = QHBoxLayout()
+        status_row.setSpacing(8)
+        
         type_label = QLabel(config.provider_type)
         type_label.setStyleSheet(f"color: {text_secondary}; font-size: 11px;")
-        name_layout.addWidget(type_label)
-
-        name_layout.addStretch()
+        status_row.addWidget(type_label)
+        
+        # 连接状态指示
+        health_status = "未检测"
+        try:
+            health_map = self._llm_provider.get_provider_health()
+            if self._current_provider_name in health_map:
+                is_healthy, _ = health_map[self._current_provider_name]
+                health_status = "已连接" if is_healthy else "连接失败"
+        except Exception:
+            pass
+        
+        status_label = QLabel(health_status)
+        status_color = self._get_color('textSecondary', '#999999')
+        if health_status == "已连接":
+            status_color = "#16A34A"
+        elif health_status == "连接失败":
+            status_color = "#DC2626"
+        status_label.setStyleSheet(f"color: {status_color}; font-size: 11px;")
+        status_row.addWidget(status_label)
+        status_row.addStretch()
+        
+        name_layout.addLayout(status_row)
         header_layout.addLayout(name_layout, 1)
 
-        # Enable toggle
-        self._enable_toggle = QCheckBox("启用")
-        self._enable_toggle.setAccessibleName("启用供应商")
-        self._enable_toggle.setChecked(config.enabled_chat)
-        self._enable_toggle.stateChanged.connect(self._mark_dirty)
-        
-        checkbox_bg = self._get_color('base', '#FFFFFF')
-        checkbox_border = self._get_color('border', '#CCCCCC')
-        accent = self._get_color('accent', '#4A90D9')
-        
-        self._enable_toggle.setStyleSheet(f"""
-            QCheckBox {{
-                color: {text_primary};
-                font-size: 13px;
-                font-weight: 500;
+        # 删除按钮
+        delete_btn = QPushButton("删除")
+        delete_btn.setAccessibleName("删除供应商")
+        delete_btn.setFixedHeight(32)
+        delete_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        delete_btn.clicked.connect(self._on_delete_provider)
+        delete_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: transparent;
+                color: #DC2626;
+                border: 1px solid #DC2626;
+                border-radius: 6px;
+                padding: 4px 12px;
+                font-size: 12px;
             }}
-            QCheckBox::indicator {{
-                width: 18px;
-                height: 18px;
-                border-radius: 9px;
-                border: 1px solid {checkbox_border};
-                background-color: {checkbox_bg};
-            }}
-            QCheckBox::indicator:checked {{
-                background-color: {accent};
-                border-color: {accent};
+            QPushButton:hover {{
+                background-color: #DC2626;
+                color: white;
             }}
         """)
-        header_layout.addWidget(self._enable_toggle)
+        header_layout.addWidget(delete_btn)
 
         self._detail_layout.addWidget(header_widget)
+
+    def _on_enable_toggle_changed(self, checked: bool) -> None:
+        """处理右侧详情页启用开关切换."""
+        # 同步更新左侧列表中的开关状态
+        if self._current_provider_name:
+            self._refresh_provider_item_widget(self._current_provider_name)
+        self._mark_dirty()
+
+    def _on_delete_provider(self) -> None:
+        """删除当前选中的 Provider."""
+        if not self._current_provider_name:
+            return
+            
+        reply = QMessageBox.question(
+            self,
+            "确认删除",
+            f"确定要删除供应商「{self._current_provider_name}」吗？\n\n此操作将清除该供应商的所有配置和模型缓存。",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+        
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        
+        provider_name = self._current_provider_name
+        try:
+            # 从 LLMProvider 中移除
+            self._llm_provider.remove_provider(provider_name)
+            # 从配置中移除
+            self._llm_config.remove_provider(provider_name)
+            self._llm_config.save_config()
+            # 重新加载配置
+            self._llm_provider.reload_config()
+            
+            # 清除当前选中状态
+            self._current_provider_name = None
+            self._is_dirty = False
+            
+            # 重建列表并选中第一个
+            self._refresh_provider_list()
+            providers = self._llm_config.get_all_providers()
+            if providers:
+                first_name = next(iter(providers))
+                item = self._provider_items.get(first_name)
+                if item:
+                    self._provider_list_widget.setCurrentItem(item)
+            
+            if self._save_btn:
+                self._save_btn.setEnabled(False)
+                
+        except Exception as e:
+            QMessageBox.warning(self, "删除失败", f"删除供应商时出错：{str(e)}")
 
     def _set_header_logo_fallback(self, name: Optional[str]) -> None:
         """设置 header Logo fallback（首字母圆形）.
@@ -895,6 +1039,8 @@ class LLMSettingsDialog(QDialog):
         accent = self._get_color('accent', '#4A90D9')
         link_color = self._get_color('link', '#4A90D9')
         hover_bg = self._get_color('controlFillHover', '#F5F5F5')
+        error_color = '#DC2626'
+        success_color = '#16A34A'
 
         # API 密钥
         key_label = QLabel("API 密钥")
@@ -995,7 +1141,7 @@ class LLMSettingsDialog(QDialog):
 
         # 检测按钮（真实连通性检测：后台线程拉取模型列表）
         btn_row = QHBoxLayout()
-        btn_row.setContentsMargins(0, 4, 0, 0)
+        btn_row.setContentsMargins(0, 8, 0, 0)
         validate_btn = ActionButton("检测供应商有效性", "✓")
         validate_btn.setAccessibleName("检测供应商有效性")
         validate_btn.clicked.connect(self._on_validate_provider)
@@ -1457,6 +1603,11 @@ class LLMSettingsDialog(QDialog):
         """连通性检测成功（主线程槽）."""
         self._validate_worker = None
         self._restore_validate_btn()
+        # 更新左侧列表的连接状态
+        self._refresh_provider_item_widget(provider_name)
+        # 重建当前详情页以更新状态显示
+        if provider_name == self._current_provider_name:
+            self._show_provider_detail(provider_name)
         QMessageBox.information(
             self, "检测成功", f"供应商「{provider_name}」连通正常，检测到 {model_count} 个可用模型。"
         )
@@ -1465,18 +1616,14 @@ class LLMSettingsDialog(QDialog):
         """连通性检测失败（主线程槽）：显示真实错误原因."""
         self._validate_worker = None
         self._restore_validate_btn()
+        # 更新左侧列表的连接状态
+        self._refresh_provider_item_widget(provider_name)
+        # 重建当前详情页以更新状态显示
+        if provider_name == self._current_provider_name:
+            self._show_provider_detail(provider_name)
         QMessageBox.warning(
             self, "检测失败", f"供应商「{provider_name}」连接失败：{message}"
         )
-
-
-    def _mark_dirty(self) -> None:
-        """标记为已修改."""
-        self._is_dirty = True
-        if self._save_btn:
-            self._save_btn.setEnabled(True)
-        if self._current_provider_name:
-            self._refresh_provider_item_widget(self._current_provider_name)
 
     def _save_current_provider(self) -> None:
         """保存当前 Provider 配置."""
