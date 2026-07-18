@@ -95,7 +95,11 @@ def main():
     providers = dialog._llm_config.get_all_providers()
     provider_names = list(providers.keys())
     if len(provider_names) > 1:
-        next_provider = provider_names[1] if provider_names[0] != initial_provider else provider_names[0]
+        # 选择一个与当前不同的 Provider（修复原先可能重选同一 Provider 的问题）
+        next_provider = next(
+            (name for name in provider_names if name != initial_provider),
+            provider_names[0],
+        )
         print(f"切换到 Provider: {next_provider}")
 
         # 模拟切换
@@ -124,6 +128,17 @@ def main():
             switched_shot = out_dir / "test_switched_render.png"
             pixmap.save(str(switched_shot))
             print(f"切换后截图: {switched_shot}")
+
+            # 切换回初始 Provider，验证渲染保持一致
+            back_item = dialog._provider_items.get(initial_provider)
+            if back_item:
+                dialog._provider_list_widget.setCurrentItem(back_item)
+                time.sleep(0.5)
+                app.processEvents()
+                pixmap = dialog.grab()
+                back_shot = out_dir / "test_switched_back_render.png"
+                pixmap.save(str(back_shot))
+                print(f"切回截图: {back_shot}")
 
     print("\n" + "=" * 60)
     print("测试 3: 模型项按钮功能")

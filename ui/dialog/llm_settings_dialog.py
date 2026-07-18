@@ -832,6 +832,8 @@ class LLMSettingsDialog(QDialog):
             item = self._detail_layout.takeAt(0)
             widget = item.widget()
             if widget:
+                # 立即隐藏，避免 deleteLater 延迟期间旧控件与新控件重叠绘制
+                widget.hide()
                 widget.deleteLater()
 
         config = self._llm_config.get_provider(provider_name)
@@ -1967,16 +1969,17 @@ class LLMSettingsDialog(QDialog):
 
         for idx, model_data in enumerate(custom_models):
             row_widget = QWidget()
+            row_widget.setObjectName("customModelRow")
             row_layout = QHBoxLayout(row_widget)
             row_layout.setContentsMargins(12, 10, 12, 10)
             row_layout.setSpacing(12)
             row_widget.setStyleSheet(f"""
-                QWidget {{
+                QWidget#customModelRow {{
                     background-color: transparent;
                     border: 1px solid {border_color};
                     border-radius: 6px;
                 }}
-                QWidget:hover {{
+                QWidget#customModelRow:hover {{
                     background-color: {hover_bg};
                 }}
             """)
