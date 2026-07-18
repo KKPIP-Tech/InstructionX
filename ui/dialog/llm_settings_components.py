@@ -661,8 +661,12 @@ class ModelEditDialog(QDialog):
     def _init_ui(self):
         self.setWindowTitle("编辑模型")
         self.setModal(True)
+        # 初始尺寸（折叠状态）- 紧凑模式
         self.setFixedWidth(520)
-        self.setMinimumHeight(600)
+        self.setMaximumWidth(520)
+        self._collapsed_height = 420
+        self._expanded_height = 750
+        self.setFixedHeight(self._collapsed_height)
 
         colors = get_current_colors()
         text_primary = colors.get('textPrimary', '#333333')
@@ -920,7 +924,7 @@ class ModelEditDialog(QDialog):
         type_label_layout.addStretch()
         type_layout.addLayout(type_label_layout)
 
-        # 能力标签
+        # 能力标签 - 使用可点击的标签按钮
         self._capability_checkboxes = {}
         capabilities_layout = QHBoxLayout()
         capabilities_layout.setSpacing(10)
@@ -935,16 +939,17 @@ class ModelEditDialog(QDialog):
         ]
 
         for cap_key, cap_name, fg_color, bg_color in capability_tags:
-            cb = QCheckBox(cap_name)
-            cb.setChecked(self._capabilities.get(cap_key, False))
-            cb.stateChanged.connect(
-                lambda state, key=cap_key: self._on_capability_changed(key, state)
+            btn = QPushButton(cap_name)
+            btn.setCheckable(True)
+            btn.setChecked(self._capabilities.get(cap_key, False))
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            btn.clicked.connect(
+                lambda checked, key=cap_key: self._on_capability_changed(key, checked)
             )
-            self._capability_checkboxes[cap_key] = cb
-            # 样式化为标签
-            cb.setStyleSheet(f"""
-                QCheckBox {{
-                    spacing: 6px;
+            self._capability_checkboxes[cap_key] = btn
+            # 样式化为标签按钮
+            btn.setStyleSheet(f"""
+                QPushButton {{
                     color: {fg_color};
                     background-color: {bg_color};
                     border: none;
@@ -953,16 +958,15 @@ class ModelEditDialog(QDialog):
                     font-size: 12px;
                     font-weight: 500;
                 }}
-                QCheckBox::indicator {{
-                    width: 0px;
-                    height: 0px;
+                QPushButton:hover {{
+                    opacity: 0.8;
                 }}
-                QCheckBox:checked {{
+                QPushButton:checked {{
                     background-color: {fg_color};
                     color: white;
                 }}
             """)
-            capabilities_layout.addWidget(cb)
+            capabilities_layout.addWidget(btn)
 
         capabilities_layout.addStretch()
         type_layout.addLayout(capabilities_layout)
@@ -1044,6 +1048,7 @@ class ModelEditDialog(QDialog):
         )
         self._input_price_spin.setDecimals(2)
         self._input_price_spin.setFixedWidth(120)
+        self._input_price_spin.setButtonSymbols(QDoubleSpinBox.ButtonSymbols.UpDownArrows)
         self._input_price_spin.setStyleSheet(f"""
             QDoubleSpinBox {{
                 padding: 8px 12px;
@@ -1051,6 +1056,24 @@ class ModelEditDialog(QDialog):
                 border-radius: 6px;
                 font-size: 13px;
                 color: {text_primary};
+                background-color: white;
+            }}
+            QDoubleSpinBox:focus {{
+                border-color: #16A34A;
+            }}
+            QDoubleSpinBox::up-button {{
+                subcontrol-origin: border;
+                subcontrol-position: top right;
+                width: 20px;
+                border-left: 1px solid {border_color};
+                border-top-right-radius: 6px;
+            }}
+            QDoubleSpinBox::down-button {{
+                subcontrol-origin: border;
+                subcontrol-position: bottom right;
+                width: 20px;
+                border-left: 1px solid {border_color};
+                border-bottom-right-radius: 6px;
             }}
         """)
         input_price_row.addWidget(self._input_price_spin)
@@ -1076,6 +1099,7 @@ class ModelEditDialog(QDialog):
         )
         self._output_price_spin.setDecimals(2)
         self._output_price_spin.setFixedWidth(120)
+        self._output_price_spin.setButtonSymbols(QDoubleSpinBox.ButtonSymbols.UpDownArrows)
         self._output_price_spin.setStyleSheet(f"""
             QDoubleSpinBox {{
                 padding: 8px 12px;
@@ -1083,6 +1107,24 @@ class ModelEditDialog(QDialog):
                 border-radius: 6px;
                 font-size: 13px;
                 color: {text_primary};
+                background-color: white;
+            }}
+            QDoubleSpinBox:focus {{
+                border-color: #16A34A;
+            }}
+            QDoubleSpinBox::up-button {{
+                subcontrol-origin: border;
+                subcontrol-position: top right;
+                width: 20px;
+                border-left: 1px solid {border_color};
+                border-top-right-radius: 6px;
+            }}
+            QDoubleSpinBox::down-button {{
+                subcontrol-origin: border;
+                subcontrol-position: bottom right;
+                width: 20px;
+                border-left: 1px solid {border_color};
+                border-bottom-right-radius: 6px;
             }}
         """)
         output_price_row.addWidget(self._output_price_spin)
@@ -1101,12 +1143,26 @@ class ModelEditDialog(QDialog):
         dialog_layout.addWidget(main_container)
 
     def _toggle_more_settings(self):
-        """切换更多设置区域的显示."""
-        self._more_widget.setVisible(self._more_btn.isChecked())
+        """切换更多设置区域的显示，并自动调整对话框大小."""
+        is_expanded = self._more_btn.isChecked()
+        self._more_widget.setVisible(is_expanded)
+        
+        # 更新按钮文本
+        self._more_btn.setText("更多设置 ▲" if is_expanded else "更多设置 ▼")
+        
+        # 自动调整对话框大小
+        if is_expanded:
+            self.setFixedHeight(self._expanded_height)
+        else:
+            self.setFixedHeight(self._collapsed_height)
+        
+        # 确保布局更新
+        self.adjustSize()
+        self.updateGeometry()
 
-    def _on_capability_changed(self, key: str, state: int):
+    def _on_capability_changed(self, key: str, checked: bool):
         """能力标签状态变化."""
-        self._capabilities[key] = (state == Qt.CheckState.Checked.value)
+        self._capabilities[key] = checked
 
     def get_model_data(self) -> Dict[str, Any]:
         """获取编辑后的模型数据."""
