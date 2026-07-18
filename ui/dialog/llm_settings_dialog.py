@@ -304,7 +304,7 @@ class LLMSettingsDialog(QDialog):
         """
 
     def _create_left_panel(self) -> QWidget:
-        """创建左侧面板：Provider 列表."""
+        """创建左侧面板：Provider 列表 + 搜索栏."""
         widget = QWidget()
         widget.setObjectName("leftPanel")
         widget.setFixedWidth(self._left_panel_width)
@@ -317,6 +317,16 @@ class LLMSettingsDialog(QDialog):
 
         header = self._create_left_header()
         layout.addWidget(header)
+
+        # 搜索框
+        from ui.dialog.llm_settings_components import SearchBox
+        self._search_box = SearchBox("搜索模型平台...")
+        self._search_box.textChanged.connect(self._on_search_text_changed)
+        search_container = QWidget()
+        search_layout = QHBoxLayout(search_container)
+        search_layout.setContentsMargins(12, 8, 12, 8)
+        search_layout.addWidget(self._search_box)
+        layout.addWidget(search_container)
 
         self._provider_list_widget = QListWidget()
         self._provider_list_widget.setObjectName("providerListWidget")
@@ -332,7 +342,7 @@ class LLMSettingsDialog(QDialog):
         layout.addWidget(self._provider_list_widget, 1)
 
         # 添加供应商按钮
-        add_btn = QPushButton("+ 添加供应商")
+        add_btn = QPushButton("+ 添加")
         add_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         add_btn.setFixedHeight(44)
         add_btn.setStyleSheet(self._add_provider_btn_qss())
@@ -341,6 +351,16 @@ class LLMSettingsDialog(QDialog):
         layout.addWidget(add_btn)
 
         return widget
+
+    def _on_search_text_changed(self, text: str) -> None:
+        """搜索框文本变化时过滤 Provider 列表."""
+        text = text.lower().strip()
+        for i in range(self._provider_list_widget.count()):
+            item = self._provider_list_widget.item(i)
+            widget = self._provider_list_widget.itemWidget(item)
+            if widget:
+                name = widget._name.lower()
+                item.setHidden(text and text not in name)
 
     def _create_left_header(self) -> QWidget:
         """创建左侧面板头部."""
@@ -824,9 +844,6 @@ class LLMSettingsDialog(QDialog):
 
         self._build_model_list_card(provider_name, config)
 
-        if config.provider_type == "openai":
-            self._build_custom_models_card(provider_name, config)
-
         self._build_model_selection_card(config)
 
         self._populate_model_combos(provider_name, config)
@@ -878,25 +895,7 @@ class LLMSettingsDialog(QDialog):
         name_label.setStyleSheet(f"color: {text_primary};")
         name_layout.addWidget(name_label)
         
-        # 启用状态行：开关 + 标签
-        enable_row = QHBoxLayout()
-        enable_row.setSpacing(8)
-        
-        # 启用开关 - 使用新的 ToggleSwitch 组件
-        from ui.dialog.llm_settings_components import ToggleSwitch
-        self._enable_toggle = ToggleSwitch(config.enabled_chat)
-        self._enable_toggle.setAccessibleName("启用供应商")
-        self._enable_toggle.toggled.connect(self._on_enable_toggle_changed)
-        enable_row.addWidget(self._enable_toggle)
-        
-        enable_label = QLabel("启用")
-        enable_label.setStyleSheet(f"color: {text_primary}; font-size: 12px;")
-        enable_row.addWidget(enable_label)
-        enable_row.addStretch()
-        
-        name_layout.addLayout(enable_row)
-
-        # 类型 + 连接状态
+        # 类型 + 连接状态行
         status_row = QHBoxLayout()
         status_row.setSpacing(8)
         
@@ -927,8 +926,41 @@ class LLMSettingsDialog(QDialog):
         name_layout.addLayout(status_row)
         header_layout.addLayout(name_layout, 1)
 
+        # 右侧：启用开关（圆形样式）+ 删除按钮
+        right_layout = QVBoxLayout()
+        right_layout.setSpacing(8)
+        right_layout.setAlignment(Qt.AlignmentFlag.AlignRight)
+        
+        # 启用开关 - 使用圆形 ToggleSwitch
+        from ui.dialog.llm_settings_components import CircularToggleSwitch
+        self._enable_toggle = CircularToggleSwitch(config.enabled_chat)
+        self._enable_toggle.setAccessibleName("启用供应商")
+        self._enable_toggle.toggled.connect(self._on_enable_toggle_changed)
+        right_layout.addWidget(self._enable_toggle, alignment=Qt.AlignmentFlag.AlignRight)
+        
         # 删除按钮
         delete_btn = QPushButton("删除")
+        delete_btn.setAccessibleName("删除供应商")
+        delete_btn.setFixedHeight(28)
+        delete_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        delete_btn.clicked.connect(self._on_delete_provider)
+        delete_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: transparent;
+                color: #DC2626;
+                border: 1px solid #DC2626;
+                border-radius: 4px;
+                padding: 4px 12px;
+                font-size: 12px;
+            }}
+            QPushButton:hover {{
+                background-color: #DC2626;
+                color: white;
+            }}
+        """)
+        right_layout.addWidget(delete_btn, alignment=Qt.AlignmentFlag.AlignRight)
+        
+        header_layout.addLayout(right_layout)
         delete_btn.setAccessibleName("删除供应商")
         delete_btn.setFixedHeight(32)
         delete_btn.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -1155,139 +1187,188 @@ class LLMSettingsDialog(QDialog):
     def _build_model_list_card(
         self, provider_name: str, config: ProviderConfig
     ) -> None:
-        """构建模型列表卡片."""
+        """构建模型列表卡片（分组显示）."""
         if not self._detail_layout:
             return
 
-        from ui.dialog.llm_settings_components import ConfigCard
+        from ui.dialog.llm_settings_components import ConfigCard, ModelGroupWidget
         card = ConfigCard("模型列表")
 
         text_primary = self._get_color('textPrimary', '#333333')
 
-        radio_layout = QHBoxLayout()
-        radio_layout.setSpacing(16)
+        # 工具栏：获取模型列表 + 添加模型
+        toolbar = QHBoxLayout()
+        toolbar.setSpacing(8)
 
-        self._preset_radio = QRadioButton("使用本地预设列表")
-        self._api_radio = QRadioButton("从 API 获取")
+        fetch_btn = QPushButton("获取模型列表")
+        fetch_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        fetch_btn.clicked.connect(lambda: self._on_fetch_models(provider_name))
+        fetch_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: transparent;
+                border: 1px solid {self._get_color('borderLight', '#E0E0E0')};
+                border-radius: 6px;
+                padding: 6px 12px;
+                color: {text_primary};
+                font-size: 12px;
+            }}
+            QPushButton:hover {{
+                background-color: {self._get_color('controlFillHover', '#F5F5F5')};
+            }}
+        """)
+        toolbar.addWidget(fetch_btn)
+        self._fetch_btn = fetch_btn
 
-        radio_layout.addWidget(self._preset_radio)
-        radio_layout.addWidget(self._api_radio)
-        radio_layout.addStretch()
-        card.add_layout(radio_layout)
+        toolbar.addStretch()
 
-        force_preset = provider_name in ("minimax", "glm")
-        if force_preset:
-            self._preset_radio.setChecked(True)
-            self._preset_radio.setEnabled(False)
-            self._api_radio.setEnabled(False)
-        else:
-            presets = self._get_preset_models(provider_name)
-            self._preset_radio.toggled.connect(self._on_model_source_changed)
-            self._api_radio.toggled.connect(self._on_model_source_changed)
-            if presets:
-                self._preset_radio.setChecked(True)
-            else:
-                self._api_radio.setChecked(True)
+        add_btn = QPushButton("+ 添加模型")
+        add_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        add_btn.clicked.connect(lambda: self._on_add_model(provider_name))
+        add_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: transparent;
+                border: 1px solid {self._get_color('borderLight', '#E0E0E0')};
+                border-radius: 6px;
+                padding: 6px 12px;
+                color: {text_primary};
+                font-size: 12px;
+            }}
+            QPushButton:hover {{
+                background-color: {self._get_color('controlFillHover', '#F5F5F5')};
+            }}
+        """)
+        toolbar.addWidget(add_btn)
 
-        self._model_stack = QStackedWidget()
-        self._model_stack.setSizePolicy(
-            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
-        )
+        card.add_layout(toolbar)
 
-        self._preset_view = QWidget()
-        preset_layout = QVBoxLayout(self._preset_view)
-        preset_layout.setSpacing(4)
-        preset_layout.setContentsMargins(0, 0, 0, 0)
+        # 模型分组显示区域
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setFixedHeight(400)
 
-        self._populate_preset_view(preset_layout, provider_name)
-        self._model_stack.addWidget(self._preset_view)
+        container = QWidget()
+        self._model_groups_layout = QVBoxLayout(container)
+        self._model_groups_layout.setSpacing(8)
+        self._model_groups_layout.setContentsMargins(0, 0, 0, 0)
+        self._model_groups_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
-        self._api_view = QWidget()
-        api_layout = QVBoxLayout(self._api_view)
-        api_layout.setSpacing(8)
-        api_layout.setContentsMargins(0, 0, 0, 0)
+        # 填充模型分组
+        self._populate_model_groups(provider_name, config)
 
-        self._populate_api_view(api_layout, provider_name)
-        self._model_stack.addWidget(self._api_view)
+        scroll.setWidget(container)
+        card.add_widget(scroll)
 
-        if force_preset or (not force_preset and self._preset_radio.isChecked()):
-            self._model_stack.setCurrentWidget(self._preset_view)
-        else:
-            self._model_stack.setCurrentWidget(self._api_view)
-
-        card.add_widget(self._model_stack)
         self._detail_layout.addWidget(card)
 
-    def _populate_preset_view(
-        self, layout: QVBoxLayout, provider_name: str
-    ) -> None:
-        """填充预设模型视图."""
-        presets = self._get_preset_models(provider_name)
-        chat_models = [m for m in presets if m.support_chat]
-        emb_models = [m for m in presets if m.support_embedding]
-        vision_models = [m for m in presets if m.support_vision]
-        other_models = [
-            m
-            for m in presets
-            if not (m.support_chat or m.support_embedding or m.support_vision)
-        ]
+    def _populate_model_groups(self, provider_name: str, config: ProviderConfig) -> None:
+        """填充模型分组列表."""
+        from ui.dialog.llm_settings_components import ModelGroupWidget
 
-        categories: List[tuple[str, List[ModelInfo]]] = []
-        if chat_models:
-            categories.append(("聊天模型 Chat", chat_models))
-        if emb_models:
-            categories.append(("嵌入模型 Embedding", emb_models))
-        if vision_models:
-            categories.append(("视觉模型 Vision", vision_models))
-        if other_models:
-            categories.append(("其他模型", other_models))
+        # 清空现有内容
+        while self._model_groups_layout.count():
+            item = self._model_groups_layout.takeAt(0)
+            widget = item.widget()
+            if widget:
+                widget.deleteLater()
 
-        text_secondary = self._get_color('textSecondary', '#666666')
-        
-        if categories:
-            for cat_name, models in categories:
-                group = CollapsibleGroup(cat_name, len(models))
-                for m in models:
-                    model_widget = self._make_preset_model_widget(m)
-                    group.add_widget(model_widget)
-                layout.addWidget(group)
+        # 获取所有模型
+        preset_models = self._get_preset_models(provider_name)
+        fetched_models = self._fetched_models.get(provider_name, [])
+
+        # 合并并去重
+        seen_ids: set[str] = set()
+        all_models: List[ModelInfo] = []
+        for m in preset_models + fetched_models:
+            if m.id not in seen_ids:
+                seen_ids.add(m.id)
+                all_models.append(m)
+
+        if not all_models:
+            empty_label = QLabel("暂无模型，请点击「获取模型列表」")
+            empty_label.setStyleSheet(f"color: {self._get_color('textSecondary', '#999999')};")
+            self._model_groups_layout.addWidget(empty_label)
+            return
+
+        # 按系列分组
+        groups: Dict[str, List[Dict[str, Any]]] = {}
+        for model in all_models:
+            # 提取系列名称（如 Kimi K2, Qwen 等）
+            group_name = self._extract_model_group(model.id)
+            if group_name not in groups:
+                groups[group_name] = []
+            groups[group_name].append({
+                'id': model.id,
+                'name': model.name or model.id,
+                'context_length': model.context_length,
+                'capabilities': self._get_model_capabilities(model),
+            })
+
+        # 按名称排序分组
+        for group_name in sorted(groups.keys()):
+            group_widget = ModelGroupWidget(group_name, groups[group_name])
+            self._model_groups_layout.addWidget(group_widget)
+
+    def _extract_model_group(self, model_id: str) -> str:
+        """从模型 ID 提取系列/分组名称."""
+        # 常见模型系列映射
+        if 'kimi' in model_id.lower():
+            return 'Kimi K2'
+        elif 'qwen' in model_id.lower():
+            return 'Qwen'
+        elif 'deepseek' in model_id.lower():
+            return 'deepseek-ai'
+        elif 'moonshot' in model_id.lower():
+            return 'moonshotai'
+        elif 'glm' in model_id.lower():
+            return 'GLM'
+        elif 'minimax' in model_id.lower():
+            return 'MiniMax'
+        elif 'gpt' in model_id.lower():
+            return 'GPT'
+        elif 'claude' in model_id.lower():
+            return 'Claude'
         else:
-            empty_label = QLabel("该供应商暂无预设模型列表，请使用「从 API 获取」")
-            empty_label.setStyleSheet(f"color: {text_secondary};")
-            layout.addWidget(empty_label)
+            # 按 / 分割取第一部分
+            parts = model_id.split('/')
+            if len(parts) > 1:
+                return parts[0]
+            return '其他'
 
-        layout.addStretch()
+    def _get_model_capabilities(self, model: ModelInfo) -> List[str]:
+        """获取模型能力标签列表."""
+        capabilities = []
+        if getattr(model, 'support_vision', False):
+            capabilities.append('vision')
+        if getattr(model, 'support_function_calling', False):
+            capabilities.append('tools')
+        if getattr(model, 'support_embedding', False):
+            capabilities.append('embedding')
+        if 'thinking' in model.id.lower() or 'reasoning' in model.id.lower():
+            capabilities.append('reasoning')
+        if 'web' in model.id.lower() or 'search' in model.id.lower():
+            capabilities.append('web')
+        return capabilities
 
-    def _populate_api_view(
-        self, layout: QVBoxLayout, provider_name: str
-    ) -> None:
-        """填充 API 模型视图."""
-        fetch_row = QHBoxLayout()
-        self._fetch_btn = QPushButton("从 API 获取模型列表")
-        self._fetch_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._fetch_btn.clicked.connect(lambda: self._on_fetch_models(provider_name))
-        fetch_row.addWidget(self._fetch_btn)
-        fetch_row.addStretch()
-        layout.addLayout(fetch_row)
+    def _on_add_model(self, provider_name: str) -> None:
+        """添加新模型."""
+        from ui.dialog.llm_settings_components import ModelEditDialog
+        dialog = ModelEditDialog(parent=self)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            model_data = dialog.get_model_data()
+            # TODO: 保存到 Provider 配置
+            self._populate_model_groups(provider_name, self._llm_config.get_provider(provider_name))
+            self._mark_dirty()
 
-        self._fetched_list_scroll = QScrollArea()
-        self._fetched_list_scroll.setFixedHeight(300)
-        self._fetched_list_scroll.setWidgetResizable(True)
-        self._fetched_list_scroll.setHorizontalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
-        )
-        self._fetched_list_scroll.setFrameShape(QFrame.Shape.NoFrame)
-        
-        fetched_container = QWidget()
-        self._fetched_list_layout = QVBoxLayout(fetched_container)
-        self._fetched_list_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
-        self._fetched_list_layout.setSpacing(2)
-        self._fetched_list_layout.setContentsMargins(4, 4, 4, 4)
-        self._fetched_list_scroll.setWidget(fetched_container)
-        layout.addWidget(self._fetched_list_scroll)
+    def _populate_fetched_list(self, provider_name: str) -> None:
+        """填充 API 获取的模型列表（兼容旧接口，现在使用分组显示）."""
+        if not self._model_groups_layout:
+            return
 
-        if provider_name in self._fetched_models:
-            self._populate_fetched_list(provider_name)
+        config = self._llm_config.get_provider(provider_name)
+        if config:
+            self._populate_model_groups(provider_name, config)
 
     def _build_model_selection_card(self, config: ProviderConfig) -> None:
         """构建默认模型设置卡片."""
@@ -1351,6 +1432,40 @@ class LLMSettingsDialog(QDialog):
 
         self._detail_layout.addWidget(card)
 
+    def _populate_model_combos(
+        self, provider_name: str, config: ProviderConfig
+    ) -> None:
+        """填充模型下拉框."""
+        if not self._chat_model_combo or not self._emb_model_combo:
+            return
+
+        preset_models = self._get_preset_models(provider_name)
+        fetched_models = self._fetched_models.get(provider_name, [])
+
+        seen_ids: set[str] = set()
+        all_models: List[ModelInfo] = []
+        for m in preset_models + fetched_models:
+            if m.id not in seen_ids:
+                seen_ids.add(m.id)
+                all_models.append(m)
+
+        chat_ids = [m.id for m in all_models if m.support_chat]
+        emb_ids = [m.id for m in all_models if m.support_embedding]
+
+        self._chat_model_combo.blockSignals(True)
+        self._chat_model_combo.clear()
+        self._chat_model_combo.addItems(chat_ids)
+        if config.chat_model and config.chat_model in chat_ids:
+            self._chat_model_combo.setCurrentText(config.chat_model)
+        self._chat_model_combo.blockSignals(False)
+
+        self._emb_model_combo.blockSignals(True)
+        self._emb_model_combo.clear()
+        self._emb_model_combo.addItems(emb_ids)
+        if config.embedding_model and config.embedding_model in emb_ids:
+            self._emb_model_combo.setCurrentText(config.embedding_model)
+        self._emb_model_combo.blockSignals(False)
+
     # ------------------------------------------------------------------ #
     # Helpers                                                               #
     # ------------------------------------------------------------------ #
@@ -1367,21 +1482,6 @@ class LLMSettingsDialog(QDialog):
         div.setFixedHeight(1)
         div.setStyleSheet(f"background-color: {border_color};")
         self._detail_layout.addWidget(div)
-
-    def _make_preset_model_widget(self, model: ModelInfo) -> QWidget:
-        """创建预设模型列表项."""
-        item = ModelDetailItem(
-            model_id=model.id,
-            model_name=model.name or model.id,
-            context_length=model.context_length,
-            support_chat=model.support_chat,
-            support_embedding=model.support_embedding,
-            support_vision=model.support_vision,
-            support_thinking=getattr(model, "support_thinking", False)
-            or "thinking" in model.id.lower(),
-            support_tools=model.support_function_calling,
-        )
-        return item
 
     def _get_preset_models(self, provider_name: str) -> List[ModelInfo]:
         """获取预设模型列表（表驱动：_PRESET_PROVIDERS + _PRESET_MODEL_GROUPS）."""
@@ -1465,39 +1565,7 @@ class LLMSettingsDialog(QDialog):
             self._emb_model_combo.setCurrentText(config.embedding_model)
         self._emb_model_combo.blockSignals(False)
 
-    def _populate_fetched_list(self, provider_name: str) -> None:
-        """填充 API 获取的模型列表."""
-        if not self._fetched_list_layout:
-            return
-            
-        models = self._fetched_models.get(provider_name, [])
 
-        while self._fetched_list_layout.count():
-            item = self._fetched_list_layout.takeAt(0)
-            widget = item.widget()
-            if widget:
-                widget.deleteLater()
-
-        text_secondary = self._get_color('textSecondary', '#666666')
-        
-        if not models:
-            empty = QLabel("暂无模型，请点击上方按钮获取")
-            empty.setStyleSheet(f"color: {text_secondary};")
-            self._fetched_list_layout.addWidget(empty)
-            return
-
-        for model in models:
-            item_widget = self._make_preset_model_widget(model)
-            self._fetched_list_layout.addWidget(item_widget)
-
-    def _on_model_source_changed(self, checked: bool) -> None:
-        """切换预设/API 视图."""
-        if not checked or not self._model_stack:
-            return
-        if self._preset_radio and self._preset_radio.isChecked() and self._preset_view:
-            self._model_stack.setCurrentWidget(self._preset_view)
-        elif self._api_view:
-            self._model_stack.setCurrentWidget(self._api_view)
 
     def _on_fetch_models(self, provider_name: str) -> None:
         """触发从 API 获取模型列表（QThread 后台执行，不阻塞主线程）."""
@@ -1507,8 +1575,6 @@ class LLMSettingsDialog(QDialog):
         if self._fetch_btn:
             self._fetch_btn.setEnabled(False)
             self._fetch_btn.setText("获取中...")
-        # “获取中...”状态真实可见：列表区域同步显示加载占位
-        self._set_fetched_list_message("正在获取模型列表...")
 
         # worker 不以对话框为 parent，避免对话框关闭时线程仍在运行导致崩溃；
         # 结束后通过 deleteLater 自动释放
@@ -1518,42 +1584,27 @@ class LLMSettingsDialog(QDialog):
         self._fetch_worker.finished.connect(self._fetch_worker.deleteLater)
         self._fetch_worker.start()
 
-    def _set_fetched_list_message(self, text: str) -> None:
-        """在获取列表区域显示一条提示文本（加载占位/错误占位）."""
-        if not self._fetched_list_layout:
-            return
-        while self._fetched_list_layout.count():
-            item = self._fetched_list_layout.takeAt(0)
-            widget = item.widget()
-            if widget:
-                widget.deleteLater()
-        label = QLabel(text)
-        label.setStyleSheet(
-            f"color: {self._get_color('textSecondary', '#666666')};"
-        )
-        self._fetched_list_layout.addWidget(label)
-
     def _restore_fetch_btn(self) -> None:
         """恢复获取按钮状态."""
         if self._fetch_btn:
             self._fetch_btn.setEnabled(True)
-            self._fetch_btn.setText("从 API 获取模型列表")
+            self._fetch_btn.setText("获取模型列表")
 
     def _on_fetch_models_done(self, provider_name: str, models: list) -> None:
         """模型列表获取完成（主线程槽）."""
         self._fetch_worker = None
         self._fetched_models[provider_name] = models
-        self._populate_fetched_list(provider_name)
+        # 刷新模型分组显示
         if self._current_provider_name == provider_name:
             config = self._llm_config.get_provider(provider_name)
             if config:
+                self._populate_model_groups(provider_name, config)
                 self._populate_model_combos(provider_name, config)
         self._restore_fetch_btn()
 
     def _on_fetch_models_failed(self, provider_name: str, message: str) -> None:
         """模型列表获取失败（主线程槽）：显示真实错误原因."""
         self._fetch_worker = None
-        self._set_fetched_list_message(f"获取失败：{message}")
         QMessageBox.warning(self, "获取失败", f"无法获取模型列表：{message}")
         self._restore_fetch_btn()
 
@@ -1670,23 +1721,73 @@ class LLMSettingsDialog(QDialog):
             QMessageBox.warning(self, "无可用供应商", "当前没有可用的供应商类型。")
             return
 
-        provider_type, ok = QInputDialog.getItem(
-            self,
-            "添加供应商",
-            "选择供应商类型:",
-            available_types,
-            0,
-            False,
-        )
-        if not ok or not provider_type:
+        # 创建类型选择对话框
+        from ui.dialog.llm_settings_components import ModelEditDialog
+        dialog = QDialog(self)
+        dialog.setWindowTitle("添加供应商")
+        dialog.setModal(True)
+        dialog.setMinimumWidth(400)
+
+        layout = QVBoxLayout(dialog)
+        layout.setSpacing(16)
+        layout.setContentsMargins(20, 20, 20, 20)
+
+        colors = self._colors
+        text_primary = colors.get('textPrimary', '#333333')
+
+        # 供应商类型选择
+        type_label = QLabel("选择供应商类型:")
+        type_label.setStyleSheet(f"color: {text_primary}; font-weight: 500;")
+        layout.addWidget(type_label)
+
+        self._add_type_combo = QComboBox()
+        self._add_type_combo.addItems(available_types)
+        layout.addWidget(self._add_type_combo)
+
+        # 供应商名称
+        name_label = QLabel("供应商名称:")
+        name_label.setStyleSheet(f"color: {text_primary}; font-weight: 500;")
+        layout.addWidget(name_label)
+
+        self._add_name_edit = QLineEdit()
+        self._add_name_edit.setPlaceholderText("例如：My Provider")
+        layout.addWidget(self._add_name_edit)
+
+        # 按钮
+        btn_layout = QHBoxLayout()
+        btn_layout.addStretch()
+
+        cancel_btn = QPushButton("取消")
+        cancel_btn.clicked.connect(dialog.reject)
+        btn_layout.addWidget(cancel_btn)
+
+        ok_btn = QPushButton("添加")
+        ok_btn.clicked.connect(dialog.accept)
+        ok_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {self._get_color('accent', '#4A90D9')};
+                color: white;
+                border: none;
+                border-radius: 6px;
+                padding: 8px 16px;
+            }}
+        """)
+        btn_layout.addWidget(ok_btn)
+
+        layout.addLayout(btn_layout)
+
+        if dialog.exec() != QDialog.DialogCode.Accepted:
             return
 
-        base_name = provider_type.capitalize()
-        name = base_name
-        counter = 1
-        while self._llm_config.get_provider(name):
-            name = f"{base_name}_{counter}"
-            counter += 1
+        provider_type = self._add_type_combo.currentText()
+        name = self._add_name_edit.text().strip()
+        if not name:
+            base_name = provider_type.capitalize()
+            name = base_name
+            counter = 1
+            while self._llm_config.get_provider(name):
+                name = f"{base_name}_{counter}"
+                counter += 1
 
         new_config = ProviderConfig(
             name=name,

@@ -1,12 +1,13 @@
 # ui/dialog/llm_settings_components.py
 """LLM 设置中心自定义组件 - 支持深色模式."""
 
-from typing import Optional, Callable, List
+from typing import Optional, Callable, List, Dict, Any
 from pathlib import Path
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QFrame, QSizePolicy, QToolButton, QMenu, QLineEdit,
-    QGraphicsDropShadowEffect, QCheckBox
+    QGraphicsDropShadowEffect, QCheckBox, QDialog, QDialogButtonBox,
+    QComboBox, QDoubleSpinBox, QScrollArea, QTextEdit, QGroupBox
 )
 from PySide6.QtCore import Qt, Signal, QSize, QPoint, QPropertyAnimation, QEasingCurve, QRect
 from PySide6.QtGui import QFont, QIcon, QPixmap, QColor, QPainter, QPainterPath, QBrush, QPen
@@ -32,20 +33,32 @@ STATUS_CONNECTED = "#16A34A"      # 已连接：绿色
 STATUS_FAILED = "#DC2626"         # 连接失败：红色
 STATUS_UNKNOWN = "#9CA3AF"        # 未检测：灰色
 
+# 模型能力标签配色
+CAPABILITY_COLORS = {
+    'vision': ('#EC4899', '#FCE7F3'),      # 视觉：粉色
+    'web': ('#8B5CF6', '#EDE9FE'),          # 联网：紫色
+    'reasoning': ('#F59E0B', '#FEF3C7'),    # 推理：橙色
+    'tools': ('#8B5CF6', '#EDE9FE'),        # 工具：紫色
+    'rerank': ('#6B7280', '#F3F4F6'),       # 重排：灰色
+    'embedding': ('#10B981', '#D1FAE5'),    # 嵌入：绿色
+    'chat': ('#3B82F6', '#DBEAFE'),         # 聊天：蓝色
+    'thinking': ('#F59E0B', '#FEF3C7'),     # 思考：橙色
+}
 
-class ToggleSwitch(QWidget):
-    """现代切换开关组件 - 圆角矩形滑块."""
+
+class OnOffSwitch(QWidget):
+    """ON/OFF 切换开关 - 圆角矩形带文字标签."""
 
     toggled = Signal(bool)
 
     def __init__(self, checked: bool = False, parent=None):
         super().__init__(parent)
         self._checked = checked
-        self.setFixedSize(40, 22)
+        self.setFixedSize(36, 18)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
 
     def sizeHint(self):
-        return QSize(40, 22)
+        return QSize(36, 18)
 
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
@@ -58,8 +71,6 @@ class ToggleSwitch(QWidget):
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
         colors = get_current_colors()
-        accent = QColor(colors.get('accent', '#4A90D9'))
-        border_color = QColor(colors.get('border', '#CCCCCC'))
         bg_color = QColor(colors.get('controlFillHover', '#E0E0E0'))
 
         # 绘制背景轨道
@@ -68,11 +79,83 @@ class ToggleSwitch(QWidget):
         path.addRoundedRect(rect, self.height() / 2, self.height() / 2)
 
         if self._checked:
-            painter.fillPath(path, accent)
+            painter.fillPath(path, QColor("#22C55E"))  # 绿色 ON
         else:
-            painter.fillPath(path, bg_color)
+            painter.fillPath(path, QColor("#9CA3AF"))  # 灰色 OFF
 
-        # 绘制滑块
+        # 绘制滑块（圆形）
+        knob_size = self.height() - 2
+        knob_y = 1
+        if self._checked:
+            knob_x = self.width() - knob_size - 1
+        else:
+            knob_x = 1
+
+        knob_rect = QRect(knob_x, knob_y, knob_size, knob_size)
+        painter.setBrush(Qt.GlobalColor.white)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.drawEllipse(knob_rect)
+
+        # 绘制 ON/OFF 文字（在滑块另一侧）
+        painter.setPen(Qt.GlobalColor.white)
+        font = painter.font()
+        font.setPointSize(7)
+        font.setBold(True)
+        painter.setFont(font)
+
+        text = "ON" if self._checked else "OFF"
+        if self._checked:
+            # ON 文字在左侧
+            text_rect = QRect(4, 0, self.width() - knob_size - 8, self.height())
+        else:
+            # OFF 文字在右侧
+            text_rect = QRect(knob_size + 4, 0, self.width() - knob_size - 8, self.height())
+        painter.drawText(text_rect, Qt.AlignmentFlag.AlignCenter, text)
+
+    def isChecked(self) -> bool:
+        return self._checked
+
+    def setChecked(self, checked: bool):
+        if self._checked != checked:
+            self._checked = checked
+            self.update()
+
+
+class CircularToggleSwitch(QWidget):
+    """圆形切换开关 - 仅滑块，无文字（用于右侧面板头部）."""
+
+    toggled = Signal(bool)
+
+    def __init__(self, checked: bool = False, parent=None):
+        super().__init__(parent)
+        self._checked = checked
+        self.setFixedSize(44, 24)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+
+    def sizeHint(self):
+        return QSize(44, 24)
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._checked = not self._checked
+            self.toggled.emit(self._checked)
+            self.update()
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        # 绘制背景轨道
+        rect = QRect(0, 0, self.width(), self.height())
+        path = QPainterPath()
+        path.addRoundedRect(rect, self.height() / 2, self.height() / 2)
+
+        if self._checked:
+            painter.fillPath(path, QColor("#22C55E"))  # 绿色 ON
+        else:
+            painter.fillPath(path, QColor("#D1D5DB"))  # 灰色 OFF
+
+        # 绘制滑块（圆形，带边框）
         knob_size = self.height() - 4
         knob_y = 2
         if self._checked:
@@ -82,7 +165,7 @@ class ToggleSwitch(QWidget):
 
         knob_rect = QRect(knob_x, knob_y, knob_size, knob_size)
         painter.setBrush(Qt.GlobalColor.white)
-        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setPen(QPen(QColor("#E5E7EB"), 1))
         painter.drawEllipse(knob_rect)
 
     def isChecked(self) -> bool:
@@ -94,8 +177,69 @@ class ToggleSwitch(QWidget):
             self.update()
 
 
+class SearchBox(QWidget):
+    """搜索框组件."""
+
+    textChanged = Signal(str)
+
+    def __init__(self, placeholder: str = "搜索...", parent=None):
+        super().__init__(parent)
+        self._init_ui(placeholder)
+
+    def _init_ui(self, placeholder: str):
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+
+        colors = get_current_colors()
+        bg_color = colors.get('base', '#FFFFFF')
+        border_color = colors.get('border', '#CCCCCC')
+        text_color = colors.get('textSecondary', '#999999')
+        focus_color = colors.get('accent', '#4A90D9')
+
+        self._edit = QLineEdit()
+        self._edit.setPlaceholderText(placeholder)
+        self._edit.setClearButtonEnabled(True)
+        self._edit.textChanged.connect(self.textChanged.emit)
+        self._edit.setStyleSheet(f"""
+            QLineEdit {{
+                padding: 8px 12px;
+                border: 1px solid {border_color};
+                border-radius: 6px;
+                font-size: 13px;
+                color: {colors.get('textPrimary', '#333333')};
+                background-color: {bg_color};
+            }}
+            QLineEdit:focus {{
+                border-color: {focus_color};
+            }}
+        """)
+        layout.addWidget(self._edit)
+
+    def text(self) -> str:
+        return self._edit.text()
+
+
+class CapabilityTag(QLabel):
+    """能力标签."""
+
+    def __init__(self, capability: str, parent=None):
+        super().__init__(capability, parent)
+        fg, bg = CAPABILITY_COLORS.get(capability.lower(), ('#6B7280', '#F3F4F6'))
+        self.setStyleSheet(f"""
+            QLabel {{
+                color: {fg};
+                background-color: {bg};
+                border-radius: 4px;
+                padding: 2px 8px;
+                font-size: 10px;
+                font-weight: 500;
+            }}
+        """)
+
+
 class ProviderListItemWidget(QWidget):
-    """Provider 列表项自定义控件 - 圆形 Logo + 切换开关 + 状态指示点."""
+    """Provider 列表项自定义控件 - 圆形 Logo + ON/OFF 开关 + 状态指示."""
 
     toggled = Signal(bool)
 
@@ -105,9 +249,9 @@ class ProviderListItemWidget(QWidget):
         self._name = name
         self._logo_path = logo_path
         self._is_enabled = is_enabled
-        self._health_status = health_status  # "connected" / "failed" / None
+        self._health_status = health_status
 
-        self.setFixedHeight(44)
+        self.setFixedHeight(48)
         self.setAttribute(Qt.WidgetAttribute.WA_Hover)
 
         colors = get_current_colors()
@@ -117,7 +261,7 @@ class ProviderListItemWidget(QWidget):
         self.setStyleSheet(f"""
             QWidget#ProviderListItemWidget {{
                 background-color: {bg_color};
-                border-radius: 6px;
+                border-radius: 8px;
             }}
             QWidget#ProviderListItemWidget:hover {{
                 background-color: {hover_color};
@@ -129,7 +273,7 @@ class ProviderListItemWidget(QWidget):
     def _init_ui(self):
         layout = QHBoxLayout(self)
         layout.setContentsMargins(12, 6, 12, 6)
-        layout.setSpacing(10)
+        layout.setSpacing(12)
         layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
 
         colors = get_current_colors()
@@ -137,16 +281,16 @@ class ProviderListItemWidget(QWidget):
 
         # 左侧 Logo - 圆形
         self._logo = QLabel()
-        self._logo.setFixedSize(32, 32)
+        self._logo.setFixedSize(36, 36)
         self._logo.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._logo.setStyleSheet("""
             QLabel {
-                border-radius: 16px;
+                border-radius: 18px;
             }
         """)
 
         if self._logo_path and Path(self._logo_path).exists():
-            pixmap = self._load_circular_pixmap(self._logo_path, 32)
+            pixmap = self._load_circular_pixmap(self._logo_path, 36)
             if not pixmap.isNull():
                 self._logo.setPixmap(pixmap)
             else:
@@ -155,11 +299,7 @@ class ProviderListItemWidget(QWidget):
             self._set_logo_fallback()
         layout.addWidget(self._logo, alignment=Qt.AlignmentFlag.AlignVCenter)
 
-        # 中间区域：名称 + 状态指示点
-        name_layout = QVBoxLayout()
-        name_layout.setSpacing(2)
-        name_layout.setContentsMargins(0, 0, 0, 0)
-
+        # 中间名称
         self._name_label = QLabel(self._name)
         self._name_label.setStyleSheet(f"""
             QLabel {{
@@ -169,70 +309,12 @@ class ProviderListItemWidget(QWidget):
                 background-color: transparent;
             }}
         """)
-        name_layout.addWidget(self._name_label)
+        layout.addWidget(self._name_label, stretch=1, alignment=Qt.AlignmentFlag.AlignVCenter)
 
-        # 状态指示点 + 文本
-        status_row = QHBoxLayout()
-        status_row.setSpacing(6)
-        status_row.setContentsMargins(0, 0, 0, 0)
-
-        # 状态点
-        self._status_dot = QLabel()
-        self._status_dot.setFixedSize(6, 6)
-        self._update_status_dot()
-        status_row.addWidget(self._status_dot)
-
-        # 状态文本
-        self._status_text = QLabel()
-        self._status_text.setStyleSheet(f"""
-            QLabel {{
-                font-size: 10px;
-                color: {colors.get('textSecondary', '#999999')};
-            }}
-        """)
-        self._update_status_text()
-        status_row.addWidget(self._status_text)
-        status_row.addStretch()
-
-        name_layout.addLayout(status_row)
-        
-        # 使用容器包装 name_layout 以支持对齐
-        name_container = QWidget()
-        name_container_layout = QVBoxLayout(name_container)
-        name_container_layout.setContentsMargins(0, 0, 0, 0)
-        name_container_layout.addLayout(name_layout)
-        name_container_layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
-        layout.addWidget(name_container, stretch=1, alignment=Qt.AlignmentFlag.AlignVCenter)
-
-        # 右侧切换开关
-        self._toggle = ToggleSwitch(self._is_enabled)
+        # 右侧 ON/OFF 开关
+        self._toggle = OnOffSwitch(self._is_enabled)
         self._toggle.toggled.connect(self._on_toggled)
         layout.addWidget(self._toggle, alignment=Qt.AlignmentFlag.AlignVCenter)
-
-    def _update_status_dot(self):
-        """更新状态指示点样式."""
-        if self._health_status == "connected":
-            color = STATUS_CONNECTED
-        elif self._health_status == "failed":
-            color = STATUS_FAILED
-        else:
-            color = STATUS_UNKNOWN
-
-        self._status_dot.setStyleSheet(f"""
-            QLabel {{
-                background-color: {color};
-                border-radius: 3px;
-            }}
-        """)
-
-    def _update_status_text(self):
-        """更新状态文本."""
-        if self._health_status == "connected":
-            self._status_text.setText("已连接")
-        elif self._health_status == "failed":
-            self._status_text.setText("连接失败")
-        else:
-            self._status_text.setText("未检测")
 
     def _load_circular_pixmap(self, path: str, size: int) -> QPixmap:
         """加载并裁剪为圆形图片."""
@@ -274,9 +356,9 @@ class ProviderListItemWidget(QWidget):
         self._logo.setStyleSheet(f"""
             QLabel {{
                 background-color: {accent};
-                border-radius: 16px;
+                border-radius: 18px;
                 color: white;
-                font-size: 14px;
+                font-size: 16px;
                 font-weight: bold;
             }}
         """)
@@ -294,12 +376,514 @@ class ProviderListItemWidget(QWidget):
     def set_health_status(self, status: Optional[str]):
         """更新连接状态."""
         self._health_status = status
-        self._update_status_dot()
-        self._update_status_text()
 
 
+class ModelGroupWidget(QWidget):
+    """模型分组容器 - 显示模型系列分组."""
+
+    def __init__(self, group_name: str, models: List[Dict[str, Any]], parent=None):
+        super().__init__(parent)
+        self._group_name = group_name
+        self._models = models
+        self._expanded = True
+        self._init_ui()
+
+    def _init_ui(self):
+        colors = get_current_colors()
+        text_primary = colors.get('textPrimary', '#333333')
+        border_color = colors.get('borderLight', '#E0E0E0')
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 8)
+        layout.setSpacing(0)
+
+        # 分组标题
+        header = QWidget()
+        header.setStyleSheet(f"""
+            QWidget {{
+                background-color: {colors.get('controlFillHover', '#F5F5F5')};
+                border: 1px solid {border_color};
+                border-radius: 6px;
+            }}
+        """)
+        header_layout = QHBoxLayout(header)
+        header_layout.setContentsMargins(12, 8, 12, 8)
+
+        self._arrow = QLabel("▼")
+        self._arrow.setFixedWidth(16)
+        self._arrow.setStyleSheet(f"color: {colors.get('textSecondary', '#999999')};")
+        header_layout.addWidget(self._arrow)
+
+        title = QLabel(self._group_name)
+        title.setStyleSheet(f"""
+            color: {text_primary};
+            font-size: 13px;
+            font-weight: 600;
+        """)
+        header_layout.addWidget(title, stretch=1)
+
+        count_label = QLabel(str(len(self._models)))
+        count_label.setStyleSheet(f"""
+            color: {colors.get('textSecondary', '#999999')};
+            font-size: 11px;
+        """)
+        header_layout.addWidget(count_label)
+
+        header.mousePressEvent = self._toggle_expand
+        layout.addWidget(header)
+
+        # 模型列表
+        self._content = QWidget()
+        self._content.setStyleSheet(f"""
+            QWidget {{
+                background-color: transparent;
+                border: 1px solid {border_color};
+                border-top: none;
+                border-bottom-left-radius: 6px;
+                border-bottom-right-radius: 6px;
+            }}
+        """)
+        content_layout = QVBoxLayout(self._content)
+        content_layout.setContentsMargins(0, 0, 0, 0)
+        content_layout.setSpacing(0)
+
+        for model in self._models:
+            item = ModelItemWidget(model, self._group_name)
+            content_layout.addWidget(item)
+
+        layout.addWidget(self._content)
+
+    def _toggle_expand(self, event):
+        self._expanded = not self._expanded
+        self._arrow.setText("▼" if self._expanded else "▶")
+        self._content.setVisible(self._expanded)
+
+
+class ModelItemWidget(QWidget):
+    """模型列表项 - 显示单个模型及其能力标签."""
+
+    def __init__(self, model: Dict[str, Any], group_name: str, parent=None):
+        super().__init__(parent)
+        self._model = model
+        self._group_name = group_name
+        self._init_ui()
+
+    def _init_ui(self):
+        colors = get_current_colors()
+        text_primary = colors.get('textPrimary', '#333333')
+        text_secondary = colors.get('textSecondary', '#999999')
+
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(32, 10, 12, 10)
+        layout.setSpacing(12)
+
+        # 模型图标（首字母）
+        icon_label = QLabel()
+        icon_label.setFixedSize(28, 28)
+        icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        initial = self._model.get('id', 'M')[:1].upper()
+        accent = colors.get('accent', '#4A90D9')
+        icon_label.setStyleSheet(f"""
+            QLabel {{
+                background-color: {accent};
+                border-radius: 14px;
+                color: white;
+                font-size: 12px;
+                font-weight: bold;
+            }}
+        """)
+        icon_label.setText(initial)
+        layout.addWidget(icon_label)
+
+        # 模型信息
+        info_layout = QVBoxLayout()
+        info_layout.setSpacing(2)
+
+        name_label = QLabel(self._model.get('name', self._model.get('id', '')))
+        name_label.setStyleSheet(f"""
+            color: {text_primary};
+            font-size: 13px;
+            font-weight: 500;
+        """)
+        info_layout.addWidget(name_label)
+
+        if self._model.get('context_length'):
+            ctx = self._model['context_length']
+            ctx_label = QLabel(f"上下文：{ctx // 1024}K")
+            ctx_label.setStyleSheet(f"""
+                color: {text_secondary};
+                font-size: 11px;
+            """)
+            info_layout.addWidget(ctx_label)
+
+        layout.addLayout(info_layout, 1)
+
+        # 能力标签
+        tags_layout = QHBoxLayout()
+        tags_layout.setSpacing(6)
+
+        capabilities = self._model.get('capabilities', [])
+        for cap in capabilities[:3]:  # 最多显示3个
+            tag = CapabilityTag(cap)
+            tags_layout.addWidget(tag)
+
+        layout.addLayout(tags_layout)
+
+        # 操作按钮
+        btn_layout = QHBoxLayout()
+        btn_layout.setSpacing(4)
+
+        edit_btn = QToolButton()
+        edit_btn.setText("⚙")
+        edit_btn.setFixedSize(28, 28)
+        edit_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        edit_btn.setStyleSheet(f"""
+            QToolButton {{
+                border: none;
+                background-color: transparent;
+                font-size: 14px;
+            }}
+            QToolButton:hover {{
+                background-color: {colors.get('controlFillHover', '#F5F5F5')};
+                border-radius: 4px;
+            }}
+        """)
+        btn_layout.addWidget(edit_btn)
+
+        delete_btn = QToolButton()
+        delete_btn.setText("−")
+        delete_btn.setFixedSize(28, 28)
+        delete_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        delete_btn.setStyleSheet(f"""
+            QToolButton {{
+                border: none;
+                background-color: transparent;
+                font-size: 16px;
+                font-weight: bold;
+                color: {text_secondary};
+            }}
+            QToolButton:hover {{
+                background-color: #FEE2E2;
+                border-radius: 4px;
+                color: #DC2626;
+            }}
+        """)
+        btn_layout.addWidget(delete_btn)
+
+        layout.addLayout(btn_layout)
+
+
+class ModelEditDialog(QDialog):
+    """模型编辑对话框 - 编辑模型详细配置."""
+
+    def __init__(self, model_data: Optional[Dict[str, Any]] = None, parent=None):
+        super().__init__(parent)
+        self._model_data = model_data or {}
+        self._capabilities = {
+            'vision': False,
+            'web': False,
+            'reasoning': False,
+            'tools': False,
+            'rerank': False,
+            'embedding': False,
+        }
+        self._init_ui()
+
+    def _init_ui(self):
+        self.setWindowTitle("编辑模型")
+        self.setModal(True)
+        self.setMinimumWidth(500)
+
+        colors = get_current_colors()
+        text_primary = colors.get('textPrimary', '#333333')
+        text_secondary = colors.get('textSecondary', '#999999')
+        border_color = colors.get('borderLight', '#E0E0E0')
+
+        layout = QVBoxLayout(self)
+        layout.setSpacing(16)
+        layout.setContentsMargins(20, 20, 20, 20)
+
+        # 模型 ID
+        id_label = QLabel("模型 ID")
+        id_label.setStyleSheet(f"color: {text_primary}; font-weight: 500;")
+        layout.addWidget(id_label)
+
+        self._id_edit = QLineEdit()
+        self._id_edit.setPlaceholderText("例如：Pro/moonshotai/Kimi-K2.5")
+        self._id_edit.setText(self._model_data.get('id', ''))
+        layout.addWidget(self._id_edit)
+
+        # 模型名称
+        name_label = QLabel("模型名称")
+        name_label.setStyleSheet(f"color: {text_primary}; font-weight: 500;")
+        layout.addWidget(name_label)
+
+        self._name_edit = QLineEdit()
+        self._name_edit.setPlaceholderText("例如：Pro/moonshotai/Kimi-K2.5")
+        self._name_edit.setText(self._model_data.get('name', ''))
+        layout.addWidget(self._name_edit)
+
+        # 分组名称
+        group_label = QLabel("分组名称")
+        group_label.setStyleSheet(f"color: {text_primary}; font-weight: 500;")
+        layout.addWidget(group_label)
+
+        self._group_edit = QLineEdit()
+        self._group_edit.setPlaceholderText("例如：pro")
+        self._group_edit.setText(self._model_data.get('group', ''))
+        layout.addWidget(self._group_edit)
+
+        # 更多设置按钮
+        self._more_btn = QPushButton("更多设置")
+        self._more_btn.setCheckable(True)
+        self._more_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: transparent;
+                border: 1px solid {border_color};
+                border-radius: 6px;
+                padding: 6px 12px;
+                color: {text_secondary};
+            }}
+        """)
+        self._more_btn.clicked.connect(self._toggle_more_settings)
+        layout.addWidget(self._more_btn)
+
+        # 更多设置区域
+        self._more_widget = QWidget()
+        self._more_widget.setVisible(False)
+        more_layout = QVBoxLayout(self._more_widget)
+        more_layout.setContentsMargins(0, 0, 0, 0)
+        more_layout.setSpacing(16)
+
+        # 模型类型
+        type_label = QLabel("模型类型")
+        type_label.setStyleSheet(f"color: {text_primary}; font-weight: 500;")
+        more_layout.addWidget(type_label)
+
+        self._capability_checkboxes = {}
+        capabilities_layout = QHBoxLayout()
+        capabilities_layout.setSpacing(12)
+
+        for cap_key, cap_name in [
+            ('vision', '视觉'),
+            ('web', '联网'),
+            ('reasoning', '推理'),
+            ('tools', '工具'),
+            ('rerank', '重排'),
+            ('embedding', '嵌入'),
+        ]:
+            cb = QCheckBox(cap_name)
+            cb.setChecked(self._capabilities.get(cap_key, False))
+            cb.stateChanged.connect(
+                lambda state, key=cap_key: self._on_capability_changed(key, state)
+            )
+            self._capability_checkboxes[cap_key] = cb
+            capabilities_layout.addWidget(cb)
+
+        capabilities_layout.addStretch()
+        more_layout.addLayout(capabilities_layout)
+
+        # 支持增量文本输出
+        streaming_label = QLabel("支持增量文本输出")
+        streaming_label.setStyleSheet(f"color: {text_primary}; font-weight: 500;")
+        more_layout.addWidget(streaming_label)
+
+        self._streaming_check = QCheckBox("启用")
+        self._streaming_check.setChecked(
+            self._model_data.get('support_streaming', True)
+        )
+        more_layout.addWidget(self._streaming_check)
+
+        # 币种
+        currency_label = QLabel("币种")
+        currency_label.setStyleSheet(f"color: {text_primary}; font-weight: 500;")
+        more_layout.addWidget(currency_label)
+
+        self._currency_combo = QComboBox()
+        self._currency_combo.addItems(["$", "¥", "€"])
+        more_layout.addWidget(self._currency_combo)
+
+        # 输入价格
+        price_layout = QVBoxLayout()
+        price_layout.setSpacing(8)
+
+        input_price_label = QLabel("输入价格")
+        input_price_label.setStyleSheet(f"color: {text_primary}; font-weight: 500;")
+        price_layout.addWidget(input_price_label)
+
+        input_price_row = QHBoxLayout()
+        self._input_price_spin = QDoubleSpinBox()
+        self._input_price_spin.setRange(0, 999999)
+        self._input_price_spin.setValue(
+            self._model_data.get('input_price_per_1m', 0.0)
+        )
+        self._input_price_spin.setDecimals(2)
+        input_price_row.addWidget(self._input_price_spin)
+        input_price_unit = QLabel("$ / 百万 Token")
+        input_price_unit.setStyleSheet(f"color: {text_secondary};")
+        input_price_row.addWidget(input_price_unit)
+        input_price_row.addStretch()
+        price_layout.addLayout(input_price_row)
+
+        # 输出价格
+        output_price_label = QLabel("输出价格")
+        output_price_label.setStyleSheet(f"color: {text_primary}; font-weight: 500;")
+        price_layout.addWidget(output_price_label)
+
+        output_price_row = QHBoxLayout()
+        self._output_price_spin = QDoubleSpinBox()
+        self._output_price_spin.setRange(0, 999999)
+        self._output_price_spin.setValue(
+            self._model_data.get('output_price_per_1m', 0.0)
+        )
+        self._output_price_spin.setDecimals(2)
+        output_price_row.addWidget(self._output_price_spin)
+        output_price_unit = QLabel("$ / 百万 Token")
+        output_price_unit.setStyleSheet(f"color: {text_secondary};")
+        output_price_row.addWidget(output_price_unit)
+        output_price_row.addStretch()
+        price_layout.addLayout(output_price_row)
+
+        more_layout.addLayout(price_layout)
+
+        layout.addWidget(self._more_widget)
+
+        # 保存按钮
+        button_box = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Save
+        )
+        button_box.accepted.connect(self.accept)
+        save_btn = button_box.button(QDialogButtonBox.StandardButton.Save)
+        save_btn.setText("保存")
+        save_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: #16A34A;
+                color: white;
+                border: none;
+                border-radius: 6px;
+                padding: 8px 16px;
+                font-weight: 500;
+            }}
+            QPushButton:hover {{
+                background-color: #15803D;
+            }}
+        """)
+        layout.addWidget(button_box)
+
+    def _toggle_more_settings(self):
+        """切换更多设置区域的显示."""
+        self._more_widget.setVisible(self._more_btn.isChecked())
+
+    def _on_capability_changed(self, key: str, state: int):
+        """能力标签状态变化."""
+        self._capabilities[key] = (state == Qt.CheckState.Checked.value)
+
+    def get_model_data(self) -> Dict[str, Any]:
+        """获取编辑后的模型数据."""
+        capabilities = [
+            cap for cap, enabled in self._capabilities.items() if enabled
+        ]
+        return {
+            'id': self._id_edit.text(),
+            'name': self._name_edit.text(),
+            'group': self._group_edit.text(),
+            'capabilities': capabilities,
+            'support_streaming': self._streaming_check.isChecked(),
+            'input_price_per_1m': self._input_price_spin.value(),
+            'output_price_per_1m': self._output_price_spin.value(),
+        }
+
+
+class ActionButton(QPushButton):
+    """带图标的操作按钮."""
+
+    def __init__(self, text: str, icon_text: str = "", parent=None):
+        super().__init__(parent)
+        self._icon_text = icon_text
+        self.setText(f"{icon_text} {text}" if icon_text else text)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._apply_style()
+
+    def _apply_style(self):
+        colors = get_current_colors()
+        accent = colors.get('accent', '#4A90D9')
+        accent_light = colors.get('accentLight', '#4CC2FF')
+        accent_dark = colors.get('accentDark', '#005A9E')
+
+        self.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {accent};
+                color: white;
+                border: none;
+                border-radius: 6px;
+                padding: 8px 16px;
+                font-size: 13px;
+                font-weight: 500;
+            }}
+            QPushButton:hover {{
+                background-color: {accent_light};
+            }}
+            QPushButton:pressed {{
+                background-color: {accent_dark};
+            }}
+            QPushButton:disabled {{
+                background-color: #CCCCCC;
+                color: #999999;
+            }}
+        """)
+
+
+class ConfigCard(QWidget):
+    """配置卡片容器 - 带标题的圆角卡片."""
+
+    def __init__(self, title: str, parent=None):
+        super().__init__(parent)
+        self._init_ui(title)
+
+    def _init_ui(self, title: str):
+        colors = get_current_colors()
+        bg_color = colors.get('base', '#FFFFFF')
+        border_color = colors.get('borderLight', '#E0E0E0')
+        text_primary = colors.get('textPrimary', '#333333')
+
+        self.setStyleSheet(f"""
+            QWidget#ConfigCard {{
+                background-color: {bg_color};
+                border: 1px solid {border_color};
+                border-radius: 8px;
+            }}
+        """)
+        self.setObjectName("ConfigCard")
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(12)
+
+        # 标题
+        title_label = QLabel(title)
+        title_label.setStyleSheet(f"""
+            color: {text_primary};
+            font-size: 13px;
+            font-weight: 600;
+        """)
+        layout.addWidget(title_label)
+
+        self._content_layout = QVBoxLayout()
+        self._content_layout.setSpacing(10)
+        layout.addLayout(self._content_layout)
+
+    def add_widget(self, widget: QWidget):
+        """添加控件到卡片内容区."""
+        self._content_layout.addWidget(widget)
+
+    def add_layout(self, layout):
+        """添加布局到卡片内容区."""
+        self._content_layout.addLayout(layout)
+
+
+# 保留向后兼容的 CollapsibleGroup
 class CollapsibleGroup(QWidget):
-    """可折叠分组组件."""
+    """可折叠分组组件（向后兼容）."""
 
     toggled = Signal(bool)
 
@@ -397,8 +981,9 @@ class CollapsibleGroup(QWidget):
         self.content_layout.addWidget(widget)
 
 
+# 保留向后兼容的 ModelDetailItem
 class ModelDetailItem(QWidget):
-    """模型详情项 - 显示模型名称、上下文和能力标签."""
+    """模型详情项（向后兼容）."""
 
     def __init__(self, model_id: str, model_name: str, context_length: int = 0,
                  support_chat: bool = False, support_embedding: bool = False,
@@ -446,130 +1031,77 @@ class ModelDetailItem(QWidget):
         tags_layout = QHBoxLayout()
         tags_layout.setSpacing(6)
 
-        tag_colors = {
-            'chat': ('#3B82F6', '#DBEAFE'),
-            'tools': ('#8B5CF6', '#EDE9FE'),
-            'vision': ('#EC4899', '#FCE7F3'),
-            'embedding': ('#10B981', '#D1FAE5'),
-            'thinking': ('#F59E0B', '#FEF3C7'),
-        }
-
         if support_chat:
-            tag = self._make_tag("Chat", *tag_colors['chat'])
-            tags_layout.addWidget(tag)
+            tags_layout.addWidget(CapabilityTag('chat'))
         if support_tools:
-            tag = self._make_tag("Tools", *tag_colors['tools'])
-            tags_layout.addWidget(tag)
+            tags_layout.addWidget(CapabilityTag('tools'))
         if support_vision:
-            tag = self._make_tag("Vision", *tag_colors['vision'])
-            tags_layout.addWidget(tag)
+            tags_layout.addWidget(CapabilityTag('vision'))
         if support_embedding:
-            tag = self._make_tag("Embedding", *tag_colors['embedding'])
-            tags_layout.addWidget(tag)
+            tags_layout.addWidget(CapabilityTag('embedding'))
         if support_thinking:
-            tag = self._make_tag("Thinking", *tag_colors['thinking'])
-            tags_layout.addWidget(tag)
+            tags_layout.addWidget(CapabilityTag('thinking'))
 
         layout.addLayout(tags_layout)
 
-    def _make_tag(self, text: str, fg: str, bg: str) -> QLabel:
-        """创建能力标签."""
-        tag = QLabel(text)
-        tag.setStyleSheet(f"""
-            QLabel {{
-                color: {fg};
-                background-color: {bg};
-                border-radius: 4px;
-                padding: 2px 6px;
-                font-size: 10px;
-                font-weight: 500;
-            }}
-        """)
-        return tag
 
+# 保留向后兼容的 ToggleSwitch
+class ToggleSwitch(QWidget):
+    """现代切换开关组件（向后兼容）."""
 
-class ActionButton(QPushButton):
-    """带图标的操作按钮."""
+    toggled = Signal(bool)
 
-    def __init__(self, text: str, icon_text: str = "", parent=None):
+    def __init__(self, checked: bool = False, parent=None):
         super().__init__(parent)
-        self._icon_text = icon_text
-        self.setText(f"{icon_text} {text}" if icon_text else text)
+        self._checked = checked
+        self.setFixedSize(40, 22)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._apply_style()
 
-    def _apply_style(self):
+    def sizeHint(self):
+        return QSize(40, 22)
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._checked = not self._checked
+            self.toggled.emit(self._checked)
+            self.update()
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
         colors = get_current_colors()
-        accent = colors.get('accent', '#4A90D9')
-        accent_light = colors.get('accentLight', '#4CC2FF')
-        accent_dark = colors.get('accentDark', '#005A9E')
+        accent = QColor(colors.get('accent', '#4A90D9'))
+        border_color = QColor(colors.get('border', '#CCCCCC'))
+        bg_color = QColor(colors.get('controlFillHover', '#E0E0E0'))
 
-        self.setStyleSheet(f"""
-            QPushButton {{
-                background-color: {accent};
-                color: white;
-                border: none;
-                border-radius: 6px;
-                padding: 8px 16px;
-                font-size: 13px;
-                font-weight: 500;
-            }}
-            QPushButton:hover {{
-                background-color: {accent_light};
-            }}
-            QPushButton:pressed {{
-                background-color: {accent_dark};
-            }}
-            QPushButton:disabled {{
-                background-color: #CCCCCC;
-                color: #999999;
-            }}
-        """)
+        # 绘制背景轨道
+        rect = QRect(0, 0, self.width(), self.height())
+        path = QPainterPath()
+        path.addRoundedRect(rect, self.height() / 2, self.height() / 2)
 
+        if self._checked:
+            painter.fillPath(path, accent)
+        else:
+            painter.fillPath(path, bg_color)
 
-class ConfigCard(QWidget):
-    """配置卡片容器 - 带标题的圆角卡片."""
+        # 绘制滑块
+        knob_size = self.height() - 4
+        knob_y = 2
+        if self._checked:
+            knob_x = self.width() - knob_size - 2
+        else:
+            knob_x = 2
 
-    def __init__(self, title: str, parent=None):
-        super().__init__(parent)
-        self._init_ui(title)
+        knob_rect = QRect(knob_x, knob_y, knob_size, knob_size)
+        painter.setBrush(Qt.GlobalColor.white)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.drawEllipse(knob_rect)
 
-    def _init_ui(self, title: str):
-        colors = get_current_colors()
-        bg_color = colors.get('base', '#FFFFFF')
-        border_color = colors.get('borderLight', '#E0E0E0')
-        text_primary = colors.get('textPrimary', '#333333')
+    def isChecked(self) -> bool:
+        return self._checked
 
-        self.setStyleSheet(f"""
-            QWidget#ConfigCard {{
-                background-color: {bg_color};
-                border: 1px solid {border_color};
-                border-radius: 8px;
-            }}
-        """)
-        self.setObjectName("ConfigCard")
-
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(16, 16, 16, 16)
-        layout.setSpacing(12)
-
-        # 标题
-        title_label = QLabel(title)
-        title_label.setStyleSheet(f"""
-            color: {text_primary};
-            font-size: 13px;
-            font-weight: 600;
-        """)
-        layout.addWidget(title_label)
-
-        self._content_layout = QVBoxLayout()
-        self._content_layout.setSpacing(10)
-        layout.addLayout(self._content_layout)
-
-    def add_widget(self, widget: QWidget):
-        """添加控件到卡片内容区."""
-        self._content_layout.addWidget(widget)
-
-    def add_layout(self, layout):
-        """添加布局到卡片内容区."""
-        self._content_layout.addLayout(layout)
+    def setChecked(self, checked: bool):
+        if self._checked != checked:
+            self._checked = checked
+            self.update()
