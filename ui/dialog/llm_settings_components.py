@@ -664,8 +664,8 @@ class ModelEditDialog(QDialog):
         # 初始尺寸（折叠状态）- 紧凑模式
         self.setFixedWidth(520)
         self.setMaximumWidth(520)
-        self._collapsed_height = 420
-        self._expanded_height = 750
+        self._collapsed_height = 380
+        self._expanded_height = 680
         self.setFixedHeight(self._collapsed_height)
 
         colors = get_current_colors()
@@ -1009,9 +1009,9 @@ class ModelEditDialog(QDialog):
         streaming_layout.addWidget(self._streaming_check)
         more_layout.addLayout(streaming_layout)
 
-        # 币种、输入价格、输出价格（一行显示）
+        # 币种、输入价格、输出价格（紧凑一行显示）
         price_layout = QHBoxLayout()
-        price_layout.setSpacing(12)
+        price_layout.setSpacing(8)
 
         # 币种
         currency_label = QLabel("币种")
@@ -1019,13 +1019,13 @@ class ModelEditDialog(QDialog):
         price_layout.addWidget(currency_label)
         self._currency_combo = QComboBox()
         self._currency_combo.addItems(["$", "¥", "€"])
-        self._currency_combo.setFixedWidth(70)
+        self._currency_combo.setFixedWidth(60)
         self._currency_combo.setStyleSheet(f"""
             QComboBox {{
-                padding: 8px 12px;
+                padding: 6px 10px;
                 border: 1px solid {border_color};
                 border-radius: 6px;
-                font-size: 13px;
+                font-size: 12px;
                 color: {text_primary};
             }}
         """)
@@ -1041,14 +1041,14 @@ class ModelEditDialog(QDialog):
             self._model_data.get('input_price_per_1m', 0.0)
         )
         self._input_price_spin.setDecimals(2)
-        self._input_price_spin.setFixedWidth(100)
+        self._input_price_spin.setFixedWidth(90)
         self._input_price_spin.setButtonSymbols(QDoubleSpinBox.ButtonSymbols.UpDownArrows)
         self._input_price_spin.setStyleSheet(f"""
             QDoubleSpinBox {{
-                padding: 8px 12px;
+                padding: 6px 10px;
                 border: 1px solid {border_color};
                 border-radius: 6px;
-                font-size: 13px;
+                font-size: 12px;
                 color: {text_primary};
                 background-color: white;
             }}
@@ -1058,21 +1058,21 @@ class ModelEditDialog(QDialog):
             QDoubleSpinBox::up-button {{
                 subcontrol-origin: border;
                 subcontrol-position: top right;
-                width: 18px;
+                width: 16px;
                 border-left: 1px solid {border_color};
                 border-top-right-radius: 6px;
             }}
             QDoubleSpinBox::down-button {{
                 subcontrol-origin: border;
                 subcontrol-position: bottom right;
-                width: 18px;
+                width: 16px;
                 border-left: 1px solid {border_color};
                 border-bottom-right-radius: 6px;
             }}
         """)
         price_layout.addWidget(self._input_price_spin)
         input_price_unit = QLabel("$ / 百万 Token")
-        input_price_unit.setStyleSheet(f"color: {text_secondary};")
+        input_price_unit.setStyleSheet(f"color: {text_secondary}; font-size: 11px;")
         price_layout.addWidget(input_price_unit)
 
         # 输出价格
@@ -1085,14 +1085,14 @@ class ModelEditDialog(QDialog):
             self._model_data.get('output_price_per_1m', 0.0)
         )
         self._output_price_spin.setDecimals(2)
-        self._output_price_spin.setFixedWidth(100)
+        self._output_price_spin.setFixedWidth(90)
         self._output_price_spin.setButtonSymbols(QDoubleSpinBox.ButtonSymbols.UpDownArrows)
         self._output_price_spin.setStyleSheet(f"""
             QDoubleSpinBox {{
-                padding: 8px 12px;
+                padding: 6px 10px;
                 border: 1px solid {border_color};
                 border-radius: 6px;
-                font-size: 13px;
+                font-size: 12px;
                 color: {text_primary};
                 background-color: white;
             }}
@@ -1102,21 +1102,21 @@ class ModelEditDialog(QDialog):
             QDoubleSpinBox::up-button {{
                 subcontrol-origin: border;
                 subcontrol-position: top right;
-                width: 18px;
+                width: 16px;
                 border-left: 1px solid {border_color};
                 border-top-right-radius: 6px;
             }}
             QDoubleSpinBox::down-button {{
                 subcontrol-origin: border;
                 subcontrol-position: bottom right;
-                width: 18px;
+                width: 16px;
                 border-left: 1px solid {border_color};
                 border-bottom-right-radius: 6px;
             }}
         """)
         price_layout.addWidget(self._output_price_spin)
         output_price_unit = QLabel("$ / 百万 Token")
-        output_price_unit.setStyleSheet(f"color: {text_secondary};")
+        output_price_unit.setStyleSheet(f"color: {text_secondary}; font-size: 11px;")
         price_layout.addWidget(output_price_unit)
 
         price_layout.addStretch()
