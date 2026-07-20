@@ -42,6 +42,7 @@ from ..exceptions import (
     InvalidRequestError, ConnectionError, TimeoutError
 )
 from ..cache_adapter import get_cache_adapter, CacheAdapter
+from ..config import LLMConfig
 from ..types_cache import CacheInfo
 
 logger = logging.getLogger(__name__)
@@ -409,7 +410,6 @@ class BaseProvider(ILLM):
             LLMConfig: 配置管理器实例
         """
         if self._llm_config is None:
-            from ..config import LLMConfig
             self._llm_config = LLMConfig()
         return self._llm_config
 

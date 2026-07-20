@@ -22,6 +22,7 @@ from core.data import DataProvider
 from core.task import BackgroundTaskManager
 from .config_manager import PluginConfigManager
 from .plugin_identity import PluginIdentity
+from .plugin_info_interface import IPluginInfo
 from core.interfaces.plugin_services import PluginServices
 
 # re-export：保持 `core.plugin.manager.sanitize_tool_name` 引用路径兼容
@@ -578,7 +579,6 @@ class PluginManager:
 
             # 获取 PluginInfo 类
             plugin_info_class = None
-            from .plugin_info_interface import IPluginInfo
             for attr_name in dir(info_module):
                 attr = getattr(info_module, attr_name)
                 if (isinstance(attr, type) and

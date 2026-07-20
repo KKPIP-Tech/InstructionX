@@ -49,8 +49,8 @@ class DependencyManager:
     PIP_SHOW_TIMEOUT = 30
     PIP_INSTALL_TIMEOUT = 300
 
-    # 包名白名单：PEP 508 名称字符集（[A-Za-z0-9._-]+）
-    _PACKAGE_NAME_PATTERN = re.compile(r'^[A-Za-z0-9._-]+$')
+    # 包名白名单：PEP 508 名称字符集（[A-Za-z0-9._-]+），支持 extras 语法（如 uv[standard]）
+    _PACKAGE_NAME_PATTERN = re.compile(r'^[A-Za-z0-9._-]+(\[[A-Za-z0-9._-]+(,[A-Za-z0-9._-]+)*\])?$')
     # 单个版本子约束白名单：比较符 + 版本号（可选 .* 后缀），与
     # _check_version_constraint 的解析能力对齐
     _SUB_CONSTRAINT_PATTERN = re.compile(r'^(>=|<=|==|!=|>|<)\s*\d+(?:\.\d+)*(?:\.\*)?$')
@@ -61,7 +61,7 @@ class DependencyManager:
     def _is_valid_install_input(self, package: str, version_constraint: str) -> bool:
         """校验待安装的包名与版本约束，防止注入 pip 命令行参数
 
-        包名必须匹配 PEP 508 名称字符集且不以 '-' 开头；
+        包名必须匹配 PEP 508 名称字符集（支持 [extras] 语法）且不以 '-' 开头；
         版本约束只接受逗号分隔的版本比较子约束（比较符/数字/点/星号/空白），
         任何含多 token、URL scheme 或其他字符的输入一律拒绝。
 

@@ -59,8 +59,8 @@ class ITaskManager(ABC):
         callback: Optional[Callable] = None,
         args: tuple = (),
         kwargs: dict = None
-    ) -> str:
-        """注册异步任务"""
+    ) -> Optional[str]:
+        """注册异步任务（返回 task_id；管理器已 shutdown 时返回 None）"""
         pass
 
     @abstractmethod
@@ -73,8 +73,8 @@ class ITaskManager(ABC):
         callback: Optional[Callable] = None,
         args: tuple = (),
         kwargs: dict = None
-    ) -> str:
-        """注册定时任务"""
+    ) -> Optional[str]:
+        """注册定时任务（返回 task_id；管理器已 shutdown 时返回 None）"""
         pass
 
     @abstractmethod

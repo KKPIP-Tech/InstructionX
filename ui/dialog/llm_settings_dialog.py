@@ -1582,8 +1582,6 @@ class LLMSettingsDialog(QDialog):
             self._emb_model_combo.setCurrentText(config.embedding_model)
         self._emb_model_combo.blockSignals(False)
 
-
-
     def _on_fetch_models(self, provider_name: str) -> None:
         """触发从 API 获取模型列表（QThread 后台执行，不阻塞主线程）."""
         if self._fetch_worker is not None and self._fetch_worker.isRunning():
