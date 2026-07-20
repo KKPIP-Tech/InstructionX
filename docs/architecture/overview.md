@@ -373,7 +373,7 @@ InstructionX/
 ├── ui/                       # UI 模块
 │   ├── main_window.py       # 主窗口
 │   ├── title_bar.py        # 自定义标题栏
-│   ├── usage_panel.py       # 用量查询面板
+│   ├── usage_panel/         # 用量查询面板（包：panel/kpi_card/trend_chart/history_table/formatting）
 │   ├── skills_panel/        # 技能面板
 │   │   ├── panel.py        # SkillsPanel 面板
 │   │   └── skill_button.py  # SkillButton 按钮组件

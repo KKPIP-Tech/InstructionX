@@ -28,7 +28,7 @@
 | requests / aiohttp | HTTP / 异步 HTTP |
 | mcp >= 1.0.0 | MCP 协议（FastMCP） |
 | orjson | JSON 序列化（SQLite 后端） |
-| matplotlib | 用量面板图表 |
+| matplotlib | 保留依赖（旧用量面板图表曾使用；现用量面板已改用 PySide6.QtCharts，暂为第三方插件兼容保留） |
 | packaging | 插件依赖版本检查 |
 
 - 依赖单一来源是 `pyproject.toml` 的 `[project].dependencies`；`requirements.txt` 与其保持同步（供 `run.ps1` 使用），**改依赖时两处都要改**。
@@ -237,7 +237,7 @@ core/
     client.py               # 连接外部 MCP Server，工具注册进 ToolRegistry
     bridge.py               # 插件 API 注册表 ↔ MCP Server 双向同步
 ui/                         # 界面层
-  main_window.py / title_bar.py / usage_panel.py
+  main_window.py / title_bar.py / usage_panel/
   skills_panel/             # 插件技能面板
   work_area/                # 插件 Widget 宿主区（切换插件时缓存 UI 状态）
   dialog/                   # 各类对话框（LLM 设置、插件顺序、GitHub 安装等）

@@ -397,7 +397,8 @@ class InstructionXMainWindow(QMainWindow):
         dialog = QDialog(self)
         dialog.setWindowTitle("用量查询")
         dialog.setMinimumSize(900, 600)
-        dialog.resize(960, 680)
+        # 尺寸对齐用量面板 Demo 的设计密度（1100×760）
+        dialog.resize(1100, 760)
         layout = QVBoxLayout(dialog)
         layout.setContentsMargins(0, 0, 0, 0)
         usage_panel = UsagePanel(dialog)

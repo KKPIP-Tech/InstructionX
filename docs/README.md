@@ -66,7 +66,7 @@ docs/
 │   ├── skill-button.md              # SkillButton 技能按钮
 │   ├── work-area.md                 # 工作区
 │   └── dialogs.md                   # 对话框组件
-│       # 注：UsagePanel（用量查询面板）源码位于 ui/usage_panel.py
+│       # 注：UsagePanel（用量查询面板）源码位于 ui/usage_panel/ 包
 
 ├── utils/                           # 工具模块文档
 │   ├── logging-tools.md             # 日志工具

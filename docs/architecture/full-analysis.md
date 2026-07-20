@@ -1040,7 +1040,7 @@ class Service:
 |------|---------|
 | `main_window.py` | InstructionXMainWindow 主窗口 |
 | `title_bar.py` | CustomTitleBar 自定义标题栏 |
-| `usage_panel.py` | UsagePanel 用量查询面板 |
+| `usage_panel/` | UsagePanel 用量查询面板（包：panel/kpi_card/trend_chart/history_table/formatting） |
 | `skills_panel/panel.py` | SkillsPanel 技能面板 |
 | `skills_panel/skill_button.py` | SkillButton 技能按钮 |
 | `work_area/work_area.py` | WorkArea 工作区 |

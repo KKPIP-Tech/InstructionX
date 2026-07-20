@@ -179,14 +179,16 @@ graph TB
 
 ### 3.6 用量查询面板 (UsagePanel)
 
-- **文件位置**: `ui/usage_panel.py`
+- **文件位置**: `ui/usage_panel/` 包（`panel.py` 组装与数据编排，`kpi_card.py` KPI 卡片，`trend_chart.py` 趋势面板，`history_table.py` 历史面板，`formatting.py` 格式化工具）
 - **打开方式**: 通过 **AI > 用量查询** 菜单，在模态对话框中展示
+- **布局**: 整体内容置于 `QScrollArea` 垂直滚动区内；KPI 卡片 / 趋势面板为固定高度（92 / 320px），历史面板高度随当前页行数自适应（行高 27px，保证整页记录完整显示）；窗口缩小时页面整体上下滚动，各区块高度不变
 - **功能**: 提供 Token 用量统计、趋势图表和明细查询
 - **组件**:
-  - 统计卡片行（总请求数、输入 Token、输出 Token、总 Token、缓存命中率、平均耗时）
-  - 用量趋势图（基于 Matplotlib，支持深色模式自适应，异步渲染）
-  - 筛选栏（Provider / Model / 对话ID）
-  - 明细表格（10 列：时间、Provider、Model、输入、输出、总Token、缓存命中、缓存Token、耗时(s)、流式）
+  - 顶部标题行（主标题 + 副标题）
+  - KPI 卡片区（总请求数、输入 Token、输出 Token、总 Token、缓存命中率、平均耗时，含「较上周期 ±x.x%」同比）
+  - 用量趋势面板（QtCharts QSplineSeries 平滑折线；近 7 天 / 近 30 天 / 自定义范围；请求数 / 输入 Token / 输出 Token 指标切换；悬停提示）
+  - 使用历史面板（Provider / Model / 对话ID 筛选 + 明细表格 + 分页）
+  - 明细表格（10 列：时间、Provider、Model、输入、输出、总Token、缓存命中、缓存Token、耗时、流式；按时间倒序，最新记录在第 1 页）
   - 分页控件（每页 50 条）
 
 ---
