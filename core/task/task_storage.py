@@ -12,7 +12,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 
-from .task_model import BackgroundTask, ScheduledTask, LongRunningTask
+from .task_model import BackgroundTask, ScheduledTask, LongRunningTask, TaskStatus
 
 from utils.logging_tools import LoggerManager, get_name
 
@@ -167,10 +167,15 @@ class TaskStorage:
         Returns:
             数据字典
         """
-        if self._cache is None or force_reload or self._cache_dirty:
-            self._cache = self._read_from_disk()
-            self._cache_dirty = False
-        return copy.deepcopy(self._cache) if self._cache else {"tasks": {}, "scheduled_tasks": {}, "long_running_tasks": {}}
+        # 缓存命中判断与 deepcopy 都在锁内完成，避免并发写入修改嵌套结构时
+        # deepcopy 抛出 RuntimeError（与 DataProvider.load_data 同款防护）
+        with self._file_lock:
+            if self._cache is None or force_reload or self._cache_dirty:
+                self._cache = self._read_from_disk()
+                self._cache_dirty = False
+            if self._cache:
+                return copy.deepcopy(self._cache)
+            return {"tasks": {}, "scheduled_tasks": {}, "long_running_tasks": {}}
 
     def save_data(self) -> None:
         """
@@ -288,7 +293,7 @@ class TaskStorage:
         for task_id, task_data in data.get("tasks", {}).items():
             # 检查状态是否为已完成/失败/已取消
             status = task_data.get("status")
-            if status in ("completed", "failed", "cancelled"):
+            if status in (TaskStatus.COMPLETED.value, TaskStatus.FAILED.value, TaskStatus.CANCELLED.value):
                 # 如果指定了 plugin_id，则只清理该插件的任务
                 if plugin_id is None or task_data.get("plugin_id") == plugin_id:
                     tasks_to_delete.append(task_id)
@@ -495,7 +500,9 @@ class TaskStorage:
         tasks_to_delete = []
 
         for task_id, task_data in data.get("tasks", {}).items():
-            if task_data.get("status") not in ("completed", "failed", "cancelled"):
+            if task_data.get("status") not in (
+                TaskStatus.COMPLETED.value, TaskStatus.FAILED.value, TaskStatus.CANCELLED.value
+            ):
                 continue
 
             timestamp = task_data.get("finished_at") or task_data.get("created_at")

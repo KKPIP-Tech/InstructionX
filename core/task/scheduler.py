@@ -4,7 +4,6 @@
 负责定时任务的调度和执行。
 """
 
-import threading
 from datetime import datetime
 from typing import Optional, Callable, Any
 
@@ -60,7 +59,7 @@ class SchedulerCallback:
     """
 
     def __init__(self):
-        self._lock = threading.Lock()
+        # 注：历史版本曾持有 self._lock（threading.Lock），但从未被使用，已作为死代码移除
         self._logger = LoggerManager()
 
     def execute_scheduled_task(

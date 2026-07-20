@@ -5,15 +5,19 @@
 支持任务序列化/反序列化，用于任务持久化存储。
 """
 
+import json
 import uuid
 import threading
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Optional, Callable, Dict
 from dataclasses import dataclass, field
 
 # TaskType/TaskStatus 单一来源在接口层，此处 re-export 以保持
 # `from core.task.task_model import TaskType, TaskStatus` 导入路径可用
 from ..interfaces.i_task_manager import TaskType, TaskStatus  # noqa: F401
+
+# 定时任务默认执行间隔（秒），dataclass 字段默认值与 from_dict 反序列化共用
+DEFAULT_SCHEDULED_INTERVAL = 60
 
 
 @dataclass
@@ -122,7 +126,6 @@ class BackgroundTask:
         # 序列化开销。但 to_dict 返回的是供调用方使用的普通 dict，无法把“已序列化
         # 的字符串”安全复用给存储层（会改变 result 在 JSON 中的结构），故保留现状。
         try:
-            import json
             json.dumps(result)
             return result
         except (TypeError, ValueError):
@@ -165,7 +168,7 @@ class ScheduledTask:
     task_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     plugin_id: str = ""
     name: str = ""
-    interval: int = 60  # 执行间隔秒数
+    interval: int = DEFAULT_SCHEDULED_INTERVAL  # 执行间隔秒数
     func_name: str = ""  # 任务函数标识（func.__qualname__），用于重启后精确匹配工厂函数
 
     # 运行时属性（不参与序列化）
@@ -220,7 +223,7 @@ class ScheduledTask:
         task.task_id = data.get("task_id", task.task_id)
         task.plugin_id = data.get("plugin_id", "")
         task.name = data.get("name", "")
-        task.interval = data.get("interval", 60)
+        task.interval = data.get("interval", DEFAULT_SCHEDULED_INTERVAL)
         # 旧版记录没有 func_name 字段，缺省为空串（恢复时回退到插件唯一工厂）
         task.func_name = data.get("func_name", "")
         task.enabled = data.get("enabled", True)
@@ -250,7 +253,6 @@ class ScheduledTask:
 
         基于当前时间加上间隔秒数计算下一次执行的时间点。
         """
-        from datetime import timedelta
         self.next_run = datetime.now() + timedelta(seconds=self.interval)
 
 
