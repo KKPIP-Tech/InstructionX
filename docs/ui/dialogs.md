@@ -1,6 +1,6 @@
 # 对话框组件
 
-> InstructionX 应用程序中使用的六个对话框组件的完整说明
+> InstructionX 应用程序中使用的五个对话框组件的完整说明
 
 ---
 
@@ -91,11 +91,10 @@ Provider 徽标（`ProviderLogoLabel`，程序化彩色方块）、名称、子�
 - "检测供应商有效性" 按钮，调用 `provider.validate_config()`
 
 #### 模型列表区
-- **来源切换**: 单选按钮 "使用本地预设列表" / "从 API 获取"
-  - minimax / glm 强制使用预设列表（单选禁用）
-  - 其他 Provider 可二选一
-- **预设视图** (`_preset_view`): `CollapsibleGroup` 按类别分组展示模型（Chat / Embedding / Vision / 其他），每项显示名称、类别徽章（`CategoryBadge`）、能力徽章（`CapabilityBadge`）、上下文长度
-- **API 视图** (`_api_view`): "从 API 获取模型列表" 按钮 + 300px 高滚动区域，通过 `ModelDetailItem` 渲染每条模型
+- **工具栏**: "获取模型列表" 按钮（QThread 后台执行，不阻塞主线程）+ "添加模型" 按钮
+- **分组展示**: `_populate_model_groups` 合并本地预设模型与 API 获取模型（按 id 去重），叠加用户在 `ModelEditDialog` 中保存的覆盖数据（`custom_models`），按 `_extract_model_group` 提取的系列名称分组排序
+- 每个分组用 `ModelGroupWidget` 渲染（组内每项为 `ModelItemWidget`，含名称、能力标签、上下文长度），支持编辑 / 删除信号
+- 无模型时显示提示 "暂无模型，请点击「获取模型列表」"
 
 #### 模型选择区
 - **当前聊天模型**: `QComboBox`（最小宽度 300px）
@@ -110,10 +109,14 @@ Provider 徽标（`ProviderLogoLabel`，程序化彩色方块）、名称、子�
 
 | 组件 | 文件 | 说明 |
 |------|------|------|
-| `ProviderListItemWidget` | `llm_settings_components.py` | Provider 列表项，含圆形 Logo、名称、已启用/未启用状态标签 |
-| `CollapsibleGroup` | `llm_settings_components.py` | 可折叠分组容器 |
+| `ProviderListItemWidget` | `llm_settings_components.py` | Provider 列表项，含圆形 Logo、名称、启用开关与状态指示 |
+| `ModelGroupWidget` | `llm_settings_components.py` | 模型系列分组容器（组标题 + 组内模型列表，发射编辑/删除信号） |
+| `ModelItemWidget` | `llm_settings_components.py` | 单个模型列表项（名称、能力标签、上下文长度、操作按钮） |
+| `ModelEditDialog` | `llm_settings_components.py` | 模型编辑对话框（名称、分组、能力、价格、流式支持等） |
+| `SearchBox` | `llm_settings_components.py` | 带搜索图标的输入框 |
+| `CircularToggleSwitch` | `llm_settings_components.py` | 圆形开关（启用状态、流式支持等） |
 | `ActionButton` | `llm_settings_components.py` | 统一操作按钮样式（蓝色圆角） |
-| `ModelDetailItem` | `llm_settings_components.py` | 预设模型 / API 获取模型的详情列表项（含上下文长度、能力标签） |
+| `ConfigCard` | `llm_settings_components.py` | 配置区块卡片容器 |
 
 ### 2.6 使用方式
 
@@ -186,95 +189,15 @@ if dialog.exec() == QDialog.DialogCode.Accepted:
 ```
 
 ---
-
-## 4. LLMModelServiceDialog 模型服务设置对话框
-
-**文件位置**: `ui/dialog/llm_model_service_dialog.py`
-
-### 4.1 概述
-
-`LLMModelServiceDialog` 是新版设置对话框，采用 **三栏布局**，提供更丰富的设置分类和 Provider 管理能力。
-
-> **注意**：`LLMModelServiceDialog` 当前尚未绑定到主窗口菜单。主窗口通过 **AI → LLM 设置...** 实际打开的是 `LLMSettingsDialog`（两栏布局）。此对话框可在代码中单独实例化使用，但目前不是用户菜单的默认入口。
-
-### 4.2 窗口属性
-
-| 属性 | 值 |
-|------|------|
-| 窗口类型 | QDialog |
-| 最小尺寸 | 1100 x 700 |
-| 默认尺寸 | 1200 x 800 |
-
-### 4.3 三栏布局
-
-```
-┌──────────────────────────────────────────────────────────────────────────┐
-│  设置                                                        [×]        │
-├────────────────┬─────────────────────┬──────────────────────────────────┤
-│ 设置分类       │  Provider 列表       │  详情区                          │
-│ (170px)       │  (260px)            │                                  │
-│ ─────────────│ ──────────────────│ ─────────────────────────────────│
-│ 🤖 模型服务     │ ▶ MiniMax-1        │  [MiniMax]  启用 ✓               │
-│ ⭐ 默认模型     │   SiliconFlow-1     │  ──────────────────────────────│
-│ ⚙️ 常规设置     │   GLM-1            │  API 密钥 [...]                 │
-│ 🖥️ 显示设置     │   Ollama-1         │  ──────────────────────────────│
-│ 💾 数据设置     │                     │  模型                            │
-│ ...           │ + 添加               │  ▼ deepseek-ai                  │
-│               │                     │    └─ MiniMax-M2.5              │
-│               │                     │  ▼ pro                          │
-│               │                     │    └─ ...                       │
-│               │                     │  ──────────────────────────────│
-│               │                     │  [保存]                          │
-└───────────────┴─────────────────────┴──────────────────────────────────┘
-```
-
-- **左栏**（170px）：15 个设置分类（模型服务、默认模型、常规设置、显示设置、数据设置、MCP 服务器等）
-- **中栏**（260px）：Provider 列表，含图标、名称、启用状态标签；支持添加新 Provider（按钮文字：`+ 添加`）
-- **右栏**：详情区，含 Logo、操作按钮、折叠模型分组（按 deepseek-ai / pro / 其他分组，源自 `_group_models` 方法按 model_id 关键字匹配）
-- **底部栏**：用量统计（格式：`用量: Token X | 费用 ¥X.XXXX | 请求 X 次`，人民币）、重置用量按钮、取消按钮、**保存** 按钮
-
-> **注意**：目前仅实现了"模型服务"分类的完整功能，其他分类选中后显示"功能开发中..."占位提示。
-
-### 4.4 信号
-
-```python
-default_changed = Signal(str, str)  # (provider_name, chat_model)
-```
-
-Provider 默认模型变更时发射 `default_changed(provider_name, chat_model)` 信号。
-
-### 4.5 自定义组件
-
-| 组件 | 文件 | 说明 |
-|------|------|------|
-| `ProviderListItemWidget` | `llm_settings_components.py` | Provider 列表项，含圆形 Logo、名称、已启用/未启用状态标签 |
-| `ModelListItem` | `llm_settings_components.py` | 模型列表项（含固定、设置、删除操作按钮） |
-| `SettingsCategoryItem` | `llm_settings_components.py` | 左侧设置分类项（含图标、文字、选中状态） |
-| `CollapsibleGroup` | `llm_settings_components.py` | 可折叠分组容器 |
-| `ActionButton` | `llm_settings_components.py` | 统一操作按钮样式 |
-| `IconLineEdit` | `llm_settings_components.py` | 带图标按钮的输入框（用于 API 密钥输入） |
-
-### 4.6 使用方式
-
-```python
-from ui.dialog.llm_model_service_dialog import LLMModelServiceDialog
-
-dialog = LLMModelServiceDialog(parent_window)
-dialog.default_changed.connect(lambda provider, model: print(f"{provider}: {model}"))
-dialog.exec()
-```
-
----
-
-## 5. GitHubPluginInstallDialog GitHub 插件安装对话框
+## 4. GitHubPluginInstallDialog GitHub 插件安装对话框
 
 **文件位置**: `ui/dialog/github_plugin_install_dialog.py`
 
-### 5.1 概述
+### 4.1 概述
 
 `GitHubPluginInstallDialog` 是从 GitHub 仓库安装插件的对话框，支持单插件和多插件仓库的用户选择性安装。
 
-### 5.2 窗口属性
+### 4.2 窗口属性
 
 | 属性 | 值 |
 |------|------|
@@ -282,7 +205,7 @@ dialog.exec()
 | 最小尺寸 | 600 x 450 |
 | 布局 | 垂直布局 + 堆叠窗口 |
 
-### 5.3 布局结构
+### 4.3 布局结构
 
 ```
 ┌─────────────────────────────────────────────┐
@@ -309,7 +232,7 @@ dialog.exec()
 └─────────────────────────────────────────────┘
 ```
 
-### 5.4 功能特性
+### 4.4 功能特性
 
 - **仓库检查**: 输入 URL 后点击「检查」分析仓库类型
 - **单/多插件识别**: 自动识别单插件仓库（IXPlugin.json）或多插件仓库（IXRepo.json）
@@ -317,7 +240,7 @@ dialog.exec()
 - **自动目录判定**: 根据 GitHub 组织自动判定安装目录（KKPIP-Tech → plugin/，其他 → custom_plugin/）
 - **后台下载**: 使用 QThread 后台下载，不阻塞 UI
 
-### 5.5 信号
+### 4.5 信号
 
 ```python
 plugin_installed = Signal(list)  # List[InstallResult]
@@ -325,7 +248,7 @@ plugin_installed = Signal(list)  # List[InstallResult]
 
 安装完成后发射，携带每个插件的安装结果。
 
-### 5.6 使用方式
+### 4.6 使用方式
 
 ```python
 from ui.dialog.github_plugin_install_dialog import GitHubPluginInstallDialog
@@ -341,15 +264,15 @@ def _on_plugin_installed(self, results):
 
 ---
 
-## 6. LicenseDialog 许可信息对话框
+## 5. LicenseDialog 许可信息对话框
 
 **文件位置**: `ui/dialog/license_dialog.py`
 
-### 6.1 概述
+### 5.1 概述
 
 `LicenseDialog` 是开源许可证信息展示对话框，以分类卡片列表的形式展示项目中使用的所有字体和第三方依赖的许可证详情。
 
-### 6.2 窗口属性
+### 5.2 窗口属性
 
 | 属性 | 值 |
 |------|------|
@@ -357,7 +280,7 @@ def _on_plugin_installed(self, results):
 | 最小尺寸 | 900 x 600 |
 | 默认尺寸 | 950 x 650 |
 
-### 6.3 布局结构
+### 5.3 布局结构
 
 ```
 ┌────────────────────────────────────────────────────────────────────────────┐
@@ -382,11 +305,11 @@ def _on_plugin_installed(self, results):
 - **右栏**：详情区，含标题、许可证标签、版本、分类、版权信息、链接，下方为许可文件内容（代码块样式，支持复制）
 - **底部栏**：操作按钮（复制全文、打开 licenses 文件夹、关闭）
 
-### 6.4 数据来源
+### 5.4 数据来源
 
 许可证数据从 `licenses/manifest.json` 读取，分为 `fonts`（字体）和 `dependencies`（依赖）两类。每项包含 `name`、`display_name`、`license_type`、`version`、`url`、`copyright` 等字段。
 
-### 6.5 功能特性
+### 5.5 功能特性
 
 - **搜索过滤**：输入名称实时过滤列表项（基于字符串包含匹配）
 - **空状态提示**：无匹配结果时显示"未找到匹配的许可证"
@@ -394,7 +317,7 @@ def _on_plugin_installed(self, results):
 - **复制全文**：将当前显示的许可证全文复制到剪贴板，按钮文字临时变为"已复制！"
 - **打开文件夹**：直接打开 `licenses/` 目录
 
-### 6.6 使用方式
+### 5.6 使用方式
 
 ```python
 from ui.dialog.license_dialog import LicenseDialog
@@ -405,7 +328,7 @@ dialog.exec()
 
 ---
 
-## 7. 相关文档
+## 6. 相关文档
 
 - [主窗口](main-window.md)
 - [技能面板](skills-panel.md)

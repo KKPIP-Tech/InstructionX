@@ -6,7 +6,7 @@
 
 ## 1. 概述
 
-`PluginIdentity` 负责为每个插件实例生成和管理唯一的 UUID，并将该标识符持久化到插件目录下的隐藏文件中。
+`PluginIdentity` 负责为每个插件实例生成和管理唯一的 UUID。UUID 优先持久化到插件目录下的隐藏文件 `.plugin_info.json`；当插件目录只读/写入失败时，回退到应用数据目录 `data/plugin_identity/{插件目录名}.json`。读取时按“插件目录 → 数据目录回退”的顺序查找，避免每次启动生成新 UUID。
 
 **文件位置**: `core/plugin/plugin_identity.py`
 
@@ -17,7 +17,7 @@
 ## 2. 核心功能
 
 - **自动生成 UUID**: 为新插件自动生成全局唯一的标识符
-- **持久化存储**: 将 UUID 存储在 `{plugin_dir}/.plugin_info.json` 文件中
+- **持久化存储**: 优先将 UUID 存储在 `{plugin_dir}/.plugin_info.json`；插件目录不可写时回退到 `data/plugin_identity/{插件目录名}.json`
 - **跨会话一致**: 应用重启后可通过加载已有 UUID 保持插件身份不变
 - **ID 再生**: 支持在需要时重新生成 UUID
 
@@ -25,7 +25,7 @@
 
 ## 3. 数据存储
 
-UUID 及注册时间存储在插件目录的 `.plugin_info.json` 文件中：
+UUID 及注册时间优先存储在插件目录的 `.plugin_info.json` 文件中；当插件目录不可写时，回退存储到 `data/plugin_identity/{插件目录名}.json`。两处文件格式相同：
 
 ```json
 {
@@ -47,9 +47,9 @@ def load_or_create_id(self) -> str
 加载已存在的插件 ID，或创建新的 UUID。
 
 **逻辑**:
-1. 检查 `{plugin_dir}/.plugin_info.json` 是否存在
-2. 如果存在，读取其中的 `plugin_id`
-3. 如果不存在，生成新的 UUID，写入文件，返回
+1. 按“插件目录 → 数据目录回退”的顺序查找：先检查 `{plugin_dir}/.plugin_info.json`，再检查 `data/plugin_identity/{插件目录名}.json`
+2. 如果任一位置存在，读取其中的 `plugin_id`
+3. 如果都不存在，生成新的 UUID，优先写入插件目录的 `.plugin_info.json`；写入失败（如插件目录只读）时写入 `data/plugin_identity/{插件目录名}.json`，返回
 
 **返回**:
 - 插件 UUID 字符串

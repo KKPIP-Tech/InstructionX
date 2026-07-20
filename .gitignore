@@ -215,6 +215,7 @@ __marimo__/
 temp/
 /data/
 .mcp_sdk_temp/
+logs/
 
 # 忽略 data 目录（保留 .gitkeep 以便在需要时可以恢复跟踪）
 data/*

@@ -354,8 +354,13 @@ InstructionX/
 │       ├── conversation_manager.py  # 对话管理
 │       ├── tool_call_executor.py   # 工具调用自动化
 │       ├── types.py        # 数据类型
+│       ├── types_cache.py  # 类型缓存
+│       ├── cache_adapter.py # 缓存适配器
 │       ├── pricing.py      # 定价表
 │       ├── config.py
+│       ├── secure_keys.py  # API Key 混淆存储
+│       ├── usage_record_store.py # 用量记录存储
+│       ├── provider_extension.py # Provider 扩展
 │       ├── exceptions.py
 │       └── providers/       # Provider 实现
 │           ├── base.py
@@ -380,7 +385,6 @@ InstructionX/
 │       ├── license_dialog.py    # 开源许可对话框
 │       ├── llm_settings_dialog.py  # LLM 设置对话框（两栏）
 │       ├── llm_settings_components.py  # LLM 设置对话框组件
-│       ├── llm_model_service_dialog.py  # 模型服务对话框（三栏）
 │       ├── plugin_order_dialog.py  # 插件排序对话框
 │       └── github_plugin_install_dialog.py  # GitHub 插件安装对话框
 │
@@ -409,6 +413,8 @@ InstructionX/
 │   ├── logging_tools.py     # 日志管理
 │   ├── i_logger.py         # ILogger 接口
 │   ├── themes.py           # 主题检测与切换
+│   ├── font_map.py         # 字体映射
+│   ├── thread_utils.py     # 工作线程 → UI 线程封送
 │   └── style_qss/          # StyleQSS 样式系统（QSS 片段注册 + 主题变量）
 │
 └── docs/                     # 技术文档

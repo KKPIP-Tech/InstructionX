@@ -140,10 +140,12 @@ pip install -r requirements.txt
 
 Main dependencies:
 - `PySide6` (>=6.10) - Qt GUI framework
-- `requests` - HTTP requests
-- `aiohttp` - Asynchronous HTTP client
-- `opencv-python` - Image processing
-- `numpy` - Numerical computation
+- `requests` (>=2.32) - HTTP requests
+- `aiohttp` (>=3.11) - Asynchronous HTTP client
+- `mcp` (>=1.0.0) - MCP protocol (Model Context Protocol)
+- `orjson` (>=3.11.0,<4) - High-performance JSON serialization
+- `matplotlib` (>=3.10) - Usage statistics charts
+- `packaging` (>=23.0) - Plugin dependency version checking
 
 ### Run the Application
 
@@ -357,10 +359,12 @@ The project includes complete technical documentation (in Chinese) located in th
 | InstructionX CE | Application version | Alpha 1.0.2 |
 | PySide6 | Qt GUI framework | >= 6.10 |
 | Python | Programming language | >= 3.14 |
-| requests | HTTP requests | - |
-| aiohttp | Asynchronous HTTP | - |
-| opencv-python | Image processing | - |
-| numpy | Numerical computation | - |
+| requests | HTTP requests | >= 2.32 |
+| aiohttp | Asynchronous HTTP | >= 3.11 |
+| mcp | MCP protocol | >= 1.0.0 |
+| orjson | High-performance JSON serialization | >= 3.11.0,<4 |
+| matplotlib | Usage statistics charts | >= 3.10 |
+| packaging | Plugin dependency version checking | >= 23.0 |
 | StyleQSS | UI theme | Built-in |
 
 ---
