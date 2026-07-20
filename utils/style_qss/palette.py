@@ -4,6 +4,8 @@
 
 from PySide6.QtGui import QColor, QPalette
 
+from .colors import get_color_dict
+
 
 def parse_color(hex_color: str) -> QColor:
     """解析颜色字符串"""
@@ -22,8 +24,6 @@ def create_qss_palette(theme: str = 'light') -> QPalette:
     Returns:
         QPalette 对象
     """
-    from .colors import StyleQSSColors, get_color_dict
-
     colors = get_color_dict(theme)
 
     palette = QPalette()

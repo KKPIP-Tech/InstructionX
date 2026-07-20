@@ -4,6 +4,9 @@ QSS 样式片段自动加载模块
 
 import os
 import re
+
+from utils.logging_tools import LoggerManager
+
 from ..registry import QssRegistry
 
 # 样式文件加载顺序（对应文件名，不含 .qss 扩展名）
@@ -43,7 +46,7 @@ def _load_qss_file(file_path: str) -> str:
             # 移除注释
             return _remove_comments(content)
     except Exception as e:
-        print(f"Warning: Failed to load {file_path}: {e}")
+        LoggerManager().warning('style_qss', f'加载 QSS 文件失败: {file_path}: {e}')
         return ''
 
 

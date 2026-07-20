@@ -10,20 +10,15 @@ import logging
 import threading
 from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
 
+# core.plugin.manager 对 core.mcp 的引用为函数级，此处顶部导入不构成循环依赖
+from core.plugin.manager import get_plugin_manager
+from core.plugin.tool_name import sanitize_tool_name
+
 if TYPE_CHECKING:
     from core.mcp.manager import MCPManager
     from core.mcp.server import MCPHostServer
 
 logger = logging.getLogger(__name__)
-
-
-def _sanitize_tool_name(name: str) -> str:
-    """净化工具名（规则与 PluginManager.get_all_function_tools 完全一致）
-
-    惰性导入以避免 core.plugin.manager 与 core.mcp 之间的循环依赖。
-    """
-    from core.plugin.manager import sanitize_tool_name
-    return sanitize_tool_name(name)
 
 
 class MCPBridge:
@@ -34,6 +29,12 @@ class MCPBridge:
     """
 
     def __init__(self, manager: "MCPManager"):
+        """初始化桥接器
+
+        Args:
+            manager: MCPManager 单例实例，用于获取 MCP Server 实例
+                     与 Server 配置（插件暴露白名单等）
+        """
         self._manager = manager
         # 已同步工具的簿记。key 为 pair key "{plugin_id}.{method_name}"
         # （仅内部使用，与历史行为兼容）；实际注册到 MCP Server 的
@@ -50,14 +51,21 @@ class MCPBridge:
     def _get_exposed_plugins(self) -> Optional[List[str]]:
         """读取 Server 配置中的插件暴露白名单
 
-        配置为 None（或非列表类型，如测试中的 Mock）时返回 None，
-        表示暴露全部插件（向后兼容默认行为）。
+        返回值语义（注意 None 与 [] 的区别）：
+            - None：未配置白名单（或配置值非列表类型，如测试中的 Mock），
+              表示暴露全部插件（向后兼容默认行为）；
+            - []：配置读取失败，**失败关闭**——一个插件都不暴露，
+              避免配置异常时静默放大 MCP 暴露面；
+            - 非空列表：仅暴露白名单内的插件。
         """
         try:
             config = self._manager.get_server_config()
             exposed = getattr(config, "exposed_plugins", None)
-        except Exception:
-            return None
+        except Exception as e:
+            logger.error(
+                f"读取 MCP 插件暴露白名单失败，按失败关闭处理（不暴露任何插件）: {e}"
+            )
+            return []
         if isinstance(exposed, (list, tuple, set, frozenset)):
             return list(exposed)
         return None
@@ -93,7 +101,6 @@ class MCPBridge:
             return
 
         try:
-            from core.plugin.manager import get_plugin_manager
             pm = get_plugin_manager()
 
             exposed_plugins = self._get_exposed_plugins()
@@ -117,7 +124,7 @@ class MCPBridge:
                     continue
 
                 # 工具名与 PluginManager.get_all_function_tools 规则一致
-                tool_name = _sanitize_tool_name(name)
+                tool_name = sanitize_tool_name(name)
                 pair_key = self._pair_key(plugin_id, method_name)
 
                 # 跳过已同步的工具（check-then-act 加锁）
@@ -175,7 +182,7 @@ class MCPBridge:
             )
             return
 
-        tool_name = _sanitize_tool_name(f"{plugin_id}__{method_name}")
+        tool_name = sanitize_tool_name(f"{plugin_id}__{method_name}")
         pair_key = self._pair_key(plugin_id, method_name)
 
         with self._lock:
@@ -208,7 +215,7 @@ class MCPBridge:
         if server is None:
             return
 
-        tool_name = _sanitize_tool_name(f"{plugin_id}__{method_name}")
+        tool_name = sanitize_tool_name(f"{plugin_id}__{method_name}")
         pair_key = self._pair_key(plugin_id, method_name)
 
         try:

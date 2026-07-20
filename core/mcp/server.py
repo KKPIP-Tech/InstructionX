@@ -7,12 +7,60 @@ MCP Server 封装
 
 import asyncio
 import functools
+import hmac
 import inspect
 import threading
 from typing import Any, Dict, List, Optional, Callable
 import logging
 
+from core.plugin.manager import PluginManager
+
+# ===== 可选依赖：MCP SDK / uvicorn / anyio（缺失时置 None，运行时检查）=====
+try:
+    from mcp.server.fastmcp import FastMCP
+    from mcp.server.fastmcp.tools import Tool
+except ImportError:
+    FastMCP = None
+    Tool = None
+
+try:
+    import uvicorn
+except ImportError:
+    uvicorn = None
+
+try:
+    import anyio.to_thread
+except ImportError:
+    anyio = None
+
 logger = logging.getLogger(__name__)
+
+# HTTP Server 启动结果等待超时（秒）
+SERVER_START_WAIT_TIMEOUT = 5.0
+# 启动确认 watch 协程的轮询间隔（秒）
+STARTUP_WATCH_POLL_INTERVAL = 0.05
+# 停止 Server 时等待工作线程退出的超时（秒）
+SERVER_STOP_JOIN_TIMEOUT = 5.0
+
+
+def _validate_auth_token(token: str) -> None:
+    """校验 Bearer 令牌的合法性
+
+    HTTP Authorization 头要求 latin-1 可编码，且令牌中不允许出现
+    空白/控制字符；这里统一收紧为 ASCII 可见字符（0x21-0x7E）。
+
+    Args:
+        token: 待校验的认证令牌
+
+    Raises:
+        ValueError: 令牌包含非法字符时抛出，文案为中文
+    """
+    if all(0x21 <= ord(char) <= 0x7E for char in token):
+        return
+    raise ValueError(
+        "MCP auth_token 只能包含 ASCII 可见字符（不能包含中文、空格或控制字符），"
+        "请检查 MCP 配置中的 auth_token 设置。"
+    )
 
 # JSON Schema 类型 → Python 类型（用于伪造 handler 签名）
 _JSON_TYPE_MAP: Dict[str, type] = {
@@ -33,12 +81,16 @@ class _BearerAuthMiddleware:
 
     def __init__(self, app: Any, token: str):
         self._app = app
+        # token 已在 MCPHostServer 构造时校验为 ASCII 可见字符，此处不会抛编码异常
         self._expected = f"Bearer {token}".encode("latin-1")
 
     async def __call__(self, scope: Dict, receive: Callable, send: Callable) -> None:
         if scope.get("type") in ("http", "websocket"):
             headers = dict(scope.get("headers") or [])
-            if headers.get(b"authorization", b"") != self._expected:
+            # compare_digest 防止时序侧信道泄露令牌内容
+            if not hmac.compare_digest(
+                headers.get(b"authorization", b""), self._expected
+            ):
                 if scope["type"] == "websocket":
                     await send({"type": "websocket.close", "code": 4401})
                     return
@@ -74,6 +126,9 @@ class MCPHostServer:
         port: int = 8765,
         auth_token: Optional[str] = None,
     ):
+        if auth_token is not None:
+            # 启动前校验令牌可编码性，非法时以中文文案 fail-fast
+            _validate_auth_token(auth_token)
         self._name = name
         self._host = host
         self._port = port
@@ -94,8 +149,14 @@ class MCPHostServer:
 
         mcp==1.27.0 中 host/port 需传给 FastMCP 构造器，
         FastMCP.run() 只接受 transport/mount_path 参数。
+
+        Raises:
+            RuntimeError: MCP SDK 未安装时抛出（中文提示）
         """
-        from mcp.server.fastmcp import FastMCP
+        if FastMCP is None:
+            raise RuntimeError(
+                "缺少 MCP SDK 依赖（请执行 pip install mcp），无法启动 MCP Server。"
+            )
         return FastMCP(self._name, host=self._host, port=self._port)
 
     def _warn_if_insecure(self) -> None:
@@ -157,13 +218,18 @@ class MCPHostServer:
         - 依据 JSON Schema 伪造 __signature__，使 FastMCP 的参数校验模型
           与插件真实参数一致（**kwargs 签名会被 pydantic 误认为必传的
           "kwargs" 字段，导致所有调用校验失败）。
+
+        Raises:
+            RuntimeError: anyio 未安装时抛出（中文提示）
         """
-        from core.plugin.manager import PluginManager
+        if anyio is None:
+            raise RuntimeError(
+                "缺少 anyio 依赖（请执行 pip install anyio），无法调用插件工具。"
+            )
 
         async def handler(**kwargs: Any) -> Any:
             # 同步插件方法通过 anyio.to_thread 调用
             try:
-                import anyio.to_thread
                 call = functools.partial(
                     PluginManager().call_plugin_method,
                     "",  # caller_id（Server 模式不需要）
@@ -220,8 +286,10 @@ class MCPHostServer:
             self._fastmcp = self._init_fastmcp()
 
         try:
-            from mcp.server.fastmcp.tools import Tool
-
+            if Tool is None:
+                raise RuntimeError(
+                    "缺少 MCP SDK 依赖（请执行 pip install mcp），无法注册 MCP 工具。"
+                )
             tool_manager = getattr(self._fastmcp, "_tool_manager", None)
             tools_table = getattr(tool_manager, "_tools", None)
             if tool_manager is None or not isinstance(tools_table, dict):
@@ -356,8 +424,11 @@ class MCPHostServer:
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
             try:
-                import uvicorn
-
+                if uvicorn is None:
+                    raise RuntimeError(
+                        "缺少 uvicorn 依赖（请执行 pip install uvicorn），"
+                        "无法以 HTTP 模式启动 MCP Server。"
+                    )
                 app = self._fastmcp.streamable_http_app()
                 if self._auth_token:
                     app = _BearerAuthMiddleware(app, self._auth_token)
@@ -374,7 +445,7 @@ class MCPHostServer:
                 async def _serve() -> None:
                     async def _watch_started() -> None:
                         while not server.started:
-                            await asyncio.sleep(0.05)
+                            await asyncio.sleep(STARTUP_WATCH_POLL_INTERVAL)
                         started.set()
 
                     watcher = asyncio.ensure_future(_watch_started())
@@ -396,8 +467,8 @@ class MCPHostServer:
         self._thread = threading.Thread(target=_run_in_thread, daemon=True)
         self._thread.start()
 
-        # 等待启动结果（最多 5 秒），启动失败不静默
-        if not started.wait(timeout=5.0):
+        # 等待启动结果（最多 SERVER_START_WAIT_TIMEOUT 秒），启动失败不静默
+        if not started.wait(timeout=SERVER_START_WAIT_TIMEOUT):
             if not self._thread.is_alive() or "error" in error_holder:
                 self._running = False
                 err = error_holder.get("error")
@@ -407,8 +478,8 @@ class MCPHostServer:
                 )
                 raise RuntimeError(f"MCP HTTP Server failed to start: {err}")
             logger.warning(
-                f"MCP HTTP Server startup not confirmed within 5s "
-                f"on {self._host}:{self._port}"
+                f"MCP HTTP Server startup not confirmed within "
+                f"{SERVER_START_WAIT_TIMEOUT}s on {self._host}:{self._port}"
             )
         else:
             logger.info(
@@ -425,9 +496,12 @@ class MCPHostServer:
         if self._uvicorn_server is not None:
             self._uvicorn_server.should_exit = True
         if self._thread is not None and self._thread.is_alive():
-            self._thread.join(timeout=5.0)
+            self._thread.join(timeout=SERVER_STOP_JOIN_TIMEOUT)
             if self._thread.is_alive():
-                logger.warning("MCP Server thread did not exit within 5s")
+                logger.warning(
+                    f"MCP Server thread did not exit within "
+                    f"{SERVER_STOP_JOIN_TIMEOUT}s"
+                )
         self._uvicorn_server = None
         self._thread = None
         self._running = False

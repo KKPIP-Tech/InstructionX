@@ -141,6 +141,9 @@ class QssRegistry:
             变量替换后的 QSS 字符串
         """
         if theme is None:
+            # NOTE: 函数级导入用于打破 utils.style_qss ↔ utils.style_qss.registry
+            # 循环依赖（包级 __init__ 顶部导入本模块，而 get_style_qss 定义在
+            # 包级 __init__ 中），无法上移为顶部导入。
             from . import get_style_qss
             theme = get_style_qss().theme()
         colors = get_color_dict(theme)
