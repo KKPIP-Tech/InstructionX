@@ -217,6 +217,7 @@ class UsageRecordStore:
         conversation_id: Optional[str] = None,
         limit: Optional[int] = None,
         offset: int = 0,
+        descending: bool = False,
     ) -> List[UsageRecord]:
         """查询用量记录
 
@@ -228,6 +229,8 @@ class UsageRecordStore:
             conversation_id: 对话 ID（精确匹配）
             limit: 最大返回条数
             offset: 跳过条数
+            descending: 是否按时间倒序（最新在前）返回；默认 False 保持
+                写入顺序（旧→新）。倒序在分页之前生效，即第 0 页为最新记录
 
         Returns:
             List[UsageRecord]: 符合条件的记录列表
@@ -262,6 +265,10 @@ class UsageRecordStore:
                 continue
 
             results.append(UsageRecord.from_dict(r))
+
+        # 倒序在分页之前生效：第 0 页即为最新记录
+        if descending:
+            results.reverse()
 
         # 分页
         results = results[offset:]

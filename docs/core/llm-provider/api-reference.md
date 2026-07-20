@@ -285,6 +285,7 @@ store.get_records(
     conversation_id: Optional[str] = None,
     limit: Optional[int] = None,
     offset: int = 0,
+    descending: bool = False,  # True 时按时间倒序（最新在前），倒序在分页之前生效
 ) -> List[UsageRecord]
 
 # 聚合统计
