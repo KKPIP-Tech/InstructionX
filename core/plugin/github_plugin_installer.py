@@ -4,11 +4,13 @@ GitHub 插件安装器
 从 GitHub 仓库安装插件的核心逻辑，支持单插件和多插件仓库。
 """
 
+import base64
 import json
 import os
 import re
 import shutil
 import tempfile
+import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Optional, Tuple, Dict, Any
@@ -18,6 +20,8 @@ import requests
 
 from utils.logging_tools import LoggerManager, get_name
 from .dependency_manager import DependencyManager
+# 无循环依赖（manager 不反向依赖本模块），置顶导入
+from .manager import get_plugin_manager
 
 
 @dataclass
@@ -97,6 +101,12 @@ class GitHubPluginInstaller:
     MAX_EXTRACT_TOTAL_SIZE = 500 * 1024 * 1024  # 总解压大小最大 500MB
     MAX_EXTRACT_FILE_COUNT = 20000           # 解压文件数量上限
 
+    # 网络请求与下载的超时/分块配置
+    GITHUB_API_TIMEOUT = 30            # GitHub API 内容查询超时（秒）
+    DEFAULT_BRANCH_TIMEOUT = 10        # 默认分支查询超时（秒）
+    ARCHIVE_DOWNLOAD_TIMEOUT = 60      # 仓库压缩包下载超时（秒）
+    DOWNLOAD_CHUNK_SIZE = 256 * 1024   # 流式下载分块大小（字节）
+
     def __init__(self, plugin_manager=None):
         self._plugin_manager = plugin_manager
         self._logger = LoggerManager()
@@ -141,11 +151,10 @@ class GitHubPluginInstaller:
         """通过 GitHub API 获取文件内容"""
         url = f"{self._gh_api_base}/repos/{owner}/{repo}/contents/{file_path}"
         try:
-            response = requests.get(url, timeout=30)
+            response = requests.get(url, timeout=self.GITHUB_API_TIMEOUT)
             if response.status_code == 200:
                 data = response.json()
                 if isinstance(data, dict) and data.get("encoding") == "base64":
-                    import base64
                     content = base64.b64decode(data["content"]).decode("utf-8")
                     return json.loads(content)
             return None
@@ -157,7 +166,7 @@ class GitHubPluginInstaller:
         """通过 GitHub API 获取目录内容"""
         url = f"{self._gh_api_base}/repos/{owner}/{repo}/contents/{path}"
         try:
-            response = requests.get(url, timeout=30)
+            response = requests.get(url, timeout=self.GITHUB_API_TIMEOUT)
             if response.status_code == 200:
                 return response.json()
             return None
@@ -300,7 +309,6 @@ class GitHubPluginInstaller:
 
         # 确定安装目录
         if official_dir is None or thirdparty_dir is None:
-            from .manager import get_plugin_manager
             pm = self._plugin_manager or get_plugin_manager()
             official_dir = pm.official_plugin_dir
             thirdparty_dir = pm.thirdparty_plugin_dir
@@ -336,13 +344,17 @@ class GitHubPluginInstaller:
         无认证、短超时请求；失败时静默返回 None，由调用方回退 main→master。
         """
         try:
-            response = requests.get(f"{self._gh_api_base}/repos/{owner}/{repo}", timeout=10)
+            response = requests.get(
+                f"{self._gh_api_base}/repos/{owner}/{repo}",
+                timeout=self.DEFAULT_BRANCH_TIMEOUT
+            )
             if response.status_code == 200:
                 branch = response.json().get("default_branch")
                 if branch:
                     return branch
-        except Exception:
-            pass  # 网络失败/限流时静默回退
+        except Exception as e:
+            # 网络失败/限流时回退 main→master，不影响主流程
+            self._logger.debug(get_name(), f"获取默认分支失败，回退 main/master: {e}")
         return None
 
     def _download_repository(self, owner: str, repo: str) -> Optional[Path]:
@@ -362,7 +374,9 @@ class GitHubPluginInstaller:
             for branch in candidate_branches:
                 archive_url = f"https://github.com/{owner}/{repo}/archive/refs/heads/{branch}.zip"
                 try:
-                    resp = requests.get(archive_url, timeout=60, stream=True)
+                    resp = requests.get(
+                        archive_url, timeout=self.ARCHIVE_DOWNLOAD_TIMEOUT, stream=True
+                    )
                 except Exception as e:
                     self._logger.error(get_name(), f"Error downloading repository: {e}")
                     return None
@@ -382,7 +396,7 @@ class GitHubPluginInstaller:
             zip_path = temp_dir / "__repo_archive__.zip"
             downloaded = 0
             with response, open(zip_path, "wb") as f:
-                for chunk in response.iter_content(chunk_size=256 * 1024):
+                for chunk in response.iter_content(chunk_size=self.DOWNLOAD_CHUNK_SIZE):
                     if not chunk:
                         continue
                     downloaded += len(chunk)
@@ -422,8 +436,6 @@ class GitHubPluginInstaller:
         - zip-slip：逐个 entry 校验 resolve 后的路径必须位于目标目录内
         - 单文件大小、总解压大小、文件数量限制
         """
-        import zipfile
-
         try:
             with zipfile.ZipFile(zip_path) as zf:
                 all_names = zf.namelist()
