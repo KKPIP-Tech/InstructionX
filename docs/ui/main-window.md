@@ -447,13 +447,14 @@ def _open_license_dialog(self):
 通过 **AI > LLM 设置...** (Ctrl+L) 打开，提供两栏式配置界面。左侧为 Provider 列表（标题"模型服务"），右侧为选中 Provider 的配置详情（API 密钥、API 地址、模型选择等）。详细说明见 [对话框组件](dialogs.md)。
 
 ```python
+# 文件顶部导入：from ui.dialog.llm_settings_dialog import LLMSettingsDialog
+#             from core.llm.llm_provider import get_llm_provider
+
 def _open_llm_settings_dialog(self):
     """打开 LLM 设置对话框"""
-    from ui.dialog.llm_settings_dialog import LLMSettingsDialog
     dialog = LLMSettingsDialog(self)
 
     if dialog.exec() == QDialog.DialogCode.Accepted:
-        from core.llm.llm_provider import get_llm_provider
         get_llm_provider().reload_config()
 ```
 

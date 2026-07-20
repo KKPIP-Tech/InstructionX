@@ -69,16 +69,16 @@ dialog.exec()
 ### 2.3 左侧面板
 
 - **标题**: "模型服务"
-- **Provider 列表**: `QScrollArea` + `QVBoxLayout`，通过 `ProviderListItem` 组件渲染每个 Provider（图标 + 名称 + ON/OFF 状态标签）
+- **Provider 列表**: `QScrollArea` + `QVBoxLayout`，通过 `ProviderListItemWidget` 组件渲染每个 Provider（图标 + 名称 + ON/OFF 状态标签）
 - **添加按钮**: "+ 添加供应商"，虚线边框，点击弹出类型选择对话框
-- **删除操作**: 通过右侧详情区的保存逻辑管理（无独立删除按钮）
+- **删除操作**: 右侧详情区头部提供独立的删除按钮（红色），点击弹出确认框后删除当前 Provider
 
 ### 2.4 右侧面板（配置详情，滚动区域）
 
 按从上到下分为以下区域：
 
 #### 头部区（Header）
-Provider 徽标（`ProviderLogoLabel`，程序化彩色方块）、名称、子类型标签、**启用** 复选框
+Provider 徽标（普通 `QLabel`，程序化彩色方块）、名称、子类型标签、**启用** 开关（`CircularToggleSwitch`）、删除按钮
 
 #### API 密钥区
 - `QLineEdit`（密码模式），带眼睛图标切换可见性
@@ -114,6 +114,7 @@ Provider 徽标（`ProviderLogoLabel`，程序化彩色方块）、名称、子�
 | `ModelItemWidget` | `llm_settings_components.py` | 单个模型列表项（名称、能力标签、上下文长度、操作按钮） |
 | `ModelEditDialog` | `llm_settings_components.py` | 模型编辑对话框（名称、分组、能力、价格、流式支持等） |
 | `SearchBox` | `llm_settings_components.py` | 带搜索图标的输入框 |
+| `OnOffSwitch` | `llm_settings_components.py` | ON/OFF 状态开关（Provider 列表项使用） |
 | `CircularToggleSwitch` | `llm_settings_components.py` | 圆形开关（启用状态、流式支持等） |
 | `ActionButton` | `llm_settings_components.py` | 统一操作按钮样式（蓝色圆角） |
 | `ConfigCard` | `llm_settings_components.py` | 配置区块卡片容器 |

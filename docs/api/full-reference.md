@@ -225,8 +225,8 @@ from core.mcp import IMCPTool, IMCPClient
 |------|------|--------|
 | `BackgroundTaskManager()` | 获取单例实例（单例模式） | BackgroundTaskManager |
 | `register_sync_task(plugin_id, name, func, callback, args, kwargs)` | 注册同步任务 | str (task_id) |
-| `register_async_task(plugin_id, name, func, callback, args, kwargs)` | 注册异步任务 | str (task_id) |
-| `register_scheduled_task(plugin_id, name, func, interval, callback, args, kwargs)` | 注册定时任务 | str (task_id) |
+| `register_async_task(plugin_id, name, func, callback, args, kwargs)` | 注册异步任务 | Optional[str]（task_id；shutdown 后为 None） |
+| `register_scheduled_task(plugin_id, name, func, interval, callback, args, kwargs)` | 注册定时任务 | Optional[str]（task_id；shutdown 后为 None） |
 | `register_scheduled_task_factory(plugin_id, func, callback)` | 注册任务工厂 | None |
 | `restore_scheduled_tasks(plugin_id)` | 恢复定时任务 | int |
 | `enable_scheduled_task(task_id)` | 启用定时任务 | bool |
