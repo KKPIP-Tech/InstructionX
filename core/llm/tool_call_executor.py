@@ -18,6 +18,9 @@ from .provider_interface import Message
 
 logger = logging.getLogger(__name__)
 
+# 工具调用循环的默认最大轮数（防止无限循环）
+DEFAULT_MAX_TOOL_TURNS: int = 5
+
 
 class ToolRegistry:
     """工具注册表 — 管理插件可用的工具
@@ -138,7 +141,7 @@ class ToolCallExecutor:
         messages: List[Dict],
         provider: str = "default",
         model: str = "default",
-        max_turns: int = 5,
+        max_turns: int = DEFAULT_MAX_TOOL_TURNS,
         temperature: Optional[float] = None,
         stream: bool = False,
         stream_callback: Optional[Callable[[str, bool], None]] = None,
@@ -338,7 +341,7 @@ class ToolCallExecutor:
         callback: Callable[[StreamChunk], None],
         provider: str = "default",
         model: str = "default",
-        max_turns: int = 5,
+        max_turns: int = DEFAULT_MAX_TOOL_TURNS,
         temperature: Optional[float] = None,
     ) -> Tuple[List[Dict], List[ToolResult], str]:
         """流式版本的 chat_with_tools

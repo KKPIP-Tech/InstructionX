@@ -50,7 +50,7 @@ class MiniMaxProvider(BaseProvider):
 
     API 端点:
         - /text/chatcompletion_v2: 聊天完成
-        - /embeddings/embedding_async_v2: 嵌入生成
+        - /embeddings/embedding-async_v2: 嵌入生成
 
     使用示例:
         >>> from core.llm.providers.minimax import MiniMaxProvider

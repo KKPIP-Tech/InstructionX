@@ -28,7 +28,10 @@ import json
 from typing import Dict, Any, Optional, List, Union
 
 from .base import BaseProvider
-from ..provider_interface import ChatResponse, EmbeddingResponse, ModelInfo, UsageInfo
+from ..provider_interface import (
+    ChatResponse, EmbeddingResponse, ModelInfo, UsageInfo,
+    DEFAULT_TEMPERATURE,
+)
 
 
 class OllamaProvider(BaseProvider):
@@ -159,7 +162,7 @@ class OllamaProvider(BaseProvider):
         self,
         messages: List[Union[Dict, Any]],
         model: Optional[str] = None,
-        temperature: float = 0.7,
+        temperature: float = DEFAULT_TEMPERATURE,
         max_tokens: Optional[int] = None,
         stream: bool = False,
         **kwargs

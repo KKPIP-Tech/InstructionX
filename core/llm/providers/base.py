@@ -118,6 +118,10 @@ class BaseProvider(ILLM):
     # 模型列表缓存 TTL（秒），超过后标记为 stale
     MODELS_CACHE_TTL: float = 24 * 3600
 
+    # 默认请求超时（秒）：读取超时 / 连接超时，可被配置覆盖
+    DEFAULT_TIMEOUT: int = 60
+    DEFAULT_CONNECT_TIMEOUT: int = 10
+
     def __init__(self, config: Optional[Dict[str, Any]] = None, provider_name: str = ""):
         """初始化 BaseProvider
 
@@ -132,8 +136,8 @@ class BaseProvider(ILLM):
         self.base_url = config.get("base_url", "").rstrip("/")
         self.chat_model = config.get("chat_model", "")
         self.embedding_model = config.get("embedding_model", "")
-        self.timeout = config.get("timeout", 60)
-        self.connect_timeout = config.get("connect_timeout", 10)
+        self.timeout = config.get("timeout", self.DEFAULT_TIMEOUT)
+        self.connect_timeout = config.get("connect_timeout", self.DEFAULT_CONNECT_TIMEOUT)
         self._max_retries = int(config.get("max_retries", self.DEFAULT_MAX_RETRIES))
         self._session = None
         # requests.Session 非线程安全，用可重入锁保护创建与请求发送
@@ -426,8 +430,9 @@ class BaseProvider(ILLM):
                 "models": [m.to_dict() for m in models],
             }
             self._get_llm_config().save_models_cache(self._provider_name, payload)
-        except Exception:
-            pass
+        except Exception as e:
+            # 缓存写入失败不影响主流程，降级为不使用缓存，但需留痕
+            logger.warning("保存模型列表缓存失败 (%s): %s", self._provider_name, e)
 
     def _load_models_from_cache(self) -> List[ModelInfo]:
         """从缓存加载模型列表
@@ -458,8 +463,9 @@ class BaseProvider(ILLM):
                 self._models_cache_stale = True
 
             return [ModelInfo.from_dict(m) for m in models_data]
-        except Exception:
-            pass
+        except Exception as e:
+            # 缓存读取失败回退为空列表（后续走 API/默认模型），但需留痕
+            logger.warning("读取模型列表缓存失败 (%s): %s", self._provider_name, e)
 
         return []
 
@@ -833,8 +839,8 @@ class BaseProvider(ILLM):
                 # 旧 session 属于其他事件循环，无法安全关闭，detach 避免告警
                 try:
                     old_session.detach()
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug("旧异步 session detach 失败（忽略，直接重建）: %s", e)
 
             headers = {"Content-Type": "application/json"}
             if self.api_key:

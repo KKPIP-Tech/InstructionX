@@ -19,12 +19,15 @@ Classes:
 """
 
 import json
+import logging
 import os
 from pathlib import Path
 from typing import Dict, Any, Optional, List
 
 from .exceptions import ConfigurationError
 from .secure_keys import encode_secret, decode_secret
+
+logger = logging.getLogger(__name__)
 
 
 # ==================== 配置路径常量 ====================
@@ -44,6 +47,35 @@ _PRICE_KEY_MIGRATION = (
     ("input_price_per_1k", "input_price_per_1m"),
     ("output_price_per_1k", "output_price_per_1m"),
 )
+
+
+def _atomic_write_json(file_path: Path, data: Dict[str, Any]) -> None:
+    """原子写入 JSON 文件（同目录临时文件 + os.replace）
+
+    先写入同目录的 .tmp 临时文件，再用 os.replace 原子替换目标文件，
+    避免写入中途崩溃/断电导致目标文件损坏（半写状态）。
+
+    Args:
+        file_path: 目标文件路径
+        data: 要序列化的字典数据
+
+    Raises:
+        OSError: 写入或替换失败时抛出（临时文件会被尽力清理）
+    """
+    temp_file = file_path.with_name(file_path.name + ".tmp")
+    try:
+        with open(temp_file, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=4, ensure_ascii=False)
+        os.replace(temp_file, file_path)
+    except Exception as e:
+        # 失败时清理残留临时文件，避免污染配置目录
+        try:
+            if temp_file.exists():
+                temp_file.unlink()
+        except OSError as cleanup_err:
+            logger.warning("清理临时文件失败: %s (%s)", temp_file, cleanup_err)
+        logger.error("原子写入配置文件失败: %s (%s)", file_path, e)
+        raise
 
 
 def _migrate_price_keys(data: Dict[str, Any]) -> Dict[str, Any]:
@@ -242,7 +274,7 @@ class LLMConfig:
                 config_data["api_key"] = decode_secret(config_data.get("api_key", ""))
                 self._providers[name] = ProviderConfig.from_dict(config_data)
         except Exception as e:
-            raise ConfigurationError(f"Failed to load config: {e}")
+            raise ConfigurationError(f"Failed to load config: {e}") from e
 
         # 检查并补充缺失的默认提供商
         self._ensure_default_providers()
@@ -421,9 +453,8 @@ class LLMConfig:
             "providers": self._get_default_providers()
         }
 
-        # 写入配置文件
-        with open(CONFIG_FILE, "w", encoding="utf-8") as f:
-            json.dump(default_config, f, indent=4, ensure_ascii=False)
+        # 写入配置文件（原子写，避免半写损坏）
+        _atomic_write_json(CONFIG_FILE, default_config)
 
         # 加载默认配置到内存
         for name, config_data in default_config["providers"].items():
@@ -443,8 +474,7 @@ class LLMConfig:
             provider_dict["api_key"] = encode_secret(provider_dict.get("api_key", ""))
             data["providers"][name] = provider_dict
 
-        with open(CONFIG_FILE, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=4, ensure_ascii=False)
+        _atomic_write_json(CONFIG_FILE, data)
 
     def get_provider(self, name: str) -> Optional[ProviderConfig]:
         """获取指定提供商配置
@@ -557,7 +587,8 @@ class LLMConfig:
         try:
             with open(MODELS_CACHE_FILE, "r", encoding="utf-8") as f:
                 return json.load(f)
-        except Exception:
+        except Exception as e:
+            logger.warning("加载模型缓存文件失败，返回空缓存: %s (%s)", MODELS_CACHE_FILE, e)
             return {}
 
     def _save_models_cache(self, cache: Dict[str, Any]) -> None:
@@ -567,5 +598,4 @@ class LLMConfig:
             cache: 缓存数据字典
         """
         CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-        with open(MODELS_CACHE_FILE, "w", encoding="utf-8") as f:
-            json.dump(cache, f, indent=4, ensure_ascii=False)
+        _atomic_write_json(MODELS_CACHE_FILE, cache)

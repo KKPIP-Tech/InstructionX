@@ -35,14 +35,17 @@ from datetime import datetime, timezone
 from typing import Dict, Any, Optional, List, Tuple, Union, Callable, AsyncIterator, TYPE_CHECKING
 
 from .config import LLMConfig, ProviderConfig
-from .provider_interface import ILLM, Message, ChatResponse, EmbeddingResponse, ModelInfo, UsageInfo
+from .provider_interface import (
+    ILLM, Message, ChatResponse, EmbeddingResponse, ModelInfo, UsageInfo,
+    DEFAULT_TEMPERATURE,
+)
 from .providers import get_provider_class, PROVIDER_REGISTRY
 from .exceptions import ConfigurationError
 from .usage_record_store import get_usage_record_store
 from .types import UsageRecord
-# Note: LLMProvider implements ILLMFacade interface via method signatures.
-# Inheritance is not used here to avoid circular imports.
-# Use core.interfaces.ILLMFacade for type hints in plugins.
+# 说明：LLMProvider 通过方法签名实现 ILLMFacade 接口契约，
+# 此处不使用继承以避免循环导入。
+# 插件中的类型标注请使用 core.interfaces.ILLMFacade。
 
 if TYPE_CHECKING:
     from .provider_interface import ChatResponse
@@ -121,10 +124,31 @@ class LLMProvider:
         # "default" 粘性缓存：首次自动选择后记住，避免同一进程内漂移
         self._default_chat_provider: Optional[str] = None
         self._default_embedding_provider: Optional[str] = None
-        # 最近一次流式请求的聚合响应（供工具调用执行器提取 tool_calls）
-        self.last_stream_response: Optional[ChatResponse] = None
+        # 最近一次流式请求的聚合响应存储（按线程隔离，见 last_stream_response property）
+        self._stream_local = threading.local()
         self._init_providers()
         self._fetch_all_models()  # 启动时自动拉取模型列表
+
+    @property
+    def last_stream_response(self) -> Optional[ChatResponse]:
+        """最近一次流式请求的聚合响应（按线程隔离）
+
+        存储在 threading.local 中：并发流式请求各自读写本线程的副本，
+        互不覆盖；同一线程内的读写语义与旧的普通实例属性完全一致。
+
+        Returns:
+            Optional[ChatResponse]: 本线程最近一次流式请求的聚合响应
+        """
+        return getattr(self._stream_local, "last_stream_response", None)
+
+    @last_stream_response.setter
+    def last_stream_response(self, value: Optional[ChatResponse]) -> None:
+        """设置本线程最近一次流式请求的聚合响应（按线程隔离）
+
+        Args:
+            value: 聚合响应对象，None 表示清空本线程的记录
+        """
+        self._stream_local.last_stream_response = value
 
     def _init_providers(self) -> None:
         """初始化所有已配置的 LLM 提供商
@@ -844,17 +868,18 @@ class LLMProvider:
         messages: List[Union[Message, Dict]],
         provider: str = "default",
         model: Optional[str] = None,
-        temperature: float = 0.7,
+        temperature: float = DEFAULT_TEMPERATURE,
         max_tokens: Optional[int] = None,
         **kwargs
     ) -> ChatResponse:
         """异步发送聊天请求
 
         异步版本的聊天接口，适用于需要高并发的场景。
+        与同步 chat 一致：解析 "default" 走粘性缓存、记录用量并更新健康状态。
 
         Args:
             messages: 消息列表
-            provider: 提供商名称
+            provider: 提供商名称，"default" 自动选择启用的提供商（带粘性缓存）
             model: 模型名称
             temperature: 温度参数
             max_tokens: 最大 token 数
@@ -862,66 +887,145 @@ class LLMProvider:
 
         Returns:
             ChatResponse: 聊天响应对象
+
+        Raises:
+            ConfigurationError: 当没有启用的提供商或提供商不存在时抛出
         """
         if provider == "default":
-            enabled = self.get_enabled_providers("chat")
-            if not enabled:
-                raise ConfigurationError("No enabled chat provider")
-            provider = list(enabled.keys())[0]
+            provider = self._resolve_default_provider("chat")
+        if model == "default":
+            model = None
 
         provider_instance = self.get_provider(provider)
         if not provider_instance:
             raise ConfigurationError(f"Provider not found: {provider}")
 
-        return await provider_instance.async_chat(
-            messages=messages,
-            model=model,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            **kwargs
+        t0 = time.perf_counter()
+        try:
+            response = await provider_instance.async_chat(
+                messages=messages,
+                model=model,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                **kwargs
+            )
+        except Exception as e:
+            self._health[provider] = (False, str(e))
+            raise
+        duration_ms = (time.perf_counter() - t0) * 1000
+        self._health[provider] = (True, None)
+
+        # 记录用量：与同步 chat 一致的模型解析规则
+        actual_model = getattr(response, "model", None)
+        if not isinstance(actual_model, str) or not actual_model:
+            actual_model = model or getattr(provider_instance, "chat_model", "") or ""
+        self._record_usage(
+            response=response,
+            provider=provider,
+            model=actual_model,
+            is_stream=False,
+            duration_ms=duration_ms,
         )
+
+        return response
 
     async def async_stream_chat(
         self,
         messages: List[Union[Message, Dict]],
         provider: str = "default",
         model: Optional[str] = None,
-        temperature: float = 0.7,
+        temperature: float = DEFAULT_TEMPERATURE,
         max_tokens: Optional[int] = None,
         **kwargs
     ) -> Any:
         """异步发送流式聊天请求
 
-        异步版本的流式聊天接口。
+        异步版本的流式聊天接口。返回异步生成器，迭代过程中收集末块
+        usage，流正常结束时记录用量并更新健康状态（与同步 stream_chat
+        对齐）；迭代中发生异常时标记不健康后向上抛出。
 
         Args:
             messages: 消息列表
-            provider: 提供商名称
+            provider: 提供商名称，"default" 自动选择启用的提供商（带粘性缓存）
             model: 模型名称
             temperature: 温度参数
             max_tokens: 最大 token 数
             **kwargs: 其他参数
 
         Returns:
-            异步流式响应生成器
+            异步流式响应生成器（AsyncIterator[ChatResponse]）
+
+        Raises:
+            ConfigurationError: 当没有启用的提供商或提供商不存在时抛出
         """
         if provider == "default":
-            enabled = self.get_enabled_providers("chat")
-            if not enabled:
-                raise ConfigurationError("No enabled chat provider")
-            provider = list(enabled.keys())[0]
+            provider = self._resolve_default_provider("chat")
+        if model == "default":
+            model = None
 
         provider_instance = self.get_provider(provider)
         if not provider_instance:
             raise ConfigurationError(f"Provider not found: {provider}")
 
-        return provider_instance.async_stream_chat(
+        stream = provider_instance.async_stream_chat(
             messages=messages,
             model=model,
             temperature=temperature,
             max_tokens=max_tokens,
             **kwargs
         )
+        return self._track_async_stream(stream, provider, model, provider_instance)
+
+    async def _track_async_stream(
+        self,
+        stream: AsyncIterator[ChatResponse],
+        provider: str,
+        model: Optional[str],
+        provider_instance: ILLM,
+    ) -> AsyncIterator[ChatResponse]:
+        """包装异步流式生成器：迭代中收集 usage，结束时记录用量与健康状态
+
+        不改变对外返回类型（仍是异步迭代器），逐块原样透传。
+
+        Args:
+            stream: 底层 provider 的异步流式响应迭代器
+            provider: 实际解析出的提供商名称（不会是 "default"）
+            model: 调用方传入的模型名称（可能为 None）
+            provider_instance: 提供商实例（用于回退取默认模型名）
+
+        Yields:
+            ChatResponse: 原样透传的流式响应块
+        """
+        t0 = time.perf_counter()
+        last_usage: Optional[UsageInfo] = None
+        agg_model = ""
+        try:
+            async for chunk in stream:
+                chunk_usage = getattr(chunk, "usage", None)
+                if isinstance(chunk_usage, UsageInfo):
+                    last_usage = chunk_usage
+                chunk_model = getattr(chunk, "model", None)
+                if isinstance(chunk_model, str) and chunk_model:
+                    agg_model = chunk_model
+                yield chunk
+        except Exception as e:
+            self._health[provider] = (False, str(e))
+            raise
+
+        duration_ms = (time.perf_counter() - t0) * 1000
+        self._health[provider] = (True, None)
+        # 与同步 stream_chat 一致：仅当末块携带 usage 时记录用量
+        if last_usage is not None:
+            actual_model = (agg_model or model
+                            or getattr(provider_instance, "chat_model", "") or "")
+            aggregated = ChatResponse(content="", model=actual_model, usage=last_usage)
+            self._record_usage(
+                response=aggregated,
+                provider=provider,
+                model=actual_model,
+                is_stream=True,
+                duration_ms=duration_ms,
+            )
 
     async def async_embed(
         self,
@@ -932,32 +1036,41 @@ class LLMProvider:
     ) -> List[EmbeddingResponse]:
         """异步发送文本嵌入请求
 
-        异步版本的嵌入接口。
+        异步版本的嵌入接口。与同步 embed 一致：解析 "default" 走粘性缓存，
+        并更新健康状态（嵌入响应不含 token usage，与同步路径一样不记录用量）。
 
         Args:
             texts: 单个文本或文本列表
-            provider: 提供商名称
+            provider: 提供商名称，"default" 自动选择启用的提供商（带粘性缓存）
             model: 模型名称
             **kwargs: 其他参数
 
         Returns:
             List[EmbeddingResponse]: 嵌入响应列表
+
+        Raises:
+            ConfigurationError: 当没有启用的嵌入提供商或提供商不存在时抛出
         """
         if provider == "default":
-            enabled = self.get_enabled_providers("embedding")
-            if not enabled:
-                raise ConfigurationError("No enabled embedding provider")
-            provider = list(enabled.keys())[0]
+            provider = self._resolve_default_provider("embedding")
+        if model == "default":
+            model = None
 
         provider_instance = self.get_provider(provider)
         if not provider_instance:
             raise ConfigurationError(f"Provider not found: {provider}")
 
-        return await provider_instance.async_embed(
-            texts=texts,
-            model=model,
-            **kwargs
-        )
+        try:
+            result = await provider_instance.async_embed(
+                texts=texts,
+                model=model,
+                **kwargs
+            )
+        except Exception as e:
+            self._health[provider] = (False, str(e))
+            raise
+        self._health[provider] = (True, None)
+        return result
 
     # ==================== 配置相关 ====================
 

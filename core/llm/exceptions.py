@@ -21,7 +21,7 @@
     ...     # LLM API 调用
     ...     pass
     ... except APIError as e:
-    ...     print(f"API错误: {e.message}, 状态码: {e.status_code}")
+    ...     print(f"API错误: {e}, 状态码: {e.status_code}")
 """
 
 from typing import Optional

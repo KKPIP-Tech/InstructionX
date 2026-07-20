@@ -282,23 +282,23 @@ class StreamChunk:
 
 @dataclass
 class UsageRecord:
-    """A single LLM API request record with timestamp.
+    """单次 LLM API 请求的用量记录（带时间戳）。
 
-    Stored persistently in data/llm_usage.json via UsageRecordStore.
+    通过 UsageRecordStore 持久化到 data/llm_usage.json。
 
     Attributes:
-        id: Unique record ID (UUID4 hex string)
-        timestamp: Precise UTC time of the request
-        conversation_id: Associated conversation ID, "" if no conversation
-        provider: Provider name (e.g. "minimax", "glm")
-        model: Model ID used for this request
-        input_tokens: Prompt token count
-        output_tokens: Completion token count
-        total_tokens: Sum of input+output tokens
-        cached_tokens: Tokens served from prompt cache (0 if none)
-        cache_hit: True if at least some tokens were cached
-        is_stream: True for streaming requests
-        duration_ms: Request duration in milliseconds
+        id: 记录唯一 ID（UUID4 hex 字符串）
+        timestamp: 请求的精确 UTC 时间
+        conversation_id: 关联的对话 ID，无对话上下文时为 ""
+        provider: 提供商名称（如 "minimax"、"glm"）
+        model: 本次请求使用的模型 ID
+        input_tokens: 输入（提示词）token 数
+        output_tokens: 输出（补全）token 数
+        total_tokens: 输入与输出 token 数之和
+        cached_tokens: 命中提示词缓存的 token 数（无缓存时为 0）
+        cache_hit: 是否有至少部分 token 命中缓存
+        is_stream: 是否为流式请求
+        duration_ms: 请求耗时（毫秒）
     """
     id: str
     timestamp: datetime

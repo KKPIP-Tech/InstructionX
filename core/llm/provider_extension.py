@@ -36,7 +36,8 @@ Classes:
 
 from dataclasses import dataclass, field
 from typing import Dict, Any, Optional, List, Type, Callable
-import json
+
+from .providers import get_provider_class
 
 
 @dataclass
@@ -241,7 +242,6 @@ class ExtendedProviderRegistry:
             return self._custom_classes[type_id](config, **kwargs)
 
         # 然后尝试标准注册表
-        from .providers import get_provider_class
         provider_class = get_provider_class(type_id)
         if provider_class:
             return provider_class(config, **kwargs)

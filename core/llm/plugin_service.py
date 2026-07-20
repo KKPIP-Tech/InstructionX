@@ -44,7 +44,9 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from .conversation_manager import ConversationManager
-from .tool_call_executor import ToolCallExecutor, ToolRegistry
+from .tool_call_executor import (
+    ToolCallExecutor, ToolRegistry, DEFAULT_MAX_TOOL_TURNS,
+)
 from .types import (
     Conversation, StreamChunk, ToolResult, UsageStats,
     ImageResult, AudioResult, ProviderInfo
@@ -70,10 +72,11 @@ class LLMPluginService:
     双重身份：
     ① 对话管理器（ConversationManager）
     ② 底层 LLM 的代理
-    """
 
-    _instance: Optional["LLMPluginService"] = None
-    _instance_lock = threading.Lock()
+    单例访问方式：通过模块级工厂函数 get_llm_plugin_service() 获取
+    全局唯一实例（模块级 _instance + 双重检查锁实现），请避免直接
+    实例化本类。
+    """
 
     def __init__(
         self,
@@ -334,7 +337,7 @@ class LLMPluginService:
         messages: List[Dict],
         provider: str = "default",
         model: str = "default",
-        max_turns: int = 5,
+        max_turns: int = DEFAULT_MAX_TOOL_TURNS,
         temperature: Optional[float] = None,
     ) -> Tuple[List[Dict], List[ToolResult], Any]:
         """带有工具调用的对话
@@ -364,7 +367,7 @@ class LLMPluginService:
         callback: Callable[[StreamChunk], None],
         provider: str = "default",
         model: str = "default",
-        max_turns: int = 5,
+        max_turns: int = DEFAULT_MAX_TOOL_TURNS,
         temperature: Optional[float] = None,
     ) -> Tuple[List[Dict], List[ToolResult], str]:
         """流式版本的 chat_with_tools"""

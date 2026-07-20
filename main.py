@@ -26,6 +26,10 @@ from utils.logging_tools import LoggerManager, get_name
 # 后台任务
 from core.task import BackgroundTaskManager
 
+# ===================================================================
+# LLM 用量记录（退出时冲刷待写数据）
+from core.llm.usage_record_store import get_usage_record_store
+
 
 def main():
     # 创建应用实例
@@ -70,6 +74,12 @@ def main():
     # 关闭后台任务管理器
     if BackgroundTaskManager._instance is not None:
         BackgroundTaskManager._instance.shutdown()
+
+    # 冲刷 LLM 用量记录防抖窗口内的待写数据，避免退出时丢失
+    try:
+        get_usage_record_store().flush()
+    except Exception as flush_err:
+        logger.warning(get_name(), f'LLM 用量记录冲刷失败: {flush_err}')
 
     sys.exit(result)
 

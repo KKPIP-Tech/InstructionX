@@ -18,9 +18,16 @@
     >>> print(msg.to_dict())
 """
 
+import asyncio
+import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Dict, Any, Optional, List, Callable, AsyncIterator, Union
+
+logger = logging.getLogger(__name__)
+
+# 聊天请求的默认温度参数（各 Provider 签名默认值统一引用此常量）
+DEFAULT_TEMPERATURE: float = 0.7
 
 
 @dataclass
@@ -342,7 +349,7 @@ class ILLM(ABC):
         self,
         messages: List[Union[Message, Dict]],
         model: Optional[str] = None,
-        temperature: float = 0.7,
+        temperature: float = DEFAULT_TEMPERATURE,
         max_tokens: Optional[int] = None,
         **kwargs
     ) -> ChatResponse:
@@ -369,7 +376,7 @@ class ILLM(ABC):
         self,
         messages: List[Union[Message, Dict]],
         model: Optional[str] = None,
-        temperature: float = 0.7,
+        temperature: float = DEFAULT_TEMPERATURE,
         max_tokens: Optional[int] = None,
         callback: Optional[Callable[[ChatResponse], None]] = None,
         **kwargs
@@ -449,7 +456,7 @@ class ILLM(ABC):
         self,
         messages: List[Union[Message, Dict]],
         model: Optional[str] = None,
-        temperature: float = 0.7,
+        temperature: float = DEFAULT_TEMPERATURE,
         max_tokens: Optional[int] = None,
         **kwargs
     ) -> ChatResponse:
@@ -473,7 +480,7 @@ class ILLM(ABC):
         self,
         messages: List[Union[Message, Dict]],
         model: Optional[str] = None,
-        temperature: float = 0.7,
+        temperature: float = DEFAULT_TEMPERATURE,
         max_tokens: Optional[int] = None,
         **kwargs
     ) -> AsyncIterator[ChatResponse]:
@@ -592,7 +599,6 @@ class ILLM(ABC):
             self._session.close()
             self._session = None
         if self._async_session:
-            import asyncio
             try:
                 loop = asyncio.get_running_loop()
                 loop.create_task(self._async_session.close())
@@ -600,9 +606,9 @@ class ILLM(ABC):
                 # 无运行中的事件循环：新建临时循环完成关闭，避免 session 泄漏
                 try:
                     asyncio.run(self._async_session.close())
-                except Exception:
+                except Exception as e:
                     # session 原属事件循环已销毁，无法安全关闭，放弃以避免异常
-                    pass
+                    logger.debug("异步 session 关闭失败（原事件循环已销毁，忽略）: %s", e)
             self._async_session = None
             if hasattr(self, "_async_session_loop"):
                 self._async_session_loop = None

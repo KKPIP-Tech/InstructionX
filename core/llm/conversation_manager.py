@@ -363,8 +363,9 @@ class ConversationManager:
             if callback:
                 try:
                     callback(sc)
-                except Exception:
-                    pass
+                except Exception as cb_err:
+                    # 错误通知回调本身失败不应掩盖原始异常，记录后继续抛出
+                    self._logger.error(f"Stream error callback failed: {cb_err}")
             raise
 
         # 修复后的 LLMProvider.stream_chat 返回完整文本；
