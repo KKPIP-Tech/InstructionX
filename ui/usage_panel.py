@@ -5,6 +5,7 @@
 """
 
 import os
+from collections import defaultdict
 from datetime import datetime, timedelta
 from typing import List, Any, Optional, Dict
 
@@ -21,13 +22,17 @@ from PySide6.QtGui import QColor, QFont, QFontDatabase
 from core.llm.usage_record_store import get_usage_record_store
 from core.llm.types import UsageRecord
 from utils.font_map import FontMap, FontFamily, FontVariant
+from utils.logging_tools import LoggerManager, get_name
+
+# 模块级日志器（LoggerManager 为单例）
+_logger = LoggerManager()
 
 # Matplotlib 导入和配置
 try:
     from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
     from matplotlib.figure import Figure
+    from matplotlib import font_manager
     import matplotlib.pyplot as plt
-    import matplotlib
     MATPLOTLIB_AVAILABLE = True
     
     # 配置 Matplotlib 中文字 体
@@ -47,13 +52,13 @@ try:
         for font in chinese_fonts:
             try:
                 # 测试字体是否可用
-                from matplotlib import font_manager
                 if any(f.name == font for f in font_manager.fontManager.ttflist):
                     plt.rcParams['font.sans-serif'] = [font] + plt.rcParams['font.sans-serif']
                     plt.rcParams['axes.unicode_minus'] = False  # 解决负号显示问题
                     font_found = True
                     break
-            except:
+            except Exception:
+                # 单个字体探测失败不影响后续字体尝试
                 continue
         
         if not font_found:
@@ -130,7 +135,6 @@ class ChartWorker(QObject):
             
         try:
             # 按日期聚合数据
-            from collections import defaultdict
             daily = defaultdict(lambda: {"input": 0, "output": 0})
             for r in self._records:
                 # 记录时间戳为 UTC aware，聚合前转换为本地时间
@@ -309,8 +313,6 @@ class UsageChartWidget(QWidget):
         
         if MATPLOTLIB_AVAILABLE:
             # 创建 Matplotlib 图形（DPI 随屏幕缩放，避免高分屏模糊）
-            from matplotlib.figure import Figure
-            from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
             self._figure = Figure(figsize=(8, 3), dpi=100 * self.devicePixelRatioF())
             self._figure.set_facecolor('none')
             self._canvas = FigureCanvas(self._figure)
@@ -522,7 +524,7 @@ class UsageChartWidget(QWidget):
 
     def _on_chart_error(self, error_msg: str):
         """图表生成错误"""
-        print(f"Chart error: {error_msg}")
+        _logger.warning(get_name(), f"用量趋势图表生成失败: {error_msg}")
 
     def _clear_chart(self):
         """清空图表"""
@@ -862,6 +864,7 @@ class UsagePanel(QWidget):
             self.data_refreshed.emit()
 
         except Exception as e:
+            _logger.error(get_name(), f"刷新用量数据失败: {e}")
             QMessageBox.warning(self, "刷新失败", f"刷新用量数据失败:\n{str(e)}")
 
     def _update_provider_options(self):
@@ -874,7 +877,9 @@ class UsagePanel(QWidget):
             providers = sorted(
                 g["group_key"] for g in agg.get("groups", []) if g.get("group_key")
             )
-        except Exception:
+        except Exception as e:
+            # 聚合查询失败时降级为仅「全部」选项，不阻断面板刷新
+            _logger.debug(get_name(), f"查询 Provider 筛选项失败，降级为仅显示「全部」: {e}")
             providers = []
 
         current = self._provider_combo.currentText()

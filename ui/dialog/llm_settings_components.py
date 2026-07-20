@@ -1,18 +1,21 @@
 # ui/dialog/llm_settings_components.py
 """LLM 设置中心自定义组件 - 支持深色模式."""
 
-from typing import Optional, Callable, List, Dict, Any
+from typing import Optional, List, Dict, Any
 from pathlib import Path
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QFrame, QSizePolicy, QToolButton, QMenu, QLineEdit,
-    QGraphicsDropShadowEffect, QCheckBox, QDialog, QDialogButtonBox,
-    QComboBox, QDoubleSpinBox, QScrollArea, QTextEdit, QGroupBox
+    QFrame, QLineEdit, QDialog, QComboBox, QDoubleSpinBox,
+    QApplication
 )
-from PySide6.QtCore import Qt, Signal, QSize, QPoint, QPropertyAnimation, QEasingCurve, QRect, QTimer
-from PySide6.QtGui import QFont, QIcon, QPixmap, QColor, QPainter, QPainterPath, QBrush, QPen
+from PySide6.QtCore import Qt, Signal, QSize, QRect, QTimer
+from PySide6.QtGui import QFont, QPixmap, QColor, QPainter, QPainterPath, QPen
 
 from utils.style_qss import get_style_qss
+
+
+# Qt 控件最大尺寸限制（QWIDGETSIZE_MAX），用于解除高度约束后再自适应
+_QWIDGETSIZE_MAX = 16777215
 
 
 def get_current_colors() -> dict:
@@ -218,24 +221,6 @@ class SearchBox(QWidget):
 
     def text(self) -> str:
         return self._edit.text()
-
-
-class CapabilityTag(QLabel):
-    """能力标签."""
-
-    def __init__(self, capability: str, parent=None):
-        super().__init__(capability, parent)
-        fg, bg = CAPABILITY_COLORS.get(capability.lower(), ('#6B7280', '#F3F4F6'))
-        self.setStyleSheet(f"""
-            QLabel {{
-                color: {fg};
-                background-color: {bg};
-                border-radius: 4px;
-                padding: 2px 8px;
-                font-size: 10px;
-                font-weight: 500;
-            }}
-        """)
 
 
 class ProviderListItemWidget(QWidget):
@@ -1015,7 +1000,6 @@ class ModelEditDialog(QDialog):
 
     def _copy_model_id(self):
         """复制模型 ID 到剪贴板，并给出短暂反馈."""
-        from PySide6.QtWidgets import QApplication
         QApplication.clipboard().setText(self._id_edit.text())
         self._copy_btn.setText("✓")
         QTimer.singleShot(1200, lambda: self._copy_btn.setText("📋"))
@@ -1041,9 +1025,9 @@ class ModelEditDialog(QDialog):
         # 更新按钮文本
         self._more_btn.setText("收起设置" if is_expanded else "更多设置")
 
-        # 高度自适应内容
+        # 高度自适应内容（先解除最大高度限制，QWIDGETSIZE_MAX 为 Qt 默认上限）
         self.setMinimumHeight(0)
-        self.setMaximumHeight(16777215)
+        self.setMaximumHeight(_QWIDGETSIZE_MAX)
         self.adjustSize()
         self.setFixedHeight(self.height())
 
@@ -1154,228 +1138,3 @@ class ConfigCard(QWidget):
         """添加布局到卡片内容区."""
         self._content_layout.addLayout(layout)
 
-
-# 保留向后兼容的 CollapsibleGroup
-class CollapsibleGroup(QWidget):
-    """可折叠分组组件（向后兼容）."""
-
-    toggled = Signal(bool)
-
-    def __init__(self, title: str, count: int = 0, parent=None):
-        super().__init__(parent)
-        self.title = title
-        self.count = count
-        self.is_expanded = True
-
-        self.setStyleSheet("background-color: transparent;")
-        self._init_ui()
-
-    def _init_ui(self):
-        colors = get_current_colors()
-        header_bg = colors.get('controlFillHover', '#F8F9FA')
-        header_hover = colors.get('controlFillPressed', '#F0F0F0')
-        text_primary = colors.get('textPrimary', '#333333')
-        text_secondary = colors.get('textSecondary', '#666666')
-
-        self.main_layout = QVBoxLayout(self)
-        self.main_layout.setContentsMargins(0, 0, 0, 0)
-        self.main_layout.setSpacing(0)
-
-        self.header = QPushButton()
-        self.header.setObjectName("collapsibleHeader")
-        self.header.setCheckable(True)
-        self.header.setChecked(True)
-        self.header.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.header.setStyleSheet(f"""
-            QPushButton#collapsibleHeader {{
-                background-color: {header_bg};
-                border: none;
-                border-radius: 6px;
-                text-align: left;
-            }}
-            QPushButton#collapsibleHeader:hover {{
-                background-color: {header_hover};
-            }}
-        """)
-
-        header_layout = QHBoxLayout(self.header)
-        header_layout.setContentsMargins(12, 8, 12, 8)
-
-        self.arrow_label = QLabel("▼")
-        self.arrow_label.setObjectName("collapsibleArrow")
-        self.arrow_label.setFixedWidth(16)
-        self.arrow_label.setStyleSheet(f"color: {text_secondary};")
-        header_layout.addWidget(self.arrow_label)
-
-        self.title_label = QLabel(self.title)
-        self.title_label.setObjectName("collapsibleTitle")
-        font = QFont()
-        font.setPointSize(10)
-        font.setBold(True)
-        self.title_label.setFont(font)
-        self.title_label.setStyleSheet(f"color: {text_primary};")
-        header_layout.addWidget(self.title_label, stretch=1)
-
-        if self.count > 0:
-            count_bg = colors.get('borderLight', '#E0E0E0')
-            self.count_label = QLabel(str(self.count))
-            self.count_label.setObjectName("collapsibleCount")
-            self.count_label.setFixedSize(24, 18)
-            self.count_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            self.count_label.setStyleSheet(f"""
-                QLabel {{
-                    background-color: {count_bg};
-                    color: {text_secondary};
-                    border-radius: 9px;
-                    font-size: 10px;
-                }}
-            """)
-            header_layout.addWidget(self.count_label)
-
-        header_layout.addSpacing(4)
-
-        self.header.clicked.connect(self._on_header_clicked)
-        self.main_layout.addWidget(self.header)
-
-        self.content_widget = QWidget()
-        self.content_widget.setObjectName("collapsibleContent")
-        self.content_widget.setStyleSheet("background-color: transparent;")
-        self.content_layout = QVBoxLayout(self.content_widget)
-        self.content_layout.setContentsMargins(8, 8, 0, 8)
-        self.content_layout.setSpacing(4)
-        self.main_layout.addWidget(self.content_widget)
-
-    def _on_header_clicked(self):
-        self.is_expanded = not self.is_expanded
-        self.arrow_label.setText("▼" if self.is_expanded else "▶")
-        self.content_widget.setVisible(self.is_expanded)
-        self.toggled.emit(self.is_expanded)
-
-    def add_widget(self, widget: QWidget):
-        self.content_layout.addWidget(widget)
-
-
-# 保留向后兼容的 ModelDetailItem
-class ModelDetailItem(QWidget):
-    """模型详情项（向后兼容）."""
-
-    def __init__(self, model_id: str, model_name: str, context_length: int = 0,
-                 support_chat: bool = False, support_embedding: bool = False,
-                 support_vision: bool = False, support_thinking: bool = False,
-                 support_tools: bool = False, parent=None):
-        super().__init__(parent)
-        self._init_ui(model_id, model_name, context_length,
-                      support_chat, support_embedding, support_vision,
-                      support_thinking, support_tools)
-
-    def _init_ui(self, model_id, model_name, context_length,
-                 support_chat, support_embedding, support_vision,
-                 support_thinking, support_tools):
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(8, 4, 8, 4)
-        layout.setSpacing(12)
-
-        colors = get_current_colors()
-        text_primary = colors.get('textPrimary', '#333333')
-        text_secondary = colors.get('textSecondary', '#999999')
-
-        # 模型信息
-        info_layout = QVBoxLayout()
-        info_layout.setSpacing(2)
-
-        name_label = QLabel(model_name)
-        name_label.setStyleSheet(f"""
-            color: {text_primary};
-            font-size: 12px;
-            font-weight: 500;
-        """)
-        info_layout.addWidget(name_label)
-
-        if context_length and context_length > 0:
-            ctx_label = QLabel(f"上下文：{context_length // 1024}K")
-            ctx_label.setStyleSheet(f"""
-                color: {text_secondary};
-                font-size: 10px;
-            """)
-            info_layout.addWidget(ctx_label)
-
-        layout.addLayout(info_layout, 1)
-
-        # 能力标签
-        tags_layout = QHBoxLayout()
-        tags_layout.setSpacing(6)
-
-        if support_chat:
-            tags_layout.addWidget(CapabilityTag('chat'))
-        if support_tools:
-            tags_layout.addWidget(CapabilityTag('tools'))
-        if support_vision:
-            tags_layout.addWidget(CapabilityTag('vision'))
-        if support_embedding:
-            tags_layout.addWidget(CapabilityTag('embedding'))
-        if support_thinking:
-            tags_layout.addWidget(CapabilityTag('thinking'))
-
-        layout.addLayout(tags_layout)
-
-
-# 保留向后兼容的 ToggleSwitch
-class ToggleSwitch(QWidget):
-    """现代切换开关组件（向后兼容）."""
-
-    toggled = Signal(bool)
-
-    def __init__(self, checked: bool = False, parent=None):
-        super().__init__(parent)
-        self._checked = checked
-        self.setFixedSize(40, 22)
-        self.setCursor(Qt.CursorShape.PointingHandCursor)
-
-    def sizeHint(self):
-        return QSize(40, 22)
-
-    def mousePressEvent(self, event):
-        if event.button() == Qt.MouseButton.LeftButton:
-            self._checked = not self._checked
-            self.toggled.emit(self._checked)
-            self.update()
-
-    def paintEvent(self, event):
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-
-        colors = get_current_colors()
-        accent = QColor(colors.get('accent', '#4A90D9'))
-        border_color = QColor(colors.get('border', '#CCCCCC'))
-        bg_color = QColor(colors.get('controlFillHover', '#E0E0E0'))
-
-        # 绘制背景轨道
-        rect = QRect(0, 0, self.width(), self.height())
-        path = QPainterPath()
-        path.addRoundedRect(rect, self.height() / 2, self.height() / 2)
-
-        if self._checked:
-            painter.fillPath(path, accent)
-        else:
-            painter.fillPath(path, bg_color)
-
-        # 绘制滑块
-        knob_size = self.height() - 4
-        knob_y = 2
-        if self._checked:
-            knob_x = self.width() - knob_size - 2
-        else:
-            knob_x = 2
-
-        knob_rect = QRect(knob_x, knob_y, knob_size, knob_size)
-        painter.setBrush(Qt.GlobalColor.white)
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.drawEllipse(knob_rect)
-
-    def isChecked(self) -> bool:
-        return self._checked
-
-    def setChecked(self, checked: bool):
-        if self._checked != checked:
-            self._checked = checked
-            self.update()

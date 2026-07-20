@@ -6,16 +6,19 @@ import json
 import os
 from pathlib import Path
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QSize, QTimer
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QApplication, QDialog, QFrame, QHBoxLayout, QLabel,
     QLineEdit, QListWidget, QListWidgetItem, QPushButton,
     QScrollArea, QVBoxLayout, QWidget, QMessageBox,
 )
-from PySide6.QtCore import QTimer
 
+from utils.logging_tools import LoggerManager, get_name
 from utils.style_qss import get_style_qss
+
+# 模块级日志器（LoggerManager 为单例）
+_logger = LoggerManager()
 
 
 LICENSE_COLORS = {
@@ -52,6 +55,15 @@ def _get_manifest_dir() -> Path:
 
 
 class _LicenseItemWidget(QWidget):
+    """许可证列表项控件
+
+    职责：在许可对话框左侧列表中展示单个许可证条目（名称、英文名、
+    许可证类型徽章、版本号），并支持选中态样式切换。
+
+    典型用法：由 LicenseDialog._populate_list 创建，作为 QListWidgetItem
+    的 itemWidget 使用；通过 set_selected 同步列表选中状态。
+    """
+
     def __init__(self, name: str, display_name: str, license_type: str,
                  category: str, version: str = "", colors: dict = None, parent=None):
         super().__init__(parent)
@@ -150,6 +162,15 @@ class _LicenseItemWidget(QWidget):
 
 
 class LicenseDialog(QDialog):
+    """许可信息对话框
+
+    职责：读取 licenses/manifest.json 中登记的字体与第三方依赖许可证信息，
+    左侧列表展示条目、支持搜索过滤，右侧展示许可证全文，并提供
+    「复制全文」「打开文件夹」操作。
+
+    典型用法：由主窗口「帮助 → 许可信息」菜单创建并 exec() 显示。
+    """
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("许可信息")
@@ -388,7 +409,9 @@ class LicenseDialog(QDialog):
         try:
             with open(manifest_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
-        except (json.JSONDecodeError, IOError):
+        except (json.JSONDecodeError, IOError) as e:
+            # manifest 损坏或读取失败时保持空列表，不阻断对话框打开
+            _logger.warning(get_name(), f"许可证 manifest 读取失败，许可列表为空: {e}")
             return
 
         fonts = data.get("fonts", [])
@@ -418,7 +441,6 @@ class LicenseDialog(QDialog):
             # 强制 layout 以获取准确 sizeHint，再加 10px 余量应对 item padding
             widget.adjustSize()
             hint = widget.sizeHint()
-            from PySide6.QtCore import QSize
             lw_item = QListWidgetItem()
             lw_item.setSizeHint(QSize(hint.width(), hint.height() + 10))
             lw_item.setData(Qt.UserRole, item)

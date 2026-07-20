@@ -12,17 +12,10 @@ from core.version import get_instructionx_version_display
 
 
 def _get_logo_path():
-    """获取 logo 图片路径"""
-    # 先检查 ui 目录
+    """获取 logo 图片路径（ui/logo.png，不存在时返回空字符串）"""
     ui_dir = os.path.dirname(os.path.dirname(__file__))
     path = os.path.join(ui_dir, "logo.png")
-    if os.path.exists(path):
-        return path
-    # 备用：检查当前目录
-    path = os.path.join(os.path.dirname(__file__), "..", "logo.png")
-    if os.path.exists(path):
-        return os.path.abspath(path)
-    return ""
+    return path if os.path.exists(path) else ""
 
 
 class AboutDialog(QDialog):
