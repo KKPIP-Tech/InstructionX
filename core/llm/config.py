@@ -332,8 +332,16 @@ class LLMConfig:
         for callback in list(self._subscribers):
             try:
                 callback(EVENT_PROVIDERS_CHANGED, provider_name)
+            except RuntimeError as e:
+                # 回调所属 Qt 对象已销毁（如关闭的对话框面板）：自动退订，
+                # 避免悬挂回调在后续每次落盘时反复报错。
+                # 注意：日志不得记录 callback 本身——对已删除的 Qt 对象
+                # 执行 repr/str 会再次抛出 RuntimeError。
+                self._subscribers = [
+                    cb for cb in self._subscribers if cb is not callback]
+                logger.warning("配置变更订阅回调所属对象已销毁，已自动退订: %s", e)
             except Exception as e:
-                logger.warning("配置变更订阅回调执行失败，已忽略: %s (%s)", callback, e)
+                logger.warning("配置变更订阅回调执行失败，已忽略: %s", e)
 
     # ==================== 配置加载与迁移 ====================
 
