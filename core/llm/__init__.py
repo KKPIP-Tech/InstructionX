@@ -31,9 +31,9 @@
 from .llm_provider import LLMProvider, get_llm_provider
 from .provider_interface import (
     ILLM, Message, ChatResponse, EmbeddingResponse, ModelInfo,
-    UsageInfo
+    UsageInfo, ToolCall, ModelCheckResult
 )
-from .config import LLMConfig, ProviderConfig
+from .config import LLMConfig, ProviderConfig, get_llm_config
 from .exceptions import (
     LLMException,
     ConfigurationError,
@@ -49,8 +49,12 @@ from .exceptions import (
 
 # 新增：插件服务层类型（types.py）
 from .types import (
+    DEFAULT_PROVIDER,
+    DEFAULT_MODEL,
     Conversation,
     ToolResult,
+    ToolChatResult,
+    ToolDefinition,
     UsageStats,
     ImageResult,
     AudioResult,
@@ -81,8 +85,11 @@ __all__ = [
     "EmbeddingResponse",
     "ModelInfo",
     "UsageInfo",
+    "ToolCall",
+    "ModelCheckResult",
     "LLMConfig",
     "ProviderConfig",
+    "get_llm_config",
     # 异常
     "LLMException",
     "ConfigurationError",
@@ -95,8 +102,12 @@ __all__ = [
     "TimeoutError",
     "StreamingError",
     # 插件服务层类型
+    "DEFAULT_PROVIDER",
+    "DEFAULT_MODEL",
     "Conversation",
     "ToolResult",
+    "ToolChatResult",
+    "ToolDefinition",
     "UsageStats",
     "ImageResult",
     "AudioResult",

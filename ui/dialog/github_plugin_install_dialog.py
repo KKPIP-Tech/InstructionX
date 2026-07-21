@@ -13,14 +13,18 @@ from PySide6.QtWidgets import (
     QScrollArea, QWidget,
     QMessageBox, QStackedWidget
 )
-from PySide6.QtCore import Qt, QThread, Signal
+from PySide6.QtCore import Qt, QThread, Signal, QTimer
 from PySide6.QtGui import QFont
 
 from core.plugin.github_plugin_installer import (
     GitHubPluginInstaller, InstallResult, RepoInspectionResult, PluginInfo
 )
 from core.plugin.manager import get_plugin_manager
+from utils.logging_tools import LoggerManager, get_name
 from utils.style_qss import get_style_qss
+
+# 模块级日志器（LoggerManager 为单例）
+_logger = LoggerManager()
 
 # 语义状态色（成功/警告/错误，主题无关的通用状态色）
 _COLOR_SUCCESS = "#16A34A"
@@ -154,6 +158,10 @@ class GitHubPluginInstallDialog(QDialog):
 
     # 信号：插件安装完成
     plugin_installed = Signal(list)  # List[InstallResult]
+
+    # 关闭时等待后台线程结束的轮询间隔与超时上限（毫秒）
+    _CLOSE_POLL_INTERVAL_MS = 200
+    _CLOSE_WAIT_TIMEOUT_MS = 3000
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -289,6 +297,10 @@ class GitHubPluginInstallDialog(QDialog):
 
         self.check_btn.setEnabled(False)
         self.status_label.setText("正在检查仓库...")
+        # 重置状态文案颜色，避免残留上次检查的成功绿/失败红
+        self.status_label.setStyleSheet(
+            f"color: {_theme_color('textSecondary', '#6B7280')};"
+        )
         self._set_info_page("empty")
 
         self.fetch_worker = GitHubFetchWorker(self.installer, url)
@@ -344,6 +356,7 @@ class GitHubPluginInstallDialog(QDialog):
         """获取仓库信息出错"""
         self.check_btn.setEnabled(True)
         self.fetch_worker = None
+        _logger.error(get_name(), f"检查 GitHub 仓库失败: {error}")
         self.status_label.setText(f"错误: {error}")
         self._set_info_page("empty")
 
@@ -503,6 +516,7 @@ class GitHubPluginInstallDialog(QDialog):
         self.status_label.setText(f"安装失败: {error}")
         self.status_label.setStyleSheet(f"color: {_COLOR_ERROR};")
 
+        _logger.error(get_name(), f"从 GitHub 安装插件失败: {error}")
         QMessageBox.critical(self, "安装失败", error)
 
     def _on_install_progress(self, msg: str):
@@ -510,14 +524,57 @@ class GitHubPluginInstallDialog(QDialog):
         self.status_label.setText(msg)
 
     def closeEvent(self, event):
-        """对话框关闭事件"""
-        # 取消正在进行的操作
-        if self.fetch_worker and self.fetch_worker.isRunning():
-            self.fetch_worker.terminate()
-            self.fetch_worker.wait()
-
-        if self.install_worker and self.install_worker.isRunning():
-            self.install_worker.terminate()
-            self.install_worker.wait()
-
+        """对话框关闭事件：后台线程仍在运行时优雅关闭，避免强杀线程"""
+        if self._has_running_worker():
+            # 请求线程中断并忽略本次关闭，等待线程结束后由定时器触发真正关闭
+            self._request_worker_interruption()
+            # 禁用界面交互，防止等待期间重复操作
+            self.setEnabled(False)
+            event.ignore()
+            self._start_close_wait()
+            return
         super().closeEvent(event)
+
+    def _has_running_worker(self) -> bool:
+        """检查是否仍有后台线程在运行."""
+        fetch_running = bool(self.fetch_worker and self.fetch_worker.isRunning())
+        install_running = bool(self.install_worker and self.install_worker.isRunning())
+        return fetch_running or install_running
+
+    def _request_worker_interruption(self) -> None:
+        """请求所有运行中的后台线程中断."""
+        for worker in (self.fetch_worker, self.install_worker):
+            if worker and worker.isRunning():
+                worker.requestInterruption()
+
+    def _start_close_wait(self) -> None:
+        """启动轮询定时器，等待后台线程结束后关闭对话框."""
+        self._close_wait_elapsed = 0
+        self._close_timer = QTimer(self)
+        self._close_timer.setInterval(self._CLOSE_POLL_INTERVAL_MS)
+        self._close_timer.timeout.connect(self._on_close_wait_tick)
+        self._close_timer.start()
+
+    def _on_close_wait_tick(self) -> None:
+        """轮询后台线程状态：结束则关闭，超时则兜底强杀后关闭."""
+        if not self._has_running_worker():
+            self._close_timer.stop()
+            self.close()
+            return
+
+        self._close_wait_elapsed += self._CLOSE_POLL_INTERVAL_MS
+        if self._close_wait_elapsed < self._CLOSE_WAIT_TIMEOUT_MS:
+            return
+
+        # 等待超时线程仍无法结束，兜底强杀，避免对话框永远无法关闭
+        self._close_timer.stop()
+        _logger.warning(
+            get_name(),
+            "等待后台线程结束超时（%dms），强制终止线程后关闭对话框"
+            % self._CLOSE_WAIT_TIMEOUT_MS,
+        )
+        for worker in (self.fetch_worker, self.install_worker):
+            if worker and worker.isRunning():
+                worker.terminate()
+                worker.wait()
+        self.close()

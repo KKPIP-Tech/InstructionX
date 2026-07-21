@@ -5,6 +5,7 @@
 
 import copy
 import datetime as dt
+import json
 import math
 import os
 import sqlite3
@@ -21,6 +22,8 @@ import orjson
 
 from .schema_migrations import MIGRATIONS, TARGET_SCHEMA_VERSION
 from . import sql_map
+
+from utils.logging_tools import LoggerManager, get_name
 
 
 # ---------------------------------------------------------------------------
@@ -200,7 +203,9 @@ class SQLiteBackend:
         self.temp_json_file = self.data_dir / f"{data_filename}.tmp"
 
         self._conn: Optional[sqlite3.Connection] = None
-        self._value_cache = _LRUCache(capacity=4096)
+        # 容量使用 _LRUCache 默认值（4096），不显式传字面量
+        self._value_cache = _LRUCache()
+        self._logger = LoggerManager()
 
     # -----------------------------------------------------------------------
     # 连接与 PRAGMA
@@ -230,8 +235,9 @@ class SQLiteBackend:
         if self._conn is not None:
             try:
                 self._conn.close()
-            except Exception:
-                pass
+            except Exception as e:
+                # 关闭连接失败不影响后续流程，仅记录调试日志
+                self._logger.debug(get_name(), f'关闭数据库连接时出错（已忽略）: {e}')
             self._conn = None
 
     # -----------------------------------------------------------------------
@@ -256,8 +262,9 @@ class SQLiteBackend:
         except Exception:
             try:
                 conn.execute(sql_map.SQLMap.v1.ROLLBACK)
-            except Exception:
-                pass
+            except Exception as rollback_error:
+                # 回滚失败时原始异常仍会抛出，回滚错误仅记录调试日志
+                self._logger.debug(get_name(), f'事务回滚失败（原始异常仍将抛出）: {rollback_error}')
             raise
 
     # -----------------------------------------------------------------------
@@ -316,8 +323,9 @@ class SQLiteBackend:
             except Exception as e:
                 try:
                     conn.execute(sql_map.SQLMap.v1.ROLLBACK)
-                except Exception:
-                    pass
+                except Exception as rollback_error:
+                    # 回滚失败不掩盖迁移失败的主异常，仅记录调试日志
+                    self._logger.debug(get_name(), f'迁移事务回滚失败（主异常仍将抛出）: {rollback_error}')
                 raise SQLiteBackendError(f"数据库升级到版本 {next_version} 失败: {e}") from e
             current = next_version
 
@@ -410,8 +418,9 @@ class SQLiteBackend:
         try:
             if self.temp_json_file.exists():
                 self.temp_json_file.unlink()
-        except Exception:
-            pass
+        except Exception as e:
+            # 清理残留的临时 JSON 文件失败不影响初始化主流程
+            self._logger.debug(get_name(), f'清理临时 JSON 文件失败（已忽略）: {e}')
 
     def _delete_db_files(self) -> None:
         """删除数据库文件及其 WAL/SHM 附属文件。"""
@@ -421,16 +430,16 @@ class SQLiteBackend:
             try:
                 if path.exists():
                     path.unlink()
-            except Exception:
-                pass
+            except Exception as e:
+                # 删除残留数据库文件失败不影响错误恢复主流程
+                self._logger.debug(get_name(), f'删除数据库文件 {path.name} 失败（已忽略）: {e}')
 
     def _parse_json_file(self) -> Dict[str, Any]:
-        import json as _json
         try:
             # utf-8-sig 兼容带 BOM 与不带 BOM 的 UTF-8 文件
             with open(self.json_file, 'r', encoding='utf-8-sig') as f:
-                return _json.load(f)
-        except _json.JSONDecodeError as e:
+                return json.load(f)
+        except json.JSONDecodeError as e:
             raise SQLiteBackendError(f"JSON 解析失败: {e}")
         except Exception as e:
             raise SQLiteBackendError(f"读取数据文件失败: {e}")

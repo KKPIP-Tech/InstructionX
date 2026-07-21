@@ -23,6 +23,14 @@ from .scheduler import TaskScheduler, SchedulerCallback
 from utils.logging_tools import LoggerManager, get_name
 
 
+# 长期任务状态字符串（模块级常量；值与持久化 JSON 中的字符串严格一致，不可改动）
+LONG_TASK_STATUS_RUNNING = "running"
+LONG_TASK_STATUS_COMPLETED = "completed"
+LONG_TASK_STATUS_FAILED = "failed"
+LONG_TASK_STATUS_RESTARTING = "restarting"
+LONG_TASK_STATUS_STOPPED = "stopped"
+
+
 class BackgroundTaskManager(ITaskManager):
     """
     后台任务管理器
@@ -68,6 +76,12 @@ class BackgroundTaskManager(ITaskManager):
     MAX_AUTO_RESTARTS = 10
     # 过期任务记录保留天数
     TASK_RECORD_MAX_AGE_DAYS = 30
+    # 异步任务线程池默认工作线程数
+    DEFAULT_MAX_WORKERS = 4
+    # 定时任务检查线程的轮询间隔（秒）
+    SCHEDULE_CHECK_INTERVAL = 1.0
+    # 关闭时等待定时任务检查线程退出的上限（秒）
+    CHECK_THREAD_JOIN_TIMEOUT = 2.0
 
     _instance: Optional['BackgroundTaskManager'] = None
     _lock: threading.Lock = threading.Lock()
@@ -94,7 +108,9 @@ class BackgroundTaskManager(ITaskManager):
         self._logger = LoggerManager()
 
         # 线程池（用于异步任务执行）
-        self._executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="BackgroundTask")
+        self._executor = ThreadPoolExecutor(
+            max_workers=self.DEFAULT_MAX_WORKERS, thread_name_prefix="BackgroundTask"
+        )
 
         # 运行时任务存储（不持久化 func 和 callback）
         self._running_tasks: Dict[str, BackgroundTask] = {}
@@ -408,15 +424,35 @@ class BackgroundTaskManager(ITaskManager):
         callback: Optional[Callable] = None,
         args: tuple = (),
         kwargs: dict = None
-    ) -> str:
+    ) -> Optional[str]:
         """
         注册定时任务
 
         注意：func 与 callback 在线程池 worker 线程中执行；如需操作 Qt UI，
         请使用信号槽或 QMetaObject.invokeMethod 编组到主线程。
+
+        Args:
+            plugin_id: 插件 UUID
+            name: 任务名称
+            func: 任务执行函数
+            interval: 执行间隔（秒）
+            callback: 可选的完成回调
+            args: 函数位置参数
+            kwargs: 函数关键字参数
+
+        Returns:
+            任务 ID；管理器已关闭时记 WARNING 并返回 None（与其他注册方法一致）
         """
         if kwargs is None:
             kwargs = {}
+        with self._task_lock:
+            # 先检查关闭标志再持久化，避免产生幽灵任务（与 register_async_task 对齐）
+            if self._is_shutdown:
+                self._logger.warning(
+                    get_name(),
+                    f'Rejecting scheduled task registration after shutdown: {plugin_id}/{name}'
+                )
+                return None
         task = ScheduledTask(
             plugin_id=plugin_id,
             name=name,
@@ -464,7 +500,14 @@ class BackgroundTaskManager(ITaskManager):
         self.restore_scheduled_tasks(plugin_id)
 
     def restore_scheduled_tasks(self, plugin_id: str) -> int:
-        """恢复指定插件的定时任务"""
+        """恢复指定插件的定时任务
+
+        Args:
+            plugin_id: 插件 UUID
+
+        Returns:
+            成功恢复的任务数量
+        """
         factory = self._scheduled_task_factories.get(plugin_id)
         if not factory:
             return 0
@@ -507,7 +550,14 @@ class BackgroundTaskManager(ITaskManager):
         return restored_count
 
     def unregister_scheduled_task(self, task_id: str) -> bool:
-        """注销定时任务"""
+        """注销定时任务
+
+        Args:
+            task_id: 任务 ID
+
+        Returns:
+            是否成功注销（任务不在运行列表中时返回 False）
+        """
         with self._task_lock:
             task = self._running_scheduled_tasks.pop(task_id, None)
 
@@ -518,7 +568,14 @@ class BackgroundTaskManager(ITaskManager):
         return False
 
     def enable_scheduled_task(self, task_id: str) -> bool:
-        """启用定时任务"""
+        """启用定时任务（重算下次执行时间并加入运行列表）
+
+        Args:
+            task_id: 任务 ID
+
+        Returns:
+            是否成功启用（任务不存在时返回 False）
+        """
         task = self._storage.get_scheduled_task(task_id)
         if not task:
             return False
@@ -534,7 +591,14 @@ class BackgroundTaskManager(ITaskManager):
         return True
 
     def disable_scheduled_task(self, task_id: str) -> bool:
-        """禁用定时任务"""
+        """禁用定时任务（保留存储记录，从运行列表移除）
+
+        Args:
+            task_id: 任务 ID
+
+        Returns:
+            是否成功禁用（任务不存在时返回 False）
+        """
         task = self._storage.get_scheduled_task(task_id)
         if not task:
             return False
@@ -584,8 +648,8 @@ class BackgroundTaskManager(ITaskManager):
             except Exception as e:
                 self._logger.error(get_name(), f'Error checking scheduled tasks: {e}')
 
-            # 等待 1 秒或直到停止事件被设置
-            self._stop_event.wait(1.0)
+            # 等待一个轮询间隔或直到停止事件被设置
+            self._stop_event.wait(self.SCHEDULE_CHECK_INTERVAL)
 
     def _execute_scheduled_task(self, task: ScheduledTask) -> None:
         """执行定时任务"""
@@ -737,7 +801,9 @@ class BackgroundTaskManager(ITaskManager):
                 continue
 
             # 正常停止/已完成/已失败的任务保留记录、不自动重启
-            if stored_task.current_status in ("completed", "failed", "stopped"):
+            if stored_task.current_status in (
+                LONG_TASK_STATUS_COMPLETED, LONG_TASK_STATUS_FAILED, LONG_TASK_STATUS_STOPPED
+            ):
                 continue
 
             # 检查任务是否已经在运行
@@ -839,7 +905,7 @@ class BackgroundTaskManager(ITaskManager):
         """
         task.last_started_at = datetime.now()
         task.error = None
-        task.current_status = "running"
+        task.current_status = LONG_TASK_STATUS_RUNNING
         self._storage.save_long_running_task(task)
 
         try:
@@ -853,7 +919,7 @@ class BackgroundTaskManager(ITaskManager):
             return
 
         # 函数返回了（正常情况下长期任务不会返回），任务完成
-        task.current_status = "completed"
+        task.current_status = LONG_TASK_STATUS_COMPLETED
         self._storage.save_long_running_task(task)
 
         self._invoke_long_running_callback(task, TaskStatus.COMPLETED, result, None)
@@ -875,7 +941,7 @@ class BackgroundTaskManager(ITaskManager):
         - 重启等待由 threading.Timer 调度，不占线程池 worker。
         """
         task.error = str(error)
-        task.current_status = "failed"
+        task.current_status = LONG_TASK_STATUS_FAILED
 
         self._invoke_long_running_callback(task, TaskStatus.FAILED, None, str(error))
 
@@ -890,7 +956,7 @@ class BackgroundTaskManager(ITaskManager):
 
         if task.restart_count >= self.MAX_AUTO_RESTARTS:
             # 超过最大重启次数：标记失败、停止重启，保留记录以便排查
-            task.current_status = "failed"
+            task.current_status = LONG_TASK_STATUS_FAILED
             self._storage.save_long_running_task(task)
             self._logger.error(
                 get_name(),
@@ -903,7 +969,7 @@ class BackgroundTaskManager(ITaskManager):
 
         # 自动重启：指数退避
         task.restart_count += 1
-        task.current_status = "restarting"
+        task.current_status = LONG_TASK_STATUS_RESTARTING
         delay = min(
             self.AUTO_RESTART_INITIAL_DELAY * (2 ** (task.restart_count - 1)),
             self.AUTO_RESTART_MAX_DELAY
@@ -1002,7 +1068,14 @@ class BackgroundTaskManager(ITaskManager):
     # ==================== 任务查询 ====================
 
     def get_task(self, task_id: str) -> Optional[BackgroundTask]:
-        """获取指定任务"""
+        """获取指定任务（优先查运行时列表，再查持久化存储）
+
+        Args:
+            task_id: 任务 ID
+
+        Returns:
+            任务对象，不存在时返回 None
+        """
         with self._task_lock:
             if task_id in self._running_tasks:
                 return self._running_tasks[task_id]
@@ -1010,11 +1083,22 @@ class BackgroundTaskManager(ITaskManager):
         return self._storage.get_task(task_id)
 
     def get_tasks_by_plugin(self, plugin_id: str) -> List[BackgroundTask]:
-        """获取指定插件的所有任务（不包括长期任务）"""
+        """获取指定插件的所有任务（不包括长期任务）
+
+        Args:
+            plugin_id: 插件 UUID
+
+        Returns:
+            该插件的任务列表
+        """
         return self._storage.get_tasks_by_plugin(plugin_id)
 
     def get_all_tasks(self) -> List[BackgroundTask]:
-        """获取所有任务（不包括长期任务）"""
+        """获取所有任务（不包括长期任务）
+
+        Returns:
+            运行时任务与持久化任务合并去重后的任务列表
+        """
         with self._task_lock:
             running_tasks = list(self._running_tasks.values())
 
@@ -1027,12 +1111,26 @@ class BackgroundTaskManager(ITaskManager):
         return list(all_tasks.values())
 
     def get_task_status(self, task_id: str) -> Optional[TaskStatus]:
-        """获取任务状态"""
+        """获取任务状态
+
+        Args:
+            task_id: 任务 ID
+
+        Returns:
+            任务状态枚举，任务不存在时返回 None
+        """
         task = self.get_task(task_id)
         return task.status if task else None
 
     def get_scheduled_tasks(self, plugin_id: Optional[str] = None) -> List[ScheduledTask]:
-        """获取定时任务列表"""
+        """获取定时任务列表
+
+        Args:
+            plugin_id: 可选的插件 UUID，为 None 时返回全部定时任务
+
+        Returns:
+            定时任务列表
+        """
         if plugin_id:
             return self._storage.get_scheduled_tasks_by_plugin(plugin_id)
         return self._storage.get_all_scheduled_tasks()
@@ -1066,7 +1164,14 @@ class BackgroundTaskManager(ITaskManager):
         return False
 
     def clear_completed_tasks(self, plugin_id: Optional[str] = None) -> int:
-        """清理已完成的任务"""
+        """清理已完成/失败/已取消的任务记录
+
+        Args:
+            plugin_id: 可选，指定插件的任务才清理；为 None 时清理全部
+
+        Returns:
+            清理的任务数量
+        """
         return self._storage.clear_completed_tasks(plugin_id)
 
     def cleanup_old_tasks(self, max_age_days: int = TASK_RECORD_MAX_AGE_DAYS) -> int:
@@ -1109,7 +1214,7 @@ class BackgroundTaskManager(ITaskManager):
         self._stop_event.set()
         check_thread = getattr(self, '_schedule_check_thread', None)
         if check_thread is not None and check_thread.is_alive():
-            check_thread.join(timeout=2.0)
+            check_thread.join(timeout=self.CHECK_THREAD_JOIN_TIMEOUT)
 
         # 取消所有待重启定时器
         with self._task_lock:
@@ -1143,7 +1248,7 @@ class BackgroundTaskManager(ITaskManager):
                     )
                     future.cancel()
 
-            task.current_status = "stopped"
+            task.current_status = LONG_TASK_STATUS_STOPPED
             task.last_stopped_at = datetime.now()
             try:
                 self._storage.save_long_running_task(task)
@@ -1180,5 +1285,10 @@ class BackgroundTaskManager(ITaskManager):
             scheduler = getattr(self, '_scheduler', None)
             if scheduler is not None:
                 scheduler.stop()
-        except Exception:
-            pass
+        except Exception as e:
+            # 豁免说明：析构期间解释器可能已拆除日志设施，日志调用本身也可能失败，
+            # 因此日志写入需再套一层防护，实在无法记录时只能放弃
+            try:
+                self._logger.debug(get_name(), f'析构时停止调度器出错（已忽略）: {e}')
+            except Exception:
+                pass

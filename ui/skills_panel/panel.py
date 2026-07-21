@@ -163,7 +163,7 @@ class SkillsPanel(QWidget):
             name = plugin.plugin_name
             description = getattr(plugin, 'skill_description', name)
         except Exception as e:
-            self._logger.error(get_name(), f'Error getting plugin info: {e}')
+            self._logger.error(get_name(), f'获取插件信息失败: {e}')
             return
 
         # 创建技能按钮
@@ -219,7 +219,7 @@ class SkillsPanel(QWidget):
             self._switch_tab(current_index)
 
         except Exception as e:
-            self._logger.error(get_name(), f'Error loading skills from manager: {e}')
+            self._logger.error(get_name(), f'从插件管理器加载技能失败: {e}')
 
     def _clear_layout(self, layout):
         """清空布局中的所有控件"""

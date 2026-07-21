@@ -79,7 +79,7 @@ class PluginConfigManager:
 
             return data
 
-        except Exception as e:
+        except (OSError, json.JSONDecodeError) as e:
             self._logger.error(get_name(), f'Error loading plugin order config: {e}')
             return {
                 "official_plugins": [],
@@ -111,7 +111,7 @@ class PluginConfigManager:
 
             return True
 
-        except Exception as e:
+        except (OSError, TypeError, ValueError) as e:
             self._logger.error(get_name(), f'Error saving plugin order config: {e}')
             return False
 

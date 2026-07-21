@@ -141,10 +141,12 @@ pip install -r requirements.txt
 
 主要依赖：
 - `PySide6` (>=6.10) - Qt GUI 框架
-- `requests` - HTTP 请求
-- `aiohttp` - 异步 HTTP 客户端
-- `opencv-python` - 图像处理
-- `numpy` - 数值计算
+- `requests` (>=2.32) - HTTP 请求
+- `aiohttp` (>=3.11) - 异步 HTTP 客户端
+- `mcp` (>=1.0.0) - MCP 协议（Model Context Protocol）
+- `orjson` (>=3.11.0,<4) - 高性能 JSON 序列化
+- `matplotlib` (>=3.10) - 用量统计图表
+- `packaging` (>=23.0) - 插件依赖版本检查
 
 ### 运行应用
 
@@ -358,10 +360,12 @@ InstructionX 采用 **InstructionX Commercial Source License**(商业源码许�
 | InstructionX CE | 应用版本 | Alpha 1.0.2 |
 | PySide6 | Qt GUI 框架 | >= 6.10 |
 | Python | 编程语言 | >= 3.14 |
-| requests | HTTP 请求 | - |
-| aiohttp | 异步 HTTP | - |
-| opencv-python | 图像处理 | - |
-| numpy | 数值计算 | - |
+| requests | HTTP 请求 | >= 2.32 |
+| aiohttp | 异步 HTTP | >= 3.11 |
+| mcp | MCP 协议 | >= 1.0.0 |
+| orjson | 高性能 JSON 序列化 | >= 3.11.0,<4 |
+| matplotlib | 用量统计图表 | >= 3.10 |
+| packaging | 插件依赖版本检查 | >= 23.0 |
 | StyleQSS | 界面主题 | 内置 |
 
 ---

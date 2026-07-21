@@ -26,7 +26,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Callable, Union
 
-from .types import Conversation, UsageStats, StreamChunk
+from .types import (
+    DEFAULT_MODEL, DEFAULT_PROVIDER,
+    Conversation, StreamChunk, UsageStats,
+)
 from .provider_interface import UsageInfo, Message
 from .llm_provider import get_llm_provider
 
@@ -136,16 +139,16 @@ class ConversationManager:
     def create_conversation(
         self,
         system_prompt: Optional[str] = None,
-        provider: str = "default",
-        model: str = "default",
+        provider: str = DEFAULT_PROVIDER,
+        model: str = DEFAULT_MODEL,
         metadata: Optional[Dict] = None,
     ) -> str:
         """创建一个新对话
 
         Args:
             system_prompt: 系统提示词
-            provider: Provider 名称
-            model: 模型名称
+            provider: 实例 id，DEFAULT_PROVIDER 表示默认实例
+            model: 模型名称，DEFAULT_MODEL 表示使用实例配置中的模型
             metadata: 额外元数据
 
         Returns:
@@ -214,6 +217,8 @@ class ConversationManager:
         temperature: Optional[float] = None,
         max_tokens: Optional[int] = None,
         tools: Optional[List[Dict]] = None,
+        model: Optional[str] = None,
+        provider: Optional[str] = None,
     ) -> tuple[str, Optional[UsageInfo]]:
         """同步发送消息，调用成功后自动追加到历史
 
@@ -227,11 +232,14 @@ class ConversationManager:
             temperature: 温度参数（可选，None 表示不指定）
             max_tokens: 最大 token 数（可选，None 表示不指定）
             tools: 工具定义列表（可选）
+            model: 临时覆盖本次调用的模型（不修改会话绑定）
+            provider: 临时覆盖本次调用的实例 id（不修改会话绑定）
 
         Returns:
             tuple[str, Optional[UsageInfo]]: (响应内容, 用量信息)
         """
         conv = self._get_or_raise(conversation_id)
+        call_provider, call_model = self._resolve_call_target(conv, provider, model)
 
         # 基于历史构建请求消息（此时不写入历史，调用成功才入历史）
         messages = conv.to_llm_format()
@@ -241,7 +249,7 @@ class ConversationManager:
         messages.append(user_msg)
         messages = self._truncate_messages(messages)
 
-        msg_objs = [Message(**m) if isinstance(m, dict) else m for m in messages]
+        msg_objs = [Message.from_dict(m) if isinstance(m, dict) else m for m in messages]
         # None 表示"不指定"，不传给底层（避免写入 payload 变成 null）
         call_kwargs: Dict[str, Any] = {}
         if temperature is not None:
@@ -251,11 +259,11 @@ class ConversationManager:
         if tools is not None:
             call_kwargs["tools"] = tools
 
-        # "default" 原样透传，由 LLMProvider 层解析；用量记录也在该层完成
+        # DEFAULT_PROVIDER 原样透传，由 LLMProvider 层解析；用量记录也在该层完成
         response = self._llm.chat(
             messages=msg_objs,
-            provider=conv.provider or "default",
-            model=conv.model or "default",
+            provider=call_provider,
+            model=call_model,
             conversation_id=conversation_id,
             **call_kwargs,
         )
@@ -265,12 +273,32 @@ class ConversationManager:
         conv.add_message("user", content, images=images if images else None)
         conv.add_message("assistant", response.content, usage)
         if usage:
-            cost = self._estimate_cost(usage, conv.provider, conv.model)
+            cost = self._estimate_cost(usage, call_provider, call_model)
             if cost:
                 conv.total_cost += cost
         self._save_conversations()
 
         return response.content, usage
+
+    @staticmethod
+    def _resolve_call_target(
+        conv: Conversation,
+        provider: Optional[str],
+        model: Optional[str],
+    ) -> tuple[str, str]:
+        """解析本次调用的实例与模型（临时覆盖优先，不修改会话绑定）
+
+        Args:
+            conv: 会话对象（绑定的 provider/model 作为缺省值）
+            provider: 临时覆盖的实例 id，None 表示使用会话绑定
+            model: 临时覆盖的模型，None 表示使用会话绑定
+
+        Returns:
+            tuple[str, str]: (实际实例引用, 实际模型引用)
+        """
+        call_provider = provider if provider is not None else (conv.provider or DEFAULT_PROVIDER)
+        call_model = model if model is not None else (conv.model or DEFAULT_MODEL)
+        return call_provider, call_model
 
     def stream_send_message(
         self,
@@ -281,6 +309,8 @@ class ConversationManager:
         temperature: Optional[float] = None,
         max_tokens: Optional[int] = None,
         tools: Optional[List[Dict]] = None,
+        model: Optional[str] = None,
+        provider: Optional[str] = None,
     ) -> tuple[str, Optional[UsageInfo]]:
         """流式发送消息，逐 chunk 通过 callback 回调
 
@@ -296,11 +326,14 @@ class ConversationManager:
             temperature: 温度参数（可选，None 表示不指定）
             max_tokens: 最大 token 数（可选，None 表示不指定）
             tools: 工具定义列表（可选）
+            model: 临时覆盖本次调用的模型（不修改会话绑定）
+            provider: 临时覆盖本次调用的实例 id（不修改会话绑定）
 
         Returns:
             tuple[str, Optional[UsageInfo]]: (完整响应内容, 用量信息)
         """
         conv = self._get_or_raise(conversation_id)
+        call_provider, call_model = self._resolve_call_target(conv, provider, model)
 
         messages = conv.to_llm_format()
         user_msg: Dict[str, Any] = {"role": "user", "content": content}
@@ -311,13 +344,16 @@ class ConversationManager:
 
         full_content: List[str] = []
         last_usage: Optional[UsageInfo] = None
+        last_reasoning: Optional[str] = None
+        last_tool_calls: List[Any] = []
 
         def stream_callback(chunk: Any, done: bool):
             """适配底层 (str, bool) 回调契约为对外 StreamChunk 回调
 
-            防御性兼容底层误传 ChatResponse 的情况（提取其 content/usage）。
+            防御性兼容底层误传 ChatResponse 的情况（提取其 content/usage/
+            reasoning_content/tool_calls）。
             """
-            nonlocal last_usage
+            nonlocal last_usage, last_reasoning, last_tool_calls
             if isinstance(chunk, str):
                 text = chunk
             else:
@@ -327,11 +363,19 @@ class ConversationManager:
                 chunk_usage = getattr(chunk, "usage", None)
                 if isinstance(chunk_usage, UsageInfo):
                     last_usage = chunk_usage
+                chunk_reasoning = getattr(chunk, "reasoning_content", None)
+                if isinstance(chunk_reasoning, str) and chunk_reasoning:
+                    last_reasoning = chunk_reasoning
+                chunk_tool_calls = getattr(chunk, "tool_calls", None)
+                if chunk_tool_calls:
+                    last_tool_calls = list(chunk_tool_calls)
             full_content.append(text)
             sc = StreamChunk(
                 content=text,
                 done=done,
                 full_response="".join(full_content),
+                reasoning_content=last_reasoning,
+                tool_calls=last_tool_calls,
                 usage=last_usage,
             )
             if callback:
@@ -340,7 +384,7 @@ class ConversationManager:
                 except Exception as e:
                     self._logger.error(f"Stream callback error: {e}")
 
-        msg_objs = [Message(**m) if isinstance(m, dict) else m for m in messages]
+        msg_objs = [Message.from_dict(m) if isinstance(m, dict) else m for m in messages]
         call_kwargs: Dict[str, Any] = {}
         if temperature is not None:
             call_kwargs["temperature"] = temperature
@@ -353,8 +397,8 @@ class ConversationManager:
             result = self._llm.stream_chat(
                 messages=msg_objs,
                 callback=stream_callback,
-                provider=conv.provider or "default",
-                model=conv.model or "default",
+                provider=call_provider,
+                model=call_model,
                 conversation_id=conversation_id,
                 **call_kwargs,
             )
@@ -363,8 +407,9 @@ class ConversationManager:
             if callback:
                 try:
                     callback(sc)
-                except Exception:
-                    pass
+                except Exception as cb_err:
+                    # 错误通知回调本身失败不应掩盖原始异常，记录后继续抛出
+                    self._logger.error(f"Stream error callback failed: {cb_err}")
             raise
 
         # 修复后的 LLMProvider.stream_chat 返回完整文本；
@@ -376,12 +421,25 @@ class ConversationManager:
         if final_content:
             conv.add_message("assistant", final_content, last_usage)
         if last_usage:
-            cost = self._estimate_cost(last_usage, conv.provider, conv.model)
+            cost = self._estimate_cost(last_usage, call_provider, call_model)
             if cost:
                 conv.total_cost += cost
         self._save_conversations()
 
         return final_content, last_usage
+
+    # ==================== 定价表 ====================
+
+    def update_pricing(self, pricing: Dict[str, Dict]) -> None:
+        """热更新定价表
+
+        配置变更时由上层（LLMPluginService 的订阅回调）注入重建后的
+        定价表，后续费用估算立即使用新表，无需重建对话管理器。
+
+        Args:
+            pricing: 新定价表（结构与构造入参一致）
+        """
+        self._pricing = pricing
 
     # ==================== 内部方法 ====================
 

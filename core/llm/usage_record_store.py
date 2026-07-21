@@ -66,6 +66,8 @@ class UsageRecordStore:
     # 自动 prune 阈值：超过 MAX_RECORDS 条时仅保留最近 PRUNE_KEEP 条
     MAX_RECORDS = 10000
     PRUNE_KEEP = 8000
+    # flush 轮询间隔（秒）：检查写线程是否完成落盘的等待步长
+    FLUSH_POLL_SECONDS = 0.02
 
     def __new__(cls) -> "UsageRecordStore":
         if cls._instance is None:
@@ -160,6 +162,33 @@ class UsageRecordStore:
 
     # ==================== 公开 API ====================
 
+    def flush(self, timeout: float = 2.0) -> None:
+        """冲刷防抖窗口内的待写记录，等待后台写线程完成落盘
+
+        供应用退出等需要确保数据不丢失的场景调用。唤醒后台写线程并
+        轮询等待，直到内存缓存中的脏数据全部写入磁盘。方法幂等，可
+        重复调用；无待写数据时立即返回。
+
+        Args:
+            timeout: 最长等待时间（秒），超时后记录警告日志并返回，
+                未落盘的数据仍由 daemon 写线程在后台继续尝试
+
+        Returns:
+            None
+        """
+        deadline = time.monotonic() + timeout
+        while True:
+            with self._file_lock:
+                dirty = self._cache_dirty
+            if not dirty:
+                return
+            # 唤醒写线程尽快写入（不等新的防抖窗口自然到期）
+            self._writer_wake.set()
+            if time.monotonic() >= deadline:
+                logger.warning("UsageRecordStore flush 超时（%ss），仍有数据未落盘", timeout)
+                return
+            time.sleep(self.FLUSH_POLL_SECONDS)
+
     def record(self, usage_record: UsageRecord) -> None:
         """记录一次 LLM API 请求
 
@@ -188,6 +217,7 @@ class UsageRecordStore:
         conversation_id: Optional[str] = None,
         limit: Optional[int] = None,
         offset: int = 0,
+        descending: bool = False,
     ) -> List[UsageRecord]:
         """查询用量记录
 
@@ -199,6 +229,8 @@ class UsageRecordStore:
             conversation_id: 对话 ID（精确匹配）
             limit: 最大返回条数
             offset: 跳过条数
+            descending: 是否按时间倒序（最新在前）返回；默认 False 保持
+                写入顺序（旧→新）。倒序在分页之前生效，即第 0 页为最新记录
 
         Returns:
             List[UsageRecord]: 符合条件的记录列表
@@ -234,8 +266,11 @@ class UsageRecordStore:
 
             results.append(UsageRecord.from_dict(r))
 
+        # 倒序在分页之前生效：第 0 页即为最新记录
+        if descending:
+            results.reverse()
+
         # 分页
-        total = len(results)
         results = results[offset:]
         if limit is not None:
             results = results[:limit]

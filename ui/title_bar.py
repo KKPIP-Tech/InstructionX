@@ -8,7 +8,7 @@ import os
 from PySide6.QtWidgets import (
     QWidget, QHBoxLayout, QLabel, QPushButton, QMenuBar, QApplication, QMenu
 )
-from PySide6.QtCore import Qt, QPoint, Signal
+from PySide6.QtCore import Qt, QPoint
 from PySide6.QtGui import QMouseEvent, QPainter, QColor, QPen, QAction, QCursor
 
 from utils.style_qss import get_style_qss
@@ -90,9 +90,6 @@ class CustomTitleBar(QWidget):
     包含：Logo、软件名称、菜单栏、窗口控制按钮（最小化/最大化/关闭）
     支持拖拽移动、双击最大化功能
     """
-
-    # 信号：主题变更时通知主窗口更新样式
-    theme_changed = Signal(str)
 
     def __init__(self, parent=None):
         super().__init__(parent)

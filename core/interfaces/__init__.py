@@ -12,7 +12,7 @@ from .i_plugin import IPlugin
 from .i_plugin_info import IPluginInfo
 from .i_data_provider import IDataProvider, DataNamespace
 from .i_task_manager import ITaskManager, TaskType, TaskStatus
-from .i_llm_facade import ILLMFacade
+from .i_llm_service import ILLMService
 from utils.i_logger import ILogger
 from .plugin_services import PluginServices
 
@@ -24,7 +24,7 @@ __all__ = [
     "ITaskManager",
     "TaskType",
     "TaskStatus",
-    "ILLMFacade",
+    "ILLMService",
     "Message",
     "ChatResponse",
     "EmbeddingResponse",

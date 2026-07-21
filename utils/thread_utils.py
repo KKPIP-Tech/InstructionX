@@ -17,6 +17,12 @@ UI/工作线程编组工具
 
 注意：本模块仅提供编组工具，不改变 core.task / core.data 的回调线程语义。
 无 QApplication 实例时安全降级为在当前线程直接执行并记录 warning。
+
+函数级 import 豁免说明：
+    本模块中 PySide6 与 utils.logging_tools 的 import 故意保留在函数体内，
+    属于「PySide6 可选/惰性加载」的正当豁免——本模块可能被无 Qt 环境的
+    场景（如纯逻辑测试、后台脚本）导入，顶部强制 import PySide6 会导致
+    这些场景直接 ImportError；惰性加载配合降级路径可保证模块始终可导入。
 """
 
 from __future__ import annotations

@@ -140,6 +140,10 @@ class CacheAdapter(ABC):
         Args:
             response: API 响应字典
 
+        注意: raw_data 中的 response_sample 仅保存描述性占位（类型与长度），
+        不保存原始响应内容——原始响应可能包含用户提示词等敏感信息，
+        落入 CacheInfo 后有泄露风险。
+
         Returns:
             CacheInfo: 缓存信息对象
         """
@@ -167,7 +171,12 @@ class CacheAdapter(ABC):
             cache_hit=cached > 0,
             cache_hit_rate=cached / total if total > 0 else 0.0,
             ttl_seconds=self._config.get("ttl_seconds"),
-            raw_data={"response_sample": str(response)[:500] if response else ""},
+            # 安全考虑：不落盘原始响应内容（可能含用户提示词等敏感信息），
+            # 仅保留类型与长度的描述性占位
+            raw_data={"response_sample": (
+                f"<{type(response).__name__} len={len(str(response))}>"
+                if response else ""
+            )},
         )
 
     def is_cache_available(self, model: Optional[str] = None) -> bool:

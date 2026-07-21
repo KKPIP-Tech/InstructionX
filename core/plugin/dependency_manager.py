@@ -45,8 +45,50 @@ class DependencyManager:
     - 自动安装缺失的依赖（通过 pip）
     """
 
+    # pip 子进程超时（秒）
+    PIP_SHOW_TIMEOUT = 30
+    PIP_INSTALL_TIMEOUT = 300
+
+    # 包名白名单：PEP 508 名称字符集（[A-Za-z0-9._-]+），支持 extras 语法（如 uv[standard]）
+    _PACKAGE_NAME_PATTERN = re.compile(r'^[A-Za-z0-9._-]+(\[[A-Za-z0-9._-]+(,[A-Za-z0-9._-]+)*\])?$')
+    # 单个版本子约束白名单：比较符 + 版本号（可选 .* 后缀），与
+    # _check_version_constraint 的解析能力对齐
+    _SUB_CONSTRAINT_PATTERN = re.compile(r'^(>=|<=|==|!=|>|<)\s*\d+(?:\.\d+)*(?:\.\*)?$')
+
     def __init__(self):
         self._logger = LoggerManager()
+
+    def _is_valid_install_input(self, package: str, version_constraint: str) -> bool:
+        """校验待安装的包名与版本约束，防止注入 pip 命令行参数
+
+        包名必须匹配 PEP 508 名称字符集（支持 [extras] 语法）且不以 '-' 开头；
+        版本约束只接受逗号分隔的版本比较子约束（比较符/数字/点/星号/空白），
+        任何含多 token、URL scheme 或其他字符的输入一律拒绝。
+
+        Args:
+            package: 包名
+            version_constraint: 版本约束（可为空字符串）
+
+        Returns:
+            输入合法返回 True；非法时记 ERROR 日志并返回 False
+        """
+        if not package or not self._PACKAGE_NAME_PATTERN.match(package) or package.startswith('-'):
+            self._logger.error(get_name(), f"拒绝非法依赖包名（可能存在参数注入）: {package!r}")
+            return False
+
+        if not version_constraint:
+            return True
+
+        # 约束串只允许版本比较符/数字/点/逗号/星号与空白组成子约束；
+        # ':'、'/'、'-' 等字符（URL scheme、pip 参数）不在白名单内，天然被拒绝
+        parts = [part.strip() for part in version_constraint.split(',')]
+        if not parts or any(not self._SUB_CONSTRAINT_PATTERN.match(part) for part in parts):
+            self._logger.error(
+                get_name(),
+                f"拒绝非法版本约束（可能存在参数注入）: {package!r} {version_constraint!r}"
+            )
+            return False
+        return True
 
     def check_dependencies(self, dependencies: Dict[str, str]) -> DependencyCheckResult:
         """
@@ -107,14 +149,23 @@ class DependencyManager:
         if check_result.satisfied:
             return DependencyInstallResult(success=True, message="所有依赖已满足")
 
-        # 需要安装的依赖
+        # 需要安装的依赖（先对包名与版本约束做白名单校验，非法项跳过不中断其他包）
         to_install = []
         for package, version_constraint in dependencies.items():
-            if package in check_result.missing:
-                if version_constraint:
-                    to_install.append(f"{package}{version_constraint}")
-                else:
-                    to_install.append(package)
+            if package not in check_result.missing:
+                continue
+            if not self._is_valid_install_input(package, version_constraint):
+                continue
+            if version_constraint:
+                to_install.append(f"{package}{version_constraint}")
+            else:
+                to_install.append(package)
+
+        if not to_install:
+            return DependencyInstallResult(
+                success=False,
+                message="缺失依赖均未通过安装前的安全校验，未执行安装"
+            )
 
         if callback:
             callback(f"开始安装依赖: {', '.join(to_install)}")
@@ -198,15 +249,16 @@ class DependencyManager:
             return importlib.metadata.version(package)
         except importlib.metadata.PackageNotFoundError:
             pass
-        except Exception:
-            pass
+        except Exception as e:
+            # importlib.metadata 查询异常时回退 pip show，不影响主流程
+            self._logger.debug(get_name(), f"importlib.metadata 查询 {package} 失败，回退 pip show: {e}")
 
         # 回退：使用 python -m pip show 检查包是否已安装
         result = subprocess.run(
             [sys.executable, "-m", "pip", "show", package],
             capture_output=True,
             text=True,
-            timeout=30
+            timeout=self.PIP_SHOW_TIMEOUT
         )
 
         if result.returncode != 0:
@@ -288,7 +340,7 @@ class DependencyManager:
                 [sys.executable, "-m", "pip", "install", package_spec, "--quiet"],
                 capture_output=True,
                 text=True,
-                timeout=300  # 5 分钟超时
+                timeout=self.PIP_INSTALL_TIMEOUT  # 5 分钟超时
             )
 
             if result.returncode != 0:

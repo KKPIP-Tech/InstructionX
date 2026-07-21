@@ -7,35 +7,29 @@
 """
 
 import os
-import re
 import sys
 import inspect
+import traceback
 import importlib
 import importlib.util
+from enum import Enum
 from pathlib import Path
 from typing import List, Dict, Optional, Any, Callable
+from unittest.mock import MagicMock
 
 from core.interfaces import IPlugin
+from core.data import DataProvider
+from core.task import BackgroundTaskManager
 from .config_manager import PluginConfigManager
 from .plugin_identity import PluginIdentity
+from .plugin_info_interface import IPluginInfo
 from core.interfaces.plugin_services import PluginServices
+from core.interfaces.i_llm_service import ILLMService
+
+# re-export：保持 `core.plugin.manager.sanitize_tool_name` 引用路径兼容
+from .tool_name import sanitize_tool_name  # noqa: F401
 
 from utils.logging_tools import LoggerManager, get_name
-
-
-def sanitize_tool_name(name: str) -> str:
-    """将工具名净化为符合 OpenAI function 命名规范的形式
-
-    规范要求：^[a-zA-Z0-9_-]{1,64}$
-    规则：所有不在 [a-zA-Z0-9_-] 内的字符替换为 '_'，结果截断到 64 字符。
-
-    Args:
-        name: 原始工具名（如 "{plugin_id}__{method_name}"）
-
-    Returns:
-        净化后的合法工具名
-    """
-    return re.sub(r'[^a-zA-Z0-9_-]', '_', name)[:64]
 
 
 def get_plugin_manager() -> "PluginManager":
@@ -113,15 +107,14 @@ class PluginManager:
         Returns:
             PluginServices: 服务容器实例
         """
+        # NOTE: 函数级导入用于打破 core.plugin ↔ core.llm/mcp 循环依赖，待 P2 事件化重构后移除
         from core.llm import get_llm_plugin_service
         try:
-            from core.data import DataProvider
             data_provider = DataProvider()
         except Exception:
             data_provider = None
 
         try:
-            from core.task import BackgroundTaskManager
             task_manager = BackgroundTaskManager()
         except Exception:
             task_manager = None
@@ -140,6 +133,7 @@ class PluginManager:
     def _get_mcp_manager(self) -> Any:
         """获取 MCPManager 单例"""
         try:
+            # NOTE: 函数级导入用于打破 core.plugin ↔ core.llm/mcp 循环依赖，待 P2 事件化重构后移除
             from core.mcp import get_mcp_manager
             return get_mcp_manager()
         except Exception:
@@ -148,6 +142,7 @@ class PluginManager:
     def _get_mcp_client(self) -> Any:
         """获取 MCPClientManager 实例"""
         try:
+            # NOTE: 函数级导入用于打破 core.plugin ↔ core.llm/mcp 循环依赖，待 P2 事件化重构后移除
             from core.mcp import get_mcp_manager
             from core.llm import get_llm_plugin_service
             mcp_mgr = get_mcp_manager()
@@ -318,7 +313,6 @@ class PluginManager:
             return plugin_instance
 
         except Exception as e:
-            import traceback
             self._logger.error(
                 get_name(),
                 f'Error loading plugin from {plugin_dir}: {e}\n{traceback.format_exc()}'
@@ -445,6 +439,12 @@ class PluginManager:
                 self.unregister_plugin(old_name)
             else:
                 self._plugin_registry.pop(plugin_id, None)
+                # 旧实例 plugin_name 为 None 时 unregister_plugin 无法按名称清理，
+                # 需显式从官方/第三方插件列表移除，避免残留失效实例
+                if old_plugin in self._official_plugins:
+                    self._official_plugins.remove(old_plugin)
+                if old_plugin in self._thirdparty_plugins:
+                    self._thirdparty_plugins.remove(old_plugin)
         self._plugin_registry[plugin_id] = plugin
         self._plugin_name_to_id[plugin.plugin_name] = plugin_id
         if is_official:
@@ -580,7 +580,6 @@ class PluginManager:
 
             # 获取 PluginInfo 类
             plugin_info_class = None
-            from .plugin_info_interface import IPluginInfo
             for attr_name in dir(info_module):
                 attr = getattr(info_module, attr_name)
                 if (isinstance(attr, type) and
@@ -604,7 +603,6 @@ class PluginManager:
 
             # 获取 Service 类
             # 优先查找名称以 "Service" 结尾的类，其次取第一个候选
-            from enum import Enum
             service_class = None
             for attr_name in dir(service_module):
                 attr = getattr(service_module, attr_name)
@@ -632,11 +630,10 @@ class PluginManager:
 
             # 实例化 Service（优先使用真实单例 DataProvider/TaskManager，
             # 仅在核心服务不可用（如测试环境）时回退为 MagicMock）
-            from unittest.mock import MagicMock
+            # NOTE: 函数级导入用于打破 core.plugin ↔ core.llm/mcp 循环依赖，待 P2 事件化重构后移除
             from core.llm import get_llm_plugin_service
 
             try:
-                from core.data import DataProvider
                 mock_dp = DataProvider()
             except Exception:
                 mock_dp = MagicMock()
@@ -644,7 +641,6 @@ class PluginManager:
             real_llm = get_llm_plugin_service()
 
             try:
-                from core.task import BackgroundTaskManager
                 mock_ts = BackgroundTaskManager()
             except Exception:
                 mock_ts = MagicMock()
@@ -668,7 +664,7 @@ class PluginManager:
         service_class: type,
         plugin_id: str,
         data_provider: Any,
-        llm_service: Any,
+        llm_service: ILLMService,
         task_manager: Any,
     ) -> Optional[Any]:
         """实例化 Service 类

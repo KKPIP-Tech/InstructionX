@@ -15,22 +15,10 @@ import logging
 # 向后兼容：MCPRemoteServerConfig 实际定义在 core.mcp.config，
 # 历史上插件代码从 core.mcp.client 导入，这里保留 re-export。
 from core.mcp.config import MCPRemoteServerConfig  # noqa: F401
+from core.plugin.tool_name import sanitize_tool_name
 
-logger = logging.getLogger(__name__)
-
-# 延迟导入 MCP SDK 类型，避免在模块加载时强依赖
-_MCP_SESSION: Any = None
-_stdio_client: Any = None
-_stdio_params: Any = None
-_streamable_http_client: Any = None
-_get_default_environment: Any = None
-
-
-def _ensure_mcp_imports() -> None:
-    global _MCP_SESSION, _stdio_client, _stdio_params
-    global _streamable_http_client, _get_default_environment
-    if _MCP_SESSION is not None:
-        return
+# ===== 可选依赖：MCP SDK / httpx（缺失时置 None，运行时检查）=====
+try:
     from mcp.client.session import ClientSession
     from mcp.client.stdio import (
         stdio_client,
@@ -38,11 +26,36 @@ def _ensure_mcp_imports() -> None:
         get_default_environment,
     )
     from mcp.client.streamable_http import streamable_http_client
-    _MCP_SESSION = ClientSession
-    _stdio_client = stdio_client
-    _stdio_params = StdioServerParameters
-    _streamable_http_client = streamable_http_client
-    _get_default_environment = get_default_environment
+except ImportError:
+    ClientSession = None
+    stdio_client = None
+    StdioServerParameters = None
+    get_default_environment = None
+    streamable_http_client = None
+
+try:
+    import httpx
+except ImportError:
+    httpx = None
+
+logger = logging.getLogger(__name__)
+
+# 连接/调用/断开的统一默认超时（秒）
+DEFAULT_MCP_CLIENT_TIMEOUT = 60.0
+# shutdown 时等待事件循环线程退出的超时（秒）
+LOOP_THREAD_JOIN_TIMEOUT = 5.0
+
+
+def _ensure_mcp_sdk() -> None:
+    """检查 MCP SDK 是否可用
+
+    Raises:
+        RuntimeError: MCP SDK 未安装时抛出（中文提示）
+    """
+    if ClientSession is None:
+        raise RuntimeError(
+            "缺少 MCP SDK 依赖（请执行 pip install mcp），无法连接外部 MCP Server。"
+        )
 
 
 @dataclass
@@ -70,8 +83,10 @@ class MCPClientManager:
         timeout: 连接/调用/断开的统一超时（秒）
     """
 
-    def __init__(self, tool_registry: Any, timeout: float = 60.0):
+    def __init__(self, tool_registry: Any, timeout: float = DEFAULT_MCP_CLIENT_TIMEOUT):
         self._connections: Dict[str, MCPServerConnection] = {}
+        # 保护 _connections 在 UI 线程与工作线程间的并发读写
+        self._conn_lock = threading.Lock()
         self._tool_registry = tool_registry
         self._async_loop: Optional[asyncio.AbstractEventLoop] = None
         self._loop_thread: Optional[threading.Thread] = None
@@ -142,7 +157,7 @@ class MCPClientManager:
         避免 "async with 内 return 导致会话即建即关"；
         exit stack 存入连接对象，disconnect 时统一关闭。
         """
-        _ensure_mcp_imports()
+        _ensure_mcp_sdk()
 
         stack = AsyncExitStack()
         try:
@@ -151,18 +166,18 @@ class MCPClientManager:
                 # 配置了 env 时与默认环境合并而非替换
                 env = None
                 if config.env:
-                    env = _get_default_environment()
+                    env = get_default_environment()
                     env.update(config.env)
-                params = _stdio_params(
+                params = StdioServerParameters(
                     command=config.command,
                     args=config.args,
                     env=env,
                 )
                 read, write = await stack.enter_async_context(
-                    _stdio_client(params)
+                    stdio_client(params)
                 )
                 session = await stack.enter_async_context(
-                    _MCP_SESSION(read, write)
+                    ClientSession(read, write)
                 )
                 await session.initialize()
                 tools_result = await session.list_tools()
@@ -176,7 +191,11 @@ class MCPClientManager:
                 # 它 yield (read, write, get_session_id) 三元组
                 http_client = None
                 if config.auth_token:
-                    import httpx
+                    if httpx is None:
+                        raise RuntimeError(
+                            "缺少 httpx 依赖（请执行 pip install httpx），"
+                            "无法使用带认证令牌的 MCP HTTP 连接。"
+                        )
                     http_client = await stack.enter_async_context(
                         httpx.AsyncClient(
                             headers={
@@ -186,10 +205,10 @@ class MCPClientManager:
                         )
                     )
                 read, write, _get_session_id = await stack.enter_async_context(
-                    _streamable_http_client(config.url, http_client=http_client)
+                    streamable_http_client(config.url, http_client=http_client)
                 )
                 session = await stack.enter_async_context(
-                    _MCP_SESSION(read, write)
+                    ClientSession(read, write)
                 )
                 await session.initialize()
                 tools_result = await session.list_tools()
@@ -206,8 +225,11 @@ class MCPClientManager:
             )
             try:
                 await stack.aclose()
-            except Exception:
-                pass
+            except Exception as cleanup_err:
+                logger.debug(
+                    f"连接失败后清理 exit stack 时出现异常（可忽略）: "
+                    f"{cleanup_err}"
+                )
             raise
 
     def _create_connection(
@@ -224,8 +246,6 @@ class MCPClientManager:
         符合 OpenAI function 命名规范 ^[a-zA-Z0-9_-]{1,64}$。
         单个工具注册失败只记 warning，不中断整个连接。
         """
-        from core.plugin.manager import sanitize_tool_name
-
         tools = list(tools_result.tools) if tools_result.tools else []
         conn = MCPServerConnection(
             server_id=server_id,
@@ -278,12 +298,14 @@ class MCPClientManager:
                 f"Registered external MCP tool: {namespaced_name}"
             )
 
-        self._connections[server_id] = conn
+        with self._conn_lock:
+            self._connections[server_id] = conn
         return conn
 
     async def _async_disconnect(self, server_id: str) -> None:
         """异步断开连接"""
-        conn = self._connections.get(server_id)
+        with self._conn_lock:
+            conn = self._connections.get(server_id)
         if conn is None:
             return
 
@@ -303,7 +325,8 @@ class MCPClientManager:
         except Exception as e:
             logger.warning(f"Error closing MCP session {server_id}: {e}")
 
-        del self._connections[server_id]
+        with self._conn_lock:
+            self._connections.pop(server_id, None)
         logger.info(f"Disconnected from MCP server: {server_id}")
 
     def connect(self, config: Any) -> str:
@@ -315,7 +338,9 @@ class MCPClientManager:
         Returns:
             server_id
         """
-        if config.server_id in self._connections:
+        with self._conn_lock:
+            already_connected = config.server_id in self._connections
+        if already_connected:
             logger.info(
                 f"MCP server {config.server_id} already connected, "
                 f"disconnecting before reconnect"
@@ -337,7 +362,9 @@ class MCPClientManager:
 
     def disconnect(self, server_id: str) -> None:
         """同步断开连接"""
-        if server_id not in self._connections:
+        with self._conn_lock:
+            connected = server_id in self._connections
+        if not connected:
             return
         loop = self._ensure_loop()
         try:
@@ -351,18 +378,21 @@ class MCPClientManager:
 
     def list_connected_servers(self) -> List[str]:
         """返回已连接的 server_id 列表"""
-        return list(self._connections.keys())
+        with self._conn_lock:
+            return list(self._connections.keys())
 
     def list_tools(self, server_id: str) -> List[str]:
         """列出指定 Server 上的工具名称列表（净化后的命名空间名）"""
-        if server_id not in self._connections:
+        with self._conn_lock:
+            conn = self._connections.get(server_id)
+        if conn is None:
             return []
-        conn = self._connections[server_id]
         return list(conn.tool_name_map.keys())
 
     def get_connection(self, server_id: str) -> Optional[MCPServerConnection]:
         """获取指定连接的信息"""
-        return self._connections.get(server_id)
+        with self._conn_lock:
+            return self._connections.get(server_id)
 
     def shutdown(self) -> None:
         """关闭所有连接并清理
@@ -370,7 +400,9 @@ class MCPClientManager:
         先串行断开全部连接（每个连接等待时间受 _timeout 约束），
         再停止事件循环线程并关闭 loop。
         """
-        server_ids = list(self._connections.keys())
+        # 锁内取快照，锁外逐个断开（disconnect 内部会再取锁，避免持锁回调死锁）
+        with self._conn_lock:
+            server_ids = list(self._connections.keys())
         for server_id in server_ids:
             try:
                 self.disconnect(server_id)
@@ -381,12 +413,17 @@ class MCPClientManager:
         if loop is not None and not loop.is_closed():
             try:
                 loop.call_soon_threadsafe(loop.stop)
-            except Exception:
-                pass
+            except Exception as stop_err:
+                logger.debug(
+                    f"停止 MCP client 事件循环时出现异常（可忽略）: {stop_err}"
+                )
             if self._loop_thread is not None:
-                self._loop_thread.join(timeout=5.0)
+                self._loop_thread.join(timeout=LOOP_THREAD_JOIN_TIMEOUT)
                 if self._loop_thread.is_alive():
-                    logger.warning("MCP client loop thread did not exit in 5s")
+                    logger.warning(
+                        f"MCP client loop thread did not exit in "
+                        f"{LOOP_THREAD_JOIN_TIMEOUT}s"
+                    )
             try:
                 loop.close()
             except Exception as e:

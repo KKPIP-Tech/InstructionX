@@ -297,45 +297,58 @@ class OpenAIProvider(BaseProvider):
     def _stream_with_tool_call_aggregation(self, stream):
         """包装流式生成器，末块返回聚合后的完整 tool_calls 列表
 
-        中间块的 tool_calls 增量分片被聚合缓存，不再逐片外泄；
-        流结束时将完整 tool_calls 列表挂到最后一个响应块上。
+        采用"前瞻一块"缓冲：每读入新块先产出上一块，流结束时把聚合的
+        完整 tool_calls 挂到最后一个响应块上再产出。这样消费方在末块
+        被 yield 的那一刻即可读到完整 tool_calls（而不是像旧实现那样
+        在末块已产出后才回填，导致永远读不到）。
+
+        中间块的 tool_calls 增量分片被聚合缓存，不再逐片外泄。
 
         Args:
             stream: 原始流式响应生成器
 
         Yields:
-            ChatResponse: 聊天响应块（末块带完整 tool_calls）
+            ChatResponse: 聊天响应块（末块 yield 时即带完整 tool_calls）
         """
         acc: Dict[int, Dict[str, Any]] = {}
-        last_chunk: Optional[ChatResponse] = None
+        pending: Optional[ChatResponse] = None
         for chunk in stream:
+            if pending is not None:
+                yield pending
             if chunk.tool_calls:
                 self._merge_tool_call_deltas(acc, chunk.tool_calls)
                 chunk.tool_calls = []
-            last_chunk = chunk
-            yield chunk
-        if acc and last_chunk is not None:
-            last_chunk.tool_calls = [acc[i] for i in sorted(acc)]
+            pending = chunk
+        if pending is not None:
+            if acc:
+                pending.tool_calls = [acc[i] for i in sorted(acc)]
+            yield pending
 
     async def _astream_with_tool_call_aggregation(self, stream) -> AsyncIterator[ChatResponse]:
         """异步版本的流式 tool_calls 聚合包装
+
+        与同步版本一致采用"前瞻一块"缓冲：末块被 yield 时即携带
+        聚合后的完整 tool_calls，中间块的增量分片不外泄。
 
         Args:
             stream: 原始异步流式响应迭代器
 
         Yields:
-            ChatResponse: 聊天响应块（末块带完整 tool_calls）
+            ChatResponse: 聊天响应块（末块 yield 时即带完整 tool_calls）
         """
         acc: Dict[int, Dict[str, Any]] = {}
-        last_chunk: Optional[ChatResponse] = None
+        pending: Optional[ChatResponse] = None
         async for chunk in stream:
+            if pending is not None:
+                yield pending
             if chunk.tool_calls:
                 self._merge_tool_call_deltas(acc, chunk.tool_calls)
                 chunk.tool_calls = []
-            last_chunk = chunk
-            yield chunk
-        if acc and last_chunk is not None:
-            last_chunk.tool_calls = [acc[i] for i in sorted(acc)]
+            pending = chunk
+        if pending is not None:
+            if acc:
+                pending.tool_calls = [acc[i] for i in sorted(acc)]
+            yield pending
 
     # ==================== 同步 API ====================
 

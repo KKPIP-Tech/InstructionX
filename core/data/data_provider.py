@@ -152,6 +152,18 @@ class DataProvider(IDataProvider):
     # -------------------------------------------------------------------------
 
     def load_data(self, force_reload: bool = False) -> Dict[str, Any]:
+        """加载全量数据（含内存缓存与深拷贝返回）
+
+        Args:
+            force_reload: 为 True 时忽略缓存，强制从持久层重新加载
+
+        Returns:
+            完整数据字典（{"plugins": ..., "active_instances": ...} 的深拷贝），
+            调用方修改返回值不会影响内部缓存
+
+        Raises:
+            DataProviderError: 底层持久化读取失败时抛出
+        """
         if self._use_json_backend:
             return self._json_load_data()
 
@@ -167,6 +179,11 @@ class DataProvider(IDataProvider):
             return copy.deepcopy(self._cache) if self._cache else {}
 
     def save_data(self) -> None:
+        """将当前内存缓存全量写回持久层
+
+        Raises:
+            DataProviderError: 缓存为空（无可保存数据）或底层写入失败时抛出
+        """
         if self._use_json_backend:
             self._json_save_data()
             return
@@ -181,6 +198,7 @@ class DataProvider(IDataProvider):
             self._cache_dirty = False
 
     def clear_cache(self) -> None:
+        """清空内存缓存与后端内部缓存，下次读取将从持久层重新加载"""
         with self._file_lock:
             self._cache = None
             self._cache_dirty = True
@@ -198,6 +216,15 @@ class DataProvider(IDataProvider):
             self.load_data()
 
     def register_plugin(self, instance_id: str, plugin_type: str) -> None:
+        """注册插件实例并初始化其数据结构
+
+        Args:
+            instance_id: 插件实例唯一标识（UUID）
+            plugin_type: 插件类型标识（同一类型只能有一个活跃实例）
+
+        Raises:
+            DataProviderError: 插件已存在或底层写入失败时抛出
+        """
         if self._use_json_backend:
             data = self._json_load_data()
             if instance_id in data["plugins"]:
@@ -227,6 +254,14 @@ class DataProvider(IDataProvider):
                 }
 
     def unregister_plugin(self, instance_id: str) -> None:
+        """注销插件实例，删除其全部数据并清理相关订阅
+
+        Args:
+            instance_id: 插件实例唯一标识
+
+        Raises:
+            DataProviderError: 插件不存在或底层删除失败时抛出
+        """
         if self._use_json_backend:
             data = self._json_load_data()
             if instance_id not in data["plugins"]:
@@ -254,6 +289,17 @@ class DataProvider(IDataProvider):
         self._remove_subscriptions_for_plugin(instance_id)
 
     def get_active_instance(self, plugin_type: str) -> Optional[str]:
+        """查询指定插件类型的活跃实例
+
+        Args:
+            plugin_type: 插件类型标识
+
+        Returns:
+            活跃实例的 instance_id，无活跃实例时返回 None
+
+        Raises:
+            DataProviderError: 底层查询失败时抛出
+        """
         if self._use_json_backend:
             data = self._json_load_data()
             return data.get("active_instances", {}).get(plugin_type)
@@ -265,6 +311,14 @@ class DataProvider(IDataProvider):
                 raise DataProviderError(str(e)) from e
 
     def set_active_instance(self, instance_id: str) -> None:
+        """将指定插件实例设置为其类型的活跃实例（同类型其他实例自动置为非活跃）
+
+        Args:
+            instance_id: 插件实例唯一标识
+
+        Raises:
+            DataProviderError: 插件不存在或底层写入失败时抛出
+        """
         if self._use_json_backend:
             data = self._json_load_data()
             if instance_id not in data["plugins"]:
@@ -303,6 +357,20 @@ class DataProvider(IDataProvider):
                        key: str,
                        namespace: DataNamespace = DataNamespace.PRIVATE,
                        default: Any = None) -> Any:
+        """读取插件在指定命名空间下的单个数据项
+
+        Args:
+            instance_id: 插件实例唯一标识
+            key: 数据键名
+            namespace: 命名空间（PRIVATE 私有 / PUBLIC 公开），默认 PRIVATE
+            default: 键不存在时返回的默认值，默认 None
+
+        Returns:
+            键对应的值，不存在时返回 default
+
+        Raises:
+            DataProviderError: 插件不存在或底层读取失败时抛出
+        """
         namespace_str = namespace.value
 
         if self._use_json_backend:
@@ -325,6 +393,20 @@ class DataProvider(IDataProvider):
                        value: Any,
                        namespace: DataNamespace = DataNamespace.PRIVATE,
                        notify: bool = True) -> None:
+        """写入插件在指定命名空间下的单个数据项
+
+        写入 PUBLIC 命名空间且 notify 为 True 时，会异步通知所有订阅者。
+
+        Args:
+            instance_id: 插件实例唯一标识
+            key: 数据键名
+            value: 要写入的值（必须可 JSON 序列化）
+            namespace: 命名空间（PRIVATE 私有 / PUBLIC 公开），默认 PRIVATE
+            notify: 写入 PUBLIC 数据时是否通知订阅者，默认 True
+
+        Raises:
+            DataProviderError: 插件不存在、值不可序列化或底层写入失败时抛出
+        """
         namespace_str = namespace.value
 
         if self._use_json_backend:
@@ -365,6 +447,18 @@ class DataProvider(IDataProvider):
     def get_all_plugin_data(self,
                            instance_id: str,
                            namespace: DataNamespace = DataNamespace.PRIVATE) -> Dict[str, Any]:
+        """读取插件在指定命名空间下的全部数据
+
+        Args:
+            instance_id: 插件实例唯一标识
+            namespace: 命名空间（PRIVATE 私有 / PUBLIC 公开），默认 PRIVATE
+
+        Returns:
+            该命名空间下的键值字典副本
+
+        Raises:
+            DataProviderError: 插件不存在或底层读取失败时抛出
+        """
         namespace_str = namespace.value
 
         if self._use_json_backend:
@@ -391,6 +485,17 @@ class DataProvider(IDataProvider):
                  target_plugin_id: str,
                  target_key: str,
                  callback: Callable[[str, str, Any, Any], None]) -> None:
+        """订阅目标插件公开数据的变化通知
+
+        Args:
+            subscriber_id: 订阅方插件实例标识
+            target_plugin_id: 被订阅的目标插件实例标识
+            target_key: 被订阅的数据键名
+            callback: 变化回调，签名为 (publisher_id, key, old_value, new_value) -> None
+
+        Raises:
+            DataProviderError: 目标插件不存在时抛出
+        """
         if self._use_json_backend:
             data = self._json_load_data()
             if target_plugin_id not in data["plugins"]:
@@ -413,6 +518,12 @@ class DataProvider(IDataProvider):
             self._subscriptions[subscription_key] = callback
 
     def unsubscribe(self, subscriber_id: str, target_plugin_id: Optional[str] = None) -> None:
+        """取消订阅
+
+        Args:
+            subscriber_id: 订阅方插件实例标识
+            target_plugin_id: 可选，仅取消对该目标插件的订阅；为 None 时取消该订阅方的全部订阅
+        """
         with self._subscription_lock:
             if target_plugin_id is None:
                 keys_to_remove = [k for k in self._subscriptions.keys() if k[0] == subscriber_id]
@@ -429,6 +540,17 @@ class DataProvider(IDataProvider):
                 key: str,
                 value: Any,
                 namespace: DataNamespace = DataNamespace.PUBLIC) -> None:
+        """发布数据并通知订阅者（等价于 set_plugin_data(..., notify=True)）
+
+        Args:
+            publisher_id: 发布方插件实例标识
+            key: 数据键名
+            value: 要发布的值（必须可 JSON 序列化）
+            namespace: 命名空间，默认 PUBLIC（只有 PUBLIC 数据会触发订阅通知）
+
+        Raises:
+            DataProviderError: 插件不存在、值不可序列化或底层写入失败时抛出
+        """
         self.set_plugin_data(publisher_id, key, value, namespace, notify=True)
 
     def _notify_subscribers(self,
@@ -474,6 +596,19 @@ class DataProvider(IDataProvider):
                   plugin_id: str,
                   filename: str,
                   content: bytes) -> str:
+        """保存插件资源文件（写侧路径消毒：拒绝空名、绝对路径与 ".." 穿越）
+
+        Args:
+            plugin_id: 插件实例唯一标识
+            filename: 资源文件名（相对路径）
+            content: 文件二进制内容
+
+        Returns:
+            相对于数据目录的资源路径（如 "assets/plugins/{plugin_id}/{filename}"）
+
+        Raises:
+            DataProviderError: 路径非法或写入失败时抛出
+        """
         try:
             # 写侧路径消毒：禁止空名、绝对路径与 ".." 路径穿越
             self._validate_asset_component(plugin_id, "插件 ID")
@@ -494,20 +629,51 @@ class DataProvider(IDataProvider):
             raise DataProviderError(f"保存资源文件失败: {e}")
 
     def get_asset_path(self, relative_path: str) -> str:
+        """获取资源文件的绝对路径（读侧路径消毒，与 save_asset 写侧对齐）
+
+        Args:
+            relative_path: 相对于数据目录的资源路径（通常为 save_asset 的返回值）
+
+        Returns:
+            资源文件的绝对路径字符串
+
+        Raises:
+            DataProviderError: 路径非法（绝对路径/".." 穿越）或文件不存在时抛出
+        """
         try:
+            # 读侧路径消毒：与写侧 save_asset 对齐，拒绝绝对路径与 ".." 路径穿越，
+            # 防止 Path(data_dir) / "C:/abs" 形式的目录逃逸读取任意文件
+            self._validate_asset_component(relative_path, "相对路径")
             normalized_path = Path(relative_path).as_posix()
             if ".." in normalized_path.split("/"):
                 raise DataProviderError(f"无效的相对路径: {relative_path}")
             absolute_path = self.data_dir / relative_path
-            if not absolute_path.exists():
-                raise DataProviderError(f"资源文件不存在: {absolute_path}")
-            return str(absolute_path.resolve())
+            # 规范化后必须仍位于数据目录内（防御根相对路径/符号链接绕过，
+            # 与 save_asset 写侧的目录包含校验对称）
+            resolved_root = self.data_dir.resolve()
+            resolved_path = absolute_path.resolve()
+            if resolved_path != resolved_root and resolved_root not in resolved_path.parents:
+                raise DataProviderError(f"无效的相对路径: {relative_path}")
+            if not resolved_path.exists():
+                raise DataProviderError(f"资源文件不存在: {resolved_path}")
+            return str(resolved_path)
         except Exception as e:
             if isinstance(e, DataProviderError):
                 raise
             raise DataProviderError(f"获取资源路径失败: {e}")
 
     def load_asset(self, relative_path: str) -> bytes:
+        """读取资源文件的二进制内容
+
+        Args:
+            relative_path: 相对于数据目录的资源路径（通常为 save_asset 的返回值）
+
+        Returns:
+            文件二进制内容
+
+        Raises:
+            DataProviderError: 路径非法、文件不存在或读取失败时抛出
+        """
         try:
             absolute_path = self.get_asset_path(relative_path)
             with open(absolute_path, 'rb') as f:
@@ -518,6 +684,14 @@ class DataProvider(IDataProvider):
             raise DataProviderError(f"加载资源文件失败: {e}")
 
     def get_plugin_assets_dir(self, plugin_id: str) -> str:
+        """获取（并创建）插件资源目录
+
+        Args:
+            plugin_id: 插件实例唯一标识
+
+        Returns:
+            插件资源目录的绝对路径字符串
+        """
         plugin_dir = self.assets_dir / plugin_id
         plugin_dir.mkdir(parents=True, exist_ok=True)
         return str(plugin_dir.resolve())
@@ -527,6 +701,14 @@ class DataProvider(IDataProvider):
     # -------------------------------------------------------------------------
 
     def get_all_plugins(self) -> Dict[str, Dict[str, Any]]:
+        """获取所有已注册插件的完整数据
+
+        Returns:
+            以 instance_id 为键的插件信息字典（含 type/active/private/public）
+
+        Raises:
+            DataProviderError: 底层读取失败时抛出
+        """
         if self._use_json_backend:
             data = self._json_load_data()
             return data.get("plugins", {}).copy()
@@ -538,6 +720,17 @@ class DataProvider(IDataProvider):
                 raise DataProviderError(str(e)) from e
 
     def get_plugin_info(self, instance_id: str) -> Optional[Dict[str, Any]]:
+        """获取单个插件的完整数据
+
+        Args:
+            instance_id: 插件实例唯一标识
+
+        Returns:
+            插件信息字典（含 type/active/private/public），不存在时返回 None
+
+        Raises:
+            DataProviderError: 底层读取失败时抛出
+        """
         if self._use_json_backend:
             data = self._json_load_data()
             return data.get("plugins", {}).get(instance_id)
@@ -549,6 +742,11 @@ class DataProvider(IDataProvider):
                 raise DataProviderError(str(e)) from e
 
     def reset_all_data(self) -> None:
+        """重置全部数据为空初始状态（清空所有插件数据与活跃实例记录）
+
+        Raises:
+            DataProviderError: 底层写入失败时抛出
+        """
         if self._use_json_backend:
             default_data = {"plugins": {}, "active_instances": {}}
             self._cache = default_data

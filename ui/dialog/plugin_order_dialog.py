@@ -7,12 +7,17 @@ from typing import List, Optional
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout,
     QLabel, QListWidget, QListWidgetItem,
-    QPushButton, QFrame, QAbstractItemView, QAbstractItemDelegate, QStyle
+    QPushButton, QFrame, QAbstractItemView, QAbstractItemDelegate, QStyle,
+    QMessageBox
 )
 from PySide6.QtCore import Qt, QSize, QMimeData, QByteArray, QRect
 from PySide6.QtGui import QFont, QDrag, QPixmap, QPainter, QIcon, QColor, QFontMetrics, QPalette
 
 from core.plugin.manager import PluginManager
+from utils.logging_tools import LoggerManager, get_name
+
+# 模块级日志器（LoggerManager 为单例）
+_logger = LoggerManager()
 
 
 class OrderListWidget(QListWidget):
@@ -293,7 +298,7 @@ class PluginOrderDialog(QDialog):
             self.thirdparty_list.addItem(item)
 
     def _get_ordered_plugin_names(self, list_widget: QListWidget) -> List[str]:
-        """获取列表中插件名称的顺序"""
+        """获取列表中插件 ID（UUID）的顺序"""
         plugin_names = []
         for i in range(list_widget.count()):
             item = list_widget.item(i)
@@ -303,7 +308,7 @@ class PluginOrderDialog(QDialog):
 
     def _save_order(self):
         """保存插件顺序"""
-        # 获取排序后的插件名称
+        # 获取排序后的插件 ID（UUID）
         official_order = self._get_ordered_plugin_names(self.official_list)
         thirdparty_order = self._get_ordered_plugin_names(self.thirdparty_list)
 
@@ -316,7 +321,7 @@ class PluginOrderDialog(QDialog):
             self.accept()
         else:
             # 显示错误信息（使用简单的消息框）
-            from PySide6.QtWidgets import QMessageBox
+            _logger.error(get_name(), "保存插件顺序配置失败")
             QMessageBox.warning(
                 self,
                 "保存失败",

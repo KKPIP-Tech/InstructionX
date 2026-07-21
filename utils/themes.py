@@ -1,43 +1,16 @@
-import sys
-from PySide6.QtWidgets import QApplication, QStyleFactory
+"""主题工具兼容层
 
-from PySide6.QtGui import QPalette, QColor
+detect_system_theme / set_light_theme 的实现已统一到 utils.style_qss，
+此处直接 re-export，保持 utils.themes.xxx 引用路径向后兼容。
+"""
+from PySide6.QtWidgets import QApplication
 
-# 导入 StyleQSS 样式
+# 导入 StyleQSS 样式（detect_system_theme / set_light_theme 为 re-export）
 from utils.style_qss import (
+    detect_system_theme,
+    set_light_theme,
     set_style_qss_theme as _set_style_qss_theme,
-    StyleQSS
 )
-
-
-def detect_system_theme() -> str:
-    """
-    检测系统主题
-
-    Returns:
-        'dark' 或 'light'
-    """
-    if sys.platform == 'win32':
-        try:
-            import winreg
-            # 读取 Windows 注册表中的主题设置
-            key = winreg.OpenKey(
-                winreg.HKEY_CURRENT_USER,
-                r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"
-            )
-            value, _ = winreg.QueryValueEx(key, "AppsUseLightTheme")
-            winreg.CloseKey(key)
-            return 'dark' if value == 0 else 'light'
-        except Exception:
-            pass
-    return 'light'
-
-
-def set_light_theme(app: QApplication) -> None:
-    """
-    设置浅色主题（保留兼容）
-    """
-    _set_style_qss_theme(app, theme='light')
 
 
 def set_style_qss_theme(app: QApplication, theme: str = "auto") -> None:

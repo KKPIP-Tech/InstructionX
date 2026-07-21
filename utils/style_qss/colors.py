@@ -8,6 +8,8 @@ from pathlib import Path
 from PySide6.QtGui import QColor, QImage, QPainter, QPolygonF
 from PySide6.QtCore import Qt, QPointF, QByteArray, QBuffer, QIODevice
 
+from utils.logging_tools import LoggerManager
+
 
 class StyleQSSColors:
     """StyleQSS 颜色定义类"""
@@ -198,19 +200,32 @@ class StyleQSSColors:
         return cls.COLORS.get(theme, cls.COLORS['light']).copy()
 
     def set_theme(self, theme: str):
-        """设置当前主题"""
+        """设置当前主题
+
+        历史遗留：实例方法依赖实例属性（_theme/_colors），但本类从未定义
+        __init__，且全仓实际仅使用 classmethod（get_colors/get_color）；
+        实例属性靠 getattr 兑底。为避免破坏未知调用方，保留不删。
+        """
         if theme in ('light', 'dark'):
             self._theme = theme
             self._colors = self.COLORS[theme].copy()
 
     @property
     def theme(self) -> str:
-        """获取当前主题"""
+        """获取当前主题
+
+        历史遗留：实例属性 _theme 从未在 __init__ 中初始化，此处靠
+        getattr 兑底返回 'light'；全仓实际仅使用 classmethod，保留不删。
+        """
         return getattr(self, '_theme', 'light')
 
     @property
     def colors(self) -> dict:
-        """获取当前颜色"""
+        """获取当前颜色
+
+        历史遗留：实例属性 _colors 从未在 __init__ 中初始化，此处靠
+        getattr 兑底返回 light 主题色；全仓实际仅使用 classmethod，保留不删。
+        """
         return getattr(self, '_colors', self.COLORS['light'])
 
     @classmethod
@@ -277,15 +292,22 @@ def _ensure_arrow_images(theme: str, colors: dict) -> dict:
             cache_dir = str(Path.home() / '.instructionx' / 'cache' / 'arrows')
             try:
                 os.makedirs(cache_dir, exist_ok=True)
-            except OSError:
-                pass
+            except OSError as mkdir_err:
+                LoggerManager().debug(
+                    'style_qss',
+                    f'创建箭头图片缓存目录失败（静默降级）: {cache_dir}: {mkdir_err}',
+                )
         filepath = os.path.join(cache_dir, filename)
 
         if not os.path.exists(filepath):
             try:
                 _render_arrow_image(color, direction, filepath)
-            except Exception:
-                pass  # 写失败静默降级
+            except Exception as render_err:
+                # 写失败静默降级（Qt 加载失败仅表现为不显示箭头）
+                LoggerManager().debug(
+                    'style_qss',
+                    f'渲染箭头图片失败（静默降级）: {filepath}: {render_err}',
+                )
 
         result[var_name] = filepath.replace('\\', '/')
 

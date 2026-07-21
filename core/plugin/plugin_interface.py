@@ -17,14 +17,13 @@ import os
 import traceback
 import importlib.util
 from abc import ABC
-from typing import Optional, Tuple, TYPE_CHECKING
+from typing import Optional, Tuple
 from pathlib import Path
 from PySide6.QtWidgets import QWidget, QApplication, QStyle
 from PySide6.QtGui import QIcon
 
-if TYPE_CHECKING:
-    from .plugin_info_interface import IPluginInfo
-
+# 无循环依赖（plugin_info_interface 不反向依赖本模块），置顶导入
+from .plugin_info_interface import IPluginInfo
 from core.interfaces import IPlugin as _BaseIPlugin
 from utils.logging_tools import LoggerManager, get_name
 
@@ -129,7 +128,6 @@ class IPlugin(_BaseIPlugin):
                 sys.modules[module_name] = module
                 spec.loader.exec_module(module)
 
-            from .plugin_info_interface import IPluginInfo
             plugin_info_class = None
             for attr_name in dir(module):
                 attr = getattr(module, attr_name)

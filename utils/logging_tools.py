@@ -220,18 +220,3 @@ def get_name() -> str:
             except Exception:
                 pass
         
-
-if __name__ == "__main__":
-    logger = LoggerManager()
-    logger.info('UserModule', '用户登录成功')
-    logger.error('DatabaseModule', '数据库连接失败')
-    logger.debug('APIModule', '处理请求开始')
-    logger.warning('CacheModule', '缓存即将过期')
-    logger.critical('SecurityModule', '检测到安全威胁')
-    # 或者使用通用log方法
-    logger.log('INFO', 'PaymentModule', '支付处理完成')
-    logger.info(get_name(), '用户登录成功')
-    logger.error(get_name(), '数据库连接失败')
-    logger.debug(get_name(), '处理请求开始')
-    logger.warning(get_name(), '缓存即将过期')
-    logger.critical(get_name(), '检测到安全威胁')

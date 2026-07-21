@@ -91,10 +91,6 @@ class WorkArea:
         # 确保 widget 可见
         widget.show()
 
-    def show_placeholder(self):
-        """显示占位标签"""
-        self.work_layout.addWidget(self.work_placeholder)
-
     def set_clear_highlight_callback(self, callback):
         """
         设置清除高亮的回调函数

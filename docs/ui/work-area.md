@@ -105,7 +105,6 @@ def clear(self, clear_highlight: bool = True):
     # 如果需要清除高亮，调用回调（使用 hasattr 做防御性检查）
     if clear_highlight and hasattr(self, '_clear_highlight_callback'):
         self._clear_highlight_callback()
-    # 注意：此方法不自动显示占位符，调用方需自行调用 show_placeholder()
 ```
 
 ### 4.4 清除但保持高亮
@@ -140,18 +139,6 @@ def set_clear_highlight_callback(self, callback: Callable):
         callback: 回调函数
     """
     self._clear_highlight_callback = callback
-```
-
-### 4.6 显示占位符
-
-```python
-def show_placeholder(self):
-    """
-    显示占位标签
-
-    将占位标签添加回布局中央，提示用户点击技能按钮。
-    """
-    self.work_layout.addWidget(self.work_placeholder)
 ```
 
 ---
