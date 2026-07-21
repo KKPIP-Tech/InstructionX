@@ -99,7 +99,7 @@ class TestPluginVersionFromString:
 
     def test_parse_negative_numbers_raises(self):
         """from_string('release.-1.0.0') raises ValueError for negative numbers."""
-        with pytest.raises(ValueError, match="non-negative"):
+        with pytest.raises(ValueError, match="非负整数"):
             PluginVersion.from_string("release.-1.0.0")
 
 

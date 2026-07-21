@@ -75,6 +75,7 @@ def test_set_style_qss_theme_default_is_auto(mocker, qapp_instance):
 
 
 def test_set_light_theme_delegates_to_internal_function(mocker, qapp_instance):
-    mock_set = mocker.patch("utils.themes._set_style_qss_theme")
+    """set_light_theme 为 utils.style_qss 的兼容 re-export，内部委托 set_style_qss_theme。"""
+    mock_set = mocker.patch("utils.style_qss.set_style_qss_theme")
     themes.set_light_theme(qapp_instance)
-    mock_set.assert_called_once_with(qapp_instance, theme="light")
+    mock_set.assert_called_once_with(qapp_instance, "light")

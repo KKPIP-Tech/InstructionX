@@ -95,18 +95,19 @@ class TestSingleton:
 # ===========================================================================
 
 class TestCreateProvider:
-    def test_create_provider_raises_unknown_type(self, mocker):
-        """_create_provider raises ConfigurationError for unknown provider_type."""
+    def test_create_provider_skips_unknown_adapter(self, mocker):
+        """_create_provider 遇到未注册适配器时跳过该实例（返回 None、不注册，不抛异常）。"""
         import core.llm.llm_provider as lp_module
 
         _make_provider(mocker)
         inst = lp_module.LLMProvider()
         inst._providers.clear()
 
-        mocker.patch.object(lp_module, "get_provider_class", return_value=None)
+        mocker.patch.object(lp_module, "get_adapter_class", return_value=None)
 
-        with pytest.raises(lp_module.ConfigurationError, match="Unknown provider type"):
-            inst._create_provider("bad", {"provider_type": "nonexistent"})
+        result = inst._create_provider("bad", {"adapter": "nonexistent"})
+        assert result is None
+        assert "bad" not in inst._providers
 
     def test_create_provider_success(self, mocker):
         """_create_provider creates the provider instance and stores it."""
@@ -117,9 +118,9 @@ class TestCreateProvider:
         inst._providers.clear()
 
         mock_provider = MagicMock()
-        mocker.patch.object(lp_module, "get_provider_class", return_value=lambda cfg, **kw: mock_provider)
+        mocker.patch.object(lp_module, "get_adapter_class", return_value=lambda cfg, **kw: mock_provider)
 
-        result = inst._create_provider("test", {"provider_type": "mock"})
+        result = inst._create_provider("test", {"adapter": "mock"})
         assert result is mock_provider
         assert "test" in inst._providers
 
@@ -329,9 +330,9 @@ class TestAddProvider:
 
         mock_provider = MagicMock()
         mock_provider.refresh_models.return_value = []
-        mocker.patch.object(lp_module, "get_provider_class", return_value=lambda cfg, **kw: mock_provider)
+        mocker.patch.object(lp_module, "get_adapter_class", return_value=lambda cfg, **kw: mock_provider)
 
-        config = ProviderConfig(name="new", provider_type="mock", api_key="key123")
+        config = ProviderConfig(name="new", adapter="mock", api_key="key123")
         inst.add_provider("new", config)
 
         inst._config.add_provider.assert_called_once_with("new", config)
@@ -605,6 +606,8 @@ class TestRefreshProviderModels:
         mock_provider.refresh_models.return_value = models
         inst._providers["prov"] = mock_provider
         inst._config = MagicMock()
+        # 配置版本号与已加载版本对齐，避免入口处的惰性配置刷新触发全量 reload
+        inst._config.version = inst._loaded_config_version
 
         result = inst.refresh_provider_models("prov", force=True)
         assert result == models

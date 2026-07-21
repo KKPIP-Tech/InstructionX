@@ -12,7 +12,7 @@ from core.llm.types import (
     ProviderInfo,
     StreamChunk,
 )
-from core.llm.provider_interface import UsageInfo
+from core.llm.provider_interface import ModelInfo, UsageInfo
 
 
 def make_conv():
@@ -226,66 +226,75 @@ class TestAudioResult:
 
 
 class TestProviderInfo:
-    """Test ProviderInfo field initialization."""
+    """Test ProviderInfo field initialization（v2 字段集：实例 id/预设/适配器/健康状态）。"""
 
     def test_required_fields(self):
         info = ProviderInfo(
-            name="openai",
-            provider_type="openai",
+            instance_id="glm",
+            preset_id="glm",
+            name="GLM",
+            adapter="glm",
+            base_url="https://open.bigmodel.cn/api/paas/v4",
             enabled_chat=True,
             enabled_embedding=True,
-            supports_vision=False,
-            supports_function_calling=True,
-            current_chat_model="gpt-4",
-            current_embedding_model="text-embedding-3-small",
+            is_healthy=True,
+            last_error=None,
+            current_chat_model="glm-4",
+            current_embedding_model="embedding-3",
         )
 
-        assert info.name == "openai"
-        assert info.provider_type == "openai"
+        assert info.instance_id == "glm"
+        assert info.preset_id == "glm"
+        assert info.name == "GLM"
+        assert info.adapter == "glm"
+        assert info.base_url == "https://open.bigmodel.cn/api/paas/v4"
         assert info.enabled_chat is True
         assert info.enabled_embedding is True
-        assert info.supports_vision is False
-        assert info.supports_function_calling is True
-        assert info.current_chat_model == "gpt-4"
-        assert info.current_embedding_model == "text-embedding-3-small"
+        assert info.is_healthy is True
+        assert info.last_error is None
+        assert info.current_chat_model == "glm-4"
+        assert info.current_embedding_model == "embedding-3"
 
     def test_optional_defaults(self):
         info = ProviderInfo(
-            name="custom",
-            provider_type="custom",
+            instance_id="custom-a1b2",
+            preset_id=None,
+            name="自建服务",
+            adapter="openai-compatible",
+            base_url="https://llm.example.com/v1",
             enabled_chat=False,
             enabled_embedding=False,
-            supports_vision=False,
-            supports_function_calling=False,
+            is_healthy=True,
+            last_error=None,
             current_chat_model="",
             current_embedding_model="",
         )
 
         assert info.models == []
-        assert info.is_healthy is True
-        assert info.last_error is None
-        assert info.rate_limit_rpm is None
 
     def test_all_fields(self):
+        models = [
+            ModelInfo(id="glm-4", name="GLM-4"),
+            ModelInfo(id="embedding-3", name="Embedding-3", support_embedding=True),
+        ]
         info = ProviderInfo(
-            name="anthropic",
-            provider_type="anthropic",
+            instance_id="glm",
+            preset_id="glm",
+            name="GLM",
+            adapter="glm",
+            base_url="https://open.bigmodel.cn/api/paas/v4",
             enabled_chat=True,
             enabled_embedding=False,
-            supports_vision=False,
-            supports_function_calling=True,
-            current_chat_model="claude-3-5-sonnet",
-            current_embedding_model="",
-            models=["claude-3-5-sonnet", "claude-3-opus"],
             is_healthy=False,
             last_error="connection refused",
-            rate_limit_rpm=50,
+            current_chat_model="glm-4",
+            current_embedding_model="",
+            models=models,
         )
 
-        assert info.models == ["claude-3-5-sonnet", "claude-3-opus"]
+        assert info.models == models
         assert info.is_healthy is False
         assert info.last_error == "connection refused"
-        assert info.rate_limit_rpm == 50
 
 
 class TestStreamChunk:

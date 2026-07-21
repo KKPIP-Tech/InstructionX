@@ -14,8 +14,10 @@ class TestSingleton:
         from core.llm.plugin_service import get_llm_plugin_service
 
         # Mock 底层依赖，避免真实初始化
+        # （v2 构造期会基于 get_all_providers 构建定价表，需返回空字典）
         mocker.patch("core.llm.plugin_service.get_llm_provider")
-        mocker.patch("core.llm.plugin_service.LLMConfig")
+        mock_config = mocker.patch("core.llm.plugin_service.get_llm_config").return_value
+        mock_config.get_all_providers.return_value = {}
         mocker.patch("core.llm.plugin_service.ConversationManager")
         mocker.patch("core.llm.plugin_service.ToolCallExecutor")
         mocker.patch("core.llm.plugin_service.ToolRegistry")
@@ -36,7 +38,7 @@ class TestChatDelegation:
         mock_llm = mocker.MagicMock()
         mock_llm.chat.return_value = mocker.MagicMock(content="ok")
         mocker.patch("core.llm.plugin_service.get_llm_provider", return_value=mock_llm)
-        mocker.patch("core.llm.plugin_service.LLMConfig")
+        mocker.patch("core.llm.plugin_service.get_llm_config")
         mocker.patch("core.llm.plugin_service.ConversationManager")
         mocker.patch("core.llm.plugin_service.ToolCallExecutor")
         mocker.patch("core.llm.plugin_service.ToolRegistry")
@@ -59,7 +61,7 @@ class TestChatDelegation:
 
         mock_llm = mocker.MagicMock()
         mocker.patch("core.llm.plugin_service.get_llm_provider", return_value=mock_llm)
-        mocker.patch("core.llm.plugin_service.LLMConfig")
+        mocker.patch("core.llm.plugin_service.get_llm_config")
         mocker.patch("core.llm.plugin_service.ConversationManager")
         mocker.patch("core.llm.plugin_service.ToolCallExecutor")
         mocker.patch("core.llm.plugin_service.ToolRegistry")
@@ -85,7 +87,7 @@ class TestToolExecutor:
 
         mock_llm = mocker.MagicMock()
         mocker.patch("core.llm.plugin_service.get_llm_provider", return_value=mock_llm)
-        mocker.patch("core.llm.plugin_service.LLMConfig")
+        mocker.patch("core.llm.plugin_service.get_llm_config")
         mocker.patch("core.llm.plugin_service.ConversationManager")
         mocker.patch("core.llm.plugin_service.ToolCallExecutor")
         mocker.patch("core.llm.plugin_service.ToolRegistry")
@@ -104,7 +106,7 @@ class TestToolExecutor:
 
         mock_llm = mocker.MagicMock()
         mocker.patch("core.llm.plugin_service.get_llm_provider", return_value=mock_llm)
-        mocker.patch("core.llm.plugin_service.LLMConfig")
+        mocker.patch("core.llm.plugin_service.get_llm_config")
         mocker.patch("core.llm.plugin_service.ConversationManager")
         mocker.patch("core.llm.plugin_service.ToolCallExecutor")
         mocker.patch("core.llm.plugin_service.ToolRegistry")
@@ -127,7 +129,7 @@ class TestEmbed:
         mock_llm = mocker.MagicMock()
         mock_llm.embed.return_value = [[0.1, 0.2, 0.3]]
         mocker.patch("core.llm.plugin_service.get_llm_provider", return_value=mock_llm)
-        mocker.patch("core.llm.plugin_service.LLMConfig")
+        mocker.patch("core.llm.plugin_service.get_llm_config")
         mocker.patch("core.llm.plugin_service.ConversationManager")
         mocker.patch("core.llm.plugin_service.ToolCallExecutor")
         mocker.patch("core.llm.plugin_service.ToolRegistry")
@@ -146,7 +148,7 @@ class TestEmbed:
         mock_llm = mocker.MagicMock()
         mock_llm.embed.return_value = [[0.1], [0.2]]
         mocker.patch("core.llm.plugin_service.get_llm_provider", return_value=mock_llm)
-        mocker.patch("core.llm.plugin_service.LLMConfig")
+        mocker.patch("core.llm.plugin_service.get_llm_config")
         mocker.patch("core.llm.plugin_service.ConversationManager")
         mocker.patch("core.llm.plugin_service.ToolCallExecutor")
         mocker.patch("core.llm.plugin_service.ToolRegistry")
@@ -168,7 +170,7 @@ class TestConversationManagement:
         mock_conv_mgr = mocker.MagicMock()
         mock_conv_mgr.create_conversation.return_value = "conv-123"
         mocker.patch("core.llm.plugin_service.get_llm_provider")
-        mocker.patch("core.llm.plugin_service.LLMConfig")
+        mocker.patch("core.llm.plugin_service.get_llm_config")
         mocker.patch("core.llm.plugin_service.ToolCallExecutor")
         mocker.patch("core.llm.plugin_service.ToolRegistry")
 
@@ -188,7 +190,7 @@ class TestConversationManagement:
         mock_conv = mocker.MagicMock(spec=Conversation)
         mock_conv_mgr.get_conversation.return_value = mock_conv
         mocker.patch("core.llm.plugin_service.get_llm_provider")
-        mocker.patch("core.llm.plugin_service.LLMConfig")
+        mocker.patch("core.llm.plugin_service.get_llm_config")
         mocker.patch("core.llm.plugin_service.ToolCallExecutor")
         mocker.patch("core.llm.plugin_service.ToolRegistry")
 
@@ -205,7 +207,7 @@ class TestConversationManagement:
         mock_conv_mgr = mocker.MagicMock()
         mock_conv_mgr.delete_conversation.return_value = True
         mocker.patch("core.llm.plugin_service.get_llm_provider")
-        mocker.patch("core.llm.plugin_service.LLMConfig")
+        mocker.patch("core.llm.plugin_service.get_llm_config")
         mocker.patch("core.llm.plugin_service.ToolCallExecutor")
         mocker.patch("core.llm.plugin_service.ToolRegistry")
 
@@ -228,7 +230,7 @@ class TestUsageStats:
         mock_stats = UsageStats(total_tokens=1000, total_cost=0.5)
         mock_conv_mgr.get_usage_stats.return_value = mock_stats
         mocker.patch("core.llm.plugin_service.get_llm_provider")
-        mocker.patch("core.llm.plugin_service.LLMConfig")
+        mocker.patch("core.llm.plugin_service.get_llm_config")
         mocker.patch("core.llm.plugin_service.ToolCallExecutor")
         mocker.patch("core.llm.plugin_service.ToolRegistry")
 

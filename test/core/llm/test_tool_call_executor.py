@@ -137,7 +137,7 @@ class TestChatWithToolsNoTools:
         executor = ToolCallExecutor(llm_service=mock_llm)
 
         messages = [{"role": "user", "content": "hello"}]
-        result_msgs, tool_results, final = executor.chat_with_tools(messages)
+        executor.chat_with_tools(messages)
 
         mock_llm.chat.assert_called_once()
         call_args = mock_llm.chat.call_args
@@ -197,15 +197,15 @@ class TestChatWithToolsSingleTurn:
         executor = ToolCallExecutor(llm_service=mock_llm, tool_registry=registry)
         messages = [{"role": "user", "content": "weather?"}]
 
-        result_msgs, tool_results, final = executor.chat_with_tools(messages)
+        result = executor.chat_with_tools(messages)
 
         # Two LLM calls: first for tool call, second for final response
         assert mock_llm.chat.call_count == 2
-        assert len(tool_results) == 1
-        assert tool_results[0].tool_name == "get_weather"
-        assert tool_results[0].result == "sunny in Beijing"
-        # final is a ChatResponse object — access .content directly
-        assert "sunny" in final.content
+        assert len(result.tool_results) == 1
+        assert result.tool_results[0].tool_name == "get_weather"
+        assert result.tool_results[0].result == "sunny in Beijing"
+        # final_response 为 ChatResponse 对象 — 直接访问 .content
+        assert "sunny" in result.final_response.content
 
     def test_respects_max_turns_limit(self):
         """When max_turns is reached, the loop exits and returns."""
@@ -227,7 +227,7 @@ class TestChatWithToolsSingleTurn:
         executor = ToolCallExecutor(llm_service=mock_llm, tool_registry=registry)
         messages = [{"role": "user", "content": "trigger loop"}]
 
-        result_msgs, tool_results, final = executor.chat_with_tools(messages, max_turns=3)
+        executor.chat_with_tools(messages, max_turns=3)
 
         assert mock_llm.chat.call_count == 3
 
@@ -255,11 +255,11 @@ class TestChatWithToolsSingleTurn:
         executor = ToolCallExecutor(llm_service=mock_llm, tool_registry=registry)
         messages = [{"role": "user", "content": "fail"}]
 
-        _, tool_results, _ = executor.chat_with_tools(messages)
+        result = executor.chat_with_tools(messages)
 
-        assert len(tool_results) == 1
-        assert "Error executing bad_tool" in str(tool_results[0].result)
-        assert "something went wrong" in str(tool_results[0].result)
+        assert len(result.tool_results) == 1
+        assert "Error executing bad_tool" in str(result.tool_results[0].result)
+        assert "something went wrong" in str(result.tool_results[0].result)
 
     def test_handler_not_found_result_starts_with_error(self):
         """When handler not found, ToolResult.result starts with 'Error: tool'."""
@@ -285,10 +285,10 @@ class TestChatWithToolsSingleTurn:
         executor = ToolCallExecutor(llm_service=mock_llm, tool_registry=registry)
         messages = [{"role": "user", "content": "call unknown"}]
 
-        _, tool_results, _ = executor.chat_with_tools(messages)
+        result = executor.chat_with_tools(messages)
 
-        assert len(tool_results) == 1
-        assert str(tool_results[0].result).startswith("Error: tool")
+        assert len(result.tool_results) == 1
+        assert str(result.tool_results[0].result).startswith("Error: tool")
 
     def test_arguments_as_json_string_parsed(self):
         """Arguments as a JSON string are parsed correctly."""
@@ -367,10 +367,10 @@ class TestChatWithToolsSingleTurn:
         executor = ToolCallExecutor(llm_service=mock_llm, tool_registry=registry)
         messages = [{"role": "user", "content": "hello"}]
 
-        _, tool_results, final = executor.chat_with_tools(messages)
+        result = executor.chat_with_tools(messages)
 
         # Should not call the tool at all
-        assert tool_results == []
+        assert result.tool_results == []
         assert mock_llm.chat.call_count == 1
 
     def test_stream_accumulates_chunks_via_stream_callback(self):
@@ -430,10 +430,10 @@ class TestChatWithToolsSingleTurn:
         executor = ToolCallExecutor(llm_service=mock_llm, tool_registry=registry)
         messages = [{"role": "user", "content": "ping?"}]
 
-        _, tool_results, final = executor.chat_with_tools(messages)
+        result = executor.chat_with_tools(messages)
 
-        assert len(tool_results) == 1
-        assert tool_results[0].tool_name == "ping"
+        assert len(result.tool_results) == 1
+        assert result.tool_results[0].tool_name == "ping"
 
 
 # ===========================================================================
@@ -522,12 +522,12 @@ class TestToolCallExecutorEdgeCases:
         registry.register("calc", "calc", {}, lambda **kw: "ok")
 
         executor = ToolCallExecutor(llm_service=mock_llm, tool_registry=registry)
-        _, tool_results, _ = executor.chat_with_tools([{"role": "user", "content": "x"}])
+        result = executor.chat_with_tools([{"role": "user", "content": "x"}])
 
-        assert len(tool_results) == 1
-        assert tool_results[0].error is not None
-        assert "invalid arguments JSON" in tool_results[0].error
-        assert tool_results[0].arguments == {}
+        assert len(result.tool_results) == 1
+        assert result.tool_results[0].error is not None
+        assert "invalid arguments JSON" in result.tool_results[0].error
+        assert result.tool_results[0].arguments == {}
 
     def test_parallel_tool_calls_produce_single_assistant_message(self):
         """多个 tool_calls 合并为一条 assistant 消息后紧跟多条 tool 消息。"""
@@ -549,13 +549,13 @@ class TestToolCallExecutorEdgeCases:
 
         executor = ToolCallExecutor(llm_service=mock_llm, tool_registry=registry)
         messages = [{"role": "user", "content": "calc"}]
-        result_msgs, tool_results, _ = executor.chat_with_tools(messages)
+        result = executor.chat_with_tools(messages)
 
-        roles = [m["role"] for m in result_msgs]
+        roles = [m["role"] for m in result.messages]
         # 期望序列：user, assistant(携带2个tool_calls), tool, tool, assistant(最终回复)
         assert roles == ["user", "assistant", "tool", "tool", "assistant"]
-        assistant_msg = result_msgs[1]
+        assistant_msg = result.messages[1]
         assert len(assistant_msg["tool_calls"]) == 2
-        tool_ids = [m["tool_call_id"] for m in result_msgs if m["role"] == "tool"]
+        tool_ids = [m["tool_call_id"] for m in result.messages if m["role"] == "tool"]
         assert set(tool_ids) == {"call_a", "call_b"}
-        assert len(tool_results) == 2
+        assert len(result.tool_results) == 2
