@@ -24,6 +24,7 @@ from .config_manager import PluginConfigManager
 from .plugin_identity import PluginIdentity
 from .plugin_info_interface import IPluginInfo
 from core.interfaces.plugin_services import PluginServices
+from core.interfaces.i_llm_service import ILLMService
 
 # re-export：保持 `core.plugin.manager.sanitize_tool_name` 引用路径兼容
 from .tool_name import sanitize_tool_name  # noqa: F401
@@ -663,7 +664,7 @@ class PluginManager:
         service_class: type,
         plugin_id: str,
         data_provider: Any,
-        llm_service: Any,
+        llm_service: ILLMService,
         task_manager: Any,
     ) -> Optional[Any]:
         """实例化 Service 类
