@@ -26,7 +26,7 @@ docs/
 │   │   ├── overview.md              # 接口层概述（含各接口详细说明）
 │   │   └── ilogger.md              # ILogger 接口文档
 │   │   # 注：IPlugin/IPluginInfo 详见 plugin-system/iplugin.md
-│   │   # 注：IDataProvider/ITaskManager/ILLMFacade 在 overview.md 中详解
+│   │   # 注：IDataProvider/ITaskManager/ILLMService 在 overview.md 中详解
 │   │
 │   ├── plugin-system/               # 插件系统
 │   │   ├── overview.md              # 插件系统概述
@@ -191,7 +191,7 @@ from core.mcp import get_mcp_manager, MCPManager
 from core.interfaces import (
     IDataProvider, DataNamespace,
     ITaskManager, TaskType, TaskStatus,
-    ILLMFacade, PluginServices, ILogger
+    ILLMService, PluginServices, ILogger
 )
 ```
 

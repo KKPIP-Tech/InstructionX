@@ -88,7 +88,7 @@ def _create_ai_menu(self, menu_bar):
     self._ai_menu.addAction(usage_action)
 ```
 
-点击 **LLM 设置...** 调用 `_open_llm_settings_dialog()`，打开 `LLMSettingsDialog`（两栏布局）进行 LLM Provider 配置。
+点击 **LLM 设置...** 调用 `_open_llm_settings_dialog()`，打开 `LLMSettingsDialog`（`ui/dialog/llm_settings/` 包，两栏布局、自动保存语义）进行 LLM Provider 实例配置。
 
 点击 **用量查询** 调用 `_open_usage_panel()`，在模态对话框中嵌入 `UsagePanel` 查看 token 用量和费用统计。
 
@@ -446,17 +446,18 @@ def _open_license_dialog(self):
 
 #### LLM 设置对话框
 
-通过 **AI > LLM 设置...** (Ctrl+L) 打开，提供两栏式配置界面。左侧为 Provider 列表（标题"模型服务"），右侧为选中 Provider 的配置详情（API 密钥、API 地址、模型选择等）。详细说明见 [对话框组件](dialogs.md)。
+通过 **AI > LLM 设置...** (Ctrl+L) 打开，提供两栏式配置界面。左侧为 Provider 实例列表（搜索联动模型、启停开关、「＋ 添加提供商」），右侧为选中实例的配置详情（API 密钥、API 地址（占位符显示目录默认、可重置）、连接检测、模型列表管理、默认模型选择）。编辑即时落盘（自动保存语义，无「取消/保存」按钮），主题跟随应用主题。详细说明见 [对话框组件](dialogs.md)。
 
 ```python
-# 文件顶部导入：from ui.dialog.llm_settings_dialog import LLMSettingsDialog
+# 文件顶部导入：from ui.dialog.llm_settings import LLMSettingsDialog
 #             from core.llm.llm_provider import get_llm_provider
 
 def _open_llm_settings_dialog(self):
-    """打开 LLM 设置对话框"""
+    """打开 LLM 设置对话框（自动保存语义；reload_config 为幂等保底调用）"""
     dialog = LLMSettingsDialog(self)
 
     if dialog.exec() == QDialog.DialogCode.Accepted:
+        # 幂等保底：确保 LLM Provider 配置为最新
         get_llm_provider().reload_config()
 ```
 

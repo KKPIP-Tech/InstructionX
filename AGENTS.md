@@ -216,7 +216,7 @@ core/
   __init__.py               # PEP-562 惰性导出，避免 import core 时拉起 PySide6
   version.py                # VERSION 常量（版本单一来源）
   interfaces/               # 抽象接口层：IPlugin、IPluginInfo、IDataProvider、ITaskManager、
-                            #   ILLMFacade、PluginServices（依赖注入容器）
+                            #   ILLMService（i_llm_service.py，LLM 插件服务契约）、PluginServices（依赖注入容器）
   plugin/                   # 插件系统核心
     manager.py              # PluginManager 单例：加载/注册插件、跨插件 API 注册
     plugin_identity.py      # 插件 UUID（优先 {插件目录}/.plugin_info.json，不可写时回退 data/plugin_identity/{插件目录名}.json）
@@ -231,11 +231,21 @@ core/
     background_task.py      # BackgroundTaskManager 单例：4 线程池、定时/长期任务、优雅关闭
     task_storage.py         # 任务状态持久化（data/tasks.json）
   llm/                      # LLM 框架
-    llm_provider.py         # LLMProvider 单例：对话/流式/embedding/模型列表缓存
-    plugin_service.py       # LLMPluginService 单例：插件侧门面（会话管理、工具调用）
-    tool_call_executor.py   # ToolRegistry + ToolCallExecutor（工具调用多轮循环，默认 max_turns=5）
-    providers/              # 各厂商实现 + PROVIDER_REGISTRY
-    config.py / secure_keys.py  # Provider 配置（config/llm_providers.json）、API Key 混淆存储
+    llm_provider.py         # LLMProvider 单例：对话/流式/embedding/模型列表缓存、
+                            #   adapter 分发、check_provider/check_model、配置版本惰性刷新
+    model_schema.py         # 统一模型 schema：capabilities 闭集/normalize_model_entry/
+                            #   merge_model_entries 三路合并/infer_model_group
+    catalog/                # 提供商预设目录（随程序发布只读）：ProviderPreset/PROVIDER_PRESETS（5 家）、
+                            #   PRESET_MODELS、logos/、CUSTOM_ADAPTER="openai-compatible"
+    plugin_service.py       # LLMPluginService 单例：插件侧门面（ILLMService 显式实现，
+                            #   会话管理、工具调用、list_providers/get_models、定价热更新）
+    tool_call_executor.py   # ToolRegistry（register/register_typed）+ ToolCallExecutor
+                            #   （工具调用多轮循环返回 ToolChatResult，默认 max_turns=5）
+    providers/              # 适配器注册表（PROVIDER_REGISTRY 键为 adapter 家族）+ 各厂商实现
+                            #   + OpenAICompatibleProvider（自定义 OpenAI 兼容兜底适配器）
+    config.py / secure_keys.py  # ProviderConfig（实例：preset_id/adapter/order）/ LLMConfig 单例
+                            #   （config/llm_providers.json schema v2 + v1→v2 迁移备份、变更订阅/version）、
+                            #   API Key 混淆存储
   mcp/                      # MCP 协议
     manager.py              # MCPManager 单例：start_server / connect
     server.py               # MCPHostServer（FastMCP，默认 127.0.0.1:8765，可选 Bearer 鉴权）
@@ -245,11 +255,16 @@ ui/                         # 界面层
   main_window.py / title_bar.py / usage_panel/
   skills_panel/             # 插件技能面板
   work_area/                # 插件 Widget 宿主区（切换插件时缓存 UI 状态）
-  dialog/                   # 各类对话框（LLM 设置、插件顺序、GitHub 安装等）
+  dialog/                   # 各类对话框（插件顺序、GitHub 安装等）
+    llm_settings/           # LLM 设置对话框包：dialog 主壳 + provider_list_panel/provider_detail_panel/
+                            #   model_section/provider_editor_dialog/model_edit_dialog/
+                            #   health_check_dialog/sync_models_dialog + workers/theme/icons/widgets/constants
+                            #   （自动保存语义；自主主题 token，apply_dialog_theme 跟随应用主题）
 utils/
   logging_tools.py          # LoggerManager 单例（滚动文件日志，输出 logs/application.log）、get_name()
   themes.py + style_qss/    # StyleQSS 主题系统（30+ 控件样式，light/dark/auto）
   font_map.py               # 字体映射状态机（font/ 目录下 5 个字体家族）
+  image_utils.py            # 图片工具（load_image_as_base64，原 LLMPluginService 方法迁出）
   thread_utils.py           # 工作线程 → UI 线程封送（run_in_ui_thread 等）
 plugin/                     # 官方/示例插件（kebab-case 目录，15 个）
 custom_plugin/              # 第三方插件目录
@@ -262,7 +277,7 @@ config/ data/ logs/         # 运行时生成：配置、数据、日志
 
 ### 核心设计约定
 
-- **单例模式**：`PluginManager`、`DataProvider`、`BackgroundTaskManager`、`LLMProvider`、`LLMPluginService`、`MCPManager`、`LoggerManager` 均为单例（`XxxManager._instance`，部分提供 `get_xxx()` 访问器）。测试中重置单例要清 `_instance`。
+- **单例模式**：`PluginManager`、`DataProvider`、`BackgroundTaskManager`、`LLMProvider`、`LLMConfig`、`LLMPluginService`、`MCPManager`、`LoggerManager` 均为单例（`XxxManager._instance`，部分提供 `get_xxx()` 访问器；`LLMPluginService` 为模块级 `_instance`）。测试中重置单例要清 `_instance`。
 - **接口与实现分离**：共享类型统一定义在 `core/interfaces/`，其他模块从这里 re-export，避免循环导入。
 - 后台任务回调在**工作线程**执行，更新 UI 必须通过 `utils/thread_utils.py` 封送到 UI 线程。
 
@@ -287,8 +302,8 @@ config/ data/ logs/         # 运行时生成：配置、数据、日志
 
 | 文件 | 用途 |
 |------|------|
-| `config/llm_providers.json` | LLM Provider 配置（API Key 经 `secure_keys.py` 混淆存储） |
-| `config/llm_models_cache.json` | 模型列表缓存 |
+| `config/llm_providers.json` | LLM Provider 实例配置（schema v2：顶层 `version: 2`，实例含 preset_id/adapter/order；v1 自动迁移并生成 .bak 备份；API Key 经 `secure_keys.py` 混淆存储） |
+| `config/llm_models_cache.json` | 模型列表缓存（键为实例 id） |
 | `config/mcp_config.json` | MCP Server/Client 配置 |
 | `config/plugin_order.json` | 插件显示顺序 |
 | `data/data.db` | 插件数据（SQLite + WAL；另有 `-wal`/`-shm` 伴生文件） |

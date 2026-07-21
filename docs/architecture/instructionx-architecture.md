@@ -238,7 +238,7 @@ sequenceDiagram
 |---------|---------|
 | `i_plugin.py` | `IPlugin` 抽象基类：`plugin_name`（属性）、`_create_widget(parent, data_provider)`（抽象方法）、`on_plugin_loaded()`（生命周期钩子）、`llm_tools`（OpenAI 函数调用工具列表） |
 | `i_plugin_info.py` | `IPluginInfo`：`version`、`developer`、`plugin_type_id`、`service_api`（API 方法描述字典） |
-| `i_llm_facade.py` | `ILLMFacade`：对话管理、流式、直接 chat、工具调用、嵌入、多模态接口契约 |
+| `i_llm_service.py` | `ILLMService`：对话管理、流式、直接 chat、工具调用、嵌入、多模态、实例与模型查询的接口契约（`LLMPluginService` 显式继承） |
 | `i_task_manager.py` | `ITaskManager`：同步/异步/定时/长期任务注册与查询接口 |
 | `i_data_provider.py` | `IDataProvider`：数据存取、发布/订阅、插件管理接口 |
 | `plugin_services.py` | `PluginServices` dataclass：依赖注入容器 |
@@ -300,7 +300,7 @@ sequenceDiagram
 
 #### 3.2.3 ConversationManager
 
-- **核心职责**：管理所有对话的**生命周期**（创建/发送/删除），包含历史消息管理、用量累计与持久化。`max_context` 参数当前会被吸收但不生效，上下文自动截断尚未实现。
+- **核心职责**：管理所有对话的**生命周期**（创建/发送/删除），包含历史消息管理、用量累计与持久化。上下文超出 `max_context` 时自动从最早的用户/助手消息开始截断（system prompt 与最近消息保留）。
 - **关键 API**：
   - `create_conversation(system_prompt, provider, model)` → `conv_id`
   - `send_message(conv_id, content)` → `(response_content, usage_info)`
@@ -341,7 +341,7 @@ class GLMProvider(BaseProvider):
     ...
 ```
 
-每个 Provider 类通过 `@register_provider` 装饰器在模块加载时注册到全局注册表，`LLMProvider` 通过 `get_provider_class(provider_type)` 查找。
+每个适配器类在模块加载时注册到全局注册表（注册表键为**适配器家族** adapter，如 `"glm"`；`register_adapter(adapter_key, cls)` 注册，`get_adapter_class(adapter_key)` 查询，`register_provider` 为保留的旧名薄别名），`LLMProvider` 按实例配置中的 `adapter` 键查找并创建实例。
 
 ---
 
@@ -617,26 +617,32 @@ graph LR
 
 ### 5.2 核心接口契约
 
-#### ILLMFacade（`core/interfaces/i_llm_facade.py`）
+#### ILLMService（`core/interfaces/i_llm_service.py`）
 
-所有 LLM 能力通过此接口注入插件：
+所有 LLM 能力通过此接口注入插件（`PluginServices.llm_facade` 的类型标注即本接口，`LLMPluginService` 显式继承）：
 
 ```python
-class ILLMFacade(ABC):
+class ILLMService(ABC):
     @abstractmethod
     def create_conversation(self, system_prompt, provider, model, metadata) -> str: ...
 
     @abstractmethod
-    def send_message(self, conversation_id, content, images, temperature, max_tokens) -> str: ...
+    def send_message(self, conversation_id, content, images, temperature, max_tokens, model, provider) -> str: ...
 
     @abstractmethod
     def chat(self, messages, provider, model, temperature, max_tokens, tools) -> ChatResponse: ...
 
     @abstractmethod
-    def chat_with_tools(self, messages, provider, model, max_turns, temperature) -> Tuple: ...
+    def chat_with_tools(self, messages, provider, model, max_turns, temperature) -> ToolChatResult: ...
 
     @abstractmethod
-    def embed(self, texts, provider, model) -> List[List[float]]: ...
+    def embed(self, texts, provider, model) -> List[EmbeddingResponse]: ...
+
+    @abstractmethod
+    def list_providers(self) -> List[ProviderInfo]: ...
+
+    @abstractmethod
+    def get_models(self, provider) -> List[ModelInfo]: ...
 ```
 
 #### ITaskManager（`core/interfaces/i_task_manager.py`）
@@ -703,7 +709,7 @@ class IDataProvider(ABC):
 2.  Plugin → services.llm_facade.send_message(conv_id, "user message")
        → ConversationManager.send_message(conv_id, content)
            → LLMProvider.chat(messages, provider=conv.provider)
-               → PROVIDER_REGISTRY[provider_type].chat(messages)
+               → PROVIDER_REGISTRY[adapter].chat(messages)
                    → ChatResponse (content + tool_calls?)
 
 3.  ChatResponse.tool_calls exists?
@@ -846,7 +852,7 @@ class IDataProvider(ABC):
 - [x] **插件隔离校验**：文档未混入 `/plugin` 或 `/custom_plugin` 内部逻辑。框架仅描述扫描/加载机制，未引用任何插件内部代码。
 - [x] **依赖双向校验**：每个模块的「我依赖」与「依赖我」形成完整双向链路。例如：PluginManager ← 所有插件 ✓；LLMPluginService → ConversationManager ✓。
 - [x] **调用链路闭环**：所有 4 个核心场景的链路均从入口追踪到最终数据落盘/响应。例如：MCP 调用链路从 `MCPHostServer` → `PluginManager.call_plugin_method` → 插件方法 → 返回结果，完整闭环。
-- [x] **接口契约一致性**：文档中的接口签名与 `core/interfaces/` 中的抽象方法定义一致（如 `ILLMFacade.send_message` 返回 `str`，`ITaskManager.register_scheduled_task_factory` 无返回值）。
+- [x] **接口契约一致性**：文档中的接口签名与 `core/interfaces/` 中的抽象方法定义一致（如 `ILLMService.send_message` 返回 `str`，`ITaskManager.register_scheduled_task_factory` 无返回值）。
 - [x] **矛盾排查**：代码中确认 `PluginServices` 的 `mcp_manager` 和 `mcp_client` 字段可为空（`field(default=None)`），文档已如实反映。`BackgroundTaskManager` 的 `restore_scheduled_tasks` 由 `register_scheduled_task_factory` 自动触发，文档准确描述。
 - [x] **必填项检查**：每个模块均包含：核心职责、关键 API、模块关系（我依赖+依赖我）、典型场景。
 - [x] **Mermaid 语法**：所有 5 张图表使用正确的 Mermaid 语法。sequenceDiagram 使用 `participant` 别名；graph TB/LR 使用正确的节点定义和箭头语法。

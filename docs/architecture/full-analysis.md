@@ -114,7 +114,7 @@ graph TB
         IPluginInfo_IF[IPluginInfo]
         IDataProvider_IF[IDataProvider]
         ITaskManager_IF[ITaskManager]
-        ILLMFacade_IF[ILLMFacade]
+        ILLMService_IF[ILLMService]
         ILogger_IF[ILogger]
         PS[PluginServices<br/>DI 容器]
     end
@@ -159,7 +159,7 @@ graph TB
     Plugins -->|inherit| IPlugin
     Plugins -->|depend on| IDataProvider_IF
     Plugins -->|depend on| ITaskManager_IF
-    Plugins -->|depend on| ILLMFacade_IF
+    Plugins -->|depend on| ILLMService_IF
 
     Interfaces -->|define| Core
     StyleQSS -->|style| UI
@@ -289,41 +289,52 @@ class IDataProvider(ABC):
 
 定义 4 类任务类型（`TaskType`）：`SYNC`、`ASYNC`、`SCHEDULED`、`LONG_RUNNING`。
 
-### 3.6 ILLMFacade 接口
+### 3.6 ILLMService 接口
 
-**文件**：`core/interfaces/i_llm_facade.py`
+**文件**：`core/interfaces/i_llm_service.py`（取代已删除的 `i_llm_facade.py`）
 
-定义 LLM 统一访问契约，对应 `LLMPluginService` 实现类（通过 Duck Typing 对齐）。
+定义插件访问 LLM 能力的唯一抽象契约，`LLMPluginService` **显式继承**该接口（接口即契约，不再是 Duck Typing）。所有 `provider` 参数语义为**实例 id**，取 `"default"`（`DEFAULT_PROVIDER`）时由底层按功能维度（chat/embedding）解析为默认实例；`model` 参数取 `"default"`（`DEFAULT_MODEL`）时使用实例配置中的默认模型。
 
-**注意**：`ILLMFacade` 接口本身仅定义核心契约方法，以下方法签名均以代码为准：
+**注意**：接口层在运行时不导入 `core.llm`（类型仅 `TYPE_CHECKING` 导入，避免循环依赖与重量依赖），因此签名默认值以字面量 `"default"` 标注。以下方法签名以代码为准：
 
 ```python
-def chat(messages, provider="default", ...) -> ChatResponse          # core/interfaces/i_llm_facade.py:30
-def stream_chat(messages, provider="default", callback=None, ...)     # core/interfaces/i_llm_facade.py:43
-def embed(texts, provider="default", ...) -> List[EmbeddingResponse] # core/interfaces/i_llm_facade.py:57
-def get_models(provider=None) -> Dict[str, List[ModelInfo]]         # core/interfaces/i_llm_facade.py:68
-def get_provider(name) -> Optional[Any]                             # core/interfaces/i_llm_facade.py:73
-def get_all_providers() -> Dict[str, Any]                           # core/interfaces/i_llm_facade.py:78
-def get_cached_models(provider_name) -> List[ModelInfo]             # core/interfaces/i_llm_facade.py:83
-def get_conversation(conv_id) -> Optional[Any]                     # core/interfaces/i_llm_facade.py:126
-def list_conversations() -> List[Any]                               # core/interfaces/i_llm_facade.py:131
-def delete_conversation(conv_id) -> bool                           # core/interfaces/i_llm_facade.py:136
-def get_tool_executor() -> Any                                      # core/interfaces/i_llm_facade.py:143
-def get_shared_tool_registry() -> Any                              # core/interfaces/i_llm_facade.py:148
-def chat_with_tools(messages, provider="default", ...)             # core/interfaces/i_llm_facade.py:153
-def get_available_providers() -> List[Any]                          # core/interfaces/i_llm_facade.py:167
-def validate_provider(provider) -> Tuple[bool, str]                # core/interfaces/i_llm_facade.py:177
-def load_image_as_base64(file_path) -> str                         # core/interfaces/i_llm_facade.py:182
+# 直接对话（无会话状态）
+def chat(messages, provider="default", model="default", ...) -> ChatResponse
+def stream_chat(messages, callback, provider="default", ...) -> str
+def embed(texts, provider="default", model="default") -> List[EmbeddingResponse]
+
+# 会话管理
+def create_conversation(system_prompt=None, provider="default", ...) -> str
+def send_message(conv_id, content, images=None, model=None, provider=None, ...) -> str
+def stream_send_message(conv_id, content, callback=None, ...) -> str
+def get_conversation(conv_id) -> Optional[Conversation]
+def list_conversations() -> List[Conversation]
+def delete_conversation(conv_id) -> bool
+
+# 工具调用
+def get_tool_executor() -> ToolCallExecutor
+def get_shared_tool_registry() -> ToolRegistry
+def chat_with_tools(messages, provider="default", max_turns=5, ...) -> ToolChatResult
+def chat_with_tools_stream(messages, callback, ...) -> ToolChatResult
+
+# 多模态
+def generate_image(prompt, provider="default", ...) -> ImageResult
+def text_to_speech(text, provider="default", ...) -> AudioResult
+
+# 实例与模型查询
+def list_providers() -> List[ProviderInfo]
+def get_models(provider="default") -> List[ModelInfo]
+def resolve_provider_id(provider) -> str
+def get_default_provider_id(feature="chat") -> Optional[str]
+
+# 统计与校验
+def get_usage_stats(conversation_id=None) -> Optional[UsageStats]
+def validate_provider(provider) -> Tuple[bool, str]
+@property
+def last_stream_response() -> Optional[ChatResponse]
 ```
 
-**扩展方法**（仅在 `LLMPluginService` 实现类中可用，不在接口层定义）：
-- `create_conversation(...)` — `core/llm/plugin_service.py:93`
-- `send_message(...)` — `core/llm/plugin_service.py:118`
-- `stream_send_message(...)` — `core/llm/plugin_service.py:147`
-- `get_usage_stats(conv_id)` — `core/llm/plugin_service.py:454`
-- `get_raw_provider(provider)` — `core/llm/plugin_service.py:484`
-- `generate_image(...)` — `core/llm/plugin_service.py:346`
-- `text_to_speech(...)` — `core/llm/plugin_service.py:381`
+**已移除的旧接口方法**（底层泄漏，破坏性切换）：`get_provider` / `get_all_providers` / `get_raw_provider` / `get_cached_models` / `load_image_as_base64`（后者迁至 `utils/image_utils.py`）。旧 `get_available_providers()` 由 `list_providers()` 取代。迁移对照见 `temp/llm-api-v2-migration.md`。
 
 ### 3.7 PluginServices（依赖注入容器）
 
@@ -332,7 +343,7 @@ def load_image_as_base64(file_path) -> str                         # core/interf
 ```python
 @dataclass
 class PluginServices:
-    llm_facade: "LLMPluginService"              # LLM 服务（必需字段）
+    llm_facade: "ILLMService"              # LLM 服务（必需字段，实际为 LLMPluginService 单例）
     data_provider: "DataProvider"               # 数据服务（必需字段）
     task_manager: "BackgroundTaskManager"       # 任务服务（必需字段）
     logger: "ILogger"                           # 日志服务（必需字段）
@@ -619,32 +630,40 @@ __init__() → LLMConfig() → _init_providers() → _fetch_all_models()
 - `core/llm/providers/__init__.py` 的 `get_provider_class()` + `PROVIDER_REGISTRY`
 
 **谁依赖我**：
-- `ui/dialog/llm_settings_dialog.py` 的 `LLMSettingsDialog`
-- `plugin/llm_chat/service.py` 的 `LLMChatService`
-- 所有需要 LLM 能力的插件
+- `ui/dialog/llm_settings/` 包的各面板与 Worker（LLM 设置界面）
+- `core/llm/plugin_service.py` 的 `LLMPluginService`
+- 所有需要 LLM 能力的插件（经 `ILLMService` 门面间接使用）
 
-### 7.2 Provider 注册机制
+### 7.2 适配器注册机制
 
 **文件**：`core/llm/providers/__init__.py`
 
+注册表 `PROVIDER_REGISTRY` 的键为**适配器家族（adapter）**而非厂商：多个预设可共享同一适配器；自定义实例（`preset_id=None`）固定使用 `openai-compatible` 兜底适配器。
+
 ```mermaid
 graph LR
-    A[register_provider装饰器] -->|"provider_type=glm"| B[PROVIDER_REGISTRY-glm-GLMProvider]
-    C[register_provider装饰器] -->|"provider_type=minimax"| D[PROVIDER_REGISTRY-minimax-MiniMaxProvider]
-    E[get_provider_class] -->|query registry| B
+    A[register_adapter] -->|"adapter=glm"| B[PROVIDER_REGISTRY-glm-GLMProvider]
+    C[register_adapter] -->|"adapter=minimax"| D[PROVIDER_REGISTRY-minimax-MiniMaxProvider]
+    F[register_adapter] -->|"adapter=openai-compatible"| G[PROVIDER_REGISTRY-openai-compatible-OpenAICompatibleProvider]
+    E[get_adapter_class] -->|query registry| B
 ```
 
-模块导入时（`providers/__init__.py:89-92`）通过装饰器自动注册所有 Provider。
+模块导入时自动注册全部适配器（minimax / siliconflow / glm / ollama / openai / openai-compatible）。`register_provider` / `get_provider_class` / `get_all_provider_types` 为保留的旧名薄别名（语义同为适配器家族）。
 
-### 7.3 五家提供商对比
+`LLMProvider._create_provider()` 按实例配置中的 `adapter` 键查注册表创建实例；未知适配器记 ERROR 日志并跳过该实例，不影响其余实例。
 
-| 提供商 | 配置文件键 | 模型获取方式 | 特殊处理 |
-|--------|-----------|------------|---------|
-| MiniMax | `minimax` | 预设列表（5 个 chat + 1 个 embedding） | 图片需 base64 前缀 |
-| GLM | `glm` | 预设列表（7 类模型，含视频/音频） | 支持 function calling |
-| SiliconFlow | `siliconflow` | API `/models` 动态获取 | 模型类型从 ID 推断 |
-| Ollama | `ollama` | API `/api/tags` 动态获取 | 不需要 api_key |
-| OpenAI | `openai` | API `/models` 动态获取 | OpenAI 兼容协议 |
+### 7.3 内置预设与适配器
+
+提供商元数据（显示名、默认端点、帮助链接、Logo、预设模型）外移到 `core/llm/catalog/` 目录数据（`ProviderPreset` + `PROVIDER_PRESETS`，共 5 家）；用户配置中的每个 Provider 是实例，经 `preset_id` 关联预设。
+
+| 预设 | preset_id | 适配器 | 模型获取方式 | 特殊处理 |
+|------|-----------|--------|------------|---------|
+| MiniMax | `minimax` | `minimax` | 预设模型目录（目录层 PRESET_MODELS） | 图片需 base64 前缀 |
+| GLM | `glm` | `glm` | 预设模型目录（7 类模型，含视频/音频） | 支持 function calling |
+| SiliconFlow | `siliconflow` | `siliconflow` | API `/models` 动态获取 | 模型类型从 ID 推断 |
+| Ollama | `ollama` | `ollama` | API `/api/tags` 动态获取 | 不需要 api_key（auth_optional） |
+| OpenAI | `openai` | `openai` | API `/models` 动态获取 | OpenAI 兼容协议 |
+| 自定义实例 | `null` | `openai-compatible` | 端点 `/models` 或 custom_models | 任意 OpenAI 兼容端点零代码接入 |
 
 ### 7.4 BaseProvider 模板方法
 
@@ -976,7 +995,7 @@ class Service:
 | `i_plugin_info.py` | IPluginInfo 接口定义 |
 | `i_data_provider.py` | IDataProvider 接口 + DataNamespace 枚举 |
 | `i_task_manager.py` | ITaskManager 接口 + TaskType/TaskStatus 枚举 |
-| `i_llm_facade.py` | ILLMFacade 接口 + Message/ChatResponse 等 DTO |
+| `i_llm_service.py` | ILLMService 接口（LLM 插件服务抽象契约） |
 | `i_logger.py` | ILogger 接口 |
 | `plugin_services.py` | PluginServices DI 容器 |
 
@@ -1014,25 +1033,28 @@ class Service:
 
 | 文件 | 核心职责 |
 |------|---------|
-| `llm_provider.py` | LLMProvider 单例，多提供商门面 |
-| `provider_interface.py` | ILLM 抽象基类 + 数据类型（Message、ChatResponse 等） |
-| `config.py` | LLMConfig / ProviderConfig 配置管理 |
+| `llm_provider.py` | LLMProvider 单例，多提供商门面（adapter 分发 / check_* / 惰性刷新） |
+| `provider_interface.py` | ILLM 抽象基类 + 数据类型（Message、ChatResponse、ToolCall、ModelInfo、ModelCheckResult 等） |
+| `model_schema.py` | 统一模型 schema（capabilities 闭集、normalize、三路合并、分组推断） |
+| `catalog/` | 提供商预设目录（ProviderPreset / PROVIDER_PRESETS / PRESET_MODELS / logos/） |
+| `config.py` | LLMConfig（单例 + 变更订阅 + schema v2 迁移）/ ProviderConfig（实例配置） |
 | `exceptions.py` | LLM 异常体系（9 类） |
-| `types.py` | LLM 服务层数据类型（Conversation、ToolResult、UsageStats、UsageRecord 等） |
+| `types.py` | LLM 服务层数据类型（Conversation、ProviderInfo、ToolChatResult、ToolDefinition、UsageStats、UsageRecord 等） |
 | `pricing.py` | DEFAULT_PRICING 定价表 |
 | `conversation_manager.py` | ConversationManager 对话生命周期管理 |
 | `tool_call_executor.py` | ToolCallExecutor / ToolRegistry 工具调用自动化 |
-| `plugin_service.py` | LLMPluginService 插件开发者主入口 |
+| `plugin_service.py` | LLMPluginService 插件开发者主入口（ILLMService 实现） |
 | `types_cache.py` | CacheInfo / CacheType 缓存信息类型 |
 | `cache_adapter.py` | CacheAdapter 缓存适配器 + DEFAULT_CACHE_CONFIG |
 | `usage_record_store.py` | UsageRecordStore 用量记录持久化（data/llm_usage.json） |
-| `providers/__init__.py` | PROVIDER_REGISTRY + 装饰器注册 |
+| `providers/__init__.py` | PROVIDER_REGISTRY（adapter→类）+ register_adapter + 旧名薄别名 |
 | `providers/base.py` | BaseProvider 模板方法基类 |
 | `providers/minimax.py` | MiniMaxProvider 实现 |
 | `providers/glm.py` | GLMProvider 实现 |
 | `providers/siliconflow.py` | SiliconFlowProvider 实现 |
 | `providers/ollama.py` | OllamaProvider 实现 |
 | `providers/openai.py` | OpenAIProvider 实现 |
+| `providers/openai_compatible.py` | OpenAICompatibleProvider（自定义 OpenAI 兼容兜底适配器） |
 
 #### UI 层 (`ui/`)
 
@@ -1046,9 +1068,7 @@ class Service:
 | `work_area/work_area.py` | WorkArea 工作区 |
 | `dialog/about_dialog.py` | 关于对话框 |
 | `dialog/license_dialog.py` | 开源许可对话框 |
-| `dialog/llm_settings_dialog.py` | LLM 设置对话框 |
-| `dialog/llm_settings_components.py` | LLM 设置对话框组件 |
-| `dialog/llm_model_service_dialog.py` | 模型服务对话框 |
+| `dialog/llm_settings/` | LLM 设置对话框包（dialog/provider_list_panel/provider_detail_panel/model_section/provider_editor_dialog/model_edit_dialog/health_check_dialog/sync_models_dialog/workers/theme/icons/widgets/constants） |
 | `dialog/plugin_order_dialog.py` | 插件排序对话框（拖拽） |
 | `dialog/github_plugin_install_dialog.py` | GitHub 插件安装对话框 |
 
@@ -1070,8 +1090,8 @@ class Service:
 | 文件 | 结构 |
 |------|------|
 | `config/plugin_order.json` | `{official_plugins: [uuid], thirdparty_plugins: [uuid]}` |
-| `config/llm_providers.json` | `{providers: {name: {api_key, base_url, chat_model, ...}}}` |
-| `config/llm_models_cache.json` | `{provider_name: [ModelInfo]}` |
+| `config/llm_providers.json` | schema v2：`{version: 2, providers: {instance_id: {preset_id, adapter, api_key, base_url, chat_model, order, ...}}}` |
+| `config/llm_models_cache.json` | `{instance_id: [ModelInfo] 或 {timestamp, models}}`（键为实例 id） |
 | `config/mcp_config.json` | `{server: {...}, remote_servers: [...]}` |
 | `data/data.db` | SQLite 数据库：plugins、plugin_data、active_instances 表 |
 | `data/data.json` | `{plugins: {id: {type, active, private, public}}, active_instances: {}}`（JSON 应急后端） |

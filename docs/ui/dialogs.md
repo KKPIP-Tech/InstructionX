@@ -48,14 +48,20 @@ dialog.exec()
 
 ## 2. LLMSettingsDialog LLM 设置对话框
 
-**文件位置**: `ui/dialog/llm_settings_dialog.py`
-**辅助组件**: `ui/dialog/llm_settings_components.py`
+**文件位置**: `ui/dialog/llm_settings/`（包，旧 `llm_settings_dialog.py` / `llm_settings_components.py` 已删除）
 
 ### 2.1 概述
 
-`LLMSettingsDialog` 是 LLM Provider 的配置管理对话框，采用 **两栏布局**：
-- **左栏**（250px）：Provider 列表，点击切换选中项
-- **右栏**：滚动区域，显示选中 Provider 的完整配置
+`LLMSettingsDialog` 是 LLM Provider 实例的配置管理对话框，采用 **QSplitter 两栏布局**：
+- **左栏**（固定 248px）：`ProviderListPanel`，实例列表 + 搜索 + 添加入口
+- **右栏**：`QStackedWidget`（空态占位页 / `ProviderDetailPanel` 详情页）
+
+**核心交互语义**：
+- **自动保存**：全部编辑（API 密钥、地址、启停开关、模型开关、默认模型等）即时经 `get_llm_config()` 落盘，无「取消/保存」按钮；删除类操作保留中文确认弹窗。
+- **预设/实例体系**：每个 Provider 是一个实例，经 `preset_id` 关联目录预设（`core/llm/catalog/`）；「＋ 添加提供商」弹出两页创建对话框（选预设或「自定义 OpenAI 兼容服务」→ 填名称/地址/密钥）。
+- **配置变更联动**：`LLMConfig` 变更订阅驱动左栏刷新；`LLMProvider` 惰性刷新保证运行时实例同步。
+- **主题跟随**：包内自主主题 token 体系（`theme.py` 的 LIGHT/DARK 两套 token），`apply_dialog_theme()` 按应用当前主题（`utils.style_qss.get_style_qss().theme()`）为对话框换肤，作用域仅限对话框自身，不触碰 QApplication 全局样式。
+- **记住选中**：上次选中的实例经 QSettings（组织 `LumenThread` / 应用 `InstructionX-CE`）记忆，下次打开时恢复。
 
 ### 2.2 窗口属性
 
@@ -64,76 +70,74 @@ dialog.exec()
 | 窗口类型 | QDialog |
 | 最小尺寸 | 900 x 600 |
 | 默认尺寸 | 1050 x 700 |
-| 布局 | 水平两栏（左侧固定 250px，右侧自适应） |
+| 布局 | QSplitter 水平两栏（左栏固定 248px，右栏自适应） |
+| 打开方式 | 菜单 **AI > LLM 设置...**（Ctrl+L） |
 
-### 2.3 左侧面板
+### 2.3 左侧面板（ProviderListPanel）
 
-- **标题**: "模型服务"
-- **Provider 列表**: `QScrollArea` + `QVBoxLayout`，通过 `ProviderListItemWidget` 组件渲染每个 Provider（图标 + 名称 + ON/OFF 状态标签）
-- **添加按钮**: "+ 添加供应商"，虚线边框，点击弹出类型选择对话框
-- **删除操作**: 右侧详情区头部提供独立的删除按钮（红色），点击弹出确认框后删除当前 Provider
+- **标题**: "模型服务" 小标题
+- **搜索框**: 实时过滤，匹配实例名 / 实例 id / 预设显示名 / 实例下模型 id 与 name（缓存模型 + custom_models）
+- **实例列表**: 按配置 `order` 升序渲染，每项为 `ProviderItemWidget`（品牌图标 + 名称 + 自绘启停开关，选中为圆角 pill）；开关切换直接写 `enabled_chat` 落盘
+- **添加按钮**: 「＋ 添加提供商」，弹出 `ProviderEditorDialog`（MODE_CREATE 两页流程）
+- 重命名 / 删除操作在右栏头部「更多菜单」中（删除保留中文确认弹窗）
 
-### 2.4 右侧面板（配置详情，滚动区域）
+### 2.4 右侧面板（ProviderDetailPanel）
 
 按从上到下分为以下区域：
 
 #### 头部区（Header）
-Provider 徽标（普通 `QLabel`，程序化彩色方块）、名称、子类型标签、**启用** 开关（`CircularToggleSwitch`）、删除按钮
+品牌图标、实例名称、类型徽章（适配器家族；自定义实例显示「自定义」）、**总开关**（`SwitchButton`，关闭时主体覆盖停用遮罩）、更多菜单（重命名 / 删除提供商）
 
-#### API 密钥区
-- `QLineEdit`（密码模式），带眼睛图标切换可见性
-- 链接标签 "点击这里获取密钥"，点击打开对应平台官网
+#### API 配置区
+- **API 密钥**：`QLineEdit`（密码模式 + 眼睛图标切换可见性），即时落盘
+- **连接检测**：「检测」按钮，经 `ConnectionCheckWorker`（QThread）调用 `LLMProvider.check_provider()`；成功显示「连接正常 · N 个模型」且未启用时自动开启 `enabled_chat`，失败显示错误详情
+- **API 地址**：`QLineEdit`（占位符显示目录默认地址）+「重置」按钮（清空实例覆写、回退目录默认）；输入完成即时落盘
+- 官网 / 获取密钥 / 文档链接全部由目录预设元数据驱动
 
-#### API 地址区
-- `QLineEdit`，占位符提示示例地址
+#### 模型区（ModelSection）
+- **标题栏**: 计数 / 「↻ 刷新」（`FetchModelsWorker` 后台拉取，内部走 `check_provider()`）/ 「＋ 添加」/ 「检查」（健康检查对话框）/ 「同步」（模型同步对话框）/ 「管理」
+- **管理模式**: 工具条（全选 / 删除选中），支持批量操作
+- **分组展示**: 模型列表为 `merge_model_entries()`（目录预设 + API 拉取/缓存 + 用户覆写 custom_models）三路合并结果，按主类型（对话/视觉/嵌入/重排序）分组渲染 `ModelRow`（名称、能力徽章、上下文长度、启停开关、删除按钮）
+- 模型开关写 `enabled` 覆写、非自定义模型删除写 `hidden` 覆写（均落进 custom_models）；双击模型行打开 `ModelEditDialog` 编辑
 
-#### 检测供应商有效性
-- "检测供应商有效性" 按钮，调用 `provider.validate_config()`
+#### 默认模型区
+- **聊天模型** / **嵌入模型** 两个 `QComboBox`（含「未设置」项），按能力过滤候选模型，选择即时落盘
 
-#### 模型列表区
-- **工具栏**: "获取模型列表" 按钮（QThread 后台执行，不阻塞主线程）+ "添加模型" 按钮
-- **分组展示**: `_populate_model_groups` 合并本地预设模型与 API 获取模型（按 id 去重），叠加用户在 `ModelEditDialog` 中保存的覆盖数据（`custom_models`），按 `_extract_model_group` 提取的系列名称分组排序
-- 每个分组用 `ModelGroupWidget` 渲染（组内每项为 `ModelItemWidget`，含名称、能力标签、上下文长度），支持编辑 / 删除信号
-- 无模型时显示提示 "暂无模型，请点击「获取模型列表」"
+### 2.5 子对话框
 
-#### 模型选择区
-- **当前聊天模型**: `QComboBox`（最小宽度 300px）
-- **当前 Embedding 模型**: `QComboBox`（最小宽度 300px）
-- 两个下拉框自动合并预设模型 + API 获取模型（去重）
-
-#### 底部栏（固定高度 52px）
-- 用量统计文字（从 `LLMPluginService.get_usage_stats()` 获取，显示 `"累计使用：$X.XXXX"`（美元））
-- 取消按钮、**保存** 按钮（修改后才可用）
-
-### 2.5 自定义组件
-
-| 组件 | 文件 | 说明 |
+| 对话框 | 文件 | 说明 |
 |------|------|------|
-| `ProviderListItemWidget` | `llm_settings_components.py` | Provider 列表项，含圆形 Logo、名称、启用开关与状态指示 |
-| `ModelGroupWidget` | `llm_settings_components.py` | 模型系列分组容器（组标题 + 组内模型列表，发射编辑/删除信号） |
-| `ModelItemWidget` | `llm_settings_components.py` | 单个模型列表项（名称、能力标签、上下文长度、操作按钮） |
-| `ModelEditDialog` | `llm_settings_components.py` | 模型编辑对话框（名称、分组、能力、价格、流式支持等） |
-| `SearchBox` | `llm_settings_components.py` | 带搜索图标的输入框 |
-| `OnOffSwitch` | `llm_settings_components.py` | ON/OFF 状态开关（Provider 列表项使用） |
-| `CircularToggleSwitch` | `llm_settings_components.py` | 圆形开关（启用状态、流式支持等） |
-| `ActionButton` | `llm_settings_components.py` | 统一操作按钮样式（蓝色圆角） |
-| `ConfigCard` | `llm_settings_components.py` | 配置区块卡片容器 |
+| `ProviderEditorDialog` | `provider_editor_dialog.py` | 实例添加/编辑：MODE_CREATE 两页流程（选预设列表或「自定义 OpenAI 兼容服务」→ 填名称/Base URL/API Key，按预设预填）；MODE_EDIT 编辑既有实例；实例 id 由 `generate_instance_id()` 生成（预设首实例直接用 preset_id，否则短码 id） |
+| `ModelEditDialog` | `model_edit_dialog.py` | 模型条目编辑：能力标签开关组（遵循 embedding/rerank 互斥规则）、context_length、定价与币种；输出经 `normalize_model_entry()` 规范化的统一 schema |
+| `HealthCheckDialog` | `health_check_dialog.py` | 逐模型可用性探测（`HealthCheckWorker` 后台调 `LLMProvider.check_model()`）：每行状态（等待/检查中/正常/失败/跳过）+ 延迟 ms + 进度条 + 顶部汇总计数 |
+| `SyncModelsDialog` | `sync_models_dialog.py` | 远端模型对比：新增（绿标，可批量添加）/ 已存在（灰标）/ 已失效（红标，可批量清理）三区分组；无远端模型 API 的预设（如 MiniMax）提示「无需同步」 |
 
-### 2.6 使用方式
+### 2.6 包结构与通用组件
+
+| 文件 | 说明 |
+|------|------|
+| `dialog.py` | 主壳（两栏协调、选中记忆、模型编辑接入、Worker 回收） |
+| `constants.py` | 全部尺寸/超时/QSettings 键等命名常量 |
+| `theme.py` | 主题 token（LIGHT/DARK `Theme` dataclass）+ QSS 生成 + `apply_dialog_theme()` |
+| `icons.py` | 品牌 SVG 图标渲染/着色（`icons/` 资源目录，缺失时降级为字母方块） |
+| `widgets.py` | 通用控件（`SwitchButton` 自绘开关、徽章、`ProviderItemWidget`、`ModelRow`、`_BaseFormDialog` 表单基类、焦点光环） |
+| `workers.py` | 后台 Worker 线程（`FetchModelsWorker` / `ConnectionCheckWorker` / `HealthCheckWorker`，规范 parent 归属与自销毁） |
+
+### 2.7 使用方式
 
 ```python
-from ui.dialog.llm_settings_dialog import LLMSettingsDialog
+from ui.dialog.llm_settings import LLMSettingsDialog
 from core.llm.llm_provider import get_llm_provider
 
 dialog = LLMSettingsDialog(parent_window)
 if dialog.exec() == QDialog.DialogCode.Accepted:
-    # 配置已保存，重新加载 LLM Provider
+    # 自动保存语义下编辑已即时落盘；reload_config() 为幂等保底调用
     get_llm_provider().reload_config()
 ```
 
-### 2.7 信号
+### 2.8 信号与配置同步
 
-`LLMSettingsDialog` 不对外发射 `config_changed` 信号。主窗口通过 `exec()` 返回值判断配置是否保存，然后手动调用 `get_llm_provider().reload_config()` 重新加载配置。
+`LLMSettingsDialog` 不对外发射 `config_changed` 信号。编辑经 `get_llm_config()` 即时落盘并触发 `LLMConfig` 变更通知（`version + 1`）；`LLMProvider` 各公开入口比对版本惰性刷新，主窗口 `exec()` 返回后的 `reload_config()` 仅为幂等保底。
 
 ---
 
