@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 r"""截取模型编辑对话框的截图.
 
+新架构适配说明：新版 ``ui.dialog.llm_settings.ModelEditDialog`` 取消了
+「更多设置」折叠区，全部字段平铺展示，因此仅截取一张完整表单截图。
+
 用法:
     .venv\Scripts\python.exe scripts\screenshot_model_edit_dialog.py
 """
@@ -29,7 +32,7 @@ def main():
     set_style_qss_theme(app, "light")
 
     # 创建模型编辑对话框
-    from ui.dialog.llm_settings_components import ModelEditDialog
+    from ui.dialog.llm_settings import ModelEditDialog
 
     model_data = {
         'id': 'Pro/moonshotai/Kimi-K2.5',
@@ -45,24 +48,13 @@ def main():
     # 等待渲染
     app.processEvents()
 
-    # 截图初始状态（更多设置折叠）
+    # 截图（新对话框全字段平铺，无折叠/展开两种状态）
     pixmap = dialog.grab()
     out_dir = Path("scripts/screenshots")
     out_dir.mkdir(parents=True, exist_ok=True)
-    shot_path = out_dir / "model_edit_dialog_collapsed.png"
+    shot_path = out_dir / "model_edit_dialog.png"
     pixmap.save(str(shot_path))
-    print(f"模型编辑对话框（折叠）: {shot_path}")
-
-    # 展开更多设置
-    dialog._more_btn.setChecked(True)
-    dialog._toggle_more_settings()
-    app.processEvents()
-
-    # 截图展开状态
-    pixmap = dialog.grab()
-    shot_path = out_dir / "model_edit_dialog_expanded.png"
-    pixmap.save(str(shot_path))
-    print(f"模型编辑对话框（展开）: {shot_path}")
+    print(f"模型编辑对话框: {shot_path}")
     print(f"尺寸: {pixmap.width()}x{pixmap.height()}")
 
     return 0

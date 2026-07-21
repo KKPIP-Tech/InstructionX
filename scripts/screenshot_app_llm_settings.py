@@ -55,7 +55,7 @@ def main():
 
     # 打开 LLM 设置对话框
     print("正在打开 LLM 设置对话框...")
-    from ui.dialog.llm_settings_dialog import LLMSettingsDialog
+    from ui.dialog.llm_settings import LLMSettingsDialog
     dialog = LLMSettingsDialog(main_window)
     dialog.resize(1200, 800)
 

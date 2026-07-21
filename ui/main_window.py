@@ -26,7 +26,7 @@ from ui.dialog.plugin_order_dialog import PluginOrderDialog
 from ui.dialog.about_dialog import AboutDialog
 from ui.dialog.license_dialog import LicenseDialog
 from ui.dialog.github_plugin_install_dialog import GitHubPluginInstallDialog
-from ui.dialog.llm_settings_dialog import LLMSettingsDialog
+from ui.dialog.llm_settings import LLMSettingsDialog
 from ui.work_area.work_area import WorkArea
 from ui.title_bar import CustomTitleBar
 from ui.usage_panel import UsagePanel
@@ -384,12 +384,13 @@ class InstructionXMainWindow(QMainWindow):
         """
         打开 LLM 设置对话框
 
-        用户保存设置后，重新加载 LLM 提供商配置。
+        新版对话框为自动保存语义（编辑即时落盘）；LLMProvider 具备惰性
+        刷新，此处 Accepted 后的 reload_config() 为幂等保底调用。
         """
         dialog = LLMSettingsDialog(self)
 
         if dialog.exec() == QDialog.DialogCode.Accepted:
-            # 用户点击了保存，重新加载 LLM Provider
+            # 幂等保底：确保 LLM Provider 配置为最新
             get_llm_provider().reload_config()
 
     def _open_usage_panel(self):

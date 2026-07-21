@@ -42,7 +42,7 @@ def main():
     set_style_qss_theme(app, args.theme)
 
     # 创建对话框
-    from ui.dialog.llm_settings_dialog import LLMSettingsDialog
+    from ui.dialog.llm_settings import LLMSettingsDialog
     dialog = LLMSettingsDialog()
     dialog.resize(1100, 750)
     dialog.show()
