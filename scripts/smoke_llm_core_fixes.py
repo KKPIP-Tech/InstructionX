@@ -287,8 +287,10 @@ def main():
     registry.register("get_weather", "查天气", {}, lambda city: f"{city}晴")
     registry.register("get_time", "查时间", {}, lambda tz: f"{tz} 15:00")
     executor = ToolCallExecutor(TwoCallLLM(), tool_registry=registry)
-    msgs, results, final = executor.chat_with_tools(
+    tool_result = executor.chat_with_tools(
         [{"role": "user", "content": "北京天气和时间"}])
+    msgs, results, final = (
+        tool_result.messages, tool_result.tool_results, tool_result.final_response)
 
     seq_ok = (
         len(msgs) == 5
@@ -332,7 +334,8 @@ def main():
             return bad_args_resp if self.called == 1 else final_resp
 
     executor2 = ToolCallExecutor(BadArgsLLM(), tool_registry=registry)
-    msgs2, results2, _ = executor2.chat_with_tools([{"role": "user", "content": "x"}])
+    tool_result2 = executor2.chat_with_tools([{"role": "user", "content": "x"}])
+    msgs2, results2 = tool_result2.messages, tool_result2.tool_results
     check("d5. 非法 arguments JSON：不执行且在 tool 响应中说明",
           results2[0].error is not None
           and "invalid arguments JSON" in msgs2[2]["content"])

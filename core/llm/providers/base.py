@@ -566,9 +566,8 @@ class BaseProvider(ILLM):
         """解析聊天响应（OpenAI 兼容格式统一实现）
 
         从 API 响应中提取 content、tool_calls 和 usage 信息。
-        tool_calls 保持 OpenAI 风格契约:
-            [{"id": str, "type": "function",
-              "function": {"name": str, "arguments": str(JSON)}}]
+        tool_calls 由 ChatResponse 构造时统一规范为 ToolCall 对象列表：
+            [ToolCall(id=..., name=..., arguments={...})]
 
         Args:
             response: API 响应字典
