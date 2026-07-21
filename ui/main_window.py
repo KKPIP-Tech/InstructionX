@@ -392,6 +392,10 @@ class InstructionXMainWindow(QMainWindow):
         if dialog.exec() == QDialog.DialogCode.Accepted:
             # 幂等保底：确保 LLM Provider 配置为最新
             get_llm_provider().reload_config()
+        # 对话框以主窗口为父对象，exec 返回后不会自动销毁；
+        # 显式 deleteLater 释放其 C++ 对象树（含配置订阅面板），
+        # 避免多次打开累积隐藏对话框与悬挂回调
+        dialog.deleteLater()
 
     def _open_usage_panel(self):
         """打开用量查询面板对话框"""

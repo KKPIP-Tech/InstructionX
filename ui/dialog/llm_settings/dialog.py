@@ -242,13 +242,15 @@ class LLMSettingsDialog(QDialog):
     # ==================== 关闭与 Worker 回收 ====================
 
     def _shutdown(self) -> None:
-        """关闭收尾：保存选中记忆并安全终止详情面板 Worker（幂等）"""
+        """关闭收尾：保存选中记忆、退订配置订阅并安全终止 Worker（幂等）"""
         if self._shutdown_done:
             return
         self._shutdown_done = True
         current = self._list_panel.current_provider_id()
         if current:
             self._settings.setValue(QSETTINGS_LAST_PROVIDER_KEY, current)
+        # 显式退订：LLMConfig 为全局单例，避免关闭后回调到已失效面板
+        self._list_panel.dispose()
         self._detail_panel.shutdown_workers()
 
     def reject(self) -> None:

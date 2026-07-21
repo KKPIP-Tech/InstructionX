@@ -195,15 +195,7 @@ class LLMProvider:
         """
         for name, provider in self._providers.items():
             # 1. 加载本地缓存（兼容 providers/base.py 写入的 TTL 时间戳信封）
-            cached = self._config.load_models_cache(name)
-            if cached:
-                if isinstance(cached, dict):
-                    models_data = cached.get("models", [])
-                else:
-                    models_data = cached
-                models = [ModelInfo.from_dict(m) for m in models_data if isinstance(m, dict)]
-                self._models_cache[name] = models
-                self._logger.info(get_name(), f'Loaded {len(models)} models for {name} from cache')
+            self._load_models_from_disk_cache(name)
 
             # 2. 尝试从远程刷新（静默，不覆盖已有缓存）
             try:
@@ -222,6 +214,32 @@ class LLMProvider:
                     self._logger.warning(get_name(), f'No cache for {name}, network unavailable')
                 else:
                     self._logger.info(get_name(), f'Using cached models for {name}, remote fetch failed: {e}')
+
+    def _load_models_from_disk_cache(self, name: str) -> None:
+        """从本地缓存文件回填单个提供商的模型列表（不联网）
+
+        Args:
+            name: 提供商实例 id
+        """
+        cached = self._config.load_models_cache(name)
+        if not cached:
+            return
+        if isinstance(cached, dict):
+            models_data = cached.get("models", [])
+        else:
+            models_data = cached
+        models = [ModelInfo.from_dict(m) for m in models_data if isinstance(m, dict)]
+        self._models_cache[name] = models
+        self._logger.info(get_name(), f'Loaded {len(models)} models for {name} from cache')
+
+    def _reload_models_from_disk_cache(self) -> None:
+        """从本地缓存文件回填全部提供商的模型列表（不联网）
+
+        供 reload_config 使用：热重载配置后内存模型缓存被清空，需立即
+        从磁盘缓存恢复，保证 UI 与插件在下次远程刷新前仍能看到模型。
+        """
+        for name in self._providers:
+            self._load_models_from_disk_cache(name)
 
     # ==================== 惰性配置刷新 ====================
 
@@ -477,6 +495,9 @@ class LLMProvider:
         self._config = LLMConfig()
         self._init_providers()
         self._sync_config_version()
+        # 热重载后立即从磁盘缓存恢复模型列表（不联网），避免 UI/插件
+        # 在下次手动刷新前看到空模型列表
+        self._reload_models_from_disk_cache()
 
     # ==================== 内部辅助方法 ====================
 

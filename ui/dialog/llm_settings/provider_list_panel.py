@@ -70,6 +70,8 @@ class ProviderListPanel(QWidget):
         self._selected_id: Optional[str] = None
         # 自身写配置期间抑制 subscribe 触发的刷新，避免通知风暴
         self._suppress_config_refresh = False
+        # reload 重建期间抑制 _apply_filter 的自动重选（选中恢复由 reload 负责）
+        self._suspend_auto_select = False
         self._init_ui()
         get_llm_config().subscribe(self._on_config_changed)
         self.destroyed.connect(self._on_destroyed)
@@ -121,18 +123,24 @@ class ProviderListPanel(QWidget):
             select_id: 指定要选中的实例 id；为 None 时保持当前选中
                 （已删除则回退为第一个可见项）
         """
+        # 必须在清空前快照目标选中项：list.clear() 后 currentItem 为 None，
+        # _apply_filter 的自动重选会把 _selected_id 覆盖为第一项（导致跳回）
+        target = select_id or self._selected_id
         providers = get_llm_config().get_all_providers()
         self._providers = sorted(
             providers.items(), key=lambda kv: (kv[1].order, kv[0]))
         self._rows.clear()
+        self._suspend_auto_select = True
         self.list.blockSignals(True)
-        self.list.clear()
-        for instance_id, cfg in self._providers:
-            self._add_row(instance_id, cfg)
-        self.list.blockSignals(False)
-        self._apply_filter(self.search_edit.text())
-        target = select_id or self._selected_id
-        if target and target in self._rows:
+        try:
+            self.list.clear()
+            for instance_id, cfg in self._providers:
+                self._add_row(instance_id, cfg)
+            self._apply_filter(self.search_edit.text())
+        finally:
+            self.list.blockSignals(False)
+            self._suspend_auto_select = False
+        if target and target in self._rows and not self._rows[target][0].isHidden():
             self._select(target)
         else:
             self._select_first_visible()
@@ -225,6 +233,9 @@ class ProviderListPanel(QWidget):
             item = self._rows[instance_id][0]
             hit = not needle or self._matches_keyword(instance_id, cfg, needle)
             item.setHidden(not hit)
+        # 重建（reload）期间禁止自动改选第一项，选中恢复由 reload 统一负责
+        if self._suspend_auto_select:
+            return
         current = self.list.currentItem()
         if current is None or current.isHidden():
             self._select_first_visible()
@@ -281,6 +292,15 @@ class ProviderListPanel(QWidget):
             return
         self.reload()
 
-    def _on_destroyed(self) -> None:
-        """控件销毁时退订配置变更，避免悬挂回调"""
+    def dispose(self) -> None:
+        """显式退订配置变更（对话框关闭路径调用，幂等）
+
+        不依赖 ``destroyed`` 信号的销毁时序：LLMConfig 为全局单例，
+        对话框关闭后若仍持有本面板回调，再次落盘时会回调到已失效
+        （或已隐藏）的面板。
+        """
         get_llm_config().unsubscribe(self._on_config_changed)
+
+    def _on_destroyed(self) -> None:
+        """控件销毁时退订配置变更（dispose 的兜底，unsubscribe 幂等）"""
+        self.dispose()
