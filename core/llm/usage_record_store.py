@@ -3,25 +3,53 @@
 基于 JSON 的原子写入单例存储，用于记录每一次 LLM API 请求的用量信息。
 遵循 task_storage.py 的原子写入模式（临时文件 + os.replace）。
 
+写入策略:
+    单后台写线程 + 防抖合并（debounce）：连续高频记录只触发一次全量写入，
+    避免每条记录都 spawn 新线程全量重写文件。
+
 存储文件: data/llm_usage.json
 """
 
 import json
+import logging
 import os
 import threading
+import time
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 
 from .types import UsageRecord
+
+logger = logging.getLogger(__name__)
+
+
+def _normalize_dt(value: Any) -> datetime:
+    """将时间戳归一化为 UTC aware datetime
+
+    兼容历史数据中的 naive datetime（视为 UTC）与 ISO 字符串，
+    避免 naive/aware 混合比较抛出 TypeError。
+
+    Args:
+        value: datetime 或 ISO 格式字符串
+
+    Returns:
+        datetime: UTC aware 的 datetime 对象
+    """
+    if isinstance(value, str):
+        value = datetime.fromisoformat(value)
+    if value.tzinfo is None:
+        # 历史 naive 时间戳视为 UTC
+        return value.replace(tzinfo=timezone.utc)
+    return value
 
 
 class UsageRecordStore:
     """LLM 用量记录存储单例
 
     线程安全的 JSON 持久化存储，采用原子写入保证数据一致性。
-    使用后台线程异步写入避免阻塞主线程。
+    使用单后台写线程 + 防抖合并异步写入，避免阻塞主线程和频繁全量重写。
 
     Example:
         >>> store = get_usage_record_store()
@@ -32,6 +60,14 @@ class UsageRecordStore:
 
     _instance: Optional["UsageRecordStore"] = None
     _lock = threading.Lock()
+
+    # 防抖合并窗口（秒）：窗口内的连续写入合并为一次磁盘写入
+    DEBOUNCE_SECONDS = 0.2
+    # 自动 prune 阈值：超过 MAX_RECORDS 条时仅保留最近 PRUNE_KEEP 条
+    MAX_RECORDS = 10000
+    PRUNE_KEEP = 8000
+    # flush 轮询间隔（秒）：检查写线程是否完成落盘的等待步长
+    FLUSH_POLL_SECONDS = 0.02
 
     def __new__(cls) -> "UsageRecordStore":
         if cls._instance is None:
@@ -48,6 +84,10 @@ class UsageRecordStore:
 
         self._file_lock = threading.RLock()
         self._pending_write = False
+
+        # 单后台写线程（防抖合并）
+        self._writer_thread: Optional[threading.Thread] = None
+        self._writer_wake = threading.Event()
 
         # 数据目录和文件路径
         self._data_dir = Path(__file__).resolve().parent.parent.parent / "data"
@@ -83,20 +123,71 @@ class UsageRecordStore:
         os.replace(temp_file, self._records_file)
 
     def _async_save(self) -> None:
-        """后台线程异步保存"""
-        def save():
-            with self._file_lock:
-                if self._cache_dirty:
-                    self._write_to_disk(self._cache)
-                    self._cache_dirty = False
-                self._pending_write = False
+        """触发后台异步保存（单写线程 + 防抖合并）
 
+        标记有待写入数据并唤醒后台写线程；写线程在防抖窗口后
+        将窗口内累计的所有变更一次性写入磁盘。
+        """
         with self._file_lock:
             self._pending_write = True
-        t = threading.Thread(target=save, daemon=True, name="UsageRecordStore-async-save")
-        t.start()
+            if self._writer_thread is None or not self._writer_thread.is_alive():
+                self._writer_thread = threading.Thread(
+                    target=self._writer_loop,
+                    daemon=True,
+                    name="UsageRecordStore-writer",
+                )
+                self._writer_thread.start()
+            self._writer_wake.set()
+
+    def _writer_loop(self) -> None:
+        """后台写线程主循环
+
+        等待唤醒 -> 防抖窗口等待（合并连续写入）-> 原子写入。
+        窗口期内若有新记录到来，自动进入下一轮合并写入。
+        """
+        while True:
+            self._writer_wake.wait()
+            self._writer_wake.clear()
+            # 防抖窗口：合并短时间内的连续写入
+            time.sleep(self.DEBOUNCE_SECONDS)
+            with self._file_lock:
+                if self._cache_dirty:
+                    try:
+                        self._write_to_disk(self._cache)
+                    except Exception:
+                        logger.exception("UsageRecordStore 写入磁盘失败")
+                    self._cache_dirty = False
+                # 窗口期内又来了新记录 -> 保持 pending，继续下一轮写入
+                self._pending_write = self._writer_wake.is_set()
 
     # ==================== 公开 API ====================
+
+    def flush(self, timeout: float = 2.0) -> None:
+        """冲刷防抖窗口内的待写记录，等待后台写线程完成落盘
+
+        供应用退出等需要确保数据不丢失的场景调用。唤醒后台写线程并
+        轮询等待，直到内存缓存中的脏数据全部写入磁盘。方法幂等，可
+        重复调用；无待写数据时立即返回。
+
+        Args:
+            timeout: 最长等待时间（秒），超时后记录警告日志并返回，
+                未落盘的数据仍由 daemon 写线程在后台继续尝试
+
+        Returns:
+            None
+        """
+        deadline = time.monotonic() + timeout
+        while True:
+            with self._file_lock:
+                dirty = self._cache_dirty
+            if not dirty:
+                return
+            # 唤醒写线程尽快写入（不等新的防抖窗口自然到期）
+            self._writer_wake.set()
+            if time.monotonic() >= deadline:
+                logger.warning("UsageRecordStore flush 超时（%ss），仍有数据未落盘", timeout)
+                return
+            time.sleep(self.FLUSH_POLL_SECONDS)
 
     def record(self, usage_record: UsageRecord) -> None:
         """记录一次 LLM API 请求
@@ -110,6 +201,9 @@ class UsageRecordStore:
 
         with self._file_lock:
             self._cache["records"].append(record_dict)
+            # 自动 prune：超过阈值时仅保留最近的记录
+            if len(self._cache["records"]) > self.MAX_RECORDS:
+                self._cache["records"] = self._cache["records"][-self.PRUNE_KEEP:]
             self._cache_dirty = True
 
         self._async_save()
@@ -123,6 +217,7 @@ class UsageRecordStore:
         conversation_id: Optional[str] = None,
         limit: Optional[int] = None,
         offset: int = 0,
+        descending: bool = False,
     ) -> List[UsageRecord]:
         """查询用量记录
 
@@ -134,10 +229,18 @@ class UsageRecordStore:
             conversation_id: 对话 ID（精确匹配）
             limit: 最大返回条数
             offset: 跳过条数
+            descending: 是否按时间倒序（最新在前）返回；默认 False 保持
+                写入顺序（旧→新）。倒序在分页之前生效，即第 0 页为最新记录
 
         Returns:
             List[UsageRecord]: 符合条件的记录列表
         """
+        # 归一化查询时间范围，兼容 naive/aware 混合比较
+        if start_time is not None:
+            start_time = _normalize_dt(start_time)
+        if end_time is not None:
+            end_time = _normalize_dt(end_time)
+
         with self._file_lock:
             records = self._cache["records"][:]
             # 深拷贝避免外部修改缓存
@@ -145,14 +248,12 @@ class UsageRecordStore:
 
         results = []
         for r in records:
-            # 时间过滤
-            if start_time:
-                ts = datetime.fromisoformat(r["timestamp"]) if isinstance(r["timestamp"], str) else r["timestamp"]
-                if ts < start_time:
+            # 时间过滤（时间戳归一化为 UTC aware 后比较）
+            if start_time or end_time:
+                ts = _normalize_dt(r["timestamp"])
+                if start_time and ts < start_time:
                     continue
-            if end_time:
-                ts = datetime.fromisoformat(r["timestamp"]) if isinstance(r["timestamp"], str) else r["timestamp"]
-                if ts > end_time:
+                if end_time and ts > end_time:
                     continue
 
             # 精确匹配过滤
@@ -165,8 +266,11 @@ class UsageRecordStore:
 
             results.append(UsageRecord.from_dict(r))
 
+        # 倒序在分页之前生效：第 0 页即为最新记录
+        if descending:
+            results.reverse()
+
         # 分页
-        total = len(results)
         results = results[offset:]
         if limit is not None:
             results = results[:limit]
@@ -276,13 +380,12 @@ class UsageRecordStore:
         Returns:
             int: 删除的记录数
         """
+        before = _normalize_dt(before)
         with self._file_lock:
             original_count = len(self._cache["records"])
             self._cache["records"] = [
                 r for r in self._cache["records"]
-                if (datetime.fromisoformat(r["timestamp"]) >= before
-                    if isinstance(r["timestamp"], str)
-                    else r["timestamp"] >= before)
+                if _normalize_dt(r["timestamp"]) >= before
             ]
             removed = original_count - len(self._cache["records"])
             if removed > 0:

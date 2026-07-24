@@ -5,6 +5,7 @@
 
 import copy
 import datetime as dt
+import json
 import math
 import os
 import sqlite3
@@ -21,6 +22,8 @@ import orjson
 
 from .schema_migrations import MIGRATIONS, TARGET_SCHEMA_VERSION
 from . import sql_map
+
+from utils.logging_tools import LoggerManager, get_name
 
 
 # ---------------------------------------------------------------------------
@@ -200,7 +203,9 @@ class SQLiteBackend:
         self.temp_json_file = self.data_dir / f"{data_filename}.tmp"
 
         self._conn: Optional[sqlite3.Connection] = None
-        self._value_cache = _LRUCache(capacity=4096)
+        # 容量使用 _LRUCache 默认值（4096），不显式传字面量
+        self._value_cache = _LRUCache()
+        self._logger = LoggerManager()
 
     # -----------------------------------------------------------------------
     # 连接与 PRAGMA
@@ -230,8 +235,9 @@ class SQLiteBackend:
         if self._conn is not None:
             try:
                 self._conn.close()
-            except Exception:
-                pass
+            except Exception as e:
+                # 关闭连接失败不影响后续流程，仅记录调试日志
+                self._logger.debug(get_name(), f'关闭数据库连接时出错（已忽略）: {e}')
             self._conn = None
 
     # -----------------------------------------------------------------------
@@ -240,8 +246,15 @@ class SQLiteBackend:
 
     @contextmanager
     def transaction(self) -> Generator[sqlite3.Connection, None, None]:
-        """返回一个使用 BEGIN IMMEDIATE 的事务上下文。"""
+        """返回一个使用 BEGIN IMMEDIATE 的事务上下文。
+
+        注意：不支持嵌套事务。已处于事务中时抛出 SQLiteBackendError，
+        调用方需避免在 transaction() 上下文内再次进入 transaction()
+        （包括间接调用内部使用了 transaction() 的方法）。
+        """
         conn = self._connect()
+        if conn.in_transaction:
+            raise SQLiteBackendError("transaction() 不支持嵌套调用：已处于事务中")
         try:
             conn.execute(sql_map.SQLMap.v1.BEGIN_IMMEDIATE)
             yield conn
@@ -249,8 +262,9 @@ class SQLiteBackend:
         except Exception:
             try:
                 conn.execute(sql_map.SQLMap.v1.ROLLBACK)
-            except Exception:
-                pass
+            except Exception as rollback_error:
+                # 回滚失败时原始异常仍会抛出，回滚错误仅记录调试日志
+                self._logger.debug(get_name(), f'事务回滚失败（原始异常仍将抛出）: {rollback_error}')
             raise
 
     # -----------------------------------------------------------------------
@@ -273,8 +287,13 @@ class SQLiteBackend:
             if row is None:
                 return 0
             return int(row[0])
-        except (sqlite3.OperationalError, ValueError) as e:
-            raise SQLiteBackendError(f"数据库 schema_version 读取或解析失败: {e}")
+        except sqlite3.OperationalError as e:
+            # db_metadata 表不存在（早期无版本数据库）时按文档约定返回 0
+            if "no such table" in str(e).lower():
+                return 0
+            raise SQLiteBackendError(f"数据库 schema_version 读取或解析失败: {e}") from e
+        except ValueError as e:
+            raise SQLiteBackendError(f"数据库 schema_version 读取或解析失败: {e}") from e
 
     @staticmethod
     def _set_metadata(conn: sqlite3.Connection, **items: str) -> None:
@@ -293,12 +312,21 @@ class SQLiteBackend:
             migration = MIGRATIONS.get(next_version)
             if migration is None:
                 raise SQLiteBackendError(f"缺少升级到版本 {next_version} 的迁移脚本")
+            # 连接处于 autocommit 模式（isolation_level=None），`with conn:` 不会开启事务；
+            # 显式 BEGIN IMMEDIATE ... COMMIT / ROLLBACK，保证每次迁移是独立事务，
+            # 中途失败不会留下半截 schema
+            conn.execute(sql_map.SQLMap.v1.BEGIN_IMMEDIATE)
             try:
-                with conn:
-                    migration(conn)
-                    self._set_metadata(conn, schema_version=str(next_version))
+                migration(conn)
+                self._set_metadata(conn, schema_version=str(next_version))
+                conn.execute(sql_map.SQLMap.v1.COMMIT)
             except Exception as e:
-                raise SQLiteBackendError(f"数据库升级到版本 {next_version} 失败: {e}")
+                try:
+                    conn.execute(sql_map.SQLMap.v1.ROLLBACK)
+                except Exception as rollback_error:
+                    # 回滚失败不掩盖迁移失败的主异常，仅记录调试日志
+                    self._logger.debug(get_name(), f'迁移事务回滚失败（主异常仍将抛出）: {rollback_error}')
+                raise SQLiteBackendError(f"数据库升级到版本 {next_version} 失败: {e}") from e
             current = next_version
 
     # -----------------------------------------------------------------------
@@ -390,8 +418,9 @@ class SQLiteBackend:
         try:
             if self.temp_json_file.exists():
                 self.temp_json_file.unlink()
-        except Exception:
-            pass
+        except Exception as e:
+            # 清理残留的临时 JSON 文件失败不影响初始化主流程
+            self._logger.debug(get_name(), f'清理临时 JSON 文件失败（已忽略）: {e}')
 
     def _delete_db_files(self) -> None:
         """删除数据库文件及其 WAL/SHM 附属文件。"""
@@ -401,16 +430,16 @@ class SQLiteBackend:
             try:
                 if path.exists():
                     path.unlink()
-            except Exception:
-                pass
+            except Exception as e:
+                # 删除残留数据库文件失败不影响错误恢复主流程
+                self._logger.debug(get_name(), f'删除数据库文件 {path.name} 失败（已忽略）: {e}')
 
     def _parse_json_file(self) -> Dict[str, Any]:
-        import json as _json
         try:
             # utf-8-sig 兼容带 BOM 与不带 BOM 的 UTF-8 文件
             with open(self.json_file, 'r', encoding='utf-8-sig') as f:
-                return _json.load(f)
-        except _json.JSONDecodeError as e:
+                return json.load(f)
+        except json.JSONDecodeError as e:
             raise SQLiteBackendError(f"JSON 解析失败: {e}")
         except Exception as e:
             raise SQLiteBackendError(f"读取数据文件失败: {e}")
@@ -441,7 +470,7 @@ class SQLiteBackend:
             },
         }
         for table, expected_cols in expected.items():
-            cur = conn.execute(sql_map.SQLMap.v1.SELECT_TABLE_INFO.format(table=table))
+            cur = conn.execute(sql_map.SQLMap.v1.table_info_sql(table))
             actual_cols = {(row[1], row[2], row[3], row[4], row[5]) for row in cur.fetchall()}
             missing = expected_cols - actual_cols
             if missing:
@@ -680,12 +709,49 @@ class SQLiteBackend:
         self._value_cache.clear()
 
     def get_all_plugins(self) -> Dict[str, Dict[str, Any]]:
-        data = self.load_data()
-        return copy.deepcopy(data.get("plugins", {}))
+        """查询所有插件的完整信息（专用查询，不经 load_data 全量重建与 LRU 缓存）。"""
+        conn = self._connect()
+        plugins: Dict[str, Dict[str, Any]] = {}
+
+        cur = conn.execute(sql_map.SQLMap.v1.SELECT_ALL_PLUGINS)
+        for instance_id, plugin_type, active in cur.fetchall():
+            plugins[instance_id] = {
+                "type": plugin_type,
+                "active": bool(active),
+                "private": {},
+                "public": {},
+            }
+
+        cur = conn.execute(sql_map.SQLMap.v1.SELECT_ALL_PLUGIN_DATA_FOR_LOAD)
+        for instance_id, namespace, key, value_json in cur.fetchall():
+            if instance_id in plugins:
+                # _deserialize 返回全新对象，返回值不与缓存共享引用
+                plugins[instance_id][namespace][key] = _deserialize(value_json)
+
+        return plugins
 
     def get_plugin_info(self, instance_id: str) -> Optional[Dict[str, Any]]:
-        data = self.load_data()
-        return copy.deepcopy(data.get("plugins", {}).get(instance_id))
+        """按 instance_id 查询单个插件的完整信息（点查，避免全表扫描）。"""
+        conn = self._connect()
+        cur = conn.execute(sql_map.SQLMap.v1.SELECT_PLUGIN_BY_ID, (instance_id,))
+        row = cur.fetchone()
+        if row is None:
+            return None
+        _, plugin_type, active = row
+        info: Dict[str, Any] = {
+            "type": plugin_type,
+            "active": bool(active),
+            "private": {},
+            "public": {},
+        }
+        cur = conn.execute(sql_map.SQLMap.v1.SELECT_PLUGIN_DATA_BY_ID, (instance_id,))
+        for namespace, key, value_json in cur.fetchall():
+            info[namespace][key] = _deserialize(value_json)
+        return info
+
+    def clear_caches(self) -> None:
+        """清空后端内部缓存（当前为 LRU 反序列化缓存）。"""
+        self._value_cache.clear()
 
     def reset_all_data(self) -> None:
         self.save_data({"plugins": {}, "active_instances": {}})

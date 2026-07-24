@@ -25,7 +25,7 @@ from core import BackgroundTaskManager, TaskType, TaskStatus, BackgroundTask, Sc
 # 抽象接口层（推荐用于插件开发）
 from core.interfaces import IPlugin, IPluginInfo, IDataProvider, ITaskManager
 from core.interfaces import TaskType, TaskStatus
-from core.interfaces import ILLMFacade, Message, ChatResponse, EmbeddingResponse, ModelInfo
+from core.interfaces import ILLMService, Message, ChatResponse, EmbeddingResponse, ModelInfo
 from core.llm import UsageInfo  # UsageInfo 不在 core.interfaces.__all__ 中，需从 core.llm 导入
 from core.interfaces import ILogger, PluginServices
 ```
@@ -53,8 +53,11 @@ from core.llm import Message, ChatResponse, EmbeddingResponse, ModelInfo, UsageI
 # LLM 服务层数据类型
 from core.llm import (
     Conversation, ToolResult, UsageStats, StreamChunk,
-    ImageResult, AudioResult, ProviderInfo
+    ImageResult, AudioResult, ProviderInfo, ToolChatResult, ToolDefinition
 )
+
+# LLM 默认引用常量（消除 "default" 魔法字符串）
+from core.llm.types import DEFAULT_PROVIDER, DEFAULT_MODEL
 
 # LLM 配置
 from core.llm import LLMConfig, ProviderConfig
@@ -225,8 +228,8 @@ from core.mcp import IMCPTool, IMCPClient
 |------|------|--------|
 | `BackgroundTaskManager()` | 获取单例实例（单例模式） | BackgroundTaskManager |
 | `register_sync_task(plugin_id, name, func, callback, args, kwargs)` | 注册同步任务 | str (task_id) |
-| `register_async_task(plugin_id, name, func, callback, args, kwargs)` | 注册异步任务 | str (task_id) |
-| `register_scheduled_task(plugin_id, name, func, interval, callback, args, kwargs)` | 注册定时任务 | str (task_id) |
+| `register_async_task(plugin_id, name, func, callback, args, kwargs)` | 注册异步任务 | Optional[str]（task_id；shutdown 后为 None） |
+| `register_scheduled_task(plugin_id, name, func, interval, callback, args, kwargs)` | 注册定时任务 | Optional[str]（task_id；shutdown 后为 None） |
 | `register_scheduled_task_factory(plugin_id, func, callback)` | 注册任务工厂 | None |
 | `restore_scheduled_tasks(plugin_id)` | 恢复定时任务 | int |
 | `enable_scheduled_task(task_id)` | 启用定时任务 | bool |
@@ -283,7 +286,7 @@ from core.mcp import IMCPTool, IMCPClient
 |------|------|--------|
 | `get_llm_provider()` | 获取单例实例 | LLMProvider |
 | `chat(messages, provider, model, temperature, max_tokens, **kwargs)` | 同步聊天，支持 tools 等参数通过 kwargs 传递 | ChatResponse |
-| `stream_chat(messages, provider, model, temperature, max_tokens, callback, **kwargs)` | 流式聊天 | Iterator 或 None |
+| `stream_chat(messages, provider, model, temperature, max_tokens, callback, **kwargs)` | 流式聊天（callback 签名 `(chunk: str, done: bool)`） | str（完整文本；聚合响应在 last_stream_response） |
 | `async_chat(messages, provider, model, temperature, max_tokens, **kwargs)` | 异步聊天 | ChatResponse |
 | `async_stream_chat(messages, provider, model, temperature, max_tokens, **kwargs)` | 异步流式聊天 | AsyncIterator |
 | `embed(texts, provider, model, **kwargs)` | 文本嵌入 | List[EmbeddingResponse] |
@@ -297,7 +300,12 @@ from core.mcp import IMCPTool, IMCPClient
 | `get_enabled_providers(feature)` | 获取启用的 Provider | Dict[str, ILLM] |
 | `add_provider(name, config)` | 添加 Provider | None |
 | `remove_provider(name)` | 移除 Provider | bool |
-| `reload_config()` | 重新加载配置 | None |
+| `reload_config()` | 重新加载配置（公开入口已具备版本比对惰性刷新，本方法为强制热重载） | None |
+| `get_provider_health(name=None)` | 健康状态（None 返回全量 dict） | Dict 或 Tuple |
+| `check_provider(name)` | 连通性检查（强制刷新模型列表） | Tuple[bool, Optional[str], int] |
+| `check_model(provider_name, model_id, timeout)` | 单模型最小化探测 | ModelCheckResult |
+| `resolve_provider_name(name, feature)` | 解析 "default" 为实际实例 id（带粘性缓存） | str |
+| `get_default_provider_id(feature)` | 默认实例解析结果（不抛异常） | Optional[str] |
 | `close()` | 关闭所有提供商连接 | None |
 | `config` | 配置管理器 | LLMConfig |
 | `available_providers` | 可用 Provider 列表 | List[str] |
@@ -321,29 +329,33 @@ from core.mcp import IMCPTool, IMCPClient
 
 ### 5.3 LLMPluginService（插件开发者主入口）
 
-**文件**: `core/llm/plugin_service.py`
+**文件**: `core/llm/plugin_service.py`（显式继承 `core/interfaces/i_llm_service.py` 的 `ILLMService`）
 
 推荐通过 `PluginServices.llm_facade`（DI 注入）或 `get_llm_plugin_service()` 获取。
 
 | 方法 | 说明 | 返回值 |
 |------|------|--------|
 | `create_conversation(system_prompt?, provider?, model?, metadata?)` | 创建对话 | str (conv_id) |
-| `send_message(conv_id, content, images?, ...)` | 同步发送消息 | str (回复内容) |
-| `stream_send_message(conv_id, content, callback?, ...)` | 流式发送消息 | str (回复内容) |
+| `send_message(conv_id, content, images?, model?, provider?, ...)` | 同步发送消息（model/provider 为临时覆盖，不改会话绑定） | str (回复内容) |
+| `stream_send_message(conv_id, content, callback?, model?, provider?, ...)` | 流式发送消息 | str (回复内容) |
 | `chat(messages, provider?, model?, ...)` | 直接 chat（无对话状态） | ChatResponse |
-| `stream_chat(messages, callback, provider?, ...)` | 流式 chat（无对话状态），callback 签名为 `(chunk: str, done: bool)` | None |
-| `chat_with_tools(messages, provider?, model?, max_turns?, ...)` | 工具调用循环 | Tuple[List[Dict], List[ToolResult], Any] |
-| `chat_with_tools_stream(messages, callback, provider?, ...)` | 流式工具调用（当前流式路径不会解析 `tool_calls`，实际暂不可用） | Tuple[List[Dict], List[ToolResult], str] |
+| `stream_chat(messages, callback, provider?, ...)` | 流式 chat（无对话状态），callback 签名为 `(chunk: str, done: bool)` | str (完整文本) |
+| `chat_with_tools(messages, provider?, model?, max_turns?, ...)` | 工具调用循环 | ToolChatResult |
+| `chat_with_tools_stream(messages, callback, provider?, ...)` | 流式工具调用（tool_calls 从聚合响应提取，多轮循环正常执行） | ToolChatResult |
 | `get_tool_executor()` | 获取工具调用执行器 | ToolCallExecutor |
 | `get_shared_tool_registry()` | 获取共享工具注册表 | ToolRegistry |
-| `get_raw_provider(provider="default")` | 获取底层 ILLM Provider（高级用） | ILLM |
-| `embed(texts, provider?, model?)` | 向量嵌入 | List[List[float]] |
+| `embed(texts, provider?, model?)` | 向量嵌入 | List[EmbeddingResponse] |
 | `generate_image(prompt, provider?, model?, size?, quality?)` | 图像生成 | ImageResult |
 | `text_to_speech(text, provider?, model?, voice?)` | 文本转语音 | AudioResult |
-| `load_image_as_base64(file_path)` | 图片文件转 base64 | str |
-| `get_available_providers()` | 获取所有 Provider 信息 | List[ProviderInfo] |
+| `list_providers()` | 列出所有 Provider 实例信息（不含 api_key） | List[ProviderInfo] |
+| `get_models(provider="default")` | 获取单实例模型列表 | List[ModelInfo] |
+| `resolve_provider_id(provider)` | 解析 "default" 为实际实例 id | str |
+| `get_default_provider_id(feature="chat")` | 默认实例解析结果（不抛异常） | Optional[str] |
 | `get_usage_stats(conversation_id?)` | 获取用量统计 | UsageStats |
 | `validate_provider(provider)` | 验证 Provider 配置 | Tuple[bool, str] |
+| `last_stream_response` (property) | 最近一次流式请求的聚合响应 | Optional[ChatResponse] |
+
+> 已移除：`get_provider` / `get_all_providers` / `get_raw_provider` / `get_cached_models` / `get_available_providers` / `load_image_as_base64`（后者迁至 `utils/image_utils.py`）。
 
 详细文档: [LLM Provider API 参考](../core/llm-provider/api-reference.md)
 
@@ -366,11 +378,12 @@ from core.mcp import IMCPTool, IMCPClient
 | 组件 | 方法/属性 | 说明 |
 |------|---------|------|
 | `ToolRegistry` | `register(name, description, parameters, handler)` | 注册工具 |
+| `ToolRegistry` | `register_typed(definition)` | 类型化注册（`ToolDefinition` 入参，内部转发 `register`） |
 | `ToolRegistry` | `unregister(name)` | 注销工具 |
 | `ToolRegistry` | `get_handler(name)` | 获取工具处理器（callable） |
 | `ToolRegistry` | `get_tools()` | 获取所有工具定义列表 |
-| `ToolCallExecutor` | `chat_with_tools(messages, provider?, model?, max_turns?, ...)` | 工具调用循环 |
-| `ToolCallExecutor` | `chat_with_tools(..., stream, stream_callback)` | 流式工具调用 |
+| `ToolCallExecutor` | `chat_with_tools(messages, provider?, model?, max_turns?, ...)` | 工具调用循环，返回 `ToolChatResult` |
+| `ToolCallExecutor` | `chat_with_tools(..., stream, stream_callback)` | 流式工具调用，返回 `ToolChatResult` |
 
 ### 5.6 MCPManager
 
@@ -616,34 +629,36 @@ task_id = task_manager.register_scheduled_task(
 | `clear_completed_tasks(plugin_id)` | 清理已完成任务 |
 | `shutdown()` | 关闭任务管理器，释放所有资源 |
 
-### 7.6 ILLMFacade（LLM 外观接口）
+### 7.6 ILLMService（LLM 插件服务接口）
 
-**文件**: `core/interfaces/i_llm_facade.py`
+**文件**: `core/interfaces/i_llm_service.py`（取代已删除的 `i_llm_facade.py`；`LLMPluginService` 显式继承）
+
+所有 `provider` 参数语义为**实例 id**，取 `"default"`（`DEFAULT_PROVIDER`）时由底层按功能维度解析为默认实例。
 
 | 方法 | 说明 |
 |------|------|
-| `chat(messages, provider, model, temperature, max_tokens, **kwargs)` | 同步聊天 |
-| `stream_chat(messages, provider, model, temperature, max_tokens, callback, **kwargs)` | 流式聊天（同步），`callback` 签名为 `(chunk: str, done: bool) -> None` |
-| `embed(texts, provider, model, **kwargs)` | 文本嵌入 |
-| `get_models(provider)` | 获取可用模型列表 |
-| `get_provider(name)` | 获取 Provider 实例 |
-| `get_all_providers()` | 获取所有 Provider |
-| `get_cached_models(provider_name)` | 获取缓存模型 |
-| `create_conversation(system_prompt, provider, model)` | 创建新对话 |
-| `send_message(conv_id, content, images, temperature, max_tokens)` | 同步发送消息 |
-| `stream_send_message(...)` | 流式发送消息 |
+| `chat(messages, provider, model, temperature, max_tokens, tools)` | 同步聊天，返回 `ChatResponse` |
+| `stream_chat(messages, callback, provider, model, ...)` | 流式聊天（同步），`callback` 签名为 `(chunk: str, done: bool) -> None`，返回完整文本 `str` |
+| `embed(texts, provider, model)` | 文本嵌入，返回 `List[EmbeddingResponse]` |
+| `create_conversation(system_prompt, provider, model, metadata)` | 创建新对话，返回对话 ID |
+| `send_message(conv_id, content, images, temperature, max_tokens, model, provider)` | 同步发送消息（model/provider 临时覆盖），返回内容 `str` |
+| `stream_send_message(...)` | 流式发送消息，返回完整内容 `str` |
 | `get_conversation(conv_id)` | 获取对话对象 |
 | `list_conversations()` | 列出所有对话 |
 | `delete_conversation(conv_id)` | 删除对话 |
 | `get_tool_executor()` | 获取工具执行器 |
 | `get_shared_tool_registry()` | 获取共享工具注册表 |
-| `chat_with_tools(...)` | 带工具调用的对话 |
-| `chat_with_tools_stream(...)` | 流式工具调用对话 |
-| `get_available_providers()` | 获取可用 Provider 信息 |
+| `chat_with_tools(...)` | 带工具调用的对话，返回 `ToolChatResult` |
+| `chat_with_tools_stream(...)` | 流式工具调用对话，返回 `ToolChatResult` |
+| `generate_image(...)` | 图像生成，返回 `ImageResult` |
+| `text_to_speech(...)` | 语音合成，返回 `AudioResult` |
+| `list_providers()` | 列出所有 Provider 实例信息，返回 `List[ProviderInfo]` |
+| `get_models(provider="default")` | 获取单实例模型列表，返回 `List[ModelInfo]` |
+| `resolve_provider_id(provider)` | 解析实例引用为实际实例 id |
+| `get_default_provider_id(feature="chat")` | 默认实例解析结果（不抛异常） |
 | `get_usage_stats(conv_id)` | 获取用量统计 |
 | `validate_provider(provider)` | 验证 Provider 配置 |
-| `load_image_as_base64(path)` | 加载图片为 base64 |
-| `get_raw_provider(provider)` | 获取底层 Provider 实例 |
+| `last_stream_response` (property) | 最近一次流式请求的聚合响应 |
 
 ### 7.7 PluginServices（插件服务封装）
 
@@ -657,7 +672,7 @@ task_id = task_manager.register_scheduled_task(
 |------|------|------|
 | `data_provider` | `DataProvider` | 数据提供者实例（失败时为 `None`） |
 | `task_manager` | `BackgroundTaskManager` | 后台任务管理器实例（失败时为 `None`） |
-| `llm_facade` | `LLMPluginService` | LLM 服务实例 |
+| `llm_facade` | `ILLMService` | LLM 服务实例（实际为 `LLMPluginService` 单例） |
 | `logger` | `ILogger` | 日志管理器实例（`LoggerManager` 实现） |
 | `mcp_manager` | `MCPManager` | MCP 管理器实例（可能为 `None`） |
 | `mcp_client` | `MCPClientManager` | MCP 客户端管理器实例（可能为 `None`） |

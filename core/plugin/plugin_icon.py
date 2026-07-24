@@ -3,10 +3,11 @@
 提供多种图标类型的加载和管理功能
 """
 
+import base64
 from enum import Enum
 from pathlib import Path
 from typing import Optional
-from PySide6.QtGui import QIcon
+from PySide6.QtGui import QIcon, QPixmap
 from PySide6.QtWidgets import QApplication, QStyle, QStyleFactory
 from PySide6.QtCore import QByteArray
 
@@ -66,7 +67,6 @@ class PluginIcon:
             elif self.icon_type == IconType.BUILTIN:
                 # 加载系统内置图标
                 if self.value:
-                    from PySide6.QtWidgets import QStyle, QStyleFactory
                     app = QApplication.instance()
                     if not app or not isinstance(app, QApplication):
                         # 如果没有应用实例，使用默认样式
@@ -100,9 +100,6 @@ class PluginIcon:
             elif self.icon_type == IconType.BASE64:
                 # 从 Base64 编码加载图标
                 if self.value:
-                    import base64
-                    from PySide6.QtGui import QPixmap
-                    
                     # 解码 Base64
                     image_data = base64.b64decode(self.value)
                     qba = QByteArray(image_data)

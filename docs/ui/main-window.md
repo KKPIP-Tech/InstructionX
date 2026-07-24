@@ -88,7 +88,7 @@ def _create_ai_menu(self, menu_bar):
     self._ai_menu.addAction(usage_action)
 ```
 
-点击 **LLM 设置...** 调用 `_open_llm_settings_dialog()`，打开 `LLMSettingsDialog`（两栏布局）进行 LLM Provider 配置。
+点击 **LLM 设置...** 调用 `_open_llm_settings_dialog()`，打开 `LLMSettingsDialog`（`ui/dialog/llm_settings/` 包，两栏布局、自动保存语义）进行 LLM Provider 实例配置。
 
 点击 **用量查询** 调用 `_open_usage_panel()`，在模态对话框中嵌入 `UsagePanel` 查看 token 用量和费用统计。
 
@@ -179,14 +179,16 @@ graph TB
 
 ### 3.6 用量查询面板 (UsagePanel)
 
-- **文件位置**: `ui/usage_panel.py`
+- **文件位置**: `ui/usage_panel/` 包（`panel.py` 组装与数据编排，`kpi_card.py` KPI 卡片，`trend_chart.py` 趋势面板，`history_table.py` 历史面板，`formatting.py` 格式化工具）
 - **打开方式**: 通过 **AI > 用量查询** 菜单，在模态对话框中展示
+- **布局**: 整体内容置于 `QScrollArea` 垂直滚动区内；KPI 卡片 / 趋势面板为固定高度（92 / 320px），历史面板高度随当前页行数自适应（行高 27px，保证整页记录完整显示）；窗口缩小时页面整体上下滚动，各区块高度不变
 - **功能**: 提供 Token 用量统计、趋势图表和明细查询
 - **组件**:
-  - 统计卡片行（总请求数、输入 Token、输出 Token、总 Token、缓存命中率、平均耗时）
-  - 用量趋势图（基于 Matplotlib，支持深色模式自适应，异步渲染）
-  - 筛选栏（Provider / Model / 对话ID）
-  - 明细表格（10 列：时间、Provider、Model、输入、输出、总Token、缓存命中、缓存Token、耗时(s)、流式）
+  - 顶部标题行（主标题 + 副标题）
+  - KPI 卡片区（总请求数、输入 Token、输出 Token、总 Token、缓存命中率、平均耗时，含「较上周期 ±x.x%」同比）
+  - 用量趋势面板（QtCharts QSplineSeries 平滑折线；近 7 天 / 近 30 天 / 自定义范围；请求数 / 输入 Token / 输出 Token 指标切换；悬停提示）
+  - 使用历史面板（Provider / Model / 对话ID 筛选 + 明细表格 + 分页）
+  - 明细表格（10 列：时间、Provider、Model、输入、输出、总Token、缓存命中、缓存Token、耗时、流式；按时间倒序，最新记录在第 1 页）
   - 分页控件（每页 50 条）
 
 ---
@@ -420,7 +422,7 @@ cursor_map = {
 
 #### 关于对话框
 
-通过 **帮助 > 关于** 打开，显示应用 Logo、名称（InstructionX - CE）、版本号（Alpha 1.0.2）、版权声明和专有软件声明。
+通过 **帮助 > 关于** 打开，显示应用 Logo、名称（InstructionX - CE）、版本号（Alpha 1.0.3）、版权声明和专有软件声明。
 
 ```python
 def _open_about_dialog(self):
@@ -444,16 +446,18 @@ def _open_license_dialog(self):
 
 #### LLM 设置对话框
 
-通过 **AI > LLM 设置...** (Ctrl+L) 打开，提供两栏式配置界面。左侧为 Provider 列表（标题"模型服务"），右侧为选中 Provider 的配置详情（API 密钥、API 地址、模型选择等）。详细说明见 [对话框组件](dialogs.md)。
+通过 **AI > LLM 设置...** (Ctrl+L) 打开，提供两栏式配置界面。左侧为 Provider 实例列表（搜索联动模型、启停开关、「＋ 添加提供商」），右侧为选中实例的配置详情（API 密钥、API 地址（占位符显示目录默认、可重置）、连接检测、模型列表管理、默认模型选择）。编辑即时落盘（自动保存语义，无「取消/保存」按钮），主题跟随应用主题。详细说明见 [对话框组件](dialogs.md)。
 
 ```python
+# 文件顶部导入：from ui.dialog.llm_settings import LLMSettingsDialog
+#             from core.llm.llm_provider import get_llm_provider
+
 def _open_llm_settings_dialog(self):
-    """打开 LLM 设置对话框"""
-    from ui.dialog.llm_settings_dialog import LLMSettingsDialog
+    """打开 LLM 设置对话框（自动保存语义；reload_config 为幂等保底调用）"""
     dialog = LLMSettingsDialog(self)
 
     if dialog.exec() == QDialog.DialogCode.Accepted:
-        from core.llm.llm_provider import get_llm_provider
+        # 幂等保底：确保 LLM Provider 配置为最新
         get_llm_provider().reload_config()
 ```
 

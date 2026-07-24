@@ -52,10 +52,21 @@ class StyleQSS:
         return self._colors
 
     def get(self, key: str, default: str = "") -> str:
-        """获取指定样式的值（兼容接口）"""
-        from .registry import QssRegistry
-        styles = QssRegistry.get_all(self._theme)
-        # 这是一个简化实现，实际应该解析 QSS
+        """获取指定样式的值（兼容接口）
+
+        注意：当前为简化实现，**始终返回 default**，不会真正解析 QSS
+        （完整实现需要解析 QSS 文本，暂未支持）。保留此方法仅为
+        维持公开接口兼容。
+
+        Args:
+            key: 样式键名（当前未被使用）
+            default: 默认返回值
+
+        Returns:
+            str: 始终为 default
+        """
+        # 保留聚合调用以维持既有副作用（触发样式注册表构建）
+        QssRegistry.get_all(self._theme)
         return default
 
 

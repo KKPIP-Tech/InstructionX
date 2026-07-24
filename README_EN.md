@@ -9,8 +9,8 @@
 [![Python](https://img.shields.io/badge/Python-3.14+-blue.svg)](https://www.python.org/)
 [![PySide6](https://img.shields.io/badge/PySide6-6.10+-green.svg)](https://doc.qt.io/qtforpython/)
 [![Platform](https://img.shields.io/badge/Platform-Windows-lightgrey.svg)](#)
-[![License](https://img.shields.io/badge/License-Modified%20Apache%202.0-orange.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/Alpha-1.0.2%20CE-red.svg)](#)
+[![License](https://img.shields.io/badge/License-Commercial%20Source-orange.svg)](LICENSE)
+[![Version](https://img.shields.io/badge/Alpha-1.0.3%20CE-red.svg)](#)
 
 > A PySide6-based plugin desktop application framework with LLM integration, MCP Protocol (Server/Client), multi-conversation management, and hot-swappable plugin system
 
@@ -140,10 +140,12 @@ pip install -r requirements.txt
 
 Main dependencies:
 - `PySide6` (>=6.10) - Qt GUI framework
-- `requests` - HTTP requests
-- `aiohttp` - Asynchronous HTTP client
-- `opencv-python` - Image processing
-- `numpy` - Numerical computation
+- `requests` (>=2.32) - HTTP requests
+- `aiohttp` (>=3.11) - Asynchronous HTTP client
+- `mcp` (>=1.0.0) - MCP protocol (Model Context Protocol)
+- `orjson` (>=3.11.0,<4) - High-performance JSON serialization
+- `matplotlib` (>=3.10) - Usage statistics charts
+- `packaging` (>=23.0) - Plugin dependency version checking
 
 ### Run the Application
 
@@ -322,12 +324,13 @@ class MyPluginInfo(IPluginInfo):
 
 ## License
 
-InstructionX is licensed under a **Modified Apache License 2.0**:
+InstructionX is licensed under the **InstructionX Commercial Source License** (this is not an open-source license):
 
-- ✅ **Personal Use**: Free to use
-- ✅ **Educational Use**: Requires written authorization
-- ❌ **Enterprise Use**: Prohibited without authorization
-- ❌ **Commercial Use**: Requires written authorization
+- ✅ **Personal, non-commercial use**: Free to use
+- ⚠️ **Organizational use**: Organizations with more than 100 global employees require written authorization
+- ⚠️ **Deployment scale**: More than 30 installed instances require written authorization
+- ❌ **SaaS / multi-tenant service**: Prohibited without authorization
+- ❌ **Redistribution**: Requires written authorization
 
 See [LICENSE](LICENSE) file for complete terms.
 
@@ -353,13 +356,15 @@ The project includes complete technical documentation (in Chinese) located in th
 
 | Technology | Purpose | Version |
 |------------|---------|---------|
-| InstructionX CE | Application version | Alpha 1.0.2 |
+| InstructionX CE | Application version | Alpha 1.0.3 |
 | PySide6 | Qt GUI framework | >= 6.10 |
 | Python | Programming language | >= 3.14 |
-| requests | HTTP requests | - |
-| aiohttp | Asynchronous HTTP | - |
-| opencv-python | Image processing | - |
-| numpy | Numerical computation | - |
+| requests | HTTP requests | >= 2.32 |
+| aiohttp | Asynchronous HTTP | >= 3.11 |
+| mcp | MCP protocol | >= 1.0.0 |
+| orjson | High-performance JSON serialization | >= 3.11.0,<4 |
+| matplotlib | Usage statistics charts | >= 3.10 |
+| packaging | Plugin dependency version checking | >= 23.0 |
 | StyleQSS | UI theme | Built-in |
 
 ---

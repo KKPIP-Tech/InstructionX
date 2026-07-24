@@ -26,7 +26,7 @@ docs/
 │   │   ├── overview.md              # 接口层概述（含各接口详细说明）
 │   │   └── ilogger.md              # ILogger 接口文档
 │   │   # 注：IPlugin/IPluginInfo 详见 plugin-system/iplugin.md
-│   │   # 注：IDataProvider/ITaskManager/ILLMFacade 在 overview.md 中详解
+│   │   # 注：IDataProvider/ITaskManager/ILLMService 在 overview.md 中详解
 │   │
 │   ├── plugin-system/               # 插件系统
 │   │   ├── overview.md              # 插件系统概述
@@ -66,7 +66,7 @@ docs/
 │   ├── skill-button.md              # SkillButton 技能按钮
 │   ├── work-area.md                 # 工作区
 │   └── dialogs.md                   # 对话框组件
-│       # 注：UsagePanel（用量查询面板）源码位于 ui/usage_panel.py
+│       # 注：UsagePanel（用量查询面板）源码位于 ui/usage_panel/ 包
 
 ├── utils/                           # 工具模块文档
 │   ├── logging-tools.md             # 日志工具
@@ -191,7 +191,7 @@ from core.mcp import get_mcp_manager, MCPManager
 from core.interfaces import (
     IDataProvider, DataNamespace,
     ITaskManager, TaskType, TaskStatus,
-    ILLMFacade, PluginServices, ILogger
+    ILLMService, PluginServices, ILogger
 )
 ```
 

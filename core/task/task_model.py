@@ -5,30 +5,19 @@
 支持任务序列化/反序列化，用于任务持久化存储。
 """
 
+import json
 import uuid
 import threading
-from datetime import datetime
-from enum import Enum
+from datetime import datetime, timedelta
 from typing import Any, Optional, Callable, Dict
 from dataclasses import dataclass, field
 
+# TaskType/TaskStatus 单一来源在接口层，此处 re-export 以保持
+# `from core.task.task_model import TaskType, TaskStatus` 导入路径可用
+from ..interfaces.i_task_manager import TaskType, TaskStatus  # noqa: F401
 
-class TaskType(Enum):
-    """任务类型枚举"""
-    SYNC = "sync"           # 同步任务：主线程立即执行
-    ASYNC = "async"         # 异步任务：线程池异步执行
-    SCHEDULED = "scheduled" # 定时任务：按固定间隔重复执行
-    LONG_RUNNING = "long_running" # 长期任务：持续运行直到显式停止
-
-
-class TaskStatus(Enum):
-    """任务状态枚举"""
-    PENDING = "pending"     # 待执行：任务已创建但未开始
-    RUNNING = "running"    # 执行中：任务正在运行
-    COMPLETED = "completed" # 已完成：任务成功执行完毕
-    FAILED = "failed"      # 执行失败：任务执行过程中出错
-    CANCELLED = "cancelled" # 已取消：任务被用户主动取消
-    STOPPED = "stopped"    # 已停止：长期任务被主动停止
+# 定时任务默认执行间隔（秒），dataclass 字段默认值与 from_dict 反序列化共用
+DEFAULT_SCHEDULED_INTERVAL = 60
 
 
 @dataclass
@@ -133,8 +122,10 @@ class BackgroundTask:
         Returns:
             可序列化结果或类型描述字符串
         """
+        # 注：此处先 json.dumps 探测一次，存储层写盘时会再序列化一次，存在双重
+        # 序列化开销。但 to_dict 返回的是供调用方使用的普通 dict，无法把“已序列化
+        # 的字符串”安全复用给存储层（会改变 result 在 JSON 中的结构），故保留现状。
         try:
-            import json
             json.dumps(result)
             return result
         except (TypeError, ValueError):
@@ -177,7 +168,8 @@ class ScheduledTask:
     task_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     plugin_id: str = ""
     name: str = ""
-    interval: int = 60  # 执行间隔秒数
+    interval: int = DEFAULT_SCHEDULED_INTERVAL  # 执行间隔秒数
+    func_name: str = ""  # 任务函数标识（func.__qualname__），用于重启后精确匹配工厂函数
 
     # 运行时属性（不参与序列化）
     func: Optional[Callable] = field(default=None, repr=False)
@@ -207,6 +199,7 @@ class ScheduledTask:
             "plugin_id": self.plugin_id,
             "name": self.name,
             "interval": self.interval,
+            "func_name": self.func_name,
             "enabled": self.enabled,
             "args": list(self.args) if self.args else [],
             "kwargs": dict(self.kwargs) if self.kwargs else {},
@@ -230,7 +223,9 @@ class ScheduledTask:
         task.task_id = data.get("task_id", task.task_id)
         task.plugin_id = data.get("plugin_id", "")
         task.name = data.get("name", "")
-        task.interval = data.get("interval", 60)
+        task.interval = data.get("interval", DEFAULT_SCHEDULED_INTERVAL)
+        # 旧版记录没有 func_name 字段，缺省为空串（恢复时回退到插件唯一工厂）
+        task.func_name = data.get("func_name", "")
         task.enabled = data.get("enabled", True)
 
         # 解析参数
@@ -258,7 +253,6 @@ class ScheduledTask:
 
         基于当前时间加上间隔秒数计算下一次执行的时间点。
         """
-        from datetime import timedelta
         self.next_run = datetime.now() + timedelta(seconds=self.interval)
 
 
@@ -277,6 +271,7 @@ class LongRunningTask:
     name: str = ""
     enabled: bool = True
     auto_restart: bool = True  # 任务失败后是否自动重启
+    func_name: str = ""  # 任务函数标识（func.__qualname__），用于重启后精确匹配工厂函数
 
     # 运行时属性（不参与序列化）
     func: Optional[Callable] = field(default=None, repr=False)
@@ -311,6 +306,7 @@ class LongRunningTask:
             "name": self.name,
             "enabled": self.enabled,
             "auto_restart": self.auto_restart,
+            "func_name": self.func_name,
             "current_status": self.current_status,
             "error": self.error,
             "args": list(self.args) if self.args else [],
@@ -338,6 +334,8 @@ class LongRunningTask:
         task.name = data.get("name", "")
         task.enabled = data.get("enabled", True)
         task.auto_restart = data.get("auto_restart", True)
+        # 旧版记录没有 func_name 字段，缺省为空串（恢复时回退到插件唯一工厂）
+        task.func_name = data.get("func_name", "")
         task.current_status = data.get("current_status", "")
         task.error = data.get("error")
 

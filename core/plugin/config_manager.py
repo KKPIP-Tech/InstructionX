@@ -7,6 +7,7 @@
 """
 
 import json
+import os
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -78,7 +79,7 @@ class PluginConfigManager:
 
             return data
 
-        except Exception as e:
+        except (OSError, json.JSONDecodeError) as e:
             self._logger.error(get_name(), f'Error loading plugin order config: {e}')
             return {
                 "official_plugins": [],
@@ -102,12 +103,15 @@ class PluginConfigManager:
                 "thirdparty_plugins": thirdparty_plugins
             }
 
-            with open(self.config_file, 'w', encoding='utf-8') as f:
+            # 原子写：先写临时文件再 os.replace，避免写入中断产生损坏文件
+            temp_file = self.config_file.with_suffix('.json.tmp')
+            with open(temp_file, 'w', encoding='utf-8') as f:
                 json.dump(data, f, indent=4, ensure_ascii=False)
+            os.replace(temp_file, self.config_file)
 
             return True
 
-        except Exception as e:
+        except (OSError, TypeError, ValueError) as e:
             self._logger.error(get_name(), f'Error saving plugin order config: {e}')
             return False
 

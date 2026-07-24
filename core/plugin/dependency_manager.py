@@ -4,11 +4,15 @@
 负责检查和自动安装插件所需的 Python 依赖。
 """
 
+import importlib.metadata
 import subprocess
 import sys
 import re
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Callable
+
+from packaging.specifiers import SpecifierSet, InvalidSpecifier
+from packaging.version import Version, InvalidVersion
 
 from utils.logging_tools import LoggerManager, get_name
 
@@ -41,8 +45,50 @@ class DependencyManager:
     - 自动安装缺失的依赖（通过 pip）
     """
 
+    # pip 子进程超时（秒）
+    PIP_SHOW_TIMEOUT = 30
+    PIP_INSTALL_TIMEOUT = 300
+
+    # 包名白名单：PEP 508 名称字符集（[A-Za-z0-9._-]+），支持 extras 语法（如 uv[standard]）
+    _PACKAGE_NAME_PATTERN = re.compile(r'^[A-Za-z0-9._-]+(\[[A-Za-z0-9._-]+(,[A-Za-z0-9._-]+)*\])?$')
+    # 单个版本子约束白名单：比较符 + 版本号（可选 .* 后缀），与
+    # _check_version_constraint 的解析能力对齐
+    _SUB_CONSTRAINT_PATTERN = re.compile(r'^(>=|<=|==|!=|>|<)\s*\d+(?:\.\d+)*(?:\.\*)?$')
+
     def __init__(self):
         self._logger = LoggerManager()
+
+    def _is_valid_install_input(self, package: str, version_constraint: str) -> bool:
+        """校验待安装的包名与版本约束，防止注入 pip 命令行参数
+
+        包名必须匹配 PEP 508 名称字符集（支持 [extras] 语法）且不以 '-' 开头；
+        版本约束只接受逗号分隔的版本比较子约束（比较符/数字/点/星号/空白），
+        任何含多 token、URL scheme 或其他字符的输入一律拒绝。
+
+        Args:
+            package: 包名
+            version_constraint: 版本约束（可为空字符串）
+
+        Returns:
+            输入合法返回 True；非法时记 ERROR 日志并返回 False
+        """
+        if not package or not self._PACKAGE_NAME_PATTERN.match(package) or package.startswith('-'):
+            self._logger.error(get_name(), f"拒绝非法依赖包名（可能存在参数注入）: {package!r}")
+            return False
+
+        if not version_constraint:
+            return True
+
+        # 约束串只允许版本比较符/数字/点/逗号/星号与空白组成子约束；
+        # ':'、'/'、'-' 等字符（URL scheme、pip 参数）不在白名单内，天然被拒绝
+        parts = [part.strip() for part in version_constraint.split(',')]
+        if not parts or any(not self._SUB_CONSTRAINT_PATTERN.match(part) for part in parts):
+            self._logger.error(
+                get_name(),
+                f"拒绝非法版本约束（可能存在参数注入）: {package!r} {version_constraint!r}"
+            )
+            return False
+        return True
 
     def check_dependencies(self, dependencies: Dict[str, str]) -> DependencyCheckResult:
         """
@@ -103,17 +149,32 @@ class DependencyManager:
         if check_result.satisfied:
             return DependencyInstallResult(success=True, message="所有依赖已满足")
 
-        # 需要安装的依赖
+        # 需要安装的依赖（先对包名与版本约束做白名单校验，非法项跳过不中断其他包）
         to_install = []
         for package, version_constraint in dependencies.items():
-            if package in check_result.missing:
-                if version_constraint:
-                    to_install.append(f"{package}{version_constraint}")
-                else:
-                    to_install.append(package)
+            if package not in check_result.missing:
+                continue
+            if not self._is_valid_install_input(package, version_constraint):
+                continue
+            if version_constraint:
+                to_install.append(f"{package}{version_constraint}")
+            else:
+                to_install.append(package)
+
+        if not to_install:
+            return DependencyInstallResult(
+                success=False,
+                message="缺失依赖均未通过安装前的安全校验，未执行安装"
+            )
 
         if callback:
             callback(f"开始安装依赖: {', '.join(to_install)}")
+
+        # 透明化：pip install 可安装任意包（插件系统设计使然），安装前记录清单
+        self._logger.warning(
+            get_name(),
+            f"即将通过 pip 安装插件声明的依赖包: {', '.join(to_install)}"
+        )
 
         failed_packages = []
 
@@ -158,25 +219,15 @@ class DependencyManager:
             bool: 是否满足
         """
         try:
-            # 使用 python -m pip show 检查包是否已安装
-            result = subprocess.run(
-                [sys.executable, "-m", "pip", "show", package],
-                capture_output=True,
-                text=True,
-                timeout=30
-            )
-
-            if result.returncode != 0:
+            # 获取已安装版本：优先 importlib.metadata（避免每包一次 pip show 子进程），
+            # 查不到时回退 pip show（兼容 importlib.metadata 不可见的特殊安装方式）
+            installed_version = self._get_installed_version(package)
+            if installed_version is None:
                 return False
 
             # 如果没有版本约束，包存在即可
             if not version_constraint:
                 return True
-
-            # 解析已安装版本
-            installed_version = self._parse_version_from_pip_show(result.stdout)
-            if installed_version is None:
-                return False
 
             # 检查版本约束
             return self._check_version_constraint(installed_version, version_constraint)
@@ -187,6 +238,33 @@ class DependencyManager:
         except Exception as e:
             self._logger.warning(get_name(), f"检查包 {package} 时出错: {e}")
             return False
+
+    def _get_installed_version(self, package: str) -> Optional[str]:
+        """获取已安装包的版本号
+
+        优先使用 importlib.metadata（进程内查询，无子进程开销）；
+        包不存在或查询失败时回退 python -m pip show。
+        """
+        try:
+            return importlib.metadata.version(package)
+        except importlib.metadata.PackageNotFoundError:
+            pass
+        except Exception as e:
+            # importlib.metadata 查询异常时回退 pip show，不影响主流程
+            self._logger.debug(get_name(), f"importlib.metadata 查询 {package} 失败，回退 pip show: {e}")
+
+        # 回退：使用 python -m pip show 检查包是否已安装
+        result = subprocess.run(
+            [sys.executable, "-m", "pip", "show", package],
+            capture_output=True,
+            text=True,
+            timeout=self.PIP_SHOW_TIMEOUT
+        )
+
+        if result.returncode != 0:
+            return None
+
+        return self._parse_version_from_pip_show(result.stdout)
 
     def _parse_version_from_pip_show(self, output: str) -> Optional[str]:
         """从 pip show 输出中解析版本号"""
@@ -199,6 +277,9 @@ class DependencyManager:
         """
         检查已安装版本是否满足版本约束
 
+        支持逗号分隔的复合约束（如 ">=1.0,<2.0"），
+        每个子约束的操作符限定为 >=、>、<=、<、==、!=。
+
         Args:
             installed_version: 已安装的版本，如 "2.26.0"
             constraint: 版本约束，如 ">=2.25.0"
@@ -206,54 +287,43 @@ class DependencyManager:
         Returns:
             bool: 是否满足
         """
-        # 解析版本约束
-        match = re.match(r'^([><=!]+)\s*(\d+(?:\.\d+)*)$', constraint.strip())
-        if not match:
-            # 无法解析的约束，默认不满足
-            self._logger.warning(get_name(), f"无法解析版本约束: {constraint}")
-            return False
-
-        op = match.group(1)
-        required_version = match.group(2)
-
-        # 规范化版本号（去除后缀）
+        # 规范化已安装版本（去除 pre-release、post-release 等后缀，仅保留 release 段）
         installed = self._normalize_version(installed_version)
-        required = self._normalize_version(required_version)
-
-        if installed is None or required is None:
+        if installed is None:
             return False
 
-        # 比较版本
-        installed_parts = [int(x) for x in installed.split('.')]
-        required_parts = [int(x) for x in required.split('.')]
+        # 逐段解析复合约束，使用 packaging.specifiers.SpecifierSet 求值
+        normalized_specs = []
+        for part in constraint.split(","):
+            part = part.strip()
+            match = re.match(r'^(>=|<=|==|!=|>|<)\s*(\d+(?:\.\d+)*)$', part)
+            if not match:
+                # 无法解析的约束，默认不满足
+                self._logger.warning(get_name(), f"无法解析版本约束: {constraint}")
+                return False
+            op = match.group(1)
+            required = self._normalize_version(match.group(2))
+            if required is None:
+                self._logger.warning(get_name(), f"无法解析版本约束: {constraint}")
+                return False
+            normalized_specs.append(f"{op}{required}")
 
-        # 补齐长度
-        max_len = max(len(installed_parts), len(required_parts))
-        installed_parts.extend([0] * (max_len - len(installed_parts)))
-        required_parts.extend([0] * (max_len - len(required_parts)))
-
-        if op == ">=":
-            return installed_parts >= required_parts
-        elif op == ">":
-            return installed_parts > required_parts
-        elif op == "<=":
-            return installed_parts <= required_parts
-        elif op == "<":
-            return installed_parts < required_parts
-        elif op == "==":
-            return installed_parts == required_parts
-        elif op == "!=":
-            return installed_parts != required_parts
-        else:
+        try:
+            spec_set = SpecifierSet(",".join(normalized_specs))
+            return Version(installed) in spec_set
+        except (InvalidSpecifier, InvalidVersion) as e:
+            self._logger.warning(get_name(), f"无法解析版本约束: {constraint} ({e})")
             return False
 
     def _normalize_version(self, version: str) -> Optional[str]:
-        """将版本号规范化为 'x.y.z' 格式"""
-        # 去除 pre-release、post-release 等后缀
-        match = re.match(r'^(\d+(?:\.\d+)*)', version)
-        if match:
-            return match.group(1)
-        return None
+        """将版本号规范化为 release 段（如 '1.0.0a1' → '1.0.0'）
+
+        基于 packaging.version.Version 解析，无法解析时返回 None。
+        """
+        try:
+            return ".".join(str(p) for p in Version(version).release)
+        except InvalidVersion:
+            return None
 
     def _pip_install(self, package_spec: str) -> bool:
         """
@@ -270,7 +340,7 @@ class DependencyManager:
                 [sys.executable, "-m", "pip", "install", package_spec, "--quiet"],
                 capture_output=True,
                 text=True,
-                timeout=300  # 5 分钟超时
+                timeout=self.PIP_INSTALL_TIMEOUT  # 5 分钟超时
             )
 
             if result.returncode != 0:

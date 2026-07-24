@@ -5,10 +5,12 @@ PluginInfo 插件元数据接口
 """
 
 from abc import ABC, abstractmethod
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, TYPE_CHECKING
 
-from core.plugin.plugin_version import PluginVersion
-from core.plugin.plugin_icon import PluginIcon
+# 仅类型检查时导入，避免接口层在运行时牵入 core.plugin 与 PySide6
+if TYPE_CHECKING:
+    from core.plugin.plugin_version import PluginVersion
+    from core.plugin.plugin_icon import PluginIcon
 
 
 class IPluginInfo(ABC):
@@ -19,7 +21,7 @@ class IPluginInfo(ABC):
 
     @property
     @abstractmethod
-    def version(self) -> PluginVersion:
+    def version(self) -> "PluginVersion":
         """插件版本号"""
         pass
 
@@ -61,7 +63,7 @@ class IPluginInfo(ABC):
 
     @property
     @abstractmethod
-    def skill_icon(self) -> PluginIcon:
+    def skill_icon(self) -> "PluginIcon":
         """插件图标"""
         pass
 

@@ -10,21 +10,21 @@ from typing import Dict, List, Optional, Callable, Any
 
 
 class TaskType(Enum):
-    """任务类型枚举"""
-    SYNC = "sync"
-    ASYNC = "async"
-    SCHEDULED = "scheduled"
-    LONG_RUNNING = "long_running"
+    """任务类型枚举（单一来源，core.task.task_model 从此处 re-export）"""
+    SYNC = "sync"           # 同步任务：主线程立即执行
+    ASYNC = "async"         # 异步任务：线程池异步执行
+    SCHEDULED = "scheduled" # 定时任务：按固定间隔重复执行
+    LONG_RUNNING = "long_running" # 长期任务：持续运行直到显式停止
 
 
 class TaskStatus(Enum):
-    """任务状态枚举"""
-    PENDING = "pending"
-    RUNNING = "running"
-    COMPLETED = "completed"
-    FAILED = "failed"
-    CANCELLED = "cancelled"
-    STOPPED = "stopped"
+    """任务状态枚举（单一来源，core.task.task_model 从此处 re-export）"""
+    PENDING = "pending"     # 待执行：任务已创建但未开始
+    RUNNING = "running"    # 执行中：任务正在运行
+    COMPLETED = "completed" # 已完成：任务成功执行完毕
+    FAILED = "failed"      # 执行失败：任务执行过程中出错
+    CANCELLED = "cancelled" # 已取消：任务被用户主动取消
+    STOPPED = "stopped"    # 已停止：长期任务被主动停止
 
 
 class ITaskManager(ABC):
@@ -59,8 +59,8 @@ class ITaskManager(ABC):
         callback: Optional[Callable] = None,
         args: tuple = (),
         kwargs: dict = None
-    ) -> str:
-        """注册异步任务"""
+    ) -> Optional[str]:
+        """注册异步任务（返回 task_id；管理器已 shutdown 时返回 None）"""
         pass
 
     @abstractmethod
@@ -73,8 +73,8 @@ class ITaskManager(ABC):
         callback: Optional[Callable] = None,
         args: tuple = (),
         kwargs: dict = None
-    ) -> str:
-        """注册定时任务"""
+    ) -> Optional[str]:
+        """注册定时任务（返回 task_id；管理器已 shutdown 时返回 None）"""
         pass
 
     @abstractmethod

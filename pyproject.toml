@@ -1,22 +1,40 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "instructionx"
-version = "1.0.2"
+# 版本号单一来源为 core/version.py 的 VERSION 常量,此处通过 dynamic 读取
+dynamic = ["version"]
 description = "基于 PySide6 的插件式桌面应用框架，支持 LLM 集成、MCP Function Calling 和热插拔插件系统"
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
+    "PySide6>=6.10",
+    "requests>=2.32",
+    "aiohttp>=3.11",
     "mcp>=1.0.0",
     "orjson>=3.11.0,<4",
+    "matplotlib>=3.10",
+    "packaging>=23.0",
 ]
 
 [project.optional-dependencies]
 test = [
-    "pytest>=8.0.0",
+    "pytest>=9.0.3",
     "pytest-qt>=4.4.0",
     "pytest-mock>=3.12.0",
     "pytest-cov>=4.1.0",
     "pytest-asyncio>=0.23.0",
 ]
+
+[tool.setuptools]
+# 应用型项目,不作为库分发;仅声明核心包以保证构建配置有效
+packages = ["core", "ui", "utils"]
+
+[tool.setuptools.dynamic]
+# setuptools 通过 AST 静态解析 core/version.py 中的 VERSION 字面量,不会执行导入
+version = {attr = "core.version.VERSION"}
 
 [tool.pytest.ini_options]
 testpaths = ["test"]
@@ -24,7 +42,6 @@ python_files = "test_*.py"
 python_classes = "Test*"
 python_functions = "test_*"
 addopts = [
-    "-v",
     "--tb=short",
     "--strict-markers",
     "-p no:cacheprovider",

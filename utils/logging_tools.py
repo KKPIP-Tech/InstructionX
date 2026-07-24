@@ -10,6 +10,22 @@ import threading
 from utils.i_logger import ILogger
 
 
+class _ModuleNameFilter(logging.Filter):
+    """
+    为日志记录注入默认 module_name 属性的过滤器
+
+    Formatter 依赖自定义属性 %(module_name)s，只有经 LoggerManager.log()
+    写入的记录才带该属性；直接向 'ApplicationLogger' 写日志的代码会缺少
+    module_name 而抛 KeyError。此过滤器在记录缺少该属性时回退为标准
+    module 属性（再退化为 'unknown'），保持日志格式外观不变。
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if not hasattr(record, 'module_name'):
+            record.module_name = getattr(record, 'module', None) or 'unknown'
+        return True
+
+
 class LoggerManager(ILogger):
     """
     单例模式的日志管理器类，支持按指定格式记录日志到文件
@@ -32,7 +48,9 @@ class LoggerManager(ILogger):
             return
         
         # 创建logs目录（如果不存在）
-        log_dir = "./logs"
+        # 默认 "./logs"（历史行为，被测试基线锁定）；
+        # 可通过环境变量 INSTRUCTIONX_LOG_DIR 覆盖为其他路径（如项目根推导路径）
+        log_dir = os.environ.get('INSTRUCTIONX_LOG_DIR', './logs')
         if not os.path.exists(log_dir):
             os.makedirs(log_dir)
         
@@ -40,8 +58,14 @@ class LoggerManager(ILogger):
         log_file = os.path.join(log_dir, "application.log")
         
         # 创建logger实例
+        # 全局日志等级可通过环境变量 INSTRUCTIONX_LOG_LEVEL 调节（默认 DEBUG，保持兼容）；
+        # 非法等级值回退 DEBUG
         self._logger = logging.getLogger('ApplicationLogger')
-        self._logger.setLevel(logging.DEBUG)
+        level_name = os.environ.get('INSTRUCTIONX_LOG_LEVEL', 'DEBUG').upper()
+        log_level = getattr(logging, level_name, None)
+        if not isinstance(log_level, int):
+            log_level = logging.DEBUG
+        self._logger.setLevel(log_level)
         
         # 防止重复添加handler
         if not self._logger.handlers:
@@ -64,6 +88,9 @@ class LoggerManager(ILogger):
             # 添加处理器到logger
             self._logger.addHandler(file_handler)
             
+            # 添加过滤器：为未经 log() 写入的记录注入默认 module_name
+            self._logger.addFilter(_ModuleNameFilter())
+            
             # 如果是开发环境（有控制台），添加控制台处理器
             if os.environ.get('DEVELOPMENT_MODE', 'false').lower() == 'true':
                 console_handler = logging.StreamHandler()
@@ -83,6 +110,7 @@ class LoggerManager(ILogger):
             message: 日志消息
         """
         # 使用extra参数传递module_name
+        # 注意：非法 level 会抛 AttributeError（历史行为，被测试基线锁定）
         logger = self._logger
         if logger is not None:
             logger.log(
@@ -116,6 +144,12 @@ class LoggerManager(ILogger):
         return self._logger
     
     
+# get_name 模块名缓存：inspect.getmodule() 栈自省成本高，按调用者文件名缓存结果。
+# 若 inspect.getmodule 被替换（如测试 monkeypatch），缓存自动失效以保证行为正确。
+_module_name_cache: dict = {}
+_cache_getmodule_ref = None
+
+
 def get_name() -> str:
     """
     自动获取当前调用位置的模块名称
@@ -124,6 +158,7 @@ def get_name() -> str:
     返回:
         str: 模块名称（不含文件扩展名）
     """
+    global _cache_getmodule_ref
     frame: types.FrameType | None = None
     try:
         # 获取当前调用栈
@@ -136,6 +171,18 @@ def get_name() -> str:
         if caller_frame is None:
             return 'unknown'
         
+        # inspect.getmodule 被替换时清空缓存（兼容 monkeypatch 等场景）
+        if _cache_getmodule_ref is not inspect.getmodule:
+            _module_name_cache.clear()
+            _cache_getmodule_ref = inspect.getmodule
+        
+        code = caller_frame.f_code
+        filename = code.co_filename if code else None
+        
+        # 命中缓存则直接返回，避免重复的栈自省
+        if filename and filename in _module_name_cache:
+            return _module_name_cache[filename]
+        
         # 尝试获取调用者的模块
         module = inspect.getmodule(caller_frame)
         
@@ -144,20 +191,23 @@ def get_name() -> str:
             if module.__name__ == '__main__':
                 file_path = getattr(module, '__file__', None)
                 if file_path:
-                    return os.path.splitext(os.path.basename(file_path))[0]
+                    name = os.path.splitext(os.path.basename(file_path))[0]
                 else:
-                    return 'main'
-            # 返回模块名称
-            return module.__name__
+                    name = 'main'
+            else:
+                # 返回模块名称
+                name = module.__name__
         else:
             # 如果无法获取模块对象，从文件名获取
-            code = caller_frame.f_code
-            if code:
-                filename = code.co_filename
-                if filename:
-                    return os.path.splitext(os.path.basename(filename))[0]
-            # 如果连文件名都获取不到，返回默认值
-            return 'unknown'
+            if filename:
+                name = os.path.splitext(os.path.basename(filename))[0]
+            else:
+                # 如果连文件名都获取不到，返回默认值
+                return 'unknown'
+        
+        if filename:
+            _module_name_cache[filename] = name
+        return name
             
     except Exception:
         # 异常情况下返回默认值
@@ -170,18 +220,3 @@ def get_name() -> str:
             except Exception:
                 pass
         
-
-if __name__ == "__main__":
-    logger = LoggerManager()
-    logger.info('UserModule', '用户登录成功')
-    logger.error('DatabaseModule', '数据库连接失败')
-    logger.debug('APIModule', '处理请求开始')
-    logger.warning('CacheModule', '缓存即将过期')
-    logger.critical('SecurityModule', '检测到安全威胁')
-    # 或者使用通用log方法
-    logger.log('INFO', 'PaymentModule', '支付处理完成')
-    logger.info(get_name(), '用户登录成功')
-    logger.error(get_name(), '数据库连接失败')
-    logger.debug(get_name(), '处理请求开始')
-    logger.warning(get_name(), '缓存即将过期')
-    logger.critical(get_name(), '检测到安全威胁')

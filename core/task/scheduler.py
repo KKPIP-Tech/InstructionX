@@ -4,10 +4,8 @@
 负责定时任务的调度和执行。
 """
 
-import threading
-import time
 from datetime import datetime
-from typing import Optional, Callable, Dict, Any
+from typing import Optional, Callable, Any
 
 from .task_model import ScheduledTask, TaskStatus, TaskThreadLocal
 
@@ -16,31 +14,28 @@ from utils.logging_tools import LoggerManager, get_name
 
 class TaskScheduler:
     """
-    定时任务调度器
+    定时任务调度器（轻量生命周期占位）
 
-    负责在后台线程中定期执行已注册的任务。
+    历史版本会在后台线程中周期调用 `_check_and_run_tasks()`（空实现），
+    线程每秒空醒一次。实际的定时任务检查由 BackgroundTaskManager 的
+    `_check_scheduled_tasks()` daemon 线程承担（配合 SchedulerCallback）。
+
+    当前版本已移除空转线程，仅保留 start()/stop() 生命周期接口以保持兼容。
     """
 
     def __init__(self):
         self._running = False
-        self._thread: Optional[threading.Thread] = None
-        self._stop_event = threading.Event()
-
-        # 调度间隔（秒）
-        self._check_interval = 1.0
 
         # 日志管理器
         self._logger = LoggerManager()
 
     def start(self) -> None:
-        """启动调度器"""
+        """启动调度器（不再创建空转线程，仅标记运行状态）"""
         if self._running:
             return
 
         self._running = True
-        self._stop_event.clear()
-        self._thread = threading.Thread(target=self._run_loop, daemon=True, name="TaskScheduler")
-        self._thread.start()
+        self._logger.debug(get_name(), 'TaskScheduler started (scheduling is driven by BackgroundTaskManager)')
 
     def stop(self) -> None:
         """停止调度器"""
@@ -48,30 +43,12 @@ class TaskScheduler:
             return
 
         self._running = False
-        self._stop_event.set()
+        self._logger.debug(get_name(), 'TaskScheduler stopped')
 
-        if self._thread and self._thread.is_alive():
-            self._thread.join(timeout=5.0)
-
-    def _run_loop(self) -> None:
-        """调度器主循环"""
-        while self._running and not self._stop_event.is_set():
-            try:
-                self._check_and_run_tasks()
-            except Exception as e:
-                self._logger.error(get_name(), f'Scheduler loop error: {e}')
-
-            # 等待下一次检查
-            self._stop_event.wait(self._check_interval)
-
-    def _check_and_run_tasks(self) -> None:
-        """检查并执行到期的定时任务
-
-        注意：此方法目前为空实现（pass）。实际的定时任务检查由
-        BackgroundTaskManager 的 _check_scheduled_tasks() daemon 线程执行，
-        该线程使用 SchedulerCallback 类来处理任务执行和回调。
-        """
-        pass
+    @property
+    def is_running(self) -> bool:
+        """调度器是否处于运行状态"""
+        return self._running
 
 
 class SchedulerCallback:
@@ -82,7 +59,7 @@ class SchedulerCallback:
     """
 
     def __init__(self):
-        self._lock = threading.Lock()
+        # 注：历史版本曾持有 self._lock（threading.Lock），但从未被使用，已作为死代码移除
         self._logger = LoggerManager()
 
     def execute_scheduled_task(
@@ -93,6 +70,10 @@ class SchedulerCallback:
     ) -> Any:
         """
         执行定时任务
+
+        注意：本方法在线程池 worker 线程中执行（包括 callback）。
+        插件如需在回调中操作 Qt UI，请使用信号槽或
+        QMetaObject.invokeMethod 编组到主线程。
 
         Args:
             task: 定时任务
@@ -109,13 +90,8 @@ class SchedulerCallback:
             # 设置当前任务到线程本地存储
             TaskThreadLocal.set_current_task(task)
 
-            # 执行任务函数
-            if task.args:
-                result = execute_func(*task.args)
-            elif task.kwargs:
-                result = execute_func(**task.kwargs)
-            else:
-                result = execute_func()
+            # 执行任务函数（args 与 kwargs 同时传递，互不排斥）
+            result = execute_func(*task.args, **task.kwargs)
 
         except Exception as e:
             error = str(e)

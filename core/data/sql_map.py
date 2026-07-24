@@ -100,38 +100,15 @@ CREATE TABLE IF NOT EXISTS db_metadata (
 CREATE INDEX IF NOT EXISTS idx_plugins_type ON plugins(plugin_type);
 """
 
-        # 完整的建表脚本：用于 SQLiteBackend._create_tables() 一次性执行所有 DDL。
-        CREATE_TABLES_SCRIPT = """
-CREATE TABLE IF NOT EXISTS plugins (
-    instance_id TEXT PRIMARY KEY,
-    plugin_type TEXT NOT NULL,
-    active      INTEGER NOT NULL DEFAULT 0 CHECK (active IN (0, 1))
-);
-
-CREATE TABLE IF NOT EXISTS plugin_data (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    instance_id TEXT NOT NULL,
-    namespace   TEXT NOT NULL CHECK (namespace IN ('private', 'public')),
-    key         TEXT NOT NULL,
-    value_json  TEXT NOT NULL,
-    updated_at  INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
-    FOREIGN KEY (instance_id) REFERENCES plugins(instance_id) ON DELETE CASCADE,
-    UNIQUE (instance_id, namespace, key)
-);
-
-CREATE TABLE IF NOT EXISTS active_instances (
-    plugin_type TEXT PRIMARY KEY,
-    instance_id TEXT NOT NULL,
-    FOREIGN KEY (instance_id) REFERENCES plugins(instance_id) ON DELETE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS db_metadata (
-    key   TEXT PRIMARY KEY,
-    value TEXT NOT NULL
-);
-
-CREATE INDEX IF NOT EXISTS idx_plugins_type ON plugins(plugin_type);
-"""
+        # 完整的建表脚本：由上方单表 DDL 常量拼接生成（单一事实来源，避免双份维护），
+        # 用于 SQLiteBackend._create_tables() 一次性执行所有 DDL。
+        CREATE_TABLES_SCRIPT = (
+            CREATE_TABLE_PLUGINS
+            + CREATE_TABLE_PLUGIN_DATA
+            + CREATE_TABLE_ACTIVE_INSTANCES
+            + CREATE_TABLE_DB_METADATA
+            + CREATE_INDEX_PLUGINS_TYPE
+        )
 
         # ------------------------------------------------------------------
         # DML - 元数据
@@ -232,6 +209,16 @@ SELECT key, value_json FROM plugin_data
 WHERE instance_id=? AND namespace=? ORDER BY id;
 """
 
+        # 按 instance_id 查询单个插件的基本信息（get_plugin_info 专用，避免全表扫描）。
+        SELECT_PLUGIN_BY_ID = """
+SELECT instance_id, plugin_type, active FROM plugins WHERE instance_id=?;
+"""
+
+        # 查询某插件全部键值数据（含两个命名空间），供 get_plugin_info 组装完整信息。
+        SELECT_PLUGIN_DATA_BY_ID = """
+SELECT namespace, key, value_json FROM plugin_data WHERE instance_id=? ORDER BY id;
+"""
+
         # ------------------------------------------------------------------
         # DML - 全量加载
         # ------------------------------------------------------------------
@@ -287,17 +274,18 @@ SELECT name FROM sqlite_master WHERE type='table' AND name IN ('plugins', 'plugi
 """
 
         # 查询指定表的列定义（用于 _validate_table_schema 校验表结构完整性）。
-        # 使用时通过 .format(table=table_name) 替换 {table} 占位符。
+        # PRAGMA 不支持参数化表名，请通过 table_info_sql() 生成（带白名单校验），
+        # 不要直接对外部输入使用 .format(table=...)。
         SELECT_TABLE_INFO = "PRAGMA table_info({table});"
 
-    class v2:
-        """Schema v2 的 SQL 指令集（示例）。
+        # PRAGMA table_info 表名白名单（仅允许已定义的表名，防止复用时注入）
+        TABLE_INFO_ALLOWED = frozenset({
+            "plugins", "plugin_data", "active_instances", "db_metadata",
+        })
 
-        当需要升级 schema 时，在此处添加 v1 -> v2 所需的 DDL/DML，
-        并在 ``core.data.schema_migrations.MIGRATIONS`` 中注册升级函数。
-        """
-
-        # 示例：为 plugins 表新增 description 字段，用于存储插件描述。
-        ALTER_PLUGINS_ADD_DESCRIPTION = """
-ALTER TABLE plugins ADD COLUMN description TEXT DEFAULT '';
-"""
+        @staticmethod
+        def table_info_sql(table: str) -> str:
+            """生成 PRAGMA table_info 语句；表名必须在白名单内，否则抛 ValueError。"""
+            if table not in SQLMap.v1.TABLE_INFO_ALLOWED:
+                raise ValueError(f"非法表名（不在白名单内）: {table!r}")
+            return SQLMap.v1.SELECT_TABLE_INFO.format(table=table)

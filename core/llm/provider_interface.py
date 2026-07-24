@@ -5,9 +5,11 @@
 
 数据类型:
     - Message: 聊天消息
+    - ToolCall: 类型化的工具调用
     - ChatResponse: 聊天响应
     - EmbeddingResponse: 嵌入响应
     - ModelInfo: 模型信息
+    - ModelCheckResult: 单个模型的连通性探测结果
 
 抽象基类:
     - ILLM: LLM 提供商抽象基类，定义同步/异步接口
@@ -18,9 +20,17 @@
     >>> print(msg.to_dict())
 """
 
+import asyncio
+import json
+import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Dict, Any, Optional, List, Callable, AsyncIterator, Union
+from typing import Dict, Any, Optional, List, Callable, AsyncIterator, Tuple, Union
+
+logger = logging.getLogger(__name__)
+
+# 聊天请求的默认温度参数（各 Provider 签名默认值统一引用此常量）
+DEFAULT_TEMPERATURE: float = 0.7
 
 
 @dataclass
@@ -47,16 +57,150 @@ class UsageInfo:
     cache_creation_tokens: Optional[int] = None   # 写入缓存的 token 数
 
 
+@dataclass
+class ModelCheckResult:
+    """单个模型的连通性探测结果
+
+    由 LLMProvider.check_model 返回，描述一次最小化请求探测的结果。
+
+    Attributes:
+        ok: 探测是否成功
+        latency_ms: 探测耗时（毫秒）；未实际发起请求（skipped）时为 None
+        error: 失败原因（成功或未探测时为 None）
+        skipped: 是否跳过探测（如提供商实例不存在）
+        skip_reason: 跳过原因（skipped 为 True 时填写，中文描述）
+    """
+    ok: bool
+    latency_ms: Optional[float]
+    error: Optional[str]
+    skipped: bool = False
+    skip_reason: Optional[str] = None
+
+
+@dataclass
+class ToolCall:
+    """类型化的工具调用（与 OpenAI tool_calls 消息格式对齐）
+
+    Attributes:
+        id: 调用唯一标识（同一轮并行调用之间必须唯一）
+        name: 工具（函数）名称
+        arguments: 解析后的调用参数字典
+        raw_arguments: arguments 源为字符串且 JSON 解析失败时保留的原始
+            字符串（用于把非法参数原文回传给模型，促使其重新生成）；
+            正常解析成功时为 None
+    """
+    id: str = ""
+    name: str = ""
+    arguments: Dict[str, Any] = field(default_factory=dict)
+    raw_arguments: Optional[str] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        """序列化为 OpenAI tool_calls 格式
+
+        arguments 固定输出为 JSON 字符串；raw_arguments 有值时优先输出
+        原始字符串（保留模型下发的原文，便于非法参数场景回传）。
+
+        Returns:
+            Dict[str, Any]: {"id", "type": "function",
+                "function": {"name", "arguments": <json str>}}
+        """
+        arguments_str = (self.raw_arguments if self.raw_arguments is not None
+                         else json.dumps(self.arguments, ensure_ascii=False))
+        return {
+            "id": self.id,
+            "type": "function",
+            "function": {"name": self.name, "arguments": arguments_str},
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "ToolCall":
+        """从 OpenAI 风格字典解析为 ToolCall
+
+        兼容两种形态：标准 OpenAI 格式（{"id", "type", "function": {...}}）
+        与扁平格式（{"id", "name", "arguments"}）。arguments 为字符串时
+        尝试 json.loads，解析失败回退为空 dict 并记 WARNING（原始字符串
+        保留在 raw_arguments 中）。
+
+        Args:
+            data: OpenAI 风格或扁平风格的 tool_call 字典
+
+        Returns:
+            ToolCall: 类型化的工具调用对象
+        """
+        function = data.get("function")
+        if not isinstance(function, dict):
+            function = data
+        arguments, invalid_raw = cls._parse_arguments(function.get("arguments"))
+        return cls(
+            id=str(data.get("id") or ""),
+            name=str(function.get("name") or ""),
+            arguments=arguments,
+            raw_arguments=invalid_raw,
+        )
+
+    @staticmethod
+    def _parse_arguments(raw: Any) -> Tuple[Dict[str, Any], Optional[str]]:
+        """解析 arguments 原始值
+
+        Args:
+            raw: arguments 原始值（dict / JSON 字符串 / 其他）
+
+        Returns:
+            Tuple[Dict[str, Any], Optional[str]]: (解析后的参数字典,
+                解析失败时的原始字符串)；解析成功时第二项为 None
+        """
+        if isinstance(raw, dict):
+            return dict(raw), None
+        if not isinstance(raw, str) or not raw.strip():
+            return {}, None
+        try:
+            parsed = json.loads(raw)
+        except json.JSONDecodeError:
+            logger.warning("ToolCall arguments JSON 解析失败，回退为空参数: %s", raw)
+            return {}, raw
+        if isinstance(parsed, dict):
+            return parsed, None
+        # 合法 JSON 但非对象（如数组）：按空参数处理，与既有执行语义一致
+        return {}, None
+
+
+def _normalize_tool_call(item: Any) -> Any:
+    """把 tool_calls 条目标准化为 ToolCall
+
+    带 "index" 键的 dict 视为 OpenAI 流式增量分片（id/name/arguments
+    为不完整片段），保持原始 dict 不变，由流式聚合层按 index 合并；
+    其余 dict 按完整 tool_call 解析为 ToolCall；非 dict 原样返回。
+
+    Args:
+        item: tool_calls 列表中的单个条目
+
+    Returns:
+        ToolCall 或原始条目（流式分片 / 无法识别的类型）
+    """
+    if isinstance(item, ToolCall):
+        return item
+    if isinstance(item, dict):
+        if "index" in item:
+            return item
+        return ToolCall.from_dict(item)
+    return item
+
+
 class Message:
     """聊天消息类
 
-    表示一次聊天交互中的单条消息，包含角色和内容信息。
-    支持视觉（多模态）消息，可附加图片列表。
+    表示一次聊天交互中的单条消息，与 OpenAI 消息格式对齐。
+    支持视觉（多模态）消息（images）与工具调用消息（tool_calls /
+    tool_call_id / name）。
 
     Attributes:
-        role: 消息角色，"user"（用户）、"assistant"（助手）、"system"（系统）
+        role: 消息角色，"user"（用户）/ "assistant"（助手）/
+            "system"（系统）/ "tool"（工具响应）
         content: 消息文本内容
-        images: 图片 URL 列表（可选），用于视觉模型
+        images: 图片 base64 列表（可选），用于视觉模型
+        tool_calls: 工具调用列表（可选，assistant 消息携带）
+        tool_call_id: 对应的工具调用 id（可选，tool 角色消息携带）
+        name: 参与者名称（可选，与 OpenAI 消息格式对齐）
         extra: 额外的消息参数
     """
 
@@ -65,6 +209,9 @@ class Message:
         role: str,
         content: str,
         images: Optional[List[str]] = None,
+        tool_calls: Optional[List["ToolCall"]] = None,
+        tool_call_id: Optional[str] = None,
+        name: Optional[str] = None,
         **kwargs
     ):
         """初始化聊天消息
@@ -72,25 +219,69 @@ class Message:
         Args:
             role: 消息角色
             content: 消息文本内容
-            images: 图片 URL 列表（可选）
+            images: 图片 base64 列表（可选）
+            tool_calls: 工具调用列表（可选，dict 会自动转换为 ToolCall）
+            tool_call_id: 对应的工具调用 id（可选）
+            name: 参与者名称（可选）
             **kwargs: 额外的消息参数
         """
         self.role = role
         self.content = content
         self.images = images or []
+        self.tool_calls = [_normalize_tool_call(tc) for tc in (tool_calls or [])]
+        self.tool_call_id = tool_call_id
+        self.name = name
         self.extra = kwargs
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "Message":
+        """从字典宽松解析为 Message
+
+        已知扩展键（images/tool_calls/tool_call_id/name）映射为对应字段，
+        未知键收入 extra（与构造函数的 **kwargs 行为一致），不会因扩展键
+        抛出 TypeError；tool_calls 为 dict 列表时逐项转换为 ToolCall。
+
+        Args:
+            data: 消息字典
+
+        Returns:
+            Message: 消息对象
+        """
+        known_keys = {"role", "content", "images", "tool_calls",
+                      "tool_call_id", "name"}
+        extra = {k: v for k, v in data.items() if k not in known_keys}
+        return cls(
+            role=data.get("role", ""),
+            content=data.get("content", ""),
+            images=data.get("images"),
+            tool_calls=data.get("tool_calls"),
+            tool_call_id=data.get("tool_call_id"),
+            name=data.get("name"),
+            **extra
+        )
 
     def to_dict(self) -> Dict[str, Any]:
         """将消息转换为字典
 
-        转换为符合 LLM API 格式的字典结构。
+        转换为符合 LLM API 格式的字典结构：images 保持原样（多模态
+        转换在 Provider 层完成），tool_calls 序列化为 OpenAI 格式，
+        tool_call_id / name 有值时才输出。
 
         Returns:
-            Dict[str, Any]: 消息字典，包含 role、content、可选的 images 等字段
+            Dict[str, Any]: 消息字典
         """
         result: Dict[str, Any] = {"role": self.role, "content": self.content}
         if self.images:
             result["images"] = self.images
+        if self.tool_calls:
+            result["tool_calls"] = [
+                tc.to_dict() if isinstance(tc, ToolCall) else tc
+                for tc in self.tool_calls
+            ]
+        if self.tool_call_id is not None:
+            result["tool_call_id"] = self.tool_call_id
+        if self.name is not None:
+            result["name"] = self.name
         result.update(self.extra)
         return result
 
@@ -106,7 +297,9 @@ class ChatResponse:
         model: 使用的模型名称
         role: 响应角色，默认 "assistant"
         reasoning_content: 思考过程内容（部分模型支持）
-        tool_calls: 工具调用列表（可选）
+        tool_calls: 类型化的工具调用列表（ToolCall）；例外：流式响应块
+            携带的 OpenAI 增量分片（带 "index" 键的 dict）保持原始 dict，
+            由流式聚合层按 index 合并后再转为 ToolCall
         extra: 额外的响应参数
         usage: Token 用量与费用信息（可选）
     """
@@ -117,7 +310,7 @@ class ChatResponse:
         model: str,
         role: str = "assistant",
         reasoning_content: str = "",
-        tool_calls: Optional[List[Dict]] = None,
+        tool_calls: Optional[List[ToolCall]] = None,
         usage: Optional[UsageInfo] = None,
         **kwargs
     ):
@@ -128,7 +321,8 @@ class ChatResponse:
             model: 使用的模型名称
             role: 响应角色，默认 "assistant"
             reasoning_content: 思考过程内容
-            tool_calls: 工具调用列表
+            tool_calls: 工具调用列表（dict 自动转换为 ToolCall；流式增量
+                分片保持原始 dict）
             usage: Token 用量与费用信息
             **kwargs: 额外的响应参数
         """
@@ -136,7 +330,9 @@ class ChatResponse:
         self.model = model
         self.role = role
         self.reasoning_content = reasoning_content
-        self.tool_calls = tool_calls or []
+        self.tool_calls: List[ToolCall] = [
+            _normalize_tool_call(tc) for tc in (tool_calls or [])
+        ]
         self.usage = usage
         self.extra = kwargs
 
@@ -185,8 +381,8 @@ class ModelInfo:
         support_function_calling: 是否支持函数调用
         context_length: 上下文窗口大小（token数）
         extra: 额外的模型参数
-        input_price_per_1k: 每千 token 输入价格（元）
-        output_price_per_1k: 每千 token 输出价格（元）
+        input_price_per_1m: 每百万 token 输入价格（元）
+        output_price_per_1m: 每百万 token 输出价格（元）
         provider: 所属提供商名称
     """
 
@@ -200,8 +396,8 @@ class ModelInfo:
         support_vision: bool = False,
         support_function_calling: bool = False,
         context_length: Optional[int] = None,
-        input_price_per_1k: Optional[float] = None,
-        output_price_per_1k: Optional[float] = None,
+        input_price_per_1m: Optional[float] = None,
+        output_price_per_1m: Optional[float] = None,
         provider: str = "",
         **kwargs
     ):
@@ -216,8 +412,8 @@ class ModelInfo:
             support_vision: 是否支持视觉，默认 False
             support_function_calling: 是否支持函数调用，默认 False
             context_length: 上下文窗口大小
-            input_price_per_1k: 每百万 token 输入价格（元）
-            output_price_per_1k: 每百万 token 输出价格（元）
+            input_price_per_1m: 每百万 token 输入价格（元）
+            output_price_per_1m: 每百万 token 输出价格（元）
             provider: 所属提供商名称
             **kwargs: 额外的模型参数
         """
@@ -229,8 +425,8 @@ class ModelInfo:
         self.support_vision = support_vision
         self.support_function_calling = support_function_calling
         self.context_length = context_length
-        self.input_price_per_1k = input_price_per_1k
-        self.output_price_per_1k = output_price_per_1k
+        self.input_price_per_1m = input_price_per_1m
+        self.output_price_per_1m = output_price_per_1m
         self.provider = provider
         self.extra = kwargs
 
@@ -249,8 +445,8 @@ class ModelInfo:
             "support_vision": self.support_vision,
             "support_function_calling": self.support_function_calling,
             "context_length": self.context_length,
-            "input_price_per_1k": self.input_price_per_1k,
-            "output_price_per_1k": self.output_price_per_1k,
+            "input_price_per_1m": self.input_price_per_1m,
+            "output_price_per_1m": self.output_price_per_1m,
             "provider": self.provider,
         }
         result.update(self.extra)
@@ -269,15 +465,20 @@ class ModelInfo:
         Returns:
             ModelInfo: 模型信息对象实例
         """
-        # 已知的标准字段
+        # 已知的标准字段（含历史定价键 per_1k：旧缓存文件中该键的值
+        # 实际已是 per_1m 语义，读取时原样采用、不做数值换算）
         known_fields = {
             "id", "name", "support_chat", "support_streaming",
             "support_embedding", "support_vision",
             "support_function_calling", "context_length",
+            "input_price_per_1m", "output_price_per_1m",
             "input_price_per_1k", "output_price_per_1k", "provider"
         }
         # 将未知字段保存到 extra 中
         extra = {k: v for k, v in data.items() if k not in known_fields}
+        # 定价键读取：优先 per_1m 新键；旧缓存的 per_1k 键原样回退（值本为 per_1m 语义）
+        input_price = data.get("input_price_per_1m", data.get("input_price_per_1k"))
+        output_price = data.get("output_price_per_1m", data.get("output_price_per_1k"))
         return cls(
             id=data.get("id", ""),
             name=data.get("name", ""),
@@ -287,8 +488,8 @@ class ModelInfo:
             support_vision=data.get("support_vision", False),
             support_function_calling=data.get("support_function_calling", False),
             context_length=data.get("context_length"),
-            input_price_per_1k=data.get("input_price_per_1k"),
-            output_price_per_1k=data.get("output_price_per_1k"),
+            input_price_per_1m=input_price,
+            output_price_per_1m=output_price,
             provider=data.get("provider", ""),
             **extra
         )
@@ -342,7 +543,7 @@ class ILLM(ABC):
         self,
         messages: List[Union[Message, Dict]],
         model: Optional[str] = None,
-        temperature: float = 0.7,
+        temperature: float = DEFAULT_TEMPERATURE,
         max_tokens: Optional[int] = None,
         **kwargs
     ) -> ChatResponse:
@@ -369,7 +570,7 @@ class ILLM(ABC):
         self,
         messages: List[Union[Message, Dict]],
         model: Optional[str] = None,
-        temperature: float = 0.7,
+        temperature: float = DEFAULT_TEMPERATURE,
         max_tokens: Optional[int] = None,
         callback: Optional[Callable[[ChatResponse], None]] = None,
         **kwargs
@@ -431,9 +632,11 @@ class ILLM(ABC):
         pass
 
     def validate_config(self) -> bool:
-        """验证配置是否有效
+        """验证配置是否有效（仅格式校验，不代表连通性）
 
         检查提供商的必需配置项是否已填写。
+        注意：本方法不发起任何网络请求，返回 True 仅表示配置格式完整，
+        不代表 API 服务实际可用。
 
         Returns:
             bool: 配置是否有效（api_key 或 base_url 至少有一个）
@@ -447,7 +650,7 @@ class ILLM(ABC):
         self,
         messages: List[Union[Message, Dict]],
         model: Optional[str] = None,
-        temperature: float = 0.7,
+        temperature: float = DEFAULT_TEMPERATURE,
         max_tokens: Optional[int] = None,
         **kwargs
     ) -> ChatResponse:
@@ -471,7 +674,7 @@ class ILLM(ABC):
         self,
         messages: List[Union[Message, Dict]],
         model: Optional[str] = None,
-        temperature: float = 0.7,
+        temperature: float = DEFAULT_TEMPERATURE,
         max_tokens: Optional[int] = None,
         **kwargs
     ) -> AsyncIterator[ChatResponse]:
@@ -591,13 +794,18 @@ class ILLM(ABC):
             self._session = None
         if self._async_session:
             try:
-                import asyncio
                 loop = asyncio.get_running_loop()
                 loop.create_task(self._async_session.close())
             except RuntimeError:
-                # No running event loop, use synchronous close
-                pass
+                # 无运行中的事件循环：新建临时循环完成关闭，避免 session 泄漏
+                try:
+                    asyncio.run(self._async_session.close())
+                except Exception as e:
+                    # session 原属事件循环已销毁，无法安全关闭，放弃以避免异常
+                    logger.debug("异步 session 关闭失败（原事件循环已销毁，忽略）: %s", e)
             self._async_session = None
+            if hasattr(self, "_async_session_loop"):
+                self._async_session_loop = None
 
     async def async_close(self):
         """关闭异步连接

@@ -5,6 +5,8 @@
 新增类型:
     - Conversation: 对话数据模型
     - ToolResult: 工具调用结果
+    - ToolChatResult: 带工具调用对话的结构化结果
+    - ToolDefinition: 类型化的工具定义
     - UsageStats: 用量统计
     - ImageResult: 图像生成结果
     - AudioResult: 语音合成结果
@@ -14,9 +16,19 @@
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
-from .provider_interface import UsageInfo
+from .provider_interface import ChatResponse, ModelInfo, ToolCall, UsageInfo
+
+
+# 默认实例引用：provider 参数取该值时表示「默认实例」，不指向任何具体实例，
+# 由 LLMProvider 按功能维度（chat/embedding）解析为实际实例 id（带粘性缓存）。
+# 定义该常量用于消除贯穿各层的 "default" 魔法字符串。
+DEFAULT_PROVIDER = "default"
+
+# 默认模型引用：model 参数取该值时表示「使用实例配置中的默认模型」，
+# 由 LLMProvider 层解析为实例配置的 chat_model / embedding_model。
+DEFAULT_MODEL = "default"
 
 
 @dataclass
@@ -87,6 +99,58 @@ class Conversation:
             if usage.total_cost:
                 self.total_cost += usage.total_cost
 
+    def to_dict(self) -> Dict[str, Any]:
+        """序列化为可 JSON 持久化的字典
+
+        Returns:
+            Dict[str, Any]: 包含全部会话字段的字典（时间字段为 ISO 格式字符串）
+        """
+        return {
+            "id": self.id,
+            "created_at": self.created_at.isoformat(),
+            "updated_at": self.updated_at.isoformat(),
+            "system_prompt": self.system_prompt,
+            "messages": self.messages,
+            "total_tokens": self.total_tokens,
+            "total_cost": self.total_cost,
+            "provider": self.provider,
+            "model": self.model,
+            "metadata": self.metadata,
+        }
+
+    @classmethod
+    def from_dict(cls, d: Dict[str, Any]) -> "Conversation":
+        """从字典反序列化为 Conversation 对象
+
+        Args:
+            d: to_dict() 产出的字典
+
+        Returns:
+            Conversation: 会话对象
+        """
+        def _parse_dt(value) -> datetime:
+            if isinstance(value, datetime):
+                return value
+            if isinstance(value, str):
+                try:
+                    return datetime.fromisoformat(value)
+                except ValueError:
+                    pass
+            return datetime.now()
+
+        return cls(
+            id=d.get("id", ""),
+            created_at=_parse_dt(d.get("created_at")),
+            updated_at=_parse_dt(d.get("updated_at")),
+            system_prompt=d.get("system_prompt"),
+            messages=list(d.get("messages", [])),
+            total_tokens=d.get("total_tokens", 0),
+            total_cost=d.get("total_cost", 0.0),
+            provider=d.get("provider", ""),
+            model=d.get("model", ""),
+            metadata=dict(d.get("metadata", {})),
+        )
+
 
 @dataclass
 class ToolResult:
@@ -106,6 +170,43 @@ class ToolResult:
     result: Any = None
     error: Optional[str] = None
     duration_ms: Optional[float] = None
+
+
+@dataclass
+class ToolChatResult:
+    """带工具调用对话的结构化结果
+
+    替代旧的三元组返回（messages, tool_results, final），字段类型固定，
+    不再随 stream 与否变化。
+
+    Attributes:
+        messages: 完整对话记录（OpenAI 消息 dict 格式，含 assistant 的
+            tool_calls 消息与 tool 角色响应消息），可直接用于后续请求
+        tool_results: 本轮循环中全部工具调用的执行结果记录
+        final_response: 最终一轮 LLM 响应；流式路径取底层聚合响应
+            （last_stream_response），底层未提供时为 None
+        final_text: 最终文本内容（流式路径为聚合全文）；无文本时为空串
+    """
+    messages: List[Dict[str, Any]] = field(default_factory=list)
+    tool_results: List[ToolResult] = field(default_factory=list)
+    final_response: Optional[ChatResponse] = None
+    final_text: str = ""
+
+
+@dataclass
+class ToolDefinition:
+    """类型化的工具定义（ToolRegistry.register_typed 的入参）
+
+    Attributes:
+        name: 工具名称（唯一）
+        description: 工具描述（会发给 LLM）
+        parameters: OpenAI 风格的 JSON Schema 参数定义
+        handler: 实际执行的函数，签名为 handler(**kwargs) -> Any
+    """
+    name: str
+    description: str
+    parameters: Dict[str, Any]
+    handler: Callable[..., Any]
 
 
 @dataclass
@@ -172,36 +273,39 @@ class AudioResult:
 
 @dataclass
 class ProviderInfo:
-    """Provider 信息（面向插件开发者的友好格式）
+    """Provider 实例信息（面向插件开发者的友好格式）
 
-    封装 Provider 的配置状态和能力信息。
+    封装一个 Provider 实例的配置状态与运行时健康信息。
+    所有字段均有真实数据来源：启用状态/适配器/预设关联/当前模型
+    来自 ProviderConfig，base_url 取实例覆写或目录默认，健康状态
+    来自 LLMProvider 的健康跟踪，不包含 api_key 等敏感信息。
 
     Attributes:
-        name: Provider 名称
-        provider_type: Provider 类型
-        enabled_chat: 是否启用聊天功能
-        enabled_embedding: 是否启用嵌入功能
-        supports_vision: 是否支持视觉
-        supports_function_calling: 是否支持函数调用
-        current_chat_model: 当前聊天模型
-        current_embedding_model: 当前嵌入模型
-        models: 可用模型列表
-        is_healthy: Provider 是否健康
-        last_error: 最近一次错误信息
-        rate_limit_rpm: 每分钟请求限制
+        instance_id: 实例唯一标识（配置键名）
+        preset_id: 关联的预设目录 ID（完全自定义实例为 None）
+        name: 实例显示名
+        adapter: 适配器家族键
+        base_url: 有效 API 基础地址（实例覆写或目录默认，不含密钥）
+        enabled_chat: 是否启用聊天功能（来自真实配置）
+        enabled_embedding: 是否启用嵌入功能（来自真实配置）
+        is_healthy: 实例是否健康（运行时健康跟踪）
+        last_error: 最近一次错误信息（无错误时为 None）
+        current_chat_model: 当前聊天模型（实例配置）
+        current_embedding_model: 当前嵌入模型（实例配置）
+        models: 该实例的可用模型列表
     """
+    instance_id: str
+    preset_id: Optional[str]
     name: str
-    provider_type: str
+    adapter: str
+    base_url: str
     enabled_chat: bool
     enabled_embedding: bool
-    supports_vision: bool
-    supports_function_calling: bool
+    is_healthy: bool
+    last_error: Optional[str]
     current_chat_model: str
     current_embedding_model: str
-    models: List[Any] = field(default_factory=list)
-    is_healthy: bool = True
-    last_error: Optional[str] = None
-    rate_limit_rpm: Optional[int] = None
+    models: List[ModelInfo] = field(default_factory=list)
 
 
 @dataclass
@@ -214,39 +318,41 @@ class StreamChunk:
         content: 本次 chunk 的文本内容
         done: 是否为最后一个 chunk
         full_response: 到目前为止的完整响应
-        reasoning_content: 思考过程内容
-        tool_calls: 工具调用列表
-        usage: Token 用量信息
+        reasoning_content: 思考过程内容；底层回调契约为 (str, bool) 的
+            路径无此数据来源，保持 None
+        tool_calls: 类型化的工具调用列表（ToolCall）；仅在底层直接回调
+            ChatResponse 块且携带着完整 tool_calls 时填充，否则为空列表
+        usage: Token 用量信息；仅在底层末块携带 usage 时填充，否则 None
         error: 错误信息（如果有）
     """
     content: str
     done: bool = False
     full_response: str = ""
     reasoning_content: Optional[str] = None
-    tool_calls: List[Dict] = field(default_factory=list)
+    tool_calls: List[ToolCall] = field(default_factory=list)
     usage: Optional[UsageInfo] = None
     error: Optional[str] = None
 
 
 @dataclass
 class UsageRecord:
-    """A single LLM API request record with timestamp.
+    """单次 LLM API 请求的用量记录（带时间戳）。
 
-    Stored persistently in data/llm_usage.json via UsageRecordStore.
+    通过 UsageRecordStore 持久化到 data/llm_usage.json。
 
     Attributes:
-        id: Unique record ID (UUID4 hex string)
-        timestamp: Precise UTC time of the request
-        conversation_id: Associated conversation ID, "" if no conversation
-        provider: Provider name (e.g. "minimax", "glm")
-        model: Model ID used for this request
-        input_tokens: Prompt token count
-        output_tokens: Completion token count
-        total_tokens: Sum of input+output tokens
-        cached_tokens: Tokens served from prompt cache (0 if none)
-        cache_hit: True if at least some tokens were cached
-        is_stream: True for streaming requests
-        duration_ms: Request duration in milliseconds
+        id: 记录唯一 ID（UUID4 hex 字符串）
+        timestamp: 请求的精确 UTC 时间
+        conversation_id: 关联的对话 ID，无对话上下文时为 ""
+        provider: 提供商名称（如 "minimax"、"glm"）
+        model: 本次请求使用的模型 ID
+        input_tokens: 输入（提示词）token 数
+        output_tokens: 输出（补全）token 数
+        total_tokens: 输入与输出 token 数之和
+        cached_tokens: 命中提示词缓存的 token 数（无缓存时为 0）
+        cache_hit: 是否有至少部分 token 命中缓存
+        is_stream: 是否为流式请求
+        duration_ms: 请求耗时（毫秒）
     """
     id: str
     timestamp: datetime

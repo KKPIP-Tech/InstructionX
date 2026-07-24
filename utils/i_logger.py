@@ -13,6 +13,10 @@ class ILogger(ABC):
 
     定义日志记录的抽象接口，插件和核心服务通过此接口进行日志记录，
     而非直接依赖 LoggerManager 实现。
+
+    注意：本接口的各方法均不接受 exc_info 等标准 logging 关键字参数；
+    需要记录异常堆栈时，请调用方自行用 traceback.format_exc() 格式化
+    后并入 message 字符串。
     """
 
     @abstractmethod

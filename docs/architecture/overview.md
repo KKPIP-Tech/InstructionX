@@ -136,16 +136,20 @@ graph TB
 - `core/llm/plugin_service.py` — LLM 插件服务层（插件开发者入口）
 
 **LLMProvider（核心层）**:
-- 多提供商管理（MiniMax、SiliconFlow、GLM、Ollama、OpenAI）
+- 多提供商实例管理（内置预设：MiniMax、SiliconFlow、GLM、Ollama、OpenAI；自定义 OpenAI 兼容实例）
+- 按实例 `adapter` 查询适配器注册表创建实例（注册表键为适配器家族）
 - 统一 API 接口（chat、stream_chat、embed）
-- 模型列表获取与缓存
+- 模型列表获取与缓存（缓存键为实例 id）
+- 连通性检查（`check_provider` / `check_model`）与健康跟踪
+- 配置版本比对惰性刷新（无需手动 `reload_config()`）
 - Function Calling 支持
 
 **LLMPluginService（插件服务层）**:
-- 插件开发者唯一入口（推荐使用 `get_llm_plugin_service()`）
+- 插件开发者唯一入口（推荐使用 `get_llm_plugin_service()`），显式继承 `ILLMService`
 - 对话管理（创建/发送/流式/统计）
-- 工具调用自动化（ToolCallExecutor）
+- 工具调用自动化（ToolCallExecutor，返回 ToolChatResult）
 - 多模态（图片/TTS）
+- 实例与模型查询（`list_providers` / `get_models` / `get_default_provider_id`），不泄漏底层实例与 api_key
 
 **DI 注入**: `PluginManager` 通过 `PluginServices.llm_facade` 注入到各插件
 
@@ -155,20 +159,22 @@ graph TB
 
 **职责**:
 - 对话生命周期管理（创建、更新、查询）
-- 上下文截断（当前未实现：`max_context` 参数会被吸收但不生效）
+- 上下文截断（超出 `max_context` 时自动从最早的用户/助手消息开始截断，system prompt 与最近消息保留）
 - Token 估算（中文字符按 1:1 计，英文按 4:1 估算）
-- 费用计算（基于 `DEFAULT_PRICING` 定价表）
+- 费用计算（基于 `DEFAULT_PRICING` 定价表，随配置变更热更新）
 
 #### 3.4.2 ToolCallExecutor / ToolRegistry
 
 **文件位置**: `core/llm/tool_call_executor.py`
 
 **职责**:
-- `ToolRegistry`: 集中管理所有可用工具（`register_tool()` / `unregister_tool()` / `get_tool()`）
-- `ToolCallExecutor`: 自动工具调用循环（`chat_with_tools()`），支持流式版本
+- `ToolRegistry`: 集中管理所有可用工具（`register()` / `register_typed()` / `unregister()` / `get_handler()`）
+- `ToolCallExecutor`: 自动工具调用循环（`chat_with_tools()`，返回 `ToolChatResult`），支持流式版本
 
 **数据文件**:
-- `core/llm/types.py` — 集中管理 LLMPluginService 相关数据类型（Conversation、ToolResult、UsageStats 等）
+- `core/llm/types.py` — 集中管理 LLMPluginService 相关数据类型（Conversation、ProviderInfo、ToolChatResult、ToolDefinition、UsageStats 等）
+- `core/llm/model_schema.py` — 统一模型 schema（capabilities 闭集、normalize、三路合并、分组推断）
+- `core/llm/catalog/` — 提供商预设目录（ProviderPreset / PROVIDER_PRESETS / PRESET_MODELS / logos/，随程序发布只读）
 - `core/llm/pricing.py` — 提供 `DEFAULT_PRICING` 定价表
 - `core/llm/types_cache.py` — 统一缓存信息类型（CacheInfo、CacheType）
 - `core/llm/cache_adapter.py` — 各 Provider 缓存适配器
@@ -238,7 +244,7 @@ graph TB
 | `IPluginInfo` | `i_plugin_info.py` | 插件信息抽象基类 | `core/plugin/plugin_info_interface.py` |
 | `IDataProvider` | `i_data_provider.py` | 数据提供者接口 | `core/data/data_provider.py` |
 | `ITaskManager` | `i_task_manager.py` | 任务管理器接口 | `core/task/background_task.py` |
-| `ILLMFacade` | `i_llm_facade.py` | LLM 外观接口（方法签名兼容，非继承） | `core/llm/plugin_service.py`（`LLMPluginService` 完整实现，Duck Typing，未显式继承） |
+| `ILLMService` | `i_llm_service.py` | LLM 插件服务接口 | `core/llm/plugin_service.py`（`LLMPluginService` 显式继承） |
 | `ILogger` | `i_logger.py`（`core/interfaces/` 重导出） | 日志接口 | `utils/logging_tools.py`（LoggerManager） |
 | `PluginServices` | `plugin_services.py` | 服务封装（依赖注入容器） | — |
 
@@ -250,7 +256,7 @@ from core.interfaces import (
     IPluginInfo,
     IDataProvider,
     ITaskManager,
-    ILLMFacade,
+    ILLMService,
     ILogger,
     PluginServices,
     TaskType,
@@ -315,7 +321,7 @@ InstructionX/
 │   │   ├── i_plugin_info.py  # IPluginInfo 抽象基类
 │   │   ├── i_data_provider.py    # IDataProvider 抽象接口
 │   │   ├── i_task_manager.py      # ITaskManager 抽象接口
-│   │   ├── i_llm_facade.py       # ILLMFacade 抽象接口
+│   │   ├── i_llm_service.py      # ILLMService 抽象接口（LLM 插件服务契约）
 │   │   ├── i_logger.py           # ILogger 接口重导出（向后兼容）
 │   │   └── plugin_services.py    # PluginServices 服务封装
 │   ├── plugin/               # 插件系统实现
@@ -348,27 +354,35 @@ InstructionX/
 │   │   ├── config.py         # MCP 配置
 │   │   └── plugin_interface.py  # MCP 插件接口
 │   └── llm/                  # LLM 提供者实现
-│       ├── llm_provider.py  # LLMProvider 核心层
-│       ├── provider_interface.py
-│       ├── plugin_service.py # LLMPluginService 插件服务层
+│       ├── llm_provider.py  # LLMProvider 核心层（adapter 分发、check_*、惰性刷新）
+│       ├── provider_interface.py  # ILLM + Message/ChatResponse/ToolCall/ModelInfo/ModelCheckResult
+│       ├── model_schema.py  # 统一模型 schema（capabilities 闭集/normalize/三路合并）
+│       ├── catalog/         # 提供商预设目录（ProviderPreset/PROVIDER_PRESETS/PRESET_MODELS/logos）
+│       ├── plugin_service.py # LLMPluginService 插件服务层（ILLMService 实现）
 │       ├── conversation_manager.py  # 对话管理
-│       ├── tool_call_executor.py   # 工具调用自动化
-│       ├── types.py        # 数据类型
+│       ├── tool_call_executor.py   # 工具调用自动化（ToolChatResult / register_typed）
+│       ├── types.py        # 数据类型（DEFAULT_PROVIDER/ProviderInfo/ToolChatResult 等）
+│       ├── types_cache.py  # 类型缓存
+│       ├── cache_adapter.py # 缓存适配器
 │       ├── pricing.py      # 定价表
-│       ├── config.py
+│       ├── config.py       # ProviderConfig / LLMConfig 单例（schema v2 + 迁移 + 订阅）
+│       ├── secure_keys.py  # API Key 混淆存储
+│       ├── usage_record_store.py # 用量记录存储
 │       ├── exceptions.py
-│       └── providers/       # Provider 实现
+│       └── providers/       # 适配器注册表 + 各 Provider 实现
+│           ├── __init__.py  # PROVIDER_REGISTRY（adapter→类）+ register_adapter 等
 │           ├── base.py
 │           ├── minimax.py
 │           ├── siliconflow.py
 │           ├── glm.py
 │           ├── ollama.py
-│           └── openai.py
+│           ├── openai.py
+│           └── openai_compatible.py  # 自定义 OpenAI 兼容兜底适配器
 │
 ├── ui/                       # UI 模块
 │   ├── main_window.py       # 主窗口
 │   ├── title_bar.py        # 自定义标题栏
-│   ├── usage_panel.py       # 用量查询面板
+│   ├── usage_panel/         # 用量查询面板（包：panel/kpi_card/trend_chart/history_table/formatting）
 │   ├── skills_panel/        # 技能面板
 │   │   ├── panel.py        # SkillsPanel 面板
 │   │   └── skill_button.py  # SkillButton 按钮组件
@@ -378,9 +392,7 @@ InstructionX/
 │       ├── __init__.py
 │       ├── about_dialog.py      # 关于对话框
 │       ├── license_dialog.py    # 开源许可对话框
-│       ├── llm_settings_dialog.py  # LLM 设置对话框（两栏）
-│       ├── llm_settings_components.py  # LLM 设置对话框组件
-│       ├── llm_model_service_dialog.py  # 模型服务对话框（三栏）
+│       ├── llm_settings/        # LLM 设置对话框包（两栏：列表 + 详情，自动保存语义）
 │       ├── plugin_order_dialog.py  # 插件排序对话框
 │       └── github_plugin_install_dialog.py  # GitHub 插件安装对话框
 │
@@ -409,6 +421,9 @@ InstructionX/
 │   ├── logging_tools.py     # 日志管理
 │   ├── i_logger.py         # ILogger 接口
 │   ├── themes.py           # 主题检测与切换
+│   ├── font_map.py         # 字体映射
+│   ├── image_utils.py      # 图片工具（load_image_as_base64）
+│   ├── thread_utils.py     # 工作线程 → UI 线程封送
 │   └── style_qss/          # StyleQSS 样式系统（QSS 片段注册 + 主题变量）
 │
 └── docs/                     # 技术文档

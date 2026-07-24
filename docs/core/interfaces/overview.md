@@ -29,7 +29,7 @@ graph TB
         I2[IPluginInfo]
         I3[IDataProvider]
         I4[ITaskManager]
-        I5[ILLMFacade]
+        I5[ILLMService]
         I6[ILogger]
         I7[PluginServices]
     end
@@ -79,7 +79,7 @@ graph TB
 | **IPluginInfo** | `i_plugin_info.py` | 插件信息抽象基类 | `core/plugin/plugin_info_interface.py` |
 | **IDataProvider** | `i_data_provider.py` | 数据提供者接口 | `core/data/data_provider.py` |
 | **ITaskManager** | `i_task_manager.py` | 后台任务管理器接口 | `core/task/background_task.py` |
-| **ILLMFacade** | `i_llm_facade.py` | LLM 统一门面接口 | `core/llm/plugin_service.py`（`LLMPluginService` 通过方法签名兼容实现所有方法，**未显式继承** `ILLMFacade`；`LLMProvider` 同样通过 Duck Typing 实现部分方法） |
+| **ILLMService** | `i_llm_service.py` | LLM 插件服务接口 | `core/llm/plugin_service.py`（`LLMPluginService` **显式继承** `ILLMService`） |
 | **ILogger** | `utils/i_logger.py`（原始定义）/ `core/interfaces/__init__.py`（重导出）| 日志接口 | `utils/logging_tools.py`（`LoggerManager` 实现）|
 
 ### 2.2 辅助类
@@ -337,57 +337,59 @@ class MyPlugin(IPlugin):
 
 ---
 
-### 3.5 ILLMFacade（LLM 统一门面接口）
+### 3.5 ILLMService（LLM 插件服务接口）
 
-**文件**: `core/interfaces/i_llm_facade.py`
+**文件**: `core/interfaces/i_llm_service.py`（取代已删除的 `i_llm_facade.py`）
 
-**作用**: 定义大语言模型统一访问的抽象接口。`LLMPluginService`（`core/llm/plugin_service.py`）提供了与接口兼容的完整方法集合，**注意：未显式继承 `ILLMFacade`，属于 Duck Typing 兼容**
+**作用**: 定义插件访问 LLM 能力的唯一抽象契约。`LLMPluginService`（`core/llm/plugin_service.py`）**显式继承**该接口（接口即契约）。所有 `provider` 参数语义为**实例 id**，取 `"default"`（`DEFAULT_PROVIDER`）时由底层按功能维度（chat/embedding）解析为默认实例；`model` 参数取 `"default"`（`DEFAULT_MODEL`）时使用实例配置中的默认模型。
 
 **核心功能**:
-- 同步/异步聊天
-- 流式输出
+- 同步聊天 / 流式输出
 - 文本嵌入
 - 对话管理（创建、发送、列表、删除）
-- 工具调用（Function Calling）
-- 模型列表查询
+- 工具调用（Function Calling，返回 `ToolChatResult`）
+- 实例与模型查询（`list_providers` / `get_models`）
 - Provider 配置验证
 
-> **注意**：实际注入到插件的是 `LLMPluginService`（通过 `PluginServices.llm_facade`），插件开发者应通过 `services.llm_facade` 访问所有 LLM 能力。
+> **注意**：实际注入到插件的是 `LLMPluginService`（通过 `PluginServices.llm_facade`，字段类型标注为 `ILLMService`），插件开发者应通过 `services.llm_facade` 访问所有 LLM 能力。
 
 **核心方法**:
 
 *底层 LLM 代理*:
-- `chat(messages, provider, model, temperature, max_tokens, **kwargs)`: 同步聊天
-- `stream_chat(messages, provider, model, temperature, max_tokens, callback, **kwargs)`: 流式聊天，`callback` 签名为 `(chunk: str, done: bool) -> None`
-- `embed(texts, provider, model, **kwargs)`: 文本嵌入
-- `get_models(provider)`: 获取模型列表
-- `get_provider(name)`: 获取 Provider 实例
-- `get_all_providers()`: 获取所有 Provider
-- `get_cached_models(provider_name)`: 获取缓存模型
-- `get_raw_provider(provider="default")`: 获取底层 LLM Provider（高级插件用）
+- `chat(messages, provider, model, temperature, max_tokens, tools)`: 同步聊天，返回 `ChatResponse`
+- `stream_chat(messages, callback, provider, model, ...)`: 流式聊天，`callback` 签名为 `(chunk: str, done: bool) -> None`，返回完整文本 `str`
+- `embed(texts, provider, model)`: 文本嵌入，返回 `List[EmbeddingResponse]`
 
 *对话管理*:
 - `create_conversation(system_prompt, provider, model, metadata)`: 创建新对话，返回对话 ID
-- `send_message(conversation_id, content, images, temperature, max_tokens)`: 同步发送消息
-- `stream_send_message(conversation_id, content, images, callback, temperature, max_tokens)`: 流式发送消息
+- `send_message(conversation_id, content, images, temperature, max_tokens, model, provider)`: 同步发送消息（model/provider 为临时覆盖，不修改会话绑定）
+- `stream_send_message(conversation_id, content, images, callback, ...)`: 流式发送消息
 - `get_conversation(conversation_id)`: 获取对话对象
 - `list_conversations()`: 列出所有对话
 - `delete_conversation(conversation_id)`: 删除对话
 
 *工具调用*:
-- `chat_with_tools(messages, provider, model, max_turns, temperature)`: 带工具调用的对话
+- `chat_with_tools(messages, provider, model, max_turns, temperature)`: 带工具调用的对话，返回 `ToolChatResult`
+- `chat_with_tools_stream(messages, callback, ...)`: 流式版本，返回 `ToolChatResult`
 - `get_tool_executor()`: 获取工具调用执行器
 - `get_shared_tool_registry()`: 获取共享工具注册表
 
-*辅助方法*:
-- `get_available_providers()`: 获取所有可用的 Provider 信息
+*实例与模型查询*:
+- `list_providers()`: 列出所有 Provider 实例信息（`List[ProviderInfo]`，不含 api_key）
+- `get_models(provider="default")`: 获取单实例模型列表（`List[ModelInfo]`）
+- `resolve_provider_id(provider)`: 解析实例引用为实际实例 id
+- `get_default_provider_id(feature="chat")`: 默认实例解析结果（不抛异常，无可用实例返回 `None`）
+
+*统计与校验*:
 - `get_usage_stats(conversation_id)`: 获取用量统计
 - `validate_provider(provider)`: 验证 Provider 配置是否有效
-- `load_image_as_base64(file_path)`: 加载图片文件为 base64 字符串
+- `last_stream_response`（property）: 最近一次流式请求的聚合响应
+
+> **已移除的旧方法**：`get_provider` / `get_all_providers` / `get_raw_provider` / `get_cached_models` / `get_available_providers`（底层泄漏）；`load_image_as_base64` 迁至 `utils/image_utils.py`（纯文件工具）。迁移对照见 `temp/llm-api-v2-migration.md`。
 
 **使用示例**:
 ```python
-from core.interfaces import ILLMFacade, Message
+from core.interfaces import ILLMService, Message
 
 class MyPlugin(IPlugin):
     def __init__(self, services=None):
@@ -400,7 +402,7 @@ class MyPlugin(IPlugin):
         llm = self._services.llm_facade
         response = llm.chat(
             messages=[Message(role="user", content=question)],
-            provider="minimax",
+            provider="minimax",  # 实例 id
             temperature=0.7
         )
         return response.content
@@ -410,7 +412,6 @@ class MyPlugin(IPlugin):
         conv_id = llm.create_conversation(
             system_prompt="你是一个代码助手",
             provider="minimax",
-            model="abab6.5s-chat"
         )
         return llm.send_message(conv_id, "解释这段代码")
 ```
@@ -419,13 +420,13 @@ class MyPlugin(IPlugin):
 
 ---
 
-#### 3.5.1 LLMPluginService（LLM 完整实现）
+#### 3.5.1 LLMPluginService（ILLMService 实现）
 
 **文件**: `core/llm/plugin_service.py`
 
-**作用**: 提供与 `ILLMFacade` 接口方法签名完全兼容的实现，是插件开发者使用 LLM 能力的唯一入口。整合了对话管理、工具调用自动化、向量嵌入、多模态和用量统计。
+**作用**: `ILLMService` 的唯一实现（显式继承），是插件开发者使用 LLM 能力的唯一入口。整合了对话管理、工具调用自动化、向量嵌入、多模态和用量统计。
 
-> **注意**：`LLMPluginService` **未显式继承** `ILLMFacade` 抽象基类，而是通过方法签名兼容（Duck Typing）实现接口契约。插件开发者通过 `PluginServices.llm_facade` 获取的实例类型为 `LLMPluginService`，可直接调用所有 `ILLMFacade` 定义的方法。
+> **注意**：`LLMPluginService` 显式继承 `ILLMService` 抽象基类（接口即契约）。插件开发者通过 `PluginServices.llm_facade` 获取的实例即为该实现，可直接调用 `ILLMService` 定义的所有方法。
 
 **核心组件**:
 - `ConversationManager`: 对话生命周期管理
@@ -449,19 +450,21 @@ svc = get_llm_plugin_service()
 | 方法 | 说明 |
 |------|------|
 | `create_conversation(system_prompt?, provider?, model?)` | 创建对话，返回 conv_id |
-| `send_message(conv_id, content, images?, ...)` | 同步发送消息 |
+| `send_message(conv_id, content, images?, model?, provider?, ...)` | 同步发送消息（model/provider 临时覆盖） |
 | `stream_send_message(conv_id, content, ...)` | 流式发送消息 |
 | `chat(messages, ...)` | 直接 chat（无对话状态） |
-| `stream_chat(messages, callback, ...)` | 流式 chat（无对话状态） |
-| `chat_with_tools(messages, max_turns=5)` | 工具调用循环（返回消息列表、工具结果、最终响应） |
-| `chat_with_tools_stream(messages, callback, ...)` | 流式工具调用（当前流式路径不会解析 `tool_calls`，实际暂不可用） |
+| `stream_chat(messages, callback, ...)` | 流式 chat（无对话状态），返回完整文本 |
+| `chat_with_tools(messages, max_turns=5)` | 工具调用循环，返回 `ToolChatResult` |
+| `chat_with_tools_stream(messages, callback, ...)` | 流式工具调用，返回 `ToolChatResult` |
 | `get_tool_executor()` | 获取 `ToolCallExecutor` 实例 |
 | `get_shared_tool_registry()` | 获取共享 `ToolRegistry`（所有插件的工具） |
-| `get_raw_provider(provider?)` | 获取底层 `ILLM` Provider（高级插件用） |
-| `embed(texts, provider?, model?)` | 向量嵌入 |
+| `embed(texts, provider?, model?)` | 向量嵌入，返回 `List[EmbeddingResponse]` |
 | `generate_image(prompt, provider?)` | 图像生成 |
 | `text_to_speech(text, provider?)` | 文本转语音 |
-| `get_available_providers()` | 获取所有可用 Provider 信息 |
+| `list_providers()` | 列出所有 Provider 实例信息 |
+| `get_models(provider="default")` | 获取单实例模型列表 |
+| `resolve_provider_id(provider)` | 解析实例引用为实际实例 id |
+| `get_default_provider_id(feature?)` | 默认实例解析结果 |
 | `get_usage_stats(conv_id?)` | 获取用量统计 |
 | `validate_provider(provider)` | 验证 Provider 配置 |
 
@@ -515,7 +518,7 @@ class MyPlugin(IPlugin):
 **属性**:
 - `data_provider`: `DataProvider` - 数据提供者实例
 - `task_manager`: `BackgroundTaskManager` - 后台任务管理器实例
-- `llm_facade`: `LLMPluginService` - LLM 统一门面（通过 Duck Typing 兼容 `ILLMFacade`，未显式继承）
+- `llm_facade`: `ILLMService` - LLM 插件服务（实际为 `LLMPluginService` 单例，显式继承 `ILLMService`）
 - `logger`: `ILogger` - 日志接口
 - `mcp_manager`: `MCPManager` - MCP Server 管理器实例（可为空，用于管理内置 MCP Server）
 - `mcp_client`: `MCPClientManager` - 外部 MCP Client 管理器实例（可为空，用于连接外部 MCP Server）
@@ -585,7 +588,7 @@ from core.interfaces import (
     IPluginInfo,
     IDataProvider,
     ITaskManager,
-    ILLMFacade,
+    ILLMService,
     ILogger,
     PluginServices,
     TaskType,
@@ -598,7 +601,7 @@ from core.interfaces import (
 )
 # 注意：UsageInfo 未通过 core.interfaces 导出，如需使用请从 core.llm.provider_interface 导入
 
-# 从 core.llm 导入 LLMPluginService（ILLMFacade 的完整实现）
+# 从 core.llm 导入 LLMPluginService（ILLMService 的唯一实现）
 from core.llm import get_llm_plugin_service, LLMPluginService
 ```
 
@@ -625,7 +628,7 @@ from core.interfaces import IPlugin, IPluginInfo
 | `IPluginInfo` | `IPluginInfo` | `core/plugin/plugin_info_interface.py` |
 | `IDataProvider` | `DataProvider` | `core/data/data_provider.py` |
 | `ITaskManager` | `BackgroundTaskManager` | `core/task/background_task.py` |
-| `ILLMFacade` | `LLMPluginService` | `core/llm/plugin_service.py` | `PluginServices` 注入的是 `LLMPluginService`（通过 Duck Typing 兼容 `ILLMFacade`，**未显式继承**） |
+| `ILLMService` | `LLMPluginService` | `core/llm/plugin_service.py`（显式继承 `ILLMService`，经 `PluginServices.llm_facade` 注入） |
 | `ILogger` | `LoggerManager` | `utils/logging_tools.py` |
 
 ### 5.2 访问单例实例

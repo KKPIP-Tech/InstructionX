@@ -10,10 +10,10 @@
 """
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from core.llm.plugin_service import LLMPluginService
+    from .i_llm_service import ILLMService
     from core.data import DataProvider
     from core.task import BackgroundTaskManager
     from utils.i_logger import ILogger
@@ -48,9 +48,9 @@ class PluginServices:
                 ...
     """
 
-    llm_facade: "LLMPluginService"
+    llm_facade: "ILLMService"
     data_provider: "DataProvider"
     task_manager: "BackgroundTaskManager"
     logger: "ILogger"
-    mcp_manager: "MCPManager" = field(default=None)
-    mcp_client: "MCPClientManager" = field(default=None)
+    mcp_manager: Optional["MCPManager"] = field(default=None)
+    mcp_client: Optional["MCPClientManager"] = field(default=None)

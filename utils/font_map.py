@@ -89,14 +89,31 @@ class FontInfo:
         return f"{self.family.value} {variant}"
 
 
+class _JpSeriesWeight:
+    """
+    AlibabaSansJP 系列注册表键哨兵。
+
+    AlibabaSansJP 文件名不含字重数字，历史上用 weight=0 作键，与
+    None（无字重，如 RegularL3 / Italic 变体）语义冲突；改为显式哨兵对象。
+    对外接口仍接受并返回 weight=0（保持既有调用与行为不变）。
+    """
+
+    def __repr__(self) -> str:
+        return "<AlibabaSansJP>"
+
+
+_JP_WEIGHT = _JpSeriesWeight()
+
+
 # ---------------------------------------------------------------------------
 # 静态字体路径注册表
 # ---------------------------------------------------------------------------
 # 格式：(FontFamily, FontVariant, weight_or_None) -> relative_path (相对于 font/)
-# weight_or_None: 仅 AlibabaPuHuiTi 系列需要字重数字后缀
+# weight_or_None: 仅 AlibabaPuHuiTi 系列需要字重数字后缀；
+# AlibabaSansJP 系列使用 _JP_WEIGHT 哨兵（对外表现为 weight=0）
 # ---------------------------------------------------------------------------
 
-_FONT_REGISTRY: dict[tuple[FontFamily, FontVariant, int | None], str] = {
+_FONT_REGISTRY: dict[tuple[FontFamily, FontVariant, int | None | _JpSeriesWeight], str] = {
     # AlimamaFangYuanTiVF
     (
         FontFamily.ALIMAMA_FANGYUANTI_VF,
@@ -203,17 +220,17 @@ _FONT_REGISTRY: dict[tuple[FontFamily, FontVariant, int | None], str] = {
     (
         FontFamily.ALIBABA_PUHUITI_3,
         FontVariant.REGULAR,
-        0,
+        _JP_WEIGHT,
     ): "AlibabaPuHuiTiv3/AlibabaSansJP-Regular.otf",
     (
         FontFamily.ALIBABA_PUHUITI_3,
         FontVariant.MEDIUM,
-        0,
+        _JP_WEIGHT,
     ): "AlibabaPuHuiTiv3/AlibabaSansJP-Medium.otf",
     (
         FontFamily.ALIBABA_PUHUITI_3,
         FontVariant.BOLD,
-        0,
+        _JP_WEIGHT,
     ): "AlibabaPuHuiTiv3/AlibabaSansJP-Bold.otf",
 }
 
@@ -232,7 +249,10 @@ class FontMap:
         family: FontFamily,
         variant: FontVariant,
         weight: int | None,
-    ) -> tuple[FontFamily, FontVariant, int | None]:
+    ) -> tuple[FontFamily, FontVariant, int | None | _JpSeriesWeight]:
+        # 对外的 weight=0 是 AlibabaSansJP 系列的历史哨兵，内部映射为显式哨兵对象
+        if weight == 0:
+            weight = _JP_WEIGHT
         return (family, variant, weight)
 
     @classmethod
@@ -299,11 +319,13 @@ class FontMap:
         result: list[FontInfo] = []
         for (family, variant, weight), relative in _FONT_REGISTRY.items():
             absolute = str(_FONT_DIR / relative)
+            # 哨兵键对外仍表现为 weight=0
+            public_weight = 0 if weight is _JP_WEIGHT else weight
             result.append(
                 FontInfo(
                     family=family,
                     variant=variant,
-                    weight=weight,
+                    weight=public_weight,
                     relative_path=str(Path("font") / relative),
                     absolute_path=absolute,
                 )

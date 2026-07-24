@@ -16,6 +16,38 @@ class QssRegistry:
     # 加载顺序（基础 -> 控件 -> 容器 -> 窗口）
     _load_order: List[str] = []
 
+    # 内置样式优先级（唯一事实来源，styles/ 目录的加载顺序由此推导；
+    # 新增样式文件只需在此登记一处）
+    _STYLE_PRIORITIES: Dict[str, int] = {
+        'base': 10,
+        'custom': 20,
+        'label': 30,
+        'button': 40,
+        'input': 50,
+        'spinbox': 55,
+        'combobox': 60,
+        'checkbox': 70,
+        'radio': 71,
+        'slider': 72,
+        'progress': 73,
+        'menu': 80,
+        'toolbar': 81,
+        'scrollbar': 82,
+        'tab': 83,
+        'groupbox': 84,
+        'frame': 85,
+        'list': 86,
+        'header': 87,
+        'splitter': 88,
+        'dialog': 90,
+        'statusbar': 91,
+        'tooltip': 92,
+        'dock': 93,
+        'mainwindow': 100,
+        'titlebar': 101,
+        'usage_panel': 102,
+    }
+
     @classmethod
     def register(cls, name: str, qss: str, priority: int = 50):
         """
@@ -41,36 +73,13 @@ class QssRegistry:
 
     @classmethod
     def _get_priority(cls, name: str) -> int:
-        """获取样式优先级"""
-        priorities = {
-            'base': 10,
-            'custom': 20,
-            'label': 30,
-            'button': 40,
-            'input': 50,
-            'spinbox': 55,
-            'combobox': 60,
-            'checkbox': 70,
-            'radio': 71,
-            'slider': 72,
-            'progress': 73,
-            'menu': 80,
-            'toolbar': 81,
-            'scrollbar': 82,
-            'tab': 83,
-            'groupbox': 84,
-            'frame': 85,
-            'list': 86,
-            'header': 87,
-            'splitter': 88,
-            'dialog': 90,
-            'statusbar': 91,
-            'tooltip': 92,
-            'dock': 93,
-            'mainwindow': 100,
-            'titlebar': 101,
-        }
-        return priorities.get(name, 50)
+        """获取样式优先级（未登记名称默认为 50）"""
+        return cls._STYLE_PRIORITIES.get(name, 50)
+
+    @classmethod
+    def style_file_order(cls) -> List[str]:
+        """返回内置样式文件的加载顺序（按优先级升序）"""
+        return [name for name, _ in sorted(cls._STYLE_PRIORITIES.items(), key=lambda kv: kv[1])]
 
     @classmethod
     def get_all(cls, theme: str = 'light') -> str:
@@ -132,6 +141,9 @@ class QssRegistry:
             变量替换后的 QSS 字符串
         """
         if theme is None:
+            # NOTE: 函数级导入用于打破 utils.style_qss ↔ utils.style_qss.registry
+            # 循环依赖（包级 __init__ 顶部导入本模块，而 get_style_qss 定义在
+            # 包级 __init__ 中），无法上移为顶部导入。
             from . import get_style_qss
             theme = get_style_qss().theme()
         colors = get_color_dict(theme)

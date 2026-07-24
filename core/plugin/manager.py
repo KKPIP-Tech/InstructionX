@@ -8,16 +8,26 @@
 
 import os
 import sys
+import inspect
+import traceback
 import importlib
 import importlib.util
+from enum import Enum
 from pathlib import Path
 from typing import List, Dict, Optional, Any, Callable
-from abc import ABC, abstractmethod
+from unittest.mock import MagicMock
 
 from core.interfaces import IPlugin
+from core.data import DataProvider
+from core.task import BackgroundTaskManager
 from .config_manager import PluginConfigManager
 from .plugin_identity import PluginIdentity
+from .plugin_info_interface import IPluginInfo
 from core.interfaces.plugin_services import PluginServices
+from core.interfaces.i_llm_service import ILLMService
+
+# re-export：保持 `core.plugin.manager.sanitize_tool_name` 引用路径兼容
+from .tool_name import sanitize_tool_name  # noqa: F401
 
 from utils.logging_tools import LoggerManager, get_name
 
@@ -97,26 +107,19 @@ class PluginManager:
         Returns:
             PluginServices: 服务容器实例
         """
+        # NOTE: 函数级导入用于打破 core.plugin ↔ core.llm/mcp 循环依赖，待 P2 事件化重构后移除
         from core.llm import get_llm_plugin_service
         try:
-            from core.data import DataProvider
             data_provider = DataProvider()
         except Exception:
-            from core.interfaces.i_data_provider import IDataProvider
             data_provider = None
 
         try:
-            from core.task import BackgroundTaskManager
             task_manager = BackgroundTaskManager()
         except Exception:
-            from core.interfaces.i_task_manager import ITaskManager
             task_manager = None
 
-        try:
-            from core.interfaces.i_logger import ILogger
-            logger = LoggerManager()
-        except Exception:
-            logger = None
+        logger = LoggerManager()
 
         return PluginServices(
             llm_facade=get_llm_plugin_service(),
@@ -130,6 +133,7 @@ class PluginManager:
     def _get_mcp_manager(self) -> Any:
         """获取 MCPManager 单例"""
         try:
+            # NOTE: 函数级导入用于打破 core.plugin ↔ core.llm/mcp 循环依赖，待 P2 事件化重构后移除
             from core.mcp import get_mcp_manager
             return get_mcp_manager()
         except Exception:
@@ -138,6 +142,7 @@ class PluginManager:
     def _get_mcp_client(self) -> Any:
         """获取 MCPClientManager 实例"""
         try:
+            # NOTE: 函数级导入用于打破 core.plugin ↔ core.llm/mcp 循环依赖，待 P2 事件化重构后移除
             from core.mcp import get_mcp_manager
             from core.llm import get_llm_plugin_service
             mcp_mgr = get_mcp_manager()
@@ -161,7 +166,8 @@ class PluginManager:
         self._official_plugins.clear()
 
         if not self.official_plugin_dir.exists():
-            self.official_plugin_dir.mkdir(parents=True, exist_ok=True)
+            # 不做 mkdir 写副作用，仅记录日志并返回空列表
+            self._logger.debug(get_name(), f'Official plugin dir not found: {self.official_plugin_dir}')
             return self._official_plugins
 
         # 遍历目录，加载每个子目录中的插件
@@ -183,7 +189,8 @@ class PluginManager:
         self._thirdparty_plugins.clear()
 
         if not self.thirdparty_plugin_dir.exists():
-            self.thirdparty_plugin_dir.mkdir(parents=True, exist_ok=True)
+            # 不做 mkdir 写副作用，仅记录日志并返回空列表
+            self._logger.debug(get_name(), f'Thirdparty plugin dir not found: {self.thirdparty_plugin_dir}')
             return self._thirdparty_plugins
 
         # 遍历目录，加载每个子目录中的插件
@@ -274,7 +281,6 @@ class PluginManager:
             services = self._create_plugin_services()
 
             # 实例化插件（尝试注入 services）
-            import inspect
             sig = inspect.signature(plugin_class)
             params = [p.name for p in sig.parameters.values()]
             if 'services' in params:
@@ -291,6 +297,13 @@ class PluginManager:
 
             # 维护注册表映射
             plugin_instance._plugin_name = plugin_instance.plugin_name
+            if (plugin_instance.plugin_name in self._plugin_name_to_id and
+                    self._plugin_name_to_id[plugin_instance.plugin_name] != plugin_id):
+                self._logger.warning(
+                    get_name(),
+                    f'Duplicate plugin name "{plugin_instance.plugin_name}": '
+                    f'{self._plugin_name_to_id[plugin_instance.plugin_name]} overwritten by {plugin_id}'
+                )
             self._plugin_registry[plugin_id] = plugin_instance
             self._plugin_name_to_id[plugin_instance.plugin_name] = plugin_id
 
@@ -300,7 +313,10 @@ class PluginManager:
             return plugin_instance
 
         except Exception as e:
-            self._logger.error(get_name(), f'Error loading plugin from {plugin_dir}: {e}')
+            self._logger.error(
+                get_name(),
+                f'Error loading plugin from {plugin_dir}: {e}\n{traceback.format_exc()}'
+            )
             return None
     
     def get_official_plugins(self) -> List[IPlugin]:
@@ -332,6 +348,9 @@ class PluginManager:
 
     def reload_plugins(self):
         """重新加载所有插件（清空注册表后重新扫描目录）"""
+        # 清注册表前，先通知 MCP 系统移除所有已注册的插件工具
+        for plugin_id in list(self._api_registry.keys()):
+            self._notify_mcp_remove_tools(plugin_id)
         self._official_plugins.clear()
         self._thirdparty_plugins.clear()
         self._plugin_registry.clear()
@@ -408,6 +427,24 @@ class PluginManager:
         plugin_id = plugin.plugin_id
         if not plugin_id:
             plugin_id = plugin.plugin_name
+        # 重复注册检查：同 plugin_id 已注册时先注销旧的再注册，避免重复 append
+        old_plugin = self._plugin_registry.get(plugin_id)
+        if old_plugin is not None:
+            self._logger.warning(
+                get_name(),
+                f'Plugin id "{plugin_id}" already registered, replacing old instance'
+            )
+            old_name = getattr(old_plugin, 'plugin_name', None)
+            if old_name:
+                self.unregister_plugin(old_name)
+            else:
+                self._plugin_registry.pop(plugin_id, None)
+                # 旧实例 plugin_name 为 None 时 unregister_plugin 无法按名称清理，
+                # 需显式从官方/第三方插件列表移除，避免残留失效实例
+                if old_plugin in self._official_plugins:
+                    self._official_plugins.remove(old_plugin)
+                if old_plugin in self._thirdparty_plugins:
+                    self._thirdparty_plugins.remove(old_plugin)
         self._plugin_registry[plugin_id] = plugin
         self._plugin_name_to_id[plugin.plugin_name] = plugin_id
         if is_official:
@@ -543,7 +580,6 @@ class PluginManager:
 
             # 获取 PluginInfo 类
             plugin_info_class = None
-            from .plugin_info_interface import IPluginInfo
             for attr_name in dir(info_module):
                 attr = getattr(info_module, attr_name)
                 if (isinstance(attr, type) and
@@ -567,7 +603,6 @@ class PluginManager:
 
             # 获取 Service 类
             # 优先查找名称以 "Service" 结尾的类，其次取第一个候选
-            from enum import Enum
             service_class = None
             for attr_name in dir(service_module):
                 attr = getattr(service_module, attr_name)
@@ -593,12 +628,12 @@ class PluginManager:
                 self._logger.warning(get_name(), f'Skipping API registration ({plugin_dir.name}): no Service class found')
                 return
 
-            # 实例化 Service（使用真实 LLM，DataProvider/TaskManager 用 Mock）
-            from unittest.mock import MagicMock
+            # 实例化 Service（优先使用真实单例 DataProvider/TaskManager，
+            # 仅在核心服务不可用（如测试环境）时回退为 MagicMock）
+            # NOTE: 函数级导入用于打破 core.plugin ↔ core.llm/mcp 循环依赖，待 P2 事件化重构后移除
             from core.llm import get_llm_plugin_service
 
             try:
-                from core.data import DataProvider
                 mock_dp = DataProvider()
             except Exception:
                 mock_dp = MagicMock()
@@ -606,25 +641,13 @@ class PluginManager:
             real_llm = get_llm_plugin_service()
 
             try:
-                from core.task import BackgroundTaskManager
                 mock_ts = BackgroundTaskManager()
             except Exception:
                 mock_ts = MagicMock()
 
-            service_instance = None
-            # 动态尝试不同参数组合
-            for args in [
-                (plugin_id, mock_dp, real_llm, mock_ts),
-                (plugin_id, mock_dp, real_llm),
-                (plugin_id, mock_dp),
-                (plugin_id,),
-                (),
-            ]:
-                try:
-                    service_instance = service_class(*args)
-                    break
-                except TypeError:
-                    continue
+            service_instance = self._instantiate_service(
+                service_class, plugin_id, mock_dp, real_llm, mock_ts
+            )
 
             if service_instance is None:
                 self._logger.warning(get_name(), f'Skipping API registration ({plugin_dir.name}): cannot instantiate Service class')
@@ -635,6 +658,77 @@ class PluginManager:
 
         except Exception as e:
             self._logger.error(get_name(), f'API auto registration failed: {e}')
+
+    def _instantiate_service(
+        self,
+        service_class: type,
+        plugin_id: str,
+        data_provider: Any,
+        llm_service: ILLMService,
+        task_manager: Any,
+    ) -> Optional[Any]:
+        """实例化 Service 类
+
+        先用 inspect.signature 分析构造函数可接受的位置参数个数，
+        直接选择匹配的参数组合，避免试错法掩盖构造函数内部的 TypeError；
+        仅当签名分析失败（如内置类型/C 扩展）时才回退为逐个尝试。
+
+        保持以下 5 种组合的兼容顺序（参数从多到少）：
+        (plugin_id, dp, llm, ts) → (plugin_id, dp, llm) → (plugin_id, dp) → (plugin_id,) → ()
+        """
+        candidates = [
+            (plugin_id, data_provider, llm_service, task_manager),
+            (plugin_id, data_provider, llm_service),
+            (plugin_id, data_provider),
+            (plugin_id,),
+            (),
+        ]
+
+        try:
+            sig = inspect.signature(service_class)
+        except (TypeError, ValueError):
+            sig = None
+
+        if sig is not None:
+            # 统计构造函数可接受的位置参数个数范围
+            positional_kinds = (
+                inspect.Parameter.POSITIONAL_ONLY,
+                inspect.Parameter.POSITIONAL_OR_KEYWORD,
+            )
+            params = list(sig.parameters.values())
+            has_var_positional = any(
+                p.kind == inspect.Parameter.VAR_POSITIONAL for p in params
+            )
+            max_positional = sum(1 for p in params if p.kind in positional_kinds)
+            min_positional = sum(
+                1 for p in params
+                if p.kind in positional_kinds and p.default is inspect.Parameter.empty
+            )
+
+            for args in candidates:
+                argc = len(args)
+                if argc < min_positional:
+                    continue  # 参数不足，必然 TypeError
+                if not has_var_positional and argc > max_positional:
+                    continue  # 参数过多，必然 TypeError
+                try:
+                    return service_class(*args)
+                except TypeError as e:
+                    # 签名匹配的调用仍抛 TypeError，说明是构造函数内部错误，不再降级掩盖
+                    self._logger.warning(
+                        get_name(),
+                        f'Service constructor raised TypeError with {argc} args (signature matched): {e}'
+                    )
+                    return None
+            return None
+
+        # 签名分析失败，回退为逐个尝试（保持原有兼容行为）
+        for args in candidates:
+            try:
+                return service_class(*args)
+            except TypeError:
+                continue
+        return None
 
     def register_plugin_api(self,
                           plugin_id: str,
@@ -683,12 +777,21 @@ class PluginManager:
         plugin_id: str,
         api_descriptions: Dict[str, Dict[str, Any]],
     ) -> None:
-        """通知 MCP 系统有新插件工具注册"""
+        """通知 MCP 系统有新插件工具注册
+
+        工具命名规则与 get_all_function_tools() 一致：
+        sanitize_tool_name(f"{plugin_id}__{method_name}")，符合 OpenAI function 命名规范。
+        回调链路不受影响：MCP 侧仍按原始 (plugin_id, method_name) 元组回调
+        call_plugin_method()。
+        """
         try:
             mcp_mgr = self._get_mcp_manager()
             if mcp_mgr is None:
                 return
             for method_name, desc in api_descriptions.items():
+                # 工具名规范（供 MCP 侧对齐）：sanitize_tool_name(f"{plugin_id}__{method_name}")。
+                # 此处仍传原始 (plugin_id, method_name)，由 MCP 桥接层组装并净化工具名，
+                # 回调链路 call_plugin_method() 始终使用原始元组，不受影响。
                 mcp_mgr.sync_plugin_tool(
                     plugin_id=plugin_id,
                     method_name=method_name,
@@ -696,7 +799,11 @@ class PluginManager:
                     parameters={
                         "type": "object",
                         "properties": {
-                            k: {"type": v.get("type", "string")}
+                            k: {
+                                "type": v.get("type", "string"),
+                                "description": v.get("description", ""),
+                                **({"default": v["default"]} if "default" in v else {}),
+                            }
                             for k, v in desc.get("parameters", {}).items()
                         },
                         "required": [
@@ -705,8 +812,9 @@ class PluginManager:
                         ],
                     },
                 )
-        except Exception:
-            pass  # MCP 系统可能未初始化，忽略错误
+        except Exception as e:
+            # MCP 系统可能未初始化，仅记录告警不影响插件注册
+            self._logger.warning(get_name(), f'Failed to notify MCP new tools for {plugin_id}: {e}')
             
     def unregister_plugin_api(self, plugin_id: str) -> None:
         """
@@ -729,8 +837,9 @@ class PluginManager:
             if plugin_id in self._api_registry:
                 for method_name in self._api_registry[plugin_id].api_methods:
                     mcp_mgr.remove_plugin_tool(plugin_id, method_name)
-        except Exception:
-            pass
+        except Exception as e:
+            # MCP 系统可能未初始化，仅记录告警
+            self._logger.warning(get_name(), f'Failed to notify MCP remove tools for {plugin_id}: {e}')
 
     def get_plugin_api(self, plugin_id: str) -> Optional[Dict[str, Any]]:
         """
@@ -807,11 +916,16 @@ class PluginManager:
 
         method = plugin_api.api_methods[method_name]
 
+        self._logger.debug(
+            get_name(),
+            f'Plugin method call: caller={caller_id} -> {plugin_id}.{method_name}'
+        )
+
         try:
             # 执行方法调用
             return method(**kwargs)
         except Exception as e:
-            raise RuntimeError(f"调用插件 {plugin_id} 的方法 {method_name} 失败: {e}")
+            raise RuntimeError(f"调用插件 {plugin_id} 的方法 {method_name} 失败: {e}") from e
 
     def get_api_description(self,
                          plugin_id: str,
@@ -884,14 +998,18 @@ class PluginManager:
                 tool = {
                     "type": "function",
                     "function": {
-                        "name": f"{plugin_id}.{method_name}",
+                        # OpenAI function 名只允许 [a-zA-Z0-9_-]，最长 64 字符；
+                        # 使用 `__` 作为 plugin_id 与 method_name 的分隔符再整体净化。
+                        # 注意：call_plugin_method() 仍使用原始 (plugin_id, method_name) 调用，不受影响
+                        "name": sanitize_tool_name(f"{plugin_id}__{method_name}"),
                         "description": f"[{plugin_api.plugin_name}] {desc.get('description', '')}",
                         "parameters": {
                             "type": "object",
                             "properties": {
                                 k: {
                                     "type": v.get("type", "string"),
-                                    "description": v.get("description", "")
+                                    "description": v.get("description", ""),
+                                    **({"default": v["default"]} if "default" in v else {}),
                                 }
                                 for k, v in parameters.items()
                             },

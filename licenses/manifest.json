@@ -44,11 +44,59 @@
   "dependencies": [
     {
       "name": "PySide6",
-      "version": "6.10.2",
+      "version": ">=6.10",
       "license_type": "LGPL-3.0",
       "license_file": "licenses/PySide6.txt",
       "url": "https://pypi.org/project/PySide6/",
       "copyright": "© Qt Company Ltd."
+    },
+    {
+      "name": "requests",
+      "version": ">=2.32",
+      "license_type": "Apache-2.0",
+      "license_file": "",
+      "url": "https://pypi.org/project/requests/",
+      "copyright": "© Kenneth Reitz"
+    },
+    {
+      "name": "aiohttp",
+      "version": ">=3.11",
+      "license_type": "Apache-2.0",
+      "license_file": "",
+      "url": "https://pypi.org/project/aiohttp/",
+      "copyright": "© aio-libs contributors"
+    },
+    {
+      "name": "mcp",
+      "version": ">=1.0.0",
+      "license_type": "MIT",
+      "license_file": "",
+      "url": "https://pypi.org/project/mcp/",
+      "copyright": "© Anthropic, PBC."
+    },
+    {
+      "name": "orjson",
+      "version": ">=3.11.0,<4",
+      "license_type": "Apache-2.0 OR MIT",
+      "license_file": "",
+      "url": "https://pypi.org/project/orjson/",
+      "copyright": "© ijl"
+    },
+    {
+      "name": "matplotlib",
+      "version": ">=3.10",
+      "license_type": "PSF-based",
+      "license_file": "",
+      "url": "https://pypi.org/project/matplotlib/",
+      "copyright": "© Matplotlib Development Team"
+    },
+    {
+      "name": "packaging",
+      "version": ">=23.0",
+      "license_type": "Apache-2.0 OR BSD-2-Clause",
+      "license_file": "",
+      "url": "https://pypi.org/project/packaging/",
+      "copyright": "© Python Packaging Authority"
     }
   ]
 }
