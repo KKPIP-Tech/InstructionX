@@ -422,7 +422,7 @@ cursor_map = {
 
 #### 关于对话框
 
-通过 **帮助 > 关于** 打开，显示应用 Logo、名称（InstructionX - CE）、版本号（Alpha 1.0.2）、版权声明和专有软件声明。
+通过 **帮助 > 关于** 打开，显示应用 Logo、名称（InstructionX - CE）、版本号（Alpha 1.0.3）、版权声明和专有软件声明。
 
 ```python
 def _open_about_dialog(self):

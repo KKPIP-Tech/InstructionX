@@ -10,7 +10,7 @@
 [![PySide6](https://img.shields.io/badge/PySide6-6.10+-green.svg)](https://doc.qt.io/qtforpython/)
 [![Platform](https://img.shields.io/badge/Platform-Windows-lightgrey.svg)](#)
 [![License](https://img.shields.io/badge/License-Commercial%20Source-orange.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/Alpha-1.0.2%20CE-red.svg)](#)
+[![Version](https://img.shields.io/badge/Alpha-1.0.3%20CE-red.svg)](#)
 
 > A PySide6-based plugin desktop application framework with LLM integration, MCP Protocol (Server/Client), multi-conversation management, and hot-swappable plugin system
 
@@ -356,7 +356,7 @@ The project includes complete technical documentation (in Chinese) located in th
 
 | Technology | Purpose | Version |
 |------------|---------|---------|
-| InstructionX CE | Application version | Alpha 1.0.2 |
+| InstructionX CE | Application version | Alpha 1.0.3 |
 | PySide6 | Qt GUI framework | >= 6.10 |
 | Python | Programming language | >= 3.14 |
 | requests | HTTP requests | >= 2.32 |
