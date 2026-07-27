@@ -8,10 +8,9 @@ from typing import List, Optional
 
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel,
-    QLineEdit, QPushButton, QTextEdit, QCheckBox,
     QProgressBar, QFrame,
     QScrollArea, QWidget,
-    QMessageBox, QStackedWidget
+    QStackedWidget
 )
 from PySide6.QtCore import Qt, QThread, Signal, QTimer
 from PySide6.QtGui import QFont
@@ -21,29 +20,20 @@ from core.plugin.github_plugin_installer import (
 )
 from core.plugin.manager import get_plugin_manager
 from utils.logging_tools import LoggerManager, get_name
-from InstructionX_UIKit import T
+from InstructionX_UIKit import T, set_property
+from InstructionX_UIKit.components import (
+    Button, CheckBox, Dialog, LineEdit, Message,
+)
 
 # 模块级日志器（LoggerManager 为单例）
 _logger = LoggerManager()
 
-# 语义状态色（成功/警告/错误，主题无关的通用状态色）
-_COLOR_SUCCESS = "#16A34A"
-_COLOR_WARNING = "#D97706"
-_COLOR_ERROR = "#DC2626"
 
-# 旧 StyleQSS 颜色键 → UIKit 令牌映射（本文件迁移前的最小适配，P4 全面迁移时移除）
-_THEME_COLOR_MAP = {
-    "textSecondary": "color.text.secondary",
-    "accent": "color.primary",
-    "borderLight": "color.border",
-    "controlFillHover": "color.bg.muted",
-}
-
-
-def _theme_color(name: str, default: str) -> str:
-    """获取当前主题颜色（主题感知，替代硬编码 gray/blue 等）"""
-    token_key = _THEME_COLOR_MAP.get(name)
-    return T(token_key) if token_key else default
+def _info_result_dialog(parent, title: str, text: str) -> None:
+    """阻塞式结果告知对话框（UIKit Dialog，替代原 QMessageBox）"""
+    dialog = Dialog(parent, title=title, ok_text="知道了", show_cancel=False)
+    dialog.set_text(text)
+    dialog.exec()
 
 
 class GitHubFetchWorker(QThread):
@@ -124,7 +114,7 @@ class PluginInfoWidget(QWidget):
 
         # 插件 ID
         id_label = QLabel(f"ID: {self.plugin_info.plugin_id}")
-        id_label.setStyleSheet(f"color: {_theme_color('textSecondary', '#6B7280')};")
+        set_property(id_label, "role", "secondary")
         layout.addWidget(id_label)
 
         # 描述
@@ -136,7 +126,7 @@ class PluginInfoWidget(QWidget):
         # 作者
         if self.plugin_info.author:
             author_label = QLabel(f"作者: {self.plugin_info.author}")
-            author_label.setStyleSheet(f"color: {_theme_color('textSecondary', '#6B7280')};")
+            set_property(author_label, "role", "secondary")
             layout.addWidget(author_label)
 
         # 依赖信息
@@ -146,7 +136,7 @@ class PluginInfoWidget(QWidget):
                 for k, v in self.plugin_info.dependencies.items()
             )
             deps_label = QLabel(f"依赖: {deps_text}")
-            deps_label.setStyleSheet(f"color: {_theme_color('accent', '#0078d4')}; font-size: 9pt;")
+            deps_label.setStyleSheet(f"color: {T('color.primary')};")
             deps_label.setWordWrap(True)
             layout.addWidget(deps_label)
 
@@ -196,9 +186,9 @@ class GitHubPluginInstallDialog(QDialog):
 
         url_label = QLabel("GitHub URL:")
         url_label.setFixedWidth(80)
-        self.url_input = QLineEdit()
-        self.url_input.setPlaceholderText("https://github.com/owner/repo 或 git@github.com:owner/repo.git")
-        self.check_btn = QPushButton("检查")
+        self.url_input = LineEdit(
+            placeholder="https://github.com/owner/repo 或 git@github.com:owner/repo.git")
+        self.check_btn = Button("检查", variant="primary")
         self.check_btn.setFixedWidth(80)
         self.check_btn.clicked.connect(self._on_check_repo)
 
@@ -210,7 +200,7 @@ class GitHubPluginInstallDialog(QDialog):
 
         # ========== 状态提示 ==========
         self.status_label = QLabel("")
-        self.status_label.setStyleSheet(f"color: {_theme_color('textSecondary', '#6B7280')};")
+        set_property(self.status_label, "role", "secondary")
         self.status_label.setWordWrap(True)
         main_layout.addWidget(self.status_label)
 
@@ -222,8 +212,8 @@ class GitHubPluginInstallDialog(QDialog):
         self.empty_widget = QLabel("点击「检查」按钮分析 GitHub 仓库")
         self.empty_widget.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.empty_widget.setStyleSheet(
-            f"color: {_theme_color('textSecondary', '#6B7280')};"
-            f" border: 1px dashed {_theme_color('borderLight', '#9CA3AF')}; padding: 50px;"
+            f"color: {T('color.text.secondary')};"
+            f" border: 1px dashed {T('color.border.strong')}; padding: 50px;"
         )
         self.info_stack.addWidget(self.empty_widget)
 
@@ -247,16 +237,17 @@ class GitHubPluginInstallDialog(QDialog):
         self.invalid_widget = QLabel("该仓库不包含有效的插件描述文件")
         self.invalid_widget.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.invalid_widget.setStyleSheet(
-            f"color: {_COLOR_ERROR}; border: 1px solid {_COLOR_ERROR}; padding: 50px;"
+            f"color: {T('color.danger')}; border: 1px solid {T('color.danger')}; padding: 50px;"
         )
         self.info_stack.addWidget(self.invalid_widget)
 
         # ========== 安装目录提示 ==========
         self.install_dir_label = QLabel("")
         self.install_dir_label.setStyleSheet(
-            f"color: {_theme_color('accent', '#0078d4')}; padding: 5px;"
-            f" border: 1px solid {_theme_color('accent', '#0078d4')};"
-            f" background: {_theme_color('controlFillHover', '#e8f4fd')};"
+            f"color: {T('color.primary')}; padding: 5px;"
+            f" border: 1px solid {T('color.primary')};"
+            f" background: {T('color.primary.subtle')};"
+            f" border-radius: 6px;"
         )
         self.install_dir_label.setVisible(False)
         main_layout.addWidget(self.install_dir_label)
@@ -271,11 +262,11 @@ class GitHubPluginInstallDialog(QDialog):
         btn_layout = QHBoxLayout()
         btn_layout.addStretch()
 
-        self.cancel_btn = QPushButton("取消")
+        self.cancel_btn = Button("取消", variant="default")
         self.cancel_btn.setFixedWidth(100)
         self.cancel_btn.clicked.connect(self.reject)
 
-        self.install_btn = QPushButton("安装")
+        self.install_btn = Button("安装", variant="primary")
         self.install_btn.setFixedWidth(100)
         self.install_btn.setEnabled(False)
         self.install_btn.clicked.connect(self._on_install)
@@ -308,7 +299,7 @@ class GitHubPluginInstallDialog(QDialog):
         self.status_label.setText("正在检查仓库...")
         # 重置状态文案颜色，避免残留上次检查的成功绿/失败红
         self.status_label.setStyleSheet(
-            f"color: {_theme_color('textSecondary', '#6B7280')};"
+            f"color: {T('color.text.secondary')};"
         )
         self._set_info_page("empty")
 
@@ -389,17 +380,16 @@ class GitHubPluginInstallDialog(QDialog):
             if item.widget():
                 item.widget().deleteLater()
 
-        self.plugin_checkboxes: List[QCheckBox] = []
+        self.plugin_checkboxes: List[CheckBox] = []
 
         for plugin_info in plugins:
-            checkbox = QCheckBox(f"{plugin_info.name} (v{plugin_info.version})")
-            checkbox.setChecked(True)
+            checkbox = CheckBox(f"{plugin_info.name} (v{plugin_info.version})", checked=True)
             checkbox.setProperty("plugin_path", plugin_info.path)
             checkbox.setProperty("plugin_id", plugin_info.plugin_id)
 
             # 添加详细信息
             details = QLabel(f"  {plugin_info.description or '无描述'}")
-            details.setStyleSheet(f"color: {_theme_color('textSecondary', '#6B7280')}; font-size: 9pt;")
+            set_property(details, "role", "secondary")
             details.setWordWrap(True)
 
             checkbox_layout = QVBoxLayout()
@@ -416,9 +406,9 @@ class GitHubPluginInstallDialog(QDialog):
 
         # 全选/取消全选
         select_layout = QHBoxLayout()
-        select_all_btn = QPushButton("全选")
+        select_all_btn = Button("全选", variant="default", size="sm")
         select_all_btn.clicked.connect(self._select_all)
-        deselect_all_btn = QPushButton("取消全选")
+        deselect_all_btn = Button("取消全选", variant="default", size="sm")
         deselect_all_btn.clicked.connect(self._deselect_all)
 
         select_layout.addStretch()
@@ -459,7 +449,7 @@ class GitHubPluginInstallDialog(QDialog):
                         selected_plugins.append(plugin_path)
 
             if not selected_plugins:
-                QMessageBox.warning(self, "提示", "请选择要安装的插件")
+                Message.warning(self, "请选择要安装的插件")
                 return
 
         # 禁用按钮，开始安装
@@ -490,19 +480,19 @@ class GitHubPluginInstallDialog(QDialog):
 
         if fail_count == 0:
             self.status_label.setText(f"安装成功！已安装 {success_count} 个插件")
-            self.status_label.setStyleSheet(f"color: {_COLOR_SUCCESS};")
+            self.status_label.setStyleSheet(f"color: {T('color.success')};")
         else:
             self.status_label.setText(
                 f"安装完成：{success_count} 个成功，{fail_count} 个失败"
             )
-            self.status_label.setStyleSheet(f"color: {_COLOR_WARNING};")
+            self.status_label.setStyleSheet(f"color: {T('color.warning')};")
 
         # 显示详细结果
         details = "\n".join(
             f"  - {r.plugin_name or r.plugin_id}: {r.message}"
             for r in results
         )
-        QMessageBox.information(
+        _info_result_dialog(
             self,
             "安装结果",
             f"安装{'全部成功' if fail_count == 0 else '部分完成'}：\n{details}"
@@ -523,10 +513,10 @@ class GitHubPluginInstallDialog(QDialog):
         self.cancel_btn.setEnabled(True)
         self.check_btn.setEnabled(True)
         self.status_label.setText(f"安装失败: {error}")
-        self.status_label.setStyleSheet(f"color: {_COLOR_ERROR};")
+        self.status_label.setStyleSheet(f"color: {T('color.danger')};")
 
         _logger.error(get_name(), f"从 GitHub 安装插件失败: {error}")
-        QMessageBox.critical(self, "安装失败", error)
+        _info_result_dialog(self, "安装失败", error)
 
     def _on_install_progress(self, msg: str):
         """安装进度更新"""
