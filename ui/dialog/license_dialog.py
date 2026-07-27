@@ -1,26 +1,37 @@
 """
-许可对话框
-展示项目中各类许可证信息，支持字体、第三方依赖等多种分类
+许可信息对话框
+
+读取 licenses/manifest.json 中登记的字体与第三方依赖许可证信息，
+左侧列表展示条目、支持搜索过滤，右侧展示许可证全文，并提供
+「复制全文」「打开文件夹」操作。
+
+样式约定（UIKit 迁移后）：颜色一律实时取 UIKit 令牌 T()，输入框/按钮使用
+UIKit 组件（LineEdit/Button），全局 QSS 承担常规控件外观；仅列表卡片、
+徽章、分区边框等定制结构保留局部 QSS（颜色同样取自令牌）。
+对话框为模态短生命周期，主题色在打开时取一次（与旧行为一致）。
 """
 import json
 import os
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QSize, QTimer
+from PySide6.QtCore import Qt, QTimer, QSize
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QApplication, QDialog, QFrame, QHBoxLayout, QLabel,
-    QLineEdit, QListWidget, QListWidgetItem, QPushButton,
-    QScrollArea, QVBoxLayout, QWidget, QMessageBox,
+    QListWidget, QListWidgetItem,
+    QScrollArea, QVBoxLayout, QWidget,
 )
 
+from InstructionX_UIKit import T, MONO_FAMILY, set_property
+from InstructionX_UIKit.components import Button, LineEdit, Message
+
 from utils.logging_tools import LoggerManager, get_name
-from InstructionX_UIKit import T
 
 # 模块级日志器（LoggerManager 为单例）
 _logger = LoggerManager()
 
 
+# 许可证类型徽章配色（浅色底 + 深字，亮/暗主题下均可读，属刻意的品牌色设计）
 LICENSE_COLORS = {
     "OFL-1.1": ("#E8F5E9", "#2E7D32"),
     "MIT": ("#E8F5E9", "#2E7D32"),
@@ -54,6 +65,15 @@ def _get_manifest_dir() -> Path:
     return _get_project_root() / "licenses"
 
 
+def _badge_qss(bg: str, fg: str) -> str:
+    """许可证徽章局部 QSS（圆角胶囊）"""
+    return (
+        f"QLabel {{ background-color: {bg}; color: {fg}; "
+        f"border-radius: {T('radius.sm')}px; padding: 1px 6px; "
+        f"font-size: {T('font.xs')}px; font-weight: 500; }}"
+    )
+
+
 class _LicenseItemWidget(QWidget):
     """许可证列表项控件
 
@@ -65,42 +85,43 @@ class _LicenseItemWidget(QWidget):
     """
 
     def __init__(self, name: str, display_name: str, license_type: str,
-                 category: str, version: str = "", colors: dict = None, parent=None):
+                 category: str, version: str = "", parent=None):
         super().__init__(parent)
         self._name = name
         self._display_name = display_name
         self._license_type = license_type
         self._category = category
         self._version = version
-        self._colors = colors or {}
         self._is_selected = False
         self._setup_ui()
+
+    def _meta_label(self, text: str) -> QLabel:
+        """次级信息标签（英文名/版本号）：字阶 xs + role=secondary"""
+        label = QLabel(text)
+        font = QFont()
+        font.setPixelSize(T("font.xs"))
+        label.setFont(font)
+        set_property(label, "role", "secondary")
+        return label
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(10, 6, 10, 6)
         layout.setSpacing(2)
 
-        # 主题色
-        tp = self._colors.get('textPrimary', '#212121')
-        ts = self._colors.get('textSecondary', '#757575')
-
         # 名称（加粗）
-        name_font = QFont()
-        name_font.setPointSize(10)
-        name_font.setBold(True)
-
         title = self._display_name if self._display_name else self._name
         self._name_label = QLabel(title)
+        name_font = QFont()
+        name_font.setPixelSize(T("font.md"))
+        name_font.setBold(True)
         self._name_label.setFont(name_font)
-        self._name_label.setStyleSheet(f"color: {tp}; background: transparent;")
         layout.addWidget(self._name_label)
 
         # 英文名（如果有）
         self._en_label = None
         if self._display_name and self._display_name != self._name:
-            self._en_label = QLabel(self._name)
-            self._en_label.setStyleSheet(f"color: {ts}; font-size: 8pt; background: transparent;")
+            self._en_label = self._meta_label(self._name)
             layout.addWidget(self._en_label)
 
         # 底部行：许可证标签 + 版本
@@ -110,55 +131,25 @@ class _LicenseItemWidget(QWidget):
 
         bg, fg = _get_license_colors(self._license_type)
         self._badge = QLabel(self._license_type)
-        self._badge.setStyleSheet(
-            f"QLabel {{ background-color: {bg}; color: {fg}; "
-            f"border-radius: 4px; padding: 1px 6px; font-size: 7pt; "
-            f"font-weight: 500; }}"
-        )
+        self._badge.setStyleSheet(_badge_qss(bg, fg))
         row.addWidget(self._badge)
 
         self._ver_label = None
         if self._version:
-            self._ver_label = QLabel(f"v{self._version}")
-            self._ver_label.setStyleSheet(f"color: {ts}; font-size: 8pt; background: transparent;")
+            self._ver_label = self._meta_label(f"v{self._version}")
             row.addWidget(self._ver_label)
 
         row.addStretch()
         layout.addLayout(row)
 
     def set_selected(self, selected: bool):
-        """更新选中态文字颜色"""
+        """更新选中态文字颜色（选中底为 primary.subtle，文字强调主色）"""
         self._is_selected = selected
         if selected:
-            self._name_label.setStyleSheet("color: #FFFFFF; background: transparent;")
-            if self._en_label:
-                self._en_label.setStyleSheet("color: rgba(255,255,255,0.85); font-size: 8pt; background: transparent;")
-            if self._ver_label:
-                self._ver_label.setStyleSheet("color: rgba(255,255,255,0.7); font-size: 8pt; background: transparent;")
-            # Badge: 半透明背景 + 白色文字，更协调
-            self._badge.setStyleSheet(
-                "QLabel { background-color: rgba(255,255,255,0.25); color: #FFFFFF; "
-                "border-radius: 4px; padding: 1px 6px; font-size: 7pt; "
-                "font-weight: 500; }"
-            )
+            self._name_label.setStyleSheet(
+                f"color: {T('color.primary')}; background: transparent;")
         else:
-            tp = self._colors.get('textPrimary', '#212121')
-            ts = self._colors.get('textSecondary', '#757575')
-            self._name_label.setStyleSheet(f"color: {tp}; background: transparent;")
-            if self._en_label:
-                self._en_label.setStyleSheet(f"color: {ts}; font-size: 8pt; background: transparent;")
-            if self._ver_label:
-                self._ver_label.setStyleSheet(f"color: {ts}; font-size: 8pt; background: transparent;")
-            # Badge: 恢复原色
-            bg, fg = _get_license_colors(self._license_type)
-            self._badge.setStyleSheet(
-                f"QLabel {{ background-color: {bg}; color: {fg}; "
-                f"border-radius: 4px; padding: 1px 6px; font-size: 7pt; "
-                f"font-weight: 500; }}"
-            )
-
-    def name(self) -> str:
-        return self._name
+            self._name_label.setStyleSheet("background: transparent;")
 
 
 class LicenseDialog(QDialog):
@@ -179,15 +170,8 @@ class LicenseDialog(QDialog):
         self.setModal(True)
         self.setWindowFlags(Qt.WindowType.Dialog)
 
-        # 旧 StyleQSS 颜色键 → UIKit 令牌（本文件迁移前的最小适配，P3 全面迁移时移除）
-        self._colors = {
-            "window": T("color.bg.base"),
-            "borderLight": T("color.border"),
-            "textPrimary": T("color.text.primary"),
-            "textSecondary": T("color.text.secondary"),
-            "accent": T("color.primary"),
-        }
         self._all_items: list = []
+        self._all_list_items: list = []
         self._current_search: str = ""
         self._selected_license_text: str = ""
 
@@ -201,72 +185,62 @@ class LicenseDialog(QDialog):
         self._init_ui()
         QTimer.singleShot(0, self._load_licenses)
 
+    # ------------------------------------------------------------------ UI
     def _init_ui(self):
-        bg = self._colors.get("window", "#FFFFFF")
-        border = self._colors.get("borderLight", "#E0E0E0")
-        text_primary = self._colors.get("textPrimary", "#212121")
-        text_secondary = self._colors.get("textSecondary", "#757575")
-        accent = self._colors.get("accent", "#1976D2")
-        self.setStyleSheet(f"QDialog {{ background-color: {bg}; }}")
-
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
 
-        # ── Header ──────────────────────────────────────────
+        main_layout.addWidget(self._build_header())
+
+        self._content = QWidget()
+        cl = QHBoxLayout(self._content)
+        cl.setContentsMargins(0, 0, 0, 0)
+        cl.setSpacing(0)
+        cl.addWidget(self._build_left_panel())
+        cl.addWidget(self._build_right_panel(), 1)
+        main_layout.addWidget(self._content)
+
+    def _build_header(self) -> QFrame:
+        """页头：标题 + 底部分隔线"""
         self._header = QFrame()
-        header = self._header
-        header.setFixedHeight(52)
-        header.setObjectName("headerBar")
-        hl = QHBoxLayout(header)
+        self._header.setFixedHeight(52)
+        self._header.setObjectName("headerBar")
+        self._header.setStyleSheet(
+            f"#headerBar {{ border-bottom: 1px solid {T('color.border')}; }}")
+        hl = QHBoxLayout(self._header)
         hl.setContentsMargins(20, 0, 16, 0)
 
         title = QLabel("许可信息  Licenses")
-        f = QFont()
-        f.setPointSize(12)
-        f.setBold(True)
-        title.setFont(f)
-        title.setStyleSheet(f"color: {text_primary}; background: transparent; border: none;")
+        font = QFont()
+        font.setPixelSize(T("font.title.sm"))
+        font.setBold(True)
+        title.setFont(font)
         hl.addWidget(title)
         hl.addStretch()
+        return self._header
 
-        header.setStyleSheet(f"#headerBar {{ border-bottom: 1px solid {border}; background: {bg}; }}")
-        main_layout.addWidget(header)
-
-        # ── Content ─────────────────────────────────────────
-        self._content = QWidget()
-        content = self._content
-        cl = QHBoxLayout(content)
-        cl.setContentsMargins(0, 0, 0, 0)
-        cl.setSpacing(0)
-
-        # 左栏
+    def _build_left_panel(self) -> QFrame:
+        """左栏：搜索框 + 许可证卡片列表 + 空状态"""
         left_panel = QFrame()
         left_panel.setFixedWidth(320)
         left_panel.setObjectName("leftPanel")
+        left_panel.setStyleSheet(
+            f"#leftPanel {{ border-right: 1px solid {T('color.border')}; }}")
         ll = QVBoxLayout(left_panel)
         ll.setContentsMargins(12, 12, 12, 12)
         ll.setSpacing(10)
 
-        search = QLineEdit()
-        search.setPlaceholderText("搜索名称...")
-        search.setFixedHeight(34)
-        search.textChanged.connect(self._on_search)
-        search.setStyleSheet(
-            f"QLineEdit {{ background: {self._colors.get('controlFill','#F5F5F5')}; "
-            f"border: 1px solid {border}; border-radius: 6px; padding: 0 10px; "
-            f"color: {text_primary}; font-size: 10pt; }}"
-            f"QLineEdit:focus {{ border-color: {accent}; }}"
-        )
-        self._search_input = search
-        ll.addWidget(search)
+        self._search_input = LineEdit(placeholder="搜索名称...", clearable=True)
+        self._search_input.textChanged.connect(self._on_search)
+        ll.addWidget(self._search_input)
 
         list_w = QListWidget()
         list_w.setObjectName("licenseList")
         list_w.itemClicked.connect(self._on_item_clicked)
         list_w.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         list_w.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        # 列表样式：卡片效果、悬停、选中状态
+        # 卡片式列表项：定制结构无对应 UIKit 组件，局部 QSS 颜色取令牌
         list_w.setStyleSheet(f"""
             QListWidget {{
                 border: none;
@@ -276,48 +250,33 @@ class LicenseDialog(QDialog):
             QListWidget::item {{
                 padding: 4px;
                 margin: 4px 0px;
-                border-radius: 8px;
-                background: {self._colors.get('cardBackground', '#FFFFFF')};
-                border: 1px solid {self._colors.get('borderLight', '#E0E0E0')};
+                border-radius: {T('radius.lg')}px;
+                background: {T('color.bg.elevated')};
+                border: 1px solid {T('color.border')};
             }}
             QListWidget::item:hover {{
-                background: {self._colors.get('controlFillHover', '#F5F5F5')};
-                border-color: {self._colors.get('border', '#BDBDBD')};
+                background: {T('color.bg.muted')};
+                border-color: {T('color.border.strong')};
             }}
             QListWidget::item:selected {{
-                background: {self._colors.get('accentLight', '#E3F2FD')};
-                border-left: 4px solid {accent};
-                border-top: 1px solid {accent};
-                border-right: 1px solid {accent};
-                border-bottom: 1px solid {accent};
+                background: {T('color.primary.subtle')};
+                border: 1px solid {T('color.primary')};
             }}
         """)
         self._list_widget = list_w
         ll.addWidget(list_w, 1)
 
-        # 空状态提示
         self._empty_state = QLabel("未找到匹配的许可证")
         self._empty_state.setAlignment(Qt.AlignCenter)
-        self._empty_state.setStyleSheet(f"""
-            QLabel {{
-                color: {text_secondary};
-                font-size: 11pt;
-                padding: 40px 20px;
-            }}
-        """)
+        set_property(self._empty_state, "role", "secondary")
         self._empty_state.hide()
         ll.addWidget(self._empty_state)
+        return left_panel
 
-        left_panel.setStyleSheet(f"#leftPanel {{ border-right: 1px solid {border}; }}")
-        cl.addWidget(left_panel)
-
-        # 右栏
+    def _build_right_panel(self) -> QWidget:
+        """右栏：详情头部 + 许可全文滚动区 + 底部按钮栏"""
         self._right_panel = QWidget()
-        right_panel = self._right_panel
-        cl.addWidget(right_panel, 1)
-        
-        # 右栏内容布局
-        rl = QVBoxLayout(right_panel)
+        rl = QVBoxLayout(self._right_panel)
         rl.setContentsMargins(20, 16, 20, 12)
         rl.setSpacing(12)
 
@@ -327,87 +286,64 @@ class LicenseDialog(QDialog):
 
         sep = QFrame()
         sep.setFrameShape(QFrame.Shape.HLine)
-        sep.setStyleSheet(f"QFrame {{ border: 1px solid {border}; }}")
-        sep.setFixedHeight(1)
         rl.addWidget(sep)
 
         self._scroll = QScrollArea()
-        s = self._scroll
-        s.setObjectName("licenseScroll")
-        s.setWidgetResizable(True)
-        s.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        s.setFrameShape(QFrame.Shape.NoFrame)
-        s.setStyleSheet(f"QScrollArea {{ border: none; background: transparent; }}")
+        self._scroll.setWidgetResizable(True)
+        self._scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self._scroll.setFrameShape(QFrame.Shape.NoFrame)
 
+        # 许可全文：等宽字体 + 次级底卡片（定制结构，颜色取令牌）
         self._license_text_label = QLabel()
         self._license_text_label.setWordWrap(True)
         self._license_text_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        # 代码块样式：浅灰背景、圆角、内边距，使用样式表设置字体
         self._license_text_label.setStyleSheet(f"""
             QLabel {{
-                color: {text_primary};
-                background-color: {self._colors.get('codeBackground', '#F5F5F5')};
+                color: {T('color.text.primary')};
+                background-color: {T('color.bg.subtle')};
                 padding: 16px;
-                border-radius: 8px;
-                border: 1px solid {self._colors.get('borderLight', '#E0E0E0')};
-                font-family: "Courier New", monospace;
-                font-size: 9pt;
+                border-radius: {T('radius.lg')}px;
+                border: 1px solid {T('color.border')};
+                font-family: {MONO_FAMILY};
+                font-size: {T('font.sm')}px;
             }}
         """)
         self._license_text_label.setAlignment(Qt.AlignTop | Qt.AlignLeft)
-        
-        s.setWidget(self._license_text_label)
-        rl.addWidget(s, 1)
+        self._scroll.setWidget(self._license_text_label)
+        rl.addWidget(self._scroll, 1)
 
-        # 底部栏
+        rl.addWidget(self._build_bottom_bar())
+        return self._right_panel
+
+    def _build_bottom_bar(self) -> QFrame:
+        """底部按钮栏：复制全文 / 打开文件夹 / 关闭（主按钮）"""
         self._bottom_bar = QFrame()
-        bb = self._bottom_bar
-        bb.setFixedHeight(52)
-        bb.setObjectName("bottomBar")
-        bl = QHBoxLayout(bb)
+        self._bottom_bar.setFixedHeight(52)
+        self._bottom_bar.setObjectName("bottomBar")
+        self._bottom_bar.setStyleSheet(
+            f"#bottomBar {{ border-top: 1px solid {T('color.border')}; }}")
+        bl = QHBoxLayout(self._bottom_bar)
         bl.setContentsMargins(20, 0, 20, 0)
+        bl.setSpacing(8)
         bl.addStretch()
 
-        copy_btn = QPushButton("复制全文")
-        copy_btn.setFixedHeight(34)
-        copy_btn.setCursor(Qt.PointingHandCursor)
-        copy_btn.clicked.connect(self._on_copy)
-        copy_btn.setStyleSheet(
-            f"QPushButton {{ background: {self._colors.get('controlFill','#F0F0F0')}; "
-            f"border: 1px solid {border}; border-radius: 6px; padding: 0 16px; "
-            f"color: {text_primary}; font-size: 10pt; }}"
-            f"QPushButton:hover {{ background: {self._colors.get('controlFillHover','#E0E0E0')}; }}"
-        )
-        self._copy_btn = copy_btn
-        bl.addWidget(copy_btn, 0, Qt.AlignRight)
+        self._copy_btn = Button("复制全文", variant="default")
+        self._copy_btn.setCursor(Qt.PointingHandCursor)
+        self._copy_btn.clicked.connect(self._on_copy)
+        bl.addWidget(self._copy_btn, 0, Qt.AlignRight)
 
-        folder_btn = QPushButton("打开文件夹")
-        folder_btn.setFixedHeight(34)
+        folder_btn = Button("打开文件夹", variant="default")
         folder_btn.setCursor(Qt.PointingHandCursor)
         folder_btn.clicked.connect(self._on_open_folder)
-        folder_btn.setStyleSheet(
-            f"QPushButton {{ background: {self._colors.get('controlFill','#F0F0F0')}; "
-            f"border: 1px solid {border}; border-radius: 6px; padding: 0 16px; "
-            f"color: {text_primary}; font-size: 10pt; }}"
-            f"QPushButton:hover {{ background: {self._colors.get('controlFillHover','#E0E0E0')}; }}"
-        )
         bl.addWidget(folder_btn, 0, Qt.AlignRight)
 
-        close_btn2 = QPushButton("关闭")
-        close_btn2.setFixedHeight(34)
-        close_btn2.setCursor(Qt.PointingHandCursor)
-        close_btn2.clicked.connect(self.accept)
-        close_btn2.setStyleSheet(
-            f"QPushButton {{ background: {accent}; color: white; border: none; "
-            f"border-radius: 6px; padding: 0 20px; font-size: 10pt; }}"
-            f"QPushButton:hover {{ background: {self._colors.get('accentDark','#1565C0')}; }}"
-        )
-        bl.addWidget(close_btn2, 0, Qt.AlignRight)
-        bb.setStyleSheet(f"#bottomBar {{ border-top: 1px solid {border}; }}")
-        rl.addWidget(bb)
+        close_btn = Button("关闭", variant="primary")
+        close_btn.setCursor(Qt.PointingHandCursor)
+        close_btn.clicked.connect(self.accept)
+        bl.addWidget(close_btn, 0, Qt.AlignRight)
+        return self._bottom_bar
 
-        main_layout.addWidget(content)
-
+    # ------------------------------------------------------------------ 数据
     def _load_licenses(self):
         manifest_path = _get_manifest_dir() / "manifest.json"
         if not manifest_path.exists():
@@ -436,7 +372,7 @@ class LicenseDialog(QDialog):
 
     def _populate_list(self):
         self._list_widget.clear()
-        self._all_list_items: list[tuple] = []
+        self._all_list_items = []
         for item in self._all_items:
             cat = item.get("_category", "")
             name = item.get("name", "")
@@ -444,7 +380,7 @@ class LicenseDialog(QDialog):
             lic = item.get("license_type", "Unknown")
             version = item.get("version", "")
 
-            widget = _LicenseItemWidget(name, display, lic, cat, version, self._colors)
+            widget = _LicenseItemWidget(name, display, lic, cat, version)
             # 强制 layout 以获取准确 sizeHint，再加 10px 余量应对 item padding
             widget.adjustSize()
             hint = widget.sizeHint()
@@ -460,6 +396,7 @@ class LicenseDialog(QDialog):
             self._show_detail(self._all_items[0])
             self._update_selection_state()
 
+    # ------------------------------------------------------------------ 交互
     def _on_search(self, text: str):
         self._current_search = text.strip().lower()
         visible_count = 0
@@ -474,7 +411,7 @@ class LicenseDialog(QDialog):
             lw_item.setHidden(not match)
             if match:
                 visible_count += 1
-        
+
         # 控制空状态显示
         if visible_count == 0 and self._current_search != "":
             self._list_widget.hide()
@@ -506,23 +443,23 @@ class LicenseDialog(QDialog):
 
         title = display if display else name
         bg, fg = _get_license_colors(lic)
-        tp = self._colors.get("textPrimary", "#212121")
-        ts = self._colors.get("textSecondary", "#757575")
-        accent = self._colors.get("accent", "#1976D2")
+        tp = T("color.text.primary")
+        ts = T("color.text.secondary")
+        accent = T("color.primary")
 
         # 优化后的详情页头部布局
         header_html = f'<div style="line-height: 1.5;">'
-        
+
         # 第一行：主标题 + 徽章
         header_html += f'<div style="margin-bottom: 6px;">'
         header_html += f'<span style="font-size: 16pt; font-weight: bold; color: {tp};">{title}</span>'
         header_html += f'<span style="background-color: {bg}; color: {fg}; border-radius: 12px; padding: 3px 10px; font-size: 9pt; font-weight: 500; margin-left: 24px; vertical-align: middle;">{lic}</span>'
         header_html += '</div>'
-        
+
         # 第二行：英文名称（如果有）
         if display and display != name:
             header_html += f'<div style="font-size: 10pt; color: {ts}; margin-bottom: 4px;">{name}</div>'
-        
+
         # 第三行：版本 + 分类
         meta_info = []
         if version:
@@ -531,17 +468,17 @@ class LicenseDialog(QDialog):
             meta_info.append(f'{category}')
         if meta_info:
             header_html += f'<div style="font-size: 9pt; color: {ts}; margin-bottom: 8px;">{" &nbsp;|&nbsp; ".join(meta_info)}</div>'
-        
+
         # 版权信息
         if copyright_text:
             header_html += f'<div style="font-size: 9pt; color: {ts}; margin-bottom: 4px; font-style: italic;">© {copyright_text}</div>'
-        
+
         # 链接（带悬停效果）
         if url:
             header_html += f'<div style="margin-top: 4px;">'
             header_html += f'<a href="{url}" style="font-size: 9pt; color: {accent}; text-decoration: none; padding: 2px 0;">{url}</a>'
             header_html += '</div>'
-        
+
         header_html += '</div>'
 
         self._detail_header.setText(header_html)
@@ -575,4 +512,4 @@ class LicenseDialog(QDialog):
         if folder.exists():
             os.startfile(folder)
         else:
-            QMessageBox.information(self, "提示", f"目录不存在: {folder}")
+            Message.warning(self, f"目录不存在: {folder}")
