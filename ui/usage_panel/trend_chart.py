@@ -1,9 +1,9 @@
-"""用量趋势面板（UIKit 原生图表引擎平滑折线图）
+"""用量趋势面板（UIKit 原生图表引擎日历热力图）
 
-移植自用量面板 Demo：时间范围选择（近 7 天 / 近 30 天 / 自定义）、
-指标切换（请求数 / 输入 Token / 输出 Token）、平滑折线、悬停提示与区间状态文本。
-图表使用 InstructionX_UIKit 原生图表引擎（ChartWidget + set_option），
-配色实时取自 UIKit 令牌并随主题切换自动换肤。
+时间范围选择（近 7 天 / 近 30 天 / 自定义）、指标切换（请求数 / 输入 Token /
+输出 Token）、GitHub 贡献图风格的日历热力图（heatmap + calendar 坐标系）、
+悬停提示与区间状态文本。图表使用 InstructionX_UIKit 原生图表引擎
+（ChartWidget + set_option），配色实时取自 UIKit 令牌并随主题切换自动换肤。
 """
 
 from datetime import date, datetime, timedelta
@@ -18,7 +18,7 @@ from InstructionX_UIKit import T, set_property
 from InstructionX_UIKit.charts import ChartWidget
 from InstructionX_UIKit.components import Button, ComboBox, DatePicker
 
-from .formatting import local_tz, pick_token_scale, to_local_time
+from .formatting import local_tz, to_local_time
 
 # ===== 时间范围选项 =====
 RANGE_OPTIONS = ("近 7 天", "近 30 天", "自定义")
@@ -35,24 +35,15 @@ METRIC_FIELDS: Tuple[Optional[str], ...] = (None, "input_tokens", "output_tokens
 # 面板固定高度：窗口缩小时由外层滚动区接管，面板自身不缩水
 TREND_PANEL_HEIGHT = 320
 CHART_MIN_HEIGHT = 200
-# 面积填充透明度（面积图叠加在平滑折线下方）
-AREA_FILL_OPACITY = 0.18
 
 # ===== 日期显示格式 =====
 DATE_DISPLAY_FORMAT = "yyyy-MM-dd"
-AXIS_DATE_FORMAT = "%m-%d"
-
-# ===== 图表网格边距 =====
-GRID_LEFT = 56
-GRID_RIGHT = 24
-GRID_TOP = 24
-GRID_BOTTOM = 36
 
 
 class TrendPanel(QFrame):
     """用量趋势面板
 
-    包含范围/指标工具行、UIKit ChartWidget 折线图与区间状态文本。
+    包含范围/指标工具行、UIKit ChartWidget 日历热力图与区间状态文本。
     面板自身不访问数据层，由外部传入筛选后的 UsageRecord 列表进行渲染。
 
     Signals:
@@ -218,30 +209,27 @@ class TrendPanel(QFrame):
     # ------------------------------------------------------------- 渲染
 
     def _render_series(self, points: List[Tuple[date, int]], metric_idx: int) -> None:
-        """将聚合后的序列构建为 ECharts 风格 option 并交给 ChartWidget"""
+        """将聚合后的序列构建为日历热力图 option 并交给 ChartWidget
+
+        GitHub 贡献图风格：行=星期、列=周序，单元格颜色深浅映射当日用量
+        （色带为 UIKit 令牌 primary.subtle → primary，visualMap 图例条在底部）。
+        """
         max_raw = max((v for _, v in points), default=0)
-        is_count_metric = METRIC_FIELDS[metric_idx] is None
-        scale, unit = (1.0, "") if is_count_metric else pick_token_scale(max_raw)
+        start_d, end_d = points[0][0], points[-1][0]
 
         self._chart.set_option({
-            "legend": {"show": True, "orient": "horizontal"},
-            "tooltip": {"show": True, "trigger": "axis"},
-            "grid": {
-                "left": GRID_LEFT, "right": GRID_RIGHT,
-                "top": GRID_TOP, "bottom": GRID_BOTTOM,
+            "tooltip": {"show": True, "trigger": "item"},
+            "visualMap": {"min": 0, "max": max(max_raw, 1), "orient": "horizontal"},
+            "calendar": {
+                "year": end_d.year,
+                "range": [start_d.isoformat(), end_d.isoformat()],
+                "cellSize": "auto",
             },
-            "xAxis": {
-                "type": "category",
-                "data": [d.strftime(AXIS_DATE_FORMAT) for d, _ in points],
-            },
-            "yAxis": {"type": "value"},
             "series": [{
-                "type": "line",
-                "name": METRIC_OPTIONS[metric_idx] + unit,
-                "smooth": True,
-                "showSymbol": True,
-                "areaStyle": {"opacity": AREA_FILL_OPACITY},
-                "data": [v / scale for _, v in points],
+                "type": "heatmap",
+                "name": METRIC_OPTIONS[metric_idx],
+                "coordinateSystem": "calendar",
+                "data": [[d.isoformat(), v] for d, v in points],
             }],
         })
 

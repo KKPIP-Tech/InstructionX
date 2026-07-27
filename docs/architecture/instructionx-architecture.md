@@ -568,7 +568,7 @@ InstructionXMainWindow (Frameless, Transparent)
 |--------|------|---------|
 | `LLMSettingsDialog` | LLM Provider/Model 配置 | 左列表+右详情双栏布局；保存后调用 `get_llm_provider().reload_config()` |
 | `PluginOrderDialog` | 插件显示顺序管理 | 拖拽排序；左右分栏（官方/第三方）；调用 `plugin_manager.apply_custom_order()` |
-| `UsagePanel` | 用量查询 | UIKit ChartWidget 平滑折线趋势图（范围/指标切换，已从 QtCharts 迁移）；KPI 卡片含同比；按日期/Provider/Model/对话ID 过滤，存储层分页 |
+| `UsagePanel` | 用量查询 | UIKit ChartWidget 日历热力趋势图（heatmap + calendar，范围/指标切换，已从 QtCharts 迁移）；KPI 卡片含同比；按日期/Provider/Model/对话ID 过滤，存储层分页 |
 | `GitHubPluginInstallDialog` | 从 GitHub 安装插件 | QThread 后台克隆；`plugin_installed` 信号触发 UI 刷新 |
 
 ### 4.5 主题系统（`ui/uikit_theme.py` + `ui/InstructionX_UIKit/`）

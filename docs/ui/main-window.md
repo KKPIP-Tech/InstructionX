@@ -186,7 +186,7 @@ graph TB
 - **组件**:
   - 顶部标题行（主标题 + 副标题）
   - KPI 卡片区（总请求数、输入 Token、输出 Token、总 Token、缓存命中率、平均耗时，含「较上周期 ±x.x%」同比）
-  - 用量趋势面板（UIKit ChartWidget 平滑折线；近 7 天 / 近 30 天 / 自定义范围；请求数 / 输入 Token / 输出 Token 指标切换；悬停提示）
+  - 用量趋势面板（UIKit ChartWidget 日历热力图，GitHub 贡献图风格；近 7 天 / 近 30 天 / 自定义范围；请求数 / 输入 Token / 输出 Token 指标切换；悬停提示）
   - 使用历史面板（Provider / Model / 对话ID 筛选 + 明细表格 + 分页）
   - 明细表格（10 列：时间、Provider、Model、输入、输出、总Token、缓存命中、缓存Token、耗时、流式；按时间倒序，最新记录在第 1 页）
   - 分页控件（每页 50 条）
