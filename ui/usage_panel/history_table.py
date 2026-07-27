@@ -8,14 +8,15 @@
 from typing import Dict, List, Optional
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QColor
+from PySide6.QtGui import QColor, QFont
 from PySide6.QtWidgets import (
-    QAbstractItemView, QComboBox, QFrame, QHBoxLayout, QHeaderView, QLabel,
-    QLineEdit, QPushButton, QTableWidget, QTableWidgetItem, QVBoxLayout,
+    QAbstractItemView, QFrame, QHBoxLayout, QHeaderView, QLabel,
+    QTableWidgetItem, QVBoxLayout,
 )
 
 from core.llm.types import UsageRecord
-from InstructionX_UIKit import T
+from InstructionX_UIKit import T, set_property
+from InstructionX_UIKit.components import Button, ComboBox, LineEdit, Table
 
 from .formatting import fmt_latency, to_local_time
 
@@ -39,6 +40,29 @@ TIME_DISPLAY_FORMAT = "%Y-%m-%d %H:%M:%S"
 
 # ===== 控件尺寸 =====
 CONV_INPUT_MAX_WIDTH = 200
+FILTER_COMBO_MIN_WIDTH = 100
+FILTER_COMBO_MAX_WIDTH = 160
+PAGE_BTN_MIN_WIDTH = 72
+PAGE_LABEL_MIN_WIDTH = 180
+
+
+def _panel_title(text: str) -> QLabel:
+    """子面板标题标签（font.title.sm + semibold）"""
+    label = QLabel(text)
+    font = QFont()
+    font.setPixelSize(T("font.title.sm"))
+    font.setWeight(QFont.Weight.DemiBold)
+    label.setFont(font)
+    return label
+
+
+def _sub_panel_qss() -> str:
+    """子面板容器（卡片底 + 边框 + 圆角）的实例 QSS，颜色取 UIKit 令牌"""
+    return (
+        f"#usageSubPanel {{ background-color: {T('color.bg.elevated')};"
+        f" border: 1px solid {T('color.border')};"
+        f" border-radius: {T('radius.md')}px; }}"
+    )
 
 
 class HistoryPanel(QFrame):
@@ -63,6 +87,7 @@ class HistoryPanel(QFrame):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setObjectName("usageSubPanel")
+        self.setStyleSheet(_sub_panel_qss())
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(14, 10, 14, 8)
@@ -82,9 +107,7 @@ class HistoryPanel(QFrame):
     def _build_header(self) -> QHBoxLayout:
         """面板标题行"""
         header = QHBoxLayout()
-        title = QLabel("使用历史")
-        title.setObjectName("usagePanelTitle")
-        header.addWidget(title)
+        header.addWidget(_panel_title("使用历史"))
         header.addStretch()
         return header
 
@@ -99,16 +122,13 @@ class HistoryPanel(QFrame):
         model_label = self._make_filter_label("Model:")
 
         conv_label = self._make_filter_label("对话ID:")
-        self._conv_id_input = QLineEdit()
-        self._conv_id_input.setObjectName("usageConvInput")
+        self._conv_id_input = LineEdit(placeholder="输入对话ID筛选...")
         self._conv_id_input.setAccessibleName("对话 ID 筛选输入框")
-        self._conv_id_input.setPlaceholderText("输入对话ID筛选...")
         self._conv_id_input.setMaximumWidth(CONV_INPUT_MAX_WIDTH)
 
-        self._refresh_btn = QPushButton("刷新")
-        self._refresh_btn.setObjectName("usageRefreshBtn")
+        self._refresh_btn = Button("刷新", variant="primary")
+        self._refresh_btn.setMinimumWidth(PAGE_BTN_MIN_WIDTH)
         self._refresh_btn.setAccessibleName("刷新用量数据")
-        self._refresh_btn.setProperty("class", "primary")
 
         toolbar.addWidget(provider_label)
         toolbar.addWidget(self._provider_combo)
@@ -123,35 +143,30 @@ class HistoryPanel(QFrame):
     @staticmethod
     def _make_filter_label(text: str) -> QLabel:
         label = QLabel(text)
-        label.setObjectName("usageFilterLabel")
+        set_property(label, "role", "secondary")
         return label
 
     @staticmethod
-    def _make_filter_combo(accessible_name: str) -> QComboBox:
-        combo = QComboBox()
-        combo.setObjectName("usageFilterCombo")
+    def _make_filter_combo(accessible_name: str) -> ComboBox:
+        combo = ComboBox()
         combo.setAccessibleName(accessible_name)
+        combo.setMinimumWidth(FILTER_COMBO_MIN_WIDTH)
+        combo.setMaximumWidth(FILTER_COMBO_MAX_WIDTH)
         combo.addItem(ALL_OPTION)
         return combo
 
-    def _build_table(self) -> QTableWidget:
-        """创建 10 列只读明细表格"""
-        self._table = QTableWidget(0, len(TABLE_HEADERS))
-        self._table.setObjectName("usageTable")
+    def _build_table(self) -> Table:
+        """创建 10 列只读明细表格（UIKit Table：斑马纹/整行选择/禁编辑）"""
+        self._table = Table(0, len(TABLE_HEADERS), sortable=False)
         self._table.setAccessibleName("用量明细表格")
         self._table.setHorizontalHeaderLabels(TABLE_HEADERS)
-        self._table.verticalHeader().setVisible(False)
+        # UIKit Table 默认行高 32，此处沿用面板的紧凑行高
         self._table.verticalHeader().setDefaultSectionSize(ROW_HEIGHT)
-        self._table.setAlternatingRowColors(True)
-        self._table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self._table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        self._table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        self._table.setShowGrid(False)
 
         header = self._table.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         header.setStretchLastSection(True)
-        header.setHighlightSections(False)
         for col, width in enumerate(COLUMN_WIDTHS):
             self._table.setColumnWidth(col, width)
         return self._table
@@ -161,17 +176,18 @@ class HistoryPanel(QFrame):
         pagination = QHBoxLayout()
         pagination.setContentsMargins(0, 4, 0, 0)
 
-        self._prev_btn = QPushButton("上一页")
-        self._prev_btn.setObjectName("usagePageBtn")
+        self._prev_btn = Button("上一页", variant="default")
+        self._prev_btn.setMinimumWidth(PAGE_BTN_MIN_WIDTH)
         self._prev_btn.setAccessibleName("上一页")
         self._prev_btn.setEnabled(False)
 
         self._page_label = QLabel("第 1 页")
-        self._page_label.setObjectName("usagePageLabel")
+        set_property(self._page_label, "role", "secondary")
+        self._page_label.setMinimumWidth(PAGE_LABEL_MIN_WIDTH)
         self._page_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-        self._next_btn = QPushButton("下一页")
-        self._next_btn.setObjectName("usagePageBtn")
+        self._next_btn = Button("下一页", variant="default")
+        self._next_btn.setMinimumWidth(PAGE_BTN_MIN_WIDTH)
         self._next_btn.setAccessibleName("下一页")
         self._next_btn.setEnabled(False)
 
@@ -228,7 +244,7 @@ class HistoryPanel(QFrame):
         self._reset_combo_options(self._model_combo, models)
 
     @staticmethod
-    def _reset_combo_options(combo: QComboBox, options: List[str]) -> None:
+    def _reset_combo_options(combo: ComboBox, options: List[str]) -> None:
         """重建下拉选项并保留选中项；阻断信号避免触发级联刷新"""
         current = combo.currentText()
         combo.blockSignals(True)
