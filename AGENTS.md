@@ -71,7 +71,7 @@ python -m pytest test/ -q --tb=short -p no:cacheprovider
 - **注意**：`test/` 下当前仅保留 `test/core/data/test_data_provider.py` 一个有效测试文件（其余旧测试已在重构中删除，残留的 `__pycache__` 是过期产物，不要参考）。现有测试约定：中文 docstring、`tmp_path` fixture、测试单例类时需重置 `XxxManager._instance = None`。
 - UI 测试不配置 offscreen 平台，CI 跑在 `windows-latest` 上使用真实 GUI。
 - 项目还有一类**独立验证脚本**（非 pytest，放在 `scripts/`，用 `.venv\Scripts\python.exe scripts\<name>.py` 直接运行）：
-  - `smoke_*.py`：核心链路无网冒烟测试（LLM、task、utils）
+  - `smoke_*.py`：核心链路无网冒烟测试（LLM、task、utils、插件管理：安装/升级/降级/卸载/分组）
   - `screenshot_*.py`：对话框截图对比脚本（输出到 `scripts/screenshots/`）
   - `_mcp_smoke*.py`：真实 MCP SDK 冒烟测试
   - `demo_*.py`：功能演示脚本
@@ -218,12 +218,20 @@ core/
   interfaces/               # 抽象接口层：IPlugin、IPluginInfo、IDataProvider、ITaskManager、
                             #   ILLMService（i_llm_service.py，LLM 插件服务契约）、PluginServices（依赖注入容器）
   plugin/                   # 插件系统核心
-    manager.py              # PluginManager 单例：加载/注册插件、跨插件 API 注册
-    plugin_identity.py      # 插件 UUID（优先 {插件目录}/.plugin_info.json，不可写时回退 data/plugin_identity/{插件目录名}.json）
+    manager.py              # PluginManager 单例：加载/注册插件、热重载（完整卸载旧实例）、
+                            #   跨插件 API 注册、插件卸载（uninstall_plugin）、自定义分组与排序
+    plugin_identity.py      # 插件 UUID（优先 {插件目录}/.plugin_info.json，不可写时回退
+                            #   data/plugin_identity/{插件目录名}.json；卸载时 delete() 清理）
     config_manager.py       # 插件显示顺序（config/plugin_order.json）
+    plugin_registry.py      # 已安装插件注册表（config/plugin_registry.json：版本/来源/安装时间，
+                            #   升级降级依据，老版本启动时自动回填）
+    plugin_groups.py        # 用户自定义分组存储（config/plugin_groups.json schema v2：
+                            #   官方/第三方分类下的分组定义 + 面板统一顺序（分组与未分组插件混排）；
+                            #   PluginGroup + PluginGroupStore）
     plugin_version.py       # PluginVersion（如 release.1.0.0）、VersionType
-    dependency_manager.py   # 插件 Python 依赖检查/自动安装
-    github_plugin_installer.py  # GitHub 插件安装（IXPlugin.json / IXRepo.json 描述文件）
+    dependency_manager.py   # 插件 Python 依赖检查/自动安装（优先 uv，回退 pip）
+    github_plugin_installer.py  # 插件安装器：GitHub 一键安装（IXPlugin.json / IXRepo.json）、
+                            #   本地 zip 安装、GitHub Release 升级/降级、版本关系检测与注册表登记
   data/                     # 数据持久化层
     data_provider.py        # DataProvider 单例：PRIVATE/PUBLIC 双命名空间、发布订阅、内存缓存
     sqlite_backend.py       # SQLite WAL 后端（默认），schema 迁移
@@ -253,9 +261,12 @@ core/
     bridge.py               # 插件 API 注册表 ↔ MCP Server 双向同步
 ui/                         # 界面层
   main_window.py / title_bar.py / usage_panel/
-  skills_panel/             # 插件技能面板
+  skills_panel/             # 插件技能面板（含 plugin_group_widget.py 分组折叠控件：
+                            #   文件夹形式收起、点击行内向右展开、展开区区分背景）
   work_area/                # 插件 Widget 宿主区（切换插件时缓存 UI 状态）
-  dialog/                   # 各类对话框（插件顺序、GitHub 安装等）
+  dialog/                   # 各类对话框（GitHub 安装、开源许可等）
+    plugin_management_dialog.py  # 插件管理对话框：安装/升级/降级/卸载 + 分组与排序
+                                 #   （替代原 plugin_order_dialog 的菜单入口）
     llm_settings/           # LLM 设置对话框包：dialog 主壳 + provider_list_panel/provider_detail_panel/
                             #   model_section/provider_editor_dialog/model_edit_dialog/
                             #   health_check_dialog/sync_models_dialog + workers/theme/icons/widgets/constants
@@ -305,7 +316,9 @@ config/ data/ logs/         # 运行时生成：配置、数据、日志
 | `config/llm_providers.json` | LLM Provider 实例配置（schema v2：顶层 `version: 2`，实例含 preset_id/adapter/order；v1 自动迁移并生成 .bak 备份；API Key 经 `secure_keys.py` 混淆存储） |
 | `config/llm_models_cache.json` | 模型列表缓存（键为实例 id） |
 | `config/mcp_config.json` | MCP Server/Client 配置 |
-| `config/plugin_order.json` | 插件显示顺序 |
+| `config/plugin_order.json` | 插件显示顺序（未分组插件之间的顺序） |
+| `config/plugin_groups.json` | 用户自定义分组（schema v2：official/thirdparty 各自含 groups 分组数组 + order 面板统一顺序（分组与未分组插件混排）；v1 自动迁移） |
+| `config/plugin_registry.json` | 已安装插件注册表（schema v1：版本/来源/安装时间，升级降级与更新检查依据；启动时自动回填） |
 | `data/data.db` | 插件数据（SQLite + WAL；另有 `-wal`/`-shm` 伴生文件） |
 | `data/tasks.json` | 后台任务状态 |
 | `data/llm_usage.json` | LLM 用量记录 |
@@ -319,6 +332,7 @@ config/ data/ logs/         # 运行时生成：配置、数据、日志
 |------|------|
 | `INSTRUCTIONX_DATAPROVIDER_BACKEND` | `sqlite`（默认）/ `json`（回退旧 JSON 后端，写 `data/data.json`） |
 | `INSTRUCTIONX_MCP_CONFIG` | 覆盖 MCP 配置文件路径 |
+| `INSTRUCTIONX_GITHUB_TOKEN` | GitHub API Token（可选）：插件安装/Release 更新检查时鉴权，提升限流阈值、支持私有仓库 |
 
 ## 代码风格
 

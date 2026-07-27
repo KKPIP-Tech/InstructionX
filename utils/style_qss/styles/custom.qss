@@ -139,3 +139,27 @@ SkillButton[active="true"]:hover {
     border: none;
     padding: 2px;
 }
+
+/* 分组文件夹按钮（PluginGroupWidget）：展开状态在右侧显示强调条，
+   与插件激活态的左侧强调条呼应；收起状态与普通按钮一致。
+   注意：通过反转渐变方向（x1:1→x2:0）镜像激活态渐变，
+   直接改 stop 位置在 Qt 中无法得到对称渲染效果 */
+SkillButton#skillGroupButton[expanded="true"] {
+    background: qlineargradient(x1:1, y1:0, x2:0, y2:0,
+        stop:0 {accent}, stop:0.04 {accent},
+        stop:0.04 {controlFillSelected}, stop:1 {controlFillSelected});
+    border: none;
+    border-radius: 8px;
+    color: {skillButtonActiveText};
+    text-align: top;
+    font-weight: 500;
+    font-size: 10px;
+    padding: 2px;
+}
+SkillButton#skillGroupButton[expanded="true"]:hover {
+    background: qlineargradient(x1:1, y1:0, x2:0, y2:0,
+        stop:0 {accent}, stop:0.04 {accent},
+        stop:0.04 {controlFillSelected}, stop:1 {controlFillSelected});
+    border: none;
+    padding: 2px;
+}

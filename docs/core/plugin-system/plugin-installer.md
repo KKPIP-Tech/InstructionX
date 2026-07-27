@@ -352,12 +352,30 @@ GitHubPluginInstaller.install_from_url()
     ↓
 主窗口._on_github_plugin_installed()
     ↓
-SkillsPanel.load_skills_from_manager()
+PluginManager.reload_plugins()   # 重新扫描目录加载新插件
+    ↓
+SkillsPanel.load_skills_from_manager()   # 按分组+顺序重新渲染
 ```
+
+> 安装成功后新插件**立即可见**，无需重启应用。
 
 ### 8.4 菜单入口
 
-菜单位置：**编辑 → 从 GitHub 安装插件...**
+- 安装：**编辑 → 从 GitHub 安装插件...**
+- 管理（升级/降级/卸载/分组/排序）：**编辑 → 插件管理...**（`PluginManagementDialog`）
+
+---
+
+## 10. 升级 / 降级与卸载
+
+- **版本注册表**：每次安装成功后，安装器将插件的版本、来源（GitHub URL / 本地 zip）、安装时间写入 `config/plugin_registry.json`（以插件 UUID 为键）；老版本插件在启动时自动回填。
+- **升级/降级**：
+  - GitHub 来源插件：插件管理对话框「检查更新 / 升级 / 降级…」列出仓库 Release 版本（通过 Contents API 读取各 tag 的 `IXPlugin.json` 版本号），任选版本安装；
+  - 本地插件包：「安装本地插件包…」上传 zip，自动解析包内 `IXPlugin.json` 版本号，识别为升级/降级/重装并提示；
+  - 覆盖安装沿用 `.bak` 备份回滚机制，并保留原插件 UUID（排序、分组、数据不受影响）。
+- **卸载**：插件管理对话框「卸载…」，官方与第三方插件均可卸载；可选同时删除插件数据（DataProvider）。卸载会清理插件目录、UUID 文件、排序/分组/注册表记录、API/MCP 注册与 `sys.modules` 缓存。
+- **pip 依赖**：安装/升级时自动安装缺失依赖（优先 uv，回退 pip）；卸载时**不自动卸载依赖**（可能被其他插件使用）。
+- **GitHub Token**：设置环境变量 `INSTRUCTIONX_GITHUB_TOKEN` 可提升 API 限流阈值并支持私有仓库。
 
 ---
 

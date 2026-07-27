@@ -22,7 +22,7 @@ from PySide6.QtCore import Qt
 # ===================================================================
 # 自定义工具
 from ui.skills_panel.panel import SkillsPanel
-from ui.dialog.plugin_order_dialog import PluginOrderDialog
+from ui.dialog.plugin_management_dialog import PluginManagementDialog
 from ui.dialog.about_dialog import AboutDialog
 from ui.dialog.license_dialog import LicenseDialog
 from ui.dialog.github_plugin_install_dialog import GitHubPluginInstallDialog
@@ -170,11 +170,11 @@ class InstructionXMainWindow(QMainWindow):
         # 编辑
         menu_edit = menu_bar.addMenu("编辑")
 
-        # 插件排序
-        menu_edit_plugin_order_action = QAction("插件排序", self)
-        menu_edit_plugin_order_action.setShortcut("Ctrl+P")
-        menu_edit_plugin_order_action.triggered.connect(self._open_plugin_order_dialog)
-        menu_edit.addAction(menu_edit_plugin_order_action)
+        # 插件管理（安装/升级/卸载/分组/排序）
+        menu_edit_plugin_manage_action = QAction("插件管理...", self)
+        menu_edit_plugin_manage_action.setShortcut("Ctrl+P")
+        menu_edit_plugin_manage_action.triggered.connect(self._open_plugin_management_dialog)
+        menu_edit.addAction(menu_edit_plugin_manage_action)
 
         # 主题切换
         self._menu_theme_action = QAction("切换主题", self)
@@ -286,17 +286,17 @@ class InstructionXMainWindow(QMainWindow):
             )
             self.work_area.add_widget(error_label)
 
-    def _open_plugin_order_dialog(self):
-        """
-        打开插件排序对话框
+    def _open_plugin_management_dialog(self):
+        """打开插件管理对话框（安装/升级/降级/卸载/分组/排序）"""
+        dialog = PluginManagementDialog(self.plugin_manager, self)
+        dialog.plugins_changed.connect(self._on_plugins_changed)
+        dialog.exec()
 
-        用户保存排序后，重新加载技能面板以显示新的顺序。
-        """
-        dialog = PluginOrderDialog(self.plugin_manager, self)
-
-        if dialog.exec() == QDialog.DialogCode.Accepted:
-            # 用户点击了保存，重新加载 skills panel
-            self.skills_panel.load_skills_from_manager()
+    def _on_plugins_changed(self):
+        """插件集合或分组排序变化后的统一刷新"""
+        self.skills_panel.load_skills_from_manager()
+        # 清空工作区，避免残留已卸载插件的 Widget
+        self.work_area.clear()
 
     def _open_about_dialog(self):
         """打开关于对话框"""
@@ -315,9 +315,11 @@ class InstructionXMainWindow(QMainWindow):
         dialog.exec()
 
     def _on_github_plugin_installed(self, results):
-        """GitHub 插件安装完成后的回调"""
-        # 重新加载技能面板
+        """GitHub 插件安装完成后的回调：重新加载插件并刷新技能面板"""
+        # 重新扫描插件目录加载新插件（此前只刷新面板导致新插件不可见）
+        self.plugin_manager.reload_plugins()
         self.skills_panel.load_skills_from_manager()
+        self.work_area.clear()
         # 注意：安装结果提示由 GitHubPluginInstallDialog 统一弹出，
         # 此处不再重复弹窗（避免安装成功时出现双弹窗）。
 
