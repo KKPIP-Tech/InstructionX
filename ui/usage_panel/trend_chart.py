@@ -1,6 +1,6 @@
 """用量趋势面板（UIKit 原生图表引擎日历热力图）
 
-时间范围选择（近 7 天 / 近 30 天 / 自定义）、指标切换（请求数 / 输入 Token /
+时间范围选择（近半年 / 近一年 / 自定义）、指标切换（请求数 / 输入 Token /
 输出 Token）、GitHub 贡献图风格的日历热力图（heatmap + calendar 坐标系）、
 悬停提示与区间状态文本。图表使用 InstructionX_UIKit 原生图表引擎
 （ChartWidget + set_option），配色实时取自 UIKit 令牌并随主题切换自动换肤。
@@ -21,9 +21,9 @@ from InstructionX_UIKit.components import Button, ComboBox, DatePicker
 from .formatting import local_tz, to_local_time
 
 # ===== 时间范围选项 =====
-RANGE_OPTIONS = ("近 7 天", "近 30 天", "自定义")
-RANGE_DAY_SPANS = (7, 30)  # 与 RANGE_OPTIONS 前两项一一对应
-DEFAULT_RANGE_INDEX = 1  # 默认「近 30 天」
+RANGE_OPTIONS = ("近半年", "近一年", "自定义")
+RANGE_DAY_SPANS = (182, 365)  # 与 RANGE_OPTIONS 前两项一一对应
+DEFAULT_RANGE_INDEX = 1  # 默认「近一年」
 CUSTOM_RANGE_INDEX = 2
 
 # ===== 趋势指标选项 =====
