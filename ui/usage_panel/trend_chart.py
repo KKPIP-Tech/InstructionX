@@ -9,16 +9,95 @@
 from datetime import date, datetime, timedelta
 from typing import List, Optional, Tuple
 
-from PySide6.QtCore import QDate, Qt, Signal
-from PySide6.QtGui import QFont
+from PySide6.QtCore import QDate, QRectF, Qt, Signal
+from PySide6.QtGui import QColor, QFont, QFontMetricsF, QPainter
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QVBoxLayout
 
 from core.llm.types import UsageRecord
 from InstructionX_UIKit import T, set_property
-from InstructionX_UIKit.charts import ChartWidget
+from InstructionX_UIKit.charts import (
+    ChartWidget, register_component, register_series,
+)
+from InstructionX_UIKit.charts.axes import _MONTH_LABELS, chart_font
+from InstructionX_UIKit.charts.series_cartesian import HeatmapSeriesRenderer
 from InstructionX_UIKit.components import Button, ComboBox, DatePicker
 
 from .formatting import local_tz, to_local_time
+
+
+# ===================================================================
+# 图表引擎扩展（经 register_series/register_component 公开扩展点注册，不改库）
+class _CalendarHeatmapRenderer(HeatmapSeriesRenderer):
+    """日历热力图（悬停 tooltip 显示单元格日期）。
+
+    库内 hit_test 返回 ``series=系列名``，core 的 ``_tooltip_item`` 优先取
+    ``hit["series"]`` 作为行名，导致单元格日期（label）被丢弃。此处把
+    series 置空，让行名回退为日期；指标名由色点与工具行下拉框表达。
+    """
+
+    def hit_test(self, pos):
+        """命中单元格时返回 {name: 日期, value: 值}（series 置空）"""
+        hit = super().hit_test(pos)
+        if hit is not None:
+            hit["series"] = ""
+        return hit
+
+
+class _CalendarMonthLabels:
+    """跨年月份标签补充组件（option 键 ``monthLabels``）。
+
+    库内 CalendarCoord.paint_axes 的月份标签按 ``date(coord.year, month, 1)``
+    构造，只支持单年 range：跨年 range 中相邻年份的月份标签缺失。
+    本组件补画「年份 != coord.year」的月份 1 日标签，列位经公开的
+    ``cell_rect()`` 计算，样式与内建标签一致。
+    """
+
+    option_key = "monthLabels"
+
+    def __init__(self, chart, opt):
+        self.chart = chart
+        self._marks = []   # [(x, label)]
+        self._top = 0.0
+
+    def layout(self, rect: QRectF) -> None:
+        """计算需补画的月份标签（仅 coord.year 之外的年份）"""
+        self._marks = []
+        self._top = rect.top()
+        coord = self.chart.coord_for({"coordinateSystem": "calendar"})
+        if coord is None or getattr(coord, "kind", "") != "calendar":
+            return
+        first_monday = coord.start - timedelta(days=coord.start.weekday())
+        cursor = date(coord.start.year, coord.start.month, 1)
+        last_col = -1
+        while cursor <= coord.end:
+            if cursor.year != coord.year:
+                anchor = max(cursor, coord.start)
+                col = (anchor - first_monday).days // 7
+                if col != last_col:
+                    last_col = col
+                    cell = coord.cell_rect(cursor)
+                    if not cell.isNull():
+                        self._marks.append(
+                            (cell.left(), _MONTH_LABELS[cursor.month - 1]))
+            cursor = date(cursor.year + (cursor.month == 12),
+                          cursor.month % 12 + 1, 1)
+
+    def paint(self, p: QPainter, anim_t: float = 1.0) -> None:
+        """按内建标签样式（font.xs + text.tertiary）绘制补充月份标签"""
+        if not self._marks:
+            return
+        p.save()
+        p.setPen(QColor(T("color.text.tertiary")))
+        font = chart_font(T("font.xs"))
+        p.setFont(font)
+        for x, label in self._marks:
+            p.drawText(QRectF(x, self._top, 40, QFontMetricsF(font).height()),
+                       Qt.AlignLeft | Qt.AlignVCenter, label)
+        p.restore()
+
+
+register_series("calendarHeatmap", _CalendarHeatmapRenderer)
+register_component("monthLabels", _CalendarMonthLabels)
 
 # ===== 时间范围选项 =====
 RANGE_OPTIONS = ("近半年", "近一年", "自定义")
@@ -220,13 +299,16 @@ class TrendPanel(QFrame):
         self._chart.set_option({
             "tooltip": {"show": True, "trigger": "item"},
             "visualMap": {"min": 0, "max": max(max_raw, 1), "orient": "horizontal"},
+            # year 取起始年：内建月份标签可正确覆盖起始年各月；
+            # 跨年部分由 monthLabels 组件补画（见模块顶部扩展类）
             "calendar": {
-                "year": end_d.year,
+                "year": start_d.year,
                 "range": [start_d.isoformat(), end_d.isoformat()],
                 "cellSize": "auto",
             },
+            "monthLabels": {},
             "series": [{
-                "type": "heatmap",
+                "type": "calendarHeatmap",
                 "name": METRIC_OPTIONS[metric_idx],
                 "coordinateSystem": "calendar",
                 "data": [[d.isoformat(), v] for d, v in points],
