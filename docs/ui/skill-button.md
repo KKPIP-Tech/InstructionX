@@ -142,10 +142,10 @@ self.skill_description = description
 | 状态 | 说明 |
 |------|------|
 | 普通状态 | 默认透明背景，无边框 |
-| 悬停状态 | `{skillButtonHover}` 背景高亮，无边框 |
-| 激活状态 | 渐变背景 `qlineargradient`（左侧 4% 为 `{accent}`，其余为 `{controlFillSelected}`），无边框，`{skillButtonActiveText}` 文字颜色 |
+| 悬停状态 | `T("color.primary.subtle")` 背景高亮，无边框 |
+| 激活状态 | 渐变背景 `qlineargradient`（左侧 4% 为 `T("color.primary")`，其余为 `T("color.primary.subtle")`），无边框，`T("color.primary")` 文字颜色 |
 
-样式文件位于 `utils/style_qss/styles/custom.qss`：
+样式定义位于 `ui/uikit_theme.py` 的排除区兼容附录（`_compat_skills_panel_qss()`，结构沿用旧 custom.qss，颜色实时取 UIKit 令牌，详见 [UIKit 主题系统](../utils/uikit-theme.md)）：
 
 ```css
 /* 非激活状态 */
@@ -154,27 +154,27 @@ SkillButton {
     border-radius: 8px;
     padding: 2px;
     background-color: transparent;
-    color: {windowText};
+    color: {T("color.text.primary")};
     text-align: top;
     font-size: 10px;
 }
 SkillButton:hover {
-    background-color: {skillButtonHover};
+    background-color: {T("color.primary.subtle")};
     border: none;
 }
 SkillButton:pressed {
-    background-color: {controlFillPressed};
+    background-color: {T("color.border")};
     border: none;
 }
 
 /* 激活状态 */
 SkillButton[active="true"] {
     background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-        stop:0 {accent}, stop:0.04 {accent},
-        stop:0.04 {controlFillSelected}, stop:1 {controlFillSelected});
+        stop:0 {T("color.primary")}, stop:0.04 {T("color.primary")},
+        stop:0.04 {T("color.primary.subtle")}, stop:1 {T("color.primary.subtle")});
     border: none;
     border-radius: 8px;
-    color: {skillButtonActiveText};
+    color: {T("color.primary")};
     text-align: top;
     font-weight: 500;
     font-size: 10px;
@@ -182,9 +182,23 @@ SkillButton[active="true"] {
 }
 SkillButton[active="true"]:hover {
     background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-        stop:0 {accent}, stop:0.04 {accent},
-        stop:0.04 {controlFillSelected}, stop:1 {controlFillSelected});
+        stop:0 {T("color.primary")}, stop:0.04 {T("color.primary")},
+        stop:0.04 {T("color.primary.subtle")}, stop:1 {T("color.primary.subtle")});
     border: none;
+    padding: 2px;
+}
+
+/* 分组按钮展开态（plugin_group_widget.py） */
+SkillButton#skillGroupButton[expanded="true"] {
+    background: qlineargradient(x1:1, y1:0, x2:0, y2:0,
+        stop:0 {T("color.primary")}, stop:0.04 {T("color.primary")},
+        stop:0.04 {T("color.primary.subtle")}, stop:1 {T("color.primary.subtle")});
+    border: none;
+    border-radius: 8px;
+    color: {T("color.primary")};
+    text-align: top;
+    font-weight: 500;
+    font-size: 10px;
     padding: 2px;
 }
 ```

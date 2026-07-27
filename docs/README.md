@@ -70,7 +70,7 @@ docs/
 
 ├── utils/                           # 工具模块文档
 │   ├── logging-tools.md             # 日志工具
-│   ├── style-qss.md                 # StyleQSS 样式系统
+│   ├── uikit-theme.md               # UIKit 主题系统（InstructionX_UIKit 组件库 + 全局主题入口）
 │   └── font-map.md                  # 字体映射模块
 
 └── plugins/                         # 插件文档
@@ -227,7 +227,7 @@ mcp_manager = get_mcp_manager()
 - [DataProvider API 参考](core/data-provider/api-reference.md)
 - [MCP 协议模块概述](core/mcp/overview.md)
 - [日志工具](utils/logging-tools.md)
-- [StyleQSS 样式系统](utils/style-qss.md)
+- [UIKit 主题系统](utils/uikit-theme.md)
 - [完整 API 参考](api/full-reference.md)
 
 ---

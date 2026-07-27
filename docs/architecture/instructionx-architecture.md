@@ -41,6 +41,7 @@ graph TB
             WA["WorkArea"]
             UP["UsagePanel"]
             DLG["Dialogs\n(LlamaSettings, PluginOrder, About...)"]
+            UK["InstructionX_UIKit + uikit_theme\n（设计令牌 / ThemeManager / 全局主题入口）"]
         end
 
         subgraph Core["core/"]
@@ -82,7 +83,7 @@ graph TB
 
         subgraph Utils["utils/"]
             LM["logging_tools.py\nLoggerManager"]
-            QSS["style_qss/\nStyleQSS + QssRegistry"]
+            FM["font_map.py\nFontMap"]
         end
     end
 
@@ -134,7 +135,7 @@ main()
   │
   ├── QApplication(sys.argv)          # Qt 应用实例
   │
-  ├── set_style_qss_theme(app)       # 检测系统主题 + 应用 QSS
+  ├── apply_uikit_theme(app)         # UIKit 全局主题（auto 检测系统主题 + build_qss + 兼容附录）
   │
   ├── LoggerManager()                # 日志系统单例初始化
   │
@@ -509,7 +510,7 @@ sequenceDiagram
   - `_cycle_theme()` — 循环切换主题（light → dark → auto）
   - `_open_llm_settings_dialog()` / `_open_usage_panel()`
 - **模块关系**：
-  - ⬅️ **我依赖**：`PluginManager`、`DataProvider`、`StyleQSS`、`SkillsPanel`、`WorkArea`、`CustomTitleBar`
+  - ⬅️ **我依赖**：`PluginManager`、`DataProvider`、`ui/uikit_theme`（apply_uikit_theme / T()）、`SkillsPanel`、`WorkArea`、`CustomTitleBar`
   - ➡️ **依赖我**：`main.py`（创建实例并 `show()`）
 
 **窗口布局结构**：
@@ -567,26 +568,24 @@ InstructionXMainWindow (Frameless, Transparent)
 |--------|------|---------|
 | `LLMSettingsDialog` | LLM Provider/Model 配置 | 左列表+右详情双栏布局；保存后调用 `get_llm_provider().reload_config()` |
 | `PluginOrderDialog` | 插件显示顺序管理 | 拖拽排序；左右分栏（官方/第三方）；调用 `plugin_manager.apply_custom_order()` |
-| `UsagePanel` | 用量查询 | QtCharts 平滑折线趋势图（范围/指标切换）；KPI 卡片含同比；按日期/Provider/Model/对话ID 过滤，存储层分页 |
+| `UsagePanel` | 用量查询 | UIKit ChartWidget 平滑折线趋势图（范围/指标切换，已从 QtCharts 迁移）；KPI 卡片含同比；按日期/Provider/Model/对话ID 过滤，存储层分页 |
 | `GitHubPluginInstallDialog` | 从 GitHub 安装插件 | QThread 后台克隆；`plugin_installed` 信号触发 UI 刷新 |
 
-### 4.5 样式系统 (`utils/style_qss/`)
+### 4.5 主题系统（`ui/uikit_theme.py` + `ui/InstructionX_UIKit/`）
 
 ```mermaid
 graph LR
-    A["colors.py\nStyleQSSColors"] --> B["palette.py\ncreate_qss_palette"]
-    B --> C["QStyleFactory.create('Fusion')"]
-    A --> D["registry.py\nQssRegistry"]
-    D --> E["styles/*.qss\n(30+ fragments)"]
-    E --> D
-    D --> F["app.setStyleSheet()"]
-    A --> F
+    A["tokens.py\nLIGHT / DARK 设计令牌"] --> D["theme.py\nThemeManager 单例"]
+    D --> C["QStyleFactory.create('Fusion')\n+ QPalette + 全局字体"]
+    A --> E["theme.py\nbuild_qss(tokens)"]
+    E --> F["app.setStyleSheet()"]
+    G["uikit_theme.py\n_build_compat_qss 排除区兼容附录"] --> F
     C --> F
 ```
 
-- **颜色系统**：`StyleQSSColors` 定义 light/dark 两套 ~50 个颜色 token
-- **QSS 注册表**：`QssRegistry` 支持插件通过 `register(name, qss_string, priority)` 添加样式；`get_all(theme)` 拼接所有片段并替换 `{variable}` 占位符
-- **主题切换**：`set_style_qss_theme(app, theme)` 替换整个应用 QSS；`detect_system_theme()` 读取 Windows 注册表 `AppsUseLightTheme`
+- **设计令牌**：`tokens.py` 定义 LIGHT / DARK 两套令牌（颜色 / 字号 / 间距 / 圆角 / 阴影 / 动画），运行时经 `T()` 取当前主题值；亮/暗双主题完全由令牌参数化
+- **主题切换**：`apply_uikit_theme(app, theme)` 为唯一全局入口（light/dark/auto，auto 读取 Windows 注册表 `AppsUseLightTheme`），经 `ThemeManager.set_mode` 切换后重置「build_qss + 兼容附录」完整样式表；主题选择持久化在 DataProvider `__app_config__/theme`
+- **排除区兼容附录**：`_build_compat_qss()` 为 CustomTitleBar / SkillsPanel / WorkArea 占位标签保留原选择器结构与尺寸，颜色实时取 `T()` 令牌（详见 [UIKit 主题系统](../utils/uikit-theme.md)）
 
 ---
 
@@ -609,10 +608,10 @@ graph LR
 | **BackgroundTaskManager** | 任务执行引擎 | `register_async_task()`, `register_scheduled_task_factory()` | `TaskStorage`, `SchedulerCallback`, `LoggerManager` | 所有插件 |
 | **TaskStorage** | 任务 JSON 持久化 | `save_task()`, `get_scheduled_tasks_by_plugin()` | `LoggerManager` | `BackgroundTaskManager` |
 | **DataProvider** | 数据持久化 + Pub/Sub | `get_plugin_data()`, `subscribe()`, `publish()` | `LoggerManager` | 所有插件 |
-| **InstructionXMainWindow** | 主窗口 + 插件协调 | `_on_skill_clicked()`, `_cycle_theme()` | `PluginManager`, `DataProvider`, `StyleQSS` | `main.py` |
+| **InstructionXMainWindow** | 主窗口 + 插件协调 | `_on_skill_clicked()`, `_cycle_theme()` | `PluginManager`, `DataProvider`, `ui/uikit_theme` | `main.py` |
 | **SkillsPanel** | 技能按钮管理 | `load_skills_from_manager()`, `clear_active_state()` | `PluginManager`, `SkillButton` | `InstructionXMainWindow` |
 | **WorkArea** | 插件界面显示区 | `add_widget()`, `clear_keep_highlight()` | 无 | `InstructionXMainWindow` |
-| **StyleQSS** | 样式主题系统 | `set_theme()`, `register()`, `get_all()` | `StyleQSSColors`, `QssRegistry` | `InstructionXMainWindow` |
+| **UIKit 主题（uikit_theme + InstructionX_UIKit）** | 全局主题系统 | `apply_uikit_theme()`, `T()`, `ThemeManager.set_mode()` | `tokens.py`（LIGHT/DARK 令牌）, `build_qss` | `main.py`, `InstructionXMainWindow`, 全部对话框 |
 | **LoggerManager** | 日志系统 | `info()`, `error()`, `warning()` | 无 | 所有模块 |
 
 ### 5.2 核心接口契约

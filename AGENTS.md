@@ -12,7 +12,7 @@
 - 多厂商 LLM 集成（MiniMax、SiliconFlow、智谱 GLM、Ollama、OpenAI 兼容接口等），多会话管理、工具调用自动化（ToolCallExecutor）、多模态、用量统计
 - MCP 协议双向支持（内置 MCP Server 暴露插件 API；MCP Client 连接外部 MCP Server）
 - SQLite WAL 数据持久化层（DataProvider）、后台任务系统（BackgroundTaskManager）
-- StyleQSS 主题系统（light/dark/auto）、FontMap 多字体系统
+- InstructionX_UIKit 主题与组件体系（`ui/InstructionX_UIKit` 组件库：设计令牌 + light/dark/auto 全局主题，57 组件 + 原生图表引擎）、FontMap 多字体系统
 
 - 应用标识：`InstructionX - CE`（组织名 `LumenThread`），当前版本 **Alpha 1.0.3**
 - **版本号单一来源为 `core/version.py` 的 `VERSION` 常量**（pyproject 通过 AST 静态读取，修改版本只改这里）
@@ -28,8 +28,9 @@
 | requests / aiohttp | HTTP / 异步 HTTP |
 | mcp >= 1.0.0 | MCP 协议（FastMCP） |
 | orjson | JSON 序列化（SQLite 后端） |
-| matplotlib | 保留依赖（旧用量面板图表曾使用；现用量面板已改用 PySide6.QtCharts，暂为第三方插件兼容保留） |
+| matplotlib | 保留依赖（旧用量面板图表曾使用；现用量面板已改用 InstructionX_UIKit 原生图表引擎，暂为第三方插件兼容保留） |
 | packaging | 插件依赖版本检查 |
+| qrcode[pil] >= 7.4 | InstructionX_UIKit 组件库 QRCodeView 组件依赖（库规定唯一允许的第三方依赖） |
 
 - 依赖单一来源是 `pyproject.toml` 的 `[project].dependencies`；`requirements.txt` 与其保持同步（供 `run.ps1` 使用），**改依赖时两处都要改**。
 - 环境管理使用 **uv**（存在 `uv.lock`、`.python-version`、`.venv/`）。
@@ -261,6 +262,13 @@ core/
     bridge.py               # 插件 API 注册表 ↔ MCP Server 双向同步
 ui/                         # 界面层
   main_window.py / title_bar.py / usage_panel/
+  uikit_bootstrap.py        # UIKit 导入引导（main.py 首个业务 import：扩展 sys.path 使
+                            #   InstructionX_UIKit 以顶层包导入，保证 ThemeManager 单例唯一）
+  uikit_theme.py            # 全局主题入口：apply_uikit_theme(app, light/dark/auto) +
+                            #   current_theme_mode() + 排除区（标题栏/技能面板/工作区）兼容 QSS 附录
+  InstructionX_UIKit/       # PySide6 组件库（独立仓库 KKPIP-Tech/InstructionX_UIKit 的同步副本，
+                            #   alpha-v1.0.0：tokens/theme 主题系统 + 57 组件 + 12 布局 + 52 动画 +
+                            #   原生图表引擎 + 蓝图节点图；主项目不修改库内文件）
   skills_panel/             # 插件技能面板（含 plugin_group_widget.py 分组折叠控件：
                             #   文件夹形式收起、点击行内向右展开、展开区区分背景）
   work_area/                # 插件 Widget 宿主区（切换插件时缓存 UI 状态）
@@ -269,11 +277,11 @@ ui/                         # 界面层
                                  #   （替代原 plugin_order_dialog 的菜单入口）
     llm_settings/           # LLM 设置对话框包：dialog 主壳 + provider_list_panel/provider_detail_panel/
                             #   model_section/provider_editor_dialog/model_edit_dialog/
-                            #   health_check_dialog/sync_models_dialog + workers/theme/icons/widgets/constants
-                            #   （自动保存语义；自主主题 token，apply_dialog_theme 跟随应用主题）
+                            #   health_check_dialog/sync_models_dialog + workers/theme/icons/widgets/
+                            #   constants/feedback（自动保存语义；Theme token 实时取自 UIKit 令牌，
+                            #   apply_dialog_theme 经 theme_changed 实时跟随应用主题）
 utils/
   logging_tools.py          # LoggerManager 单例（滚动文件日志，输出 logs/application.log）、get_name()
-  themes.py + style_qss/    # StyleQSS 主题系统（30+ 控件样式，light/dark/auto）
   font_map.py               # 字体映射状态机（font/ 目录下 5 个字体家族）
   image_utils.py            # 图片工具（load_image_as_base64，原 LLMPluginService 方法迁出）
   thread_utils.py           # 工作线程 → UI 线程封送（run_in_ui_thread 等）
@@ -353,6 +361,7 @@ config/ data/ logs/         # 运行时生成：配置、数据、日志
 ## 文档地图（docs/）
 
 - 架构：`docs/architecture/overview.md`、`module-dependencies.md`
+- 主题与 UI 组件：`docs/utils/uikit-theme.md`（UIKit 主题系统）、`docs/ui/`
 - 插件系统：`docs/core/plugin-system/`（含 `plugin-development.md`）
 - 数据层：`docs/core/data-provider/`
 - 后台任务：`docs/core/background-task/`

@@ -399,9 +399,9 @@ from utils.font_map import FontFamily, FontVariant
 
 | 模块 | 集成方式 |
 |------|---------|
-| **StyleQSS** | 通过 FontMap 获取字体路径，替换 QSS 中的系统字体名 |
+| **UIKit 主题** | 通过 FontMap 获取字体路径，供 `ui/uikit_theme.py` 兼容附录等 QSS 引用（替代系统字体名硬编码） |
 | **UI Dialog** | 在 `AboutDialog`、`LLMSettingsDialog` 等处替代 `QFont()` 硬编码 |
-| **QSS 样式变量** | 与 `style_qss/colors.py` 结合，在 QSS 变量中注入字体路径 |
+| **QSS 样式变量** | 与 UIKit 设计令牌（`T()`）结合，在 QSS 中注入字体路径 |
 | **主题系统** | 支持浅色/深色主题使用不同字体家族 |
 
 ### 7.3 数据流转
@@ -435,7 +435,7 @@ FontMap 查询
 
 ## 9. 相关文档
 
-- [StyleQSS 样式系统](./style-qss.md)
+- [UIKit 主题系统](./uikit-theme.md)
 - [日志工具](./logging-tools.md)
 - [系统架构概述](../architecture/overview.md)
 
