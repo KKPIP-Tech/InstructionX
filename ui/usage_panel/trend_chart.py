@@ -111,9 +111,15 @@ METRIC_OPTIONS = ("请求数", "输入 Token", "输出 Token")
 METRIC_FIELDS: Tuple[Optional[str], ...] = (None, "input_tokens", "output_tokens")
 
 # ===== 图表显示常量 =====
-# 面板固定高度：窗口缩小时由外层滚动区接管，面板自身不缩水
-TREND_PANEL_HEIGHT = 320
-CHART_MIN_HEIGHT = 200
+CHART_MIN_HEIGHT = 60
+# 自适应高度的单元格边长上限（短范围时令格不被拉得过大）
+MAX_CELL_HEIGHT = 28.0
+MIN_CELL_HEIGHT = 3.0
+# 月份标签区高度与网格底部余量（与 CalendarCoord.layout 的标签预留一致）
+MONTH_LABEL_HEIGHT = 16.0
+GRID_BOTTOM_SLACK = 8.0
+# 面板自适应高度中的固定部分（边距/间距 + 标题行 + 工具行 + 状态行）
+PANEL_FIXED_HEIGHT = 108
 
 # ===== 日期显示格式 =====
 DATE_DISPLAY_FORMAT = "yyyy-MM-dd"
@@ -136,7 +142,6 @@ class TrendPanel(QFrame):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setObjectName("usageSubPanel")
-        self.setFixedHeight(TREND_PANEL_HEIGHT)
         self.setStyleSheet(
             f"#usageSubPanel {{ background-color: {T('color.bg.elevated')};"
             f" border: 1px solid {T('color.border')};"
@@ -157,6 +162,7 @@ class TrendPanel(QFrame):
 
         self._connect_signals()
         self._on_range_changed(DEFAULT_RANGE_INDEX)
+        self._update_fixed_height()
 
     # ------------------------------------------------------------------ UI
 
@@ -245,7 +251,7 @@ class TrendPanel(QFrame):
         )
 
     def update_series(self, records: List[UsageRecord]) -> None:
-        """按当前范围与指标重绘折线图并更新状态文本
+        """按当前范围与指标重绘热力图并更新状态文本
 
         Args:
             records: 当前筛选条件下的全部用量记录（面板内部按天聚合）
@@ -254,10 +260,38 @@ class TrendPanel(QFrame):
         metric_idx = self._metric_combo.currentIndex()
         points = self._daily_series(records, start_dt.date(), end_dt.date(), METRIC_FIELDS[metric_idx])
         self._render_series(points, metric_idx)
+        self._update_fixed_height()
         days = (end_dt.date() - start_dt.date()).days + 1
         self._status_label.setText(
             f"{start_dt.date().isoformat()} ~ {end_dt.date().isoformat()} · 共 {days} 天"
         )
+
+    # ------------------------------------------------------------- 自适应高度
+
+    def _update_fixed_height(self) -> None:
+        """按当前范围的热力图自然高度调整面板高度
+
+        单元格边长由可用宽度 / 周数决定（上限 MAX_CELL_HEIGHT），面板高度
+        = 固定部分 + 月份标签 + 7 行单元格 + 底部余量；窗口变宽时单元格
+        随之变大，面板同步增高（resizeEvent 驱动）。
+        """
+        self.setFixedHeight(int(PANEL_FIXED_HEIGHT + self._grid_height()))
+
+    def _grid_height(self) -> float:
+        """当前范围下日历网格的自然高度（月份标签 + 7 行单元格 + 余量）"""
+        start_dt, end_dt = self.current_range()
+        first = start_dt.date() - timedelta(days=start_dt.date().weekday())
+        weeks = max(1, (end_dt.date() - first).days // 7 + 1)
+        avail_w = max(20.0, self.width() - 2 * 14)  # 面板左右内边距
+        cell = min(avail_w / weeks, MAX_CELL_HEIGHT)
+        cell = max(MIN_CELL_HEIGHT, cell)
+        return MONTH_LABEL_HEIGHT + 7 * cell + GRID_BOTTOM_SLACK
+
+    def resizeEvent(self, event) -> None:
+        """宽度变化时重算自适应高度（高度自身变化不触发，避免递归）"""
+        if event.oldSize().width() != event.size().width():
+            self._update_fixed_height()
+        super().resizeEvent(event)
 
     # ------------------------------------------------------------- 数据聚合
 
@@ -291,14 +325,13 @@ class TrendPanel(QFrame):
         """将聚合后的序列构建为日历热力图 option 并交给 ChartWidget
 
         GitHub 贡献图风格：行=星期、列=周序，单元格颜色深浅映射当日用量
-        （色带为 UIKit 令牌 primary.subtle → primary，visualMap 图例条在底部）。
+        （色带为 UIKit 令牌 primary.subtle → primary，按数据范围映射）。
         """
-        max_raw = max((v for _, v in points), default=0)
         start_d, end_d = points[0][0], points[-1][0]
 
         self._chart.set_option({
+            "legend": {"show": False},
             "tooltip": {"show": True, "trigger": "item"},
-            "visualMap": {"min": 0, "max": max(max_raw, 1), "orient": "horizontal"},
             # year 取起始年：内建月份标签可正确覆盖起始年各月；
             # 跨年部分由 monthLabels 组件补画（见模块顶部扩展类）
             "calendar": {
