@@ -49,8 +49,8 @@ class SkillsPanel(QWidget):
         pill_container = QWidget()
         pill_container.setObjectName("skillsPillContainer")
         pill_layout = QHBoxLayout(pill_container)
-        pill_layout.setContentsMargins(4, 4, 4, 4)
-        pill_layout.setSpacing(4)
+        pill_layout.setContentsMargins(2, 2, 2, 2)
+        pill_layout.setSpacing(2)
 
         # 官方功能按钮
         self.official_btn = QPushButton("官方功能")

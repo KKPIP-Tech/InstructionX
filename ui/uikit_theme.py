@@ -199,14 +199,16 @@ SkillsPanel QWidget#skillsPanelHeader {{
 }}
 SkillsPanel QWidget#skillsPillContainer {{
     background-color: {T("color.bg.muted")};
-    border-radius: 14px;
+    border-radius: 12px;
 }}
 SkillsPanel QPushButton#skillsPillButton {{
     background-color: transparent;
     color: {T("color.text.secondary")};
     border: none;
-    border-radius: 10px;
-    padding: 4px 14px;
+    border-radius: 9px;
+    padding: 2px 12px;
+    min-height: 18px;
+    max-height: 18px;
     font-size: 12px;
     font-weight: 500;
 }}
