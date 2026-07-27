@@ -22,7 +22,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QComboBox, QDialog, QDoubleSpinBox, QHBoxLayout, QLabel, QLineEdit,
-    QMessageBox, QSpinBox, QToolButton, QVBoxLayout, QWidget,
+    QSpinBox, QToolButton, QVBoxLayout, QWidget,
 )
 
 from core.llm.model_schema import (
@@ -37,6 +37,7 @@ from .constants import (
     TOKENS_PER_K,
 )
 from .theme import Theme, apply_dialog_theme
+from .feedback import warn as _warn_toast
 from .widgets import (
     SwitchButton, _BaseFormDialog, install_focus_halo, make_field_label,
 )
@@ -300,7 +301,7 @@ class ModelEditDialog(_BaseFormDialog):
     def _on_confirm(self) -> None:
         """确定按钮：校验模型 ID 非空后接受对话框"""
         if not self._id_edit.text().strip():
-            QMessageBox.warning(self, "校验失败", "请输入模型 ID。")
+            _warn_toast(self, "请输入模型 ID。")
             return
         self.accept()
 

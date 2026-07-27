@@ -3,7 +3,7 @@
 
 新版 LLM 设置对话框的实现包，按职责拆分：
 - constants.py：界面尺寸/超时等命名常量；
-- theme.py：主题 token（LIGHT/DARK）+ QSS 生成 + 对话框作用域换肤；
+- theme.py：主题 token（实时取自 UIKit 令牌）+ QSS 生成 + 对话框作用域换肤；
 - icons.py：品牌 SVG 图标渲染/着色（icons/ 资源目录）；
 - widgets.py：通用控件（开关/徽章/Provider 列表项/模型行/表单基类）；
 - workers.py：后台 Worker 线程（模型拉取/连接检查/健康检查）；
@@ -26,14 +26,11 @@ from .provider_editor_dialog import (
     MODE_CREATE, MODE_EDIT, ProviderEditorDialog, generate_instance_id,
 )
 from .provider_list_panel import ProviderListPanel
-from .theme import DARK, LIGHT, THEMES, Theme, apply_dialog_theme
+from .theme import Theme, apply_dialog_theme
 
 __all__ = [
-    "DARK",
-    "LIGHT",
     "MODE_CREATE",
     "MODE_EDIT",
-    "THEMES",
     "Theme",
     "HealthCheckDialog",
     "LLMSettingsDialog",

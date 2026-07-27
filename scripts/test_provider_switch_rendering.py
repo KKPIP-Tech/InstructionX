@@ -40,9 +40,9 @@ from PySide6.QtWidgets import QApplication, QToolButton
 
 # ===================================================================
 # 项目模块
+import ui.uikit_bootstrap  # noqa: F401  # 必须为首个项目 import：扩展 sys.path 使 InstructionX_UIKit 可导入
 from core.llm.config import get_llm_config
 from ui.dialog.llm_settings import LLMSettingsDialog
-import ui.uikit_bootstrap  # noqa: F401  # 扩展 sys.path 使 InstructionX_UIKit 可导入
 from ui.uikit_theme import apply_uikit_theme
 
 CONFIG_PATH = Path("config/llm_providers.json")

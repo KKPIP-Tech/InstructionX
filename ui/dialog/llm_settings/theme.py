@@ -1,10 +1,13 @@
 # ui/dialog/llm_settings/theme.py
 """LLM 设置界面主题模块
 
-以 token 化 ``Theme`` dataclass 集中描述亮/暗两套配色，QSS 由
-``build_qss(theme)`` 从 token 生成；``apply_dialog_theme(dialog)`` 按应用
-当前主题（``utils.style_qss``）为 LLM 设置对话框完成
-palette + stylesheet + 自绘控件换色的一次性应用。
+以 token 化 ``Theme`` dataclass 集中描述对话框配色；token 值不再硬编码，
+而是由 :func:`_theme_from_uikit` 实时取自 InstructionX_UIKit 设计令牌
+（``T()``），随全局主题模式（``ui.uikit_theme.current_theme_mode``）生成。
+``build_qss(theme)`` 从 token 生成对话框作用域 QSS；
+``apply_dialog_theme(dialog)`` 为 LLM 设置对话框完成
+palette + stylesheet + 自绘控件换色的一次性应用，并连接 UIKit
+``theme_changed`` 信号实现对话框打开期间的实时跟随。
 
 作用域约定：主题只应用于传入的对话框自身（setPalette / setStyleSheet），
 **绝不触碰 QApplication 全局 palette / stylesheet**，避免污染主程序主题。
@@ -17,6 +20,10 @@ from dataclasses import dataclass, field
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QPainter, QPainterPath, QPalette, QPixmap
 from PySide6.QtWidgets import QDialog, QWidget
+from shiboken6 import isValid
+
+from InstructionX_UIKit import T
+from InstructionX_UIKit.theme import ThemeManager
 
 from ui.uikit_theme import current_theme_mode
 
@@ -91,101 +98,95 @@ class Theme:
     model_type_colors: dict = field(default_factory=dict)
 
 
-DARK = Theme(
-    name="dark",
-    bg_base="#17181c",
-    bg_sidebar="#1e2025",
-    bg_card="#26282f",
-    bg_input="#202228",
-    bg_hover="rgba(255, 255, 255, 0.05)",
-    bg_active="rgba(255, 255, 255, 0.09)",
-    bg_disabled="#1c1e23",
-    border="#3a3d46",
-    border_strong="#4a4e59",
-    hairline="#262931",
-    fg_primary="#e8e9ec",
-    fg_secondary="#a9adb8",
-    fg_muted="#7d828e",
-    accent="#7c93f5",
-    accent_hover="#8ea4f7",
-    accent_pressed="#6b83e8",
-    accent_disabled="#4d587f",
-    accent_fg="#ffffff",
-    success="#7cc495",
-    danger="#e57373",
-    warning="#e3b765",
-    danger_soft="rgba(229, 115, 115, 0.12)",
-    danger_soft_pressed="rgba(229, 115, 115, 0.20)",
-    overlay="rgba(23, 24, 28, 0.78)",
-    switch_off="#454854",
-    scrollbar="#3a3d46",
-    scrollbar_hover="#4a4e59",
-    provider_type_colors={
-        "openai": "#8aa1f6",
-        "anthropic": "#cf9a78",
-        "gemini": "#63b3aa",
-        "azure": "#8ba3d9",
-    },
-    model_type_colors={
-        "chat": "#8aa1f6",
-        "vision": "#74b595",
-        "embedding": "#cfa85f",
-        "rerank": "#b98ac2",
-    },
-)
+# ---------------------------------------------------------------------------
+# 品牌/类型徽章配色（语义品牌色，不属主题色板，按模式各存一套）
+# ---------------------------------------------------------------------------
 
-LIGHT = Theme(
-    name="light",
-    bg_base="#f7f8fa",
-    bg_sidebar="#ffffff",
-    bg_card="#ffffff",
-    bg_input="#ffffff",
-    bg_hover="rgba(27, 31, 40, 0.05)",
-    bg_active="rgba(27, 31, 40, 0.08)",
-    bg_disabled="#f0f1f4",
-    border="#e4e6eb",
-    border_strong="#d2d5dc",
-    hairline="#eceef1",
-    fg_primary="#1a1d23",
-    fg_secondary="#4b5563",
-    fg_muted="#6b7280",
-    accent="#5b7bf0",
-    accent_hover="#4f6fe0",
-    accent_pressed="#4864d4",
-    accent_disabled="#a9bbf3",
-    accent_fg="#ffffff",
-    success="#2f9062",
-    danger="#d64550",
-    warning="#9a7016",
-    danger_soft="rgba(214, 69, 80, 0.08)",
-    danger_soft_pressed="rgba(214, 69, 80, 0.15)",
-    overlay="rgba(247, 248, 250, 0.82)",
-    switch_off="#c9cdd6",
-    scrollbar="#d3d6dd",
-    scrollbar_hover="#bfc3cd",
-    provider_type_colors={
+_PROVIDER_TYPE_COLORS = {
+    "light": {
         "openai": "#4f6fe0",
         "anthropic": "#b06e48",
         "gemini": "#2f8a7e",
         "azure": "#5878c0",
     },
-    model_type_colors={
+    "dark": {
+        "openai": "#8aa1f6",
+        "anthropic": "#cf9a78",
+        "gemini": "#63b3aa",
+        "azure": "#8ba3d9",
+    },
+}
+
+_MODEL_TYPE_COLORS = {
+    "light": {
         "chat": "#4f6fe0",
         "vision": "#2f9062",
         "embedding": "#a87f2c",
         "rerank": "#995cb0",
     },
-)
+    "dark": {
+        "chat": "#8aa1f6",
+        "vision": "#74b595",
+        "embedding": "#cfa85f",
+        "rerank": "#b98ac2",
+    },
+}
 
-# 主题名 -> token（键与 utils.style_qss 的主题名一致）
-THEMES = {"dark": DARK, "light": LIGHT}
+
+def _rgba(hex_color: str, alpha: float) -> str:
+    """把 #RRGGBB 转为 rgba() 字符串（用于 danger_soft 等半透明派生色）"""
+    color = QColor(hex_color)
+    return f"rgba({color.red()}, {color.green()}, {color.blue()}, {alpha})"
+
+
+def _theme_from_uikit() -> Theme:
+    """从 UIKit 设计令牌实时构建对话框主题 token（随当前亮/暗模式）
+
+    全部颜色令牌经 ``T()`` 取当前模式值；品牌/类型徽章色为语义色，
+    不属 UIKit 色板，按模式从内置表选取。
+    """
+    name = current_theme_mode()
+    danger = T("color.danger")
+    return Theme(
+        name=name,
+        bg_base=T("color.bg.base"),
+        bg_sidebar=T("color.bg.subtle"),
+        bg_card=T("color.bg.elevated"),
+        bg_input=T("color.bg.elevated"),
+        bg_hover=T("color.bg.muted"),
+        bg_active=T("color.primary.subtle"),
+        bg_disabled=T("color.bg.muted"),
+        border=T("color.border"),
+        border_strong=T("color.border.strong"),
+        hairline=T("color.bg.muted"),
+        fg_primary=T("color.text.primary"),
+        fg_secondary=T("color.text.secondary"),
+        fg_muted=T("color.text.tertiary"),
+        accent=T("color.primary"),
+        accent_hover=T("color.primary.hover"),
+        accent_pressed=T("color.primary.pressed"),
+        accent_disabled=T("color.primary.subtle"),
+        accent_fg=T("color.on.primary"),
+        success=T("color.success"),
+        danger=danger,
+        warning=T("color.warning"),
+        danger_soft=_rgba(danger, 0.12),
+        danger_soft_pressed=_rgba(danger, 0.20),
+        overlay=T("color.overlay"),
+        switch_off=T("color.border.strong"),
+        scrollbar=T("color.border"),
+        scrollbar_hover=T("color.border.strong"),
+        provider_type_colors=dict(_PROVIDER_TYPE_COLORS[name]),
+        model_type_colors=dict(_MODEL_TYPE_COLORS[name]),
+    )
+
 
 # 当前主题（自绘控件在 paintEvent / 重绘时读取；apply_dialog_theme 负责切换）
-CURRENT_THEME: Theme = DARK
+CURRENT_THEME: Theme | None = None
 
 
 def current_theme() -> Theme:
-    """获取当前主题 token（由 apply_dialog_theme 更新）
+    """获取当前主题 token（由 apply_dialog_theme 更新，未应用过则实时构建）
 
     自绘控件应经本访问器读取当前主题，而不是直接 ``from .theme import
     CURRENT_THEME``（模块级 rebinding 会导致导入方持有过期引用）。
@@ -193,6 +194,9 @@ def current_theme() -> Theme:
     Returns:
         Theme: 当前主题 token
     """
+    global CURRENT_THEME
+    if CURRENT_THEME is None:
+        CURRENT_THEME = _theme_from_uikit()
     return CURRENT_THEME
 
 
@@ -220,7 +224,7 @@ def build_qss(t: Theme) -> str:
 def _anti_interference_qss(t: Theme) -> str:
     """抗应用级 QSS 干扰重置（必须置于样式表最前）
 
-    应用主题（utils/style_qss）中存在两类会穿透到本对话框的规则：
+    应用主题（UIKit 全局 QSS）中存在两类会穿透到本对话框的规则：
     1. ``QFrame { background-color }``——QLabel/QStackedWidget 均继承 QFrame，
        与应用 QSS 中 ``QLabel { background: transparent }`` 同优先级竞争时
        后者未生效，导致所有标签被画上实底（白块/黑块）；
@@ -506,10 +510,11 @@ def _combo_arrow_qss(t: Theme) -> str:
 def apply_dialog_theme(dialog: QDialog) -> Theme:
     """按应用当前主题为对话框整套换肤（不污染 QApplication 全局状态）
 
-    流程：按 ``current_theme_mode()`` 选取 LIGHT / DARK token ->
+    流程：由 :func:`_theme_from_uikit` 从 UIKit 令牌实时构建 token ->
     更新模块级 CURRENT_THEME -> 对话框自身 setPalette ->
     对话框自身 setStyleSheet(build_qss + 下拉箭头) -> 鸭子类型遍历
-    对话框内全部子控件，调用其 ``apply_theme(theme)`` 完成自绘控件换色。
+    对话框内全部子控件，调用其 ``apply_theme(theme)`` 完成自绘控件换色 ->
+    连接 UIKit ``theme_changed`` 信号，对话框打开期间实时跟随应用主题。
 
     Args:
         dialog: 目标对话框（主题只作用于它及其子树）
@@ -518,7 +523,7 @@ def apply_dialog_theme(dialog: QDialog) -> Theme:
         Theme: 实际应用的主题 token
     """
     global CURRENT_THEME
-    theme = THEMES.get(current_theme_mode(), LIGHT)
+    theme = _theme_from_uikit()
     CURRENT_THEME = theme
     dialog.setPalette(_build_palette(theme))
     dialog.setStyleSheet(build_qss(theme) + _combo_arrow_qss(theme))
@@ -526,4 +531,18 @@ def apply_dialog_theme(dialog: QDialog) -> Theme:
         handler = getattr(widget, "apply_theme", None)
         if callable(handler):
             handler(theme)
+    _follow_app_theme(dialog)
     return theme
+
+
+def _follow_app_theme(dialog: QDialog) -> None:
+    """连接 UIKit theme_changed：应用主题切换时对存活对话框重新换肤"""
+    if getattr(dialog, "_uik_theme_following", False):
+        return
+    dialog._uik_theme_following = True
+
+    def _reapply(*_args) -> None:
+        if isValid(dialog):
+            apply_dialog_theme(dialog)
+
+    ThemeManager.instance().theme_changed.connect(_reapply)
