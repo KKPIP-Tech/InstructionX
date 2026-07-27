@@ -15,7 +15,7 @@ from PySide6.QtWidgets import (
 )
 
 from core.llm.types import UsageRecord
-from utils.style_qss import get_style_qss
+from InstructionX_UIKit import T
 
 from .formatting import fmt_latency, to_local_time
 
@@ -309,5 +309,5 @@ class HistoryPanel(QFrame):
             else:
                 item.setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
             if record.cache_hit and col == CACHE_HIT_COLUMN:
-                item.setForeground(QColor(get_style_qss().colors()["progressSuccess"]))
+                item.setForeground(QColor(T("color.success")))
             self._table.setItem(row, col, item)

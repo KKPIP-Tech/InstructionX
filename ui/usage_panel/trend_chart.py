@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (
 )
 
 from core.llm.types import UsageRecord
-from utils.style_qss import get_style_qss
+from InstructionX_UIKit import T
 
 from .formatting import fmt_int, fmt_tokens, local_tz, pick_token_scale, to_local_time
 
@@ -272,19 +272,18 @@ class TrendPanel(QFrame):
         self._axis_y.setLabelFormat("%.0f" if top >= Y_INTEGER_THRESHOLD else "%.1f")
 
     def _apply_chart_theme(self) -> None:
-        """图表配色跟随 StyleQSS 当前主题（背景、坐标轴、网格线、折线颜色）"""
-        colors = get_style_qss().colors()
-        card = QColor(colors["cardBackground"])
-        subtext = QColor(colors["textSecondary"])
+        """图表配色跟随 UIKit 当前主题（背景、坐标轴、网格线、折线颜色）"""
+        card = QColor(T("color.bg.elevated"))
+        subtext = QColor(T("color.text.secondary"))
         self._chart.setBackgroundBrush(card)
         self._chart.setPlotAreaBackgroundBrush(card)
         self._chart.setPlotAreaBackgroundVisible(True)
         self._chart.legend().setLabelColor(subtext)
         for axis in (self._axis_x, self._axis_y):
             axis.setLabelsColor(subtext)
-            axis.setGridLineColor(QColor(colors["borderLight"]))
-            axis.setLinePenColor(QColor(colors["border"]))
-        self._series.setColor(QColor(colors["accent"]))
+            axis.setGridLineColor(QColor(T("color.border")))
+            axis.setLinePenColor(QColor(T("color.border.strong")))
+        self._series.setColor(QColor(T("color.primary")))
         pen = self._series.pen()
         pen.setWidth(SERIES_LINE_WIDTH)
         self._series.setPen(pen)

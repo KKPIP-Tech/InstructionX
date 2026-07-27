@@ -21,7 +21,7 @@ from core.plugin.github_plugin_installer import (
 )
 from core.plugin.manager import get_plugin_manager
 from utils.logging_tools import LoggerManager, get_name
-from utils.style_qss import get_style_qss
+from InstructionX_UIKit import T
 
 # 模块级日志器（LoggerManager 为单例）
 _logger = LoggerManager()
@@ -31,10 +31,19 @@ _COLOR_SUCCESS = "#16A34A"
 _COLOR_WARNING = "#D97706"
 _COLOR_ERROR = "#DC2626"
 
+# 旧 StyleQSS 颜色键 → UIKit 令牌映射（本文件迁移前的最小适配，P4 全面迁移时移除）
+_THEME_COLOR_MAP = {
+    "textSecondary": "color.text.secondary",
+    "accent": "color.primary",
+    "borderLight": "color.border",
+    "controlFillHover": "color.bg.muted",
+}
+
 
 def _theme_color(name: str, default: str) -> str:
     """获取当前主题颜色（主题感知，替代硬编码 gray/blue 等）"""
-    return get_style_qss().colors().get(name, default)
+    token_key = _THEME_COLOR_MAP.get(name)
+    return T(token_key) if token_key else default
 
 
 class GitHubFetchWorker(QThread):

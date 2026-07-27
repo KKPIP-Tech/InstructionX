@@ -15,7 +15,7 @@ from PySide6.QtWidgets import (
 )
 
 from utils.logging_tools import LoggerManager, get_name
-from utils.style_qss import get_style_qss
+from InstructionX_UIKit import T
 
 # 模块级日志器（LoggerManager 为单例）
 _logger = LoggerManager()
@@ -179,7 +179,14 @@ class LicenseDialog(QDialog):
         self.setModal(True)
         self.setWindowFlags(Qt.WindowType.Dialog)
 
-        self._colors = get_style_qss().colors()
+        # 旧 StyleQSS 颜色键 → UIKit 令牌（本文件迁移前的最小适配，P3 全面迁移时移除）
+        self._colors = {
+            "window": T("color.bg.base"),
+            "borderLight": T("color.border"),
+            "textPrimary": T("color.text.primary"),
+            "textSecondary": T("color.text.secondary"),
+            "accent": T("color.primary"),
+        }
         self._all_items: list = []
         self._current_search: str = ""
         self._selected_license_text: str = ""

@@ -42,7 +42,8 @@ from PySide6.QtWidgets import QApplication, QToolButton
 # 项目模块
 from core.llm.config import get_llm_config
 from ui.dialog.llm_settings import LLMSettingsDialog
-from utils.style_qss import set_style_qss_theme
+import ui.uikit_bootstrap  # noqa: F401  # 扩展 sys.path 使 InstructionX_UIKit 可导入
+from ui.uikit_theme import apply_uikit_theme
 
 CONFIG_PATH = Path("config/llm_providers.json")
 
@@ -106,7 +107,7 @@ def main():
     app = QApplication([])
 
     # 设置主题
-    set_style_qss_theme(app, "light")
+    apply_uikit_theme(app, "light")
 
     # 创建对话框
     dialog = LLMSettingsDialog()

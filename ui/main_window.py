@@ -33,8 +33,9 @@ from ui.usage_panel import UsagePanel
 from core.plugin.manager import PluginManager
 from core.data.data_provider import DataProvider, DataNamespace
 from core.llm.llm_provider import get_llm_provider
-from utils.style_qss import get_style_qss, set_style_qss_theme
 from utils.logging_tools import LoggerManager, get_name
+from ui.uikit_theme import apply_uikit_theme, current_theme_mode
+from InstructionX_UIKit import T
 
 
 # ===================================================================
@@ -97,8 +98,7 @@ class InstructionXMainWindow(QMainWindow):
         self.resize(WINDOW_DEFAULT_WIDTH, WINDOW_DEFAULT_HEIGHT)
 
         # 获取当前主题
-        self._style_qss = get_style_qss()
-        self._current_theme = self._style_qss.theme()
+        self._current_theme = current_theme_mode()
 
         # 主题映射：浅色 → 深色 → 跟随系统
         self._theme_map = {'light': 'dark', 'dark': 'auto', 'auto': 'light'}
@@ -343,7 +343,7 @@ class InstructionXMainWindow(QMainWindow):
             # 如果保存的主题不是 auto，则应用它
             if saved_theme != "auto":
                 self._current_theme = saved_theme
-                set_style_qss_theme(QApplication.instance(), saved_theme)  # type: ignore
+                apply_uikit_theme(QApplication.instance(), saved_theme)  # type: ignore
         except Exception as e:
             # 加载失败时使用默认主题，但不静默吞掉错误
             self._logger.warning(get_name(), f"加载保存的主题设置失败，使用默认主题: {e}")
@@ -377,7 +377,7 @@ class InstructionXMainWindow(QMainWindow):
         """循环切换主题：浅色 → 深色 → 跟随系统"""
         next_theme = self._theme_map.get(self._current_theme, 'auto')
         self._current_theme = next_theme
-        set_style_qss_theme(QApplication.instance(), next_theme)  # type: ignore
+        apply_uikit_theme(QApplication.instance(), next_theme)  # type: ignore
         self._update_container_style()
         self._update_theme_action_text()
         self._save_theme(next_theme)
@@ -433,9 +433,8 @@ class InstructionXMainWindow(QMainWindow):
 
     def _update_container_style(self):
         """更新容器样式（圆角/最大化状态），适配当前主题"""
-        colors = self._style_qss.colors()
-        window_bg = colors.get('window', '#202020')
-        border_color = colors.get('borderLight', '#3C3C3C')
+        window_bg = T("color.bg.base")
+        border_color = T("color.border")
 
         if self.isMaximized() or self.isFullScreen():
             # 最大化/全屏时移除圆角和阴影

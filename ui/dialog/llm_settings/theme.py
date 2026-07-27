@@ -18,7 +18,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QPainter, QPainterPath, QPalette, QPixmap
 from PySide6.QtWidgets import QDialog, QWidget
 
-from utils.style_qss import get_style_qss
+from ui.uikit_theme import current_theme_mode
 
 
 # ---------------------------------------------------------------------------
@@ -506,7 +506,7 @@ def _combo_arrow_qss(t: Theme) -> str:
 def apply_dialog_theme(dialog: QDialog) -> Theme:
     """按应用当前主题为对话框整套换肤（不污染 QApplication 全局状态）
 
-    流程：按 ``get_style_qss().theme()`` 选取 LIGHT / DARK token ->
+    流程：按 ``current_theme_mode()`` 选取 LIGHT / DARK token ->
     更新模块级 CURRENT_THEME -> 对话框自身 setPalette ->
     对话框自身 setStyleSheet(build_qss + 下拉箭头) -> 鸭子类型遍历
     对话框内全部子控件，调用其 ``apply_theme(theme)`` 完成自绘控件换色。
@@ -518,7 +518,7 @@ def apply_dialog_theme(dialog: QDialog) -> Theme:
         Theme: 实际应用的主题 token
     """
     global CURRENT_THEME
-    theme = THEMES.get(get_style_qss().theme(), LIGHT)
+    theme = THEMES.get(current_theme_mode(), LIGHT)
     CURRENT_THEME = theme
     dialog.setPalette(_build_palette(theme))
     dialog.setStyleSheet(build_qss(theme) + _combo_arrow_qss(theme))

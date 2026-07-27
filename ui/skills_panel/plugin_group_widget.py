@@ -16,7 +16,7 @@ from PySide6.QtGui import QIcon, QPixmap, QPainter, QFont
 
 from core.plugin.plugin_groups import PluginGroup
 from utils.logging_tools import LoggerManager, get_name
-from utils.style_qss import get_style_qss
+from InstructionX_UIKit import T
 from .skill_button import SkillButton
 
 # 分组按钮尺寸（与 SkillButton 保持一致）
@@ -118,9 +118,8 @@ class PluginGroupWidget(QWidget):
 
     def _apply_expand_style(self) -> None:
         """为展开区域应用区分背景（跟随应用主题色）"""
-        colors = get_style_qss().colors()
-        bg = colors.get("controlFillHover", "#e8f4fd")
-        border = colors.get("accent", "#0078d4")
+        bg = T("color.bg.muted")
+        border = T("color.primary")
         self.expand_area.setStyleSheet(
             f"#skillGroupExpanded {{"
             f" background-color: {bg};"

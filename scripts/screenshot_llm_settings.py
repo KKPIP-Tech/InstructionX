@@ -38,8 +38,9 @@ def main():
     app.setApplicationName("InstructionX")
 
     # 设置主题
-    from utils.style_qss import set_style_qss_theme
-    set_style_qss_theme(app, args.theme)
+    import ui.uikit_bootstrap  # noqa: F401  # 扩展 sys.path 使 InstructionX_UIKit 可导入
+    from ui.uikit_theme import apply_uikit_theme
+    apply_uikit_theme(app, args.theme)
 
     # 创建对话框
     from ui.dialog.llm_settings import LLMSettingsDialog
