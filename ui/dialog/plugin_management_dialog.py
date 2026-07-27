@@ -12,10 +12,11 @@ from typing import Callable, Dict, List, Optional, Tuple
 
 from PySide6.QtWidgets import (
     QDialog, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
-    QLabel, QListWidget, QListWidgetItem, QPushButton, QTabWidget,
-    QMessageBox, QCheckBox, QInputDialog, QFileDialog, QFrame,
+    QLabel, QListWidget, QListWidgetItem, QTabWidget,
+    QFileDialog, QFrame,
 )
 from PySide6.QtCore import Qt, QThread, Signal
+from PySide6.QtGui import QColor, QFont
 
 from core.plugin.manager import PluginManager
 from core.plugin.github_plugin_installer import (
@@ -28,9 +29,68 @@ from core.plugin.plugin_groups import (
 from core.plugin.plugin_version import PluginVersion
 from ui.dialog.github_plugin_install_dialog import GitHubPluginInstallDialog
 from utils.logging_tools import LoggerManager, get_name
+from InstructionX_UIKit import T
+from InstructionX_UIKit.components import (
+    Button, CheckBox, ComboBox, Dialog, LineEdit, Message,
+)
 
 # 模块级日志器（LoggerManager 为单例）
 _logger = LoggerManager()
+
+
+def _confirm(parent, title: str, text: str) -> bool:
+    """阻塞式确认对话框（UIKit Dialog，替代 QMessageBox.question）"""
+    dialog = Dialog(parent, title=title)
+    dialog.set_text(text)
+    return dialog.exec() == QDialog.DialogCode.Accepted
+
+
+def _notice(parent, title: str, text: str) -> None:
+    """阻塞式结果告知对话框（UIKit Dialog，替代 QMessageBox.information/warning）"""
+    dialog = Dialog(parent, title=title, ok_text="知道了", show_cancel=False)
+    dialog.set_text(text)
+    dialog.exec()
+
+
+def _prompt_text(parent, title: str, label: str, text: str = "") -> Tuple[str, bool]:
+    """单行文本输入对话框（UIKit Dialog + LineEdit，替代 QInputDialog.getText）"""
+    dialog = Dialog(parent, title=title)
+    content = QWidget()
+    lay = QVBoxLayout(content)
+    lay.setContentsMargins(0, 0, 0, 0)
+    lay.addWidget(QLabel(label))
+    edit = LineEdit(text=text)
+    lay.addWidget(edit)
+    dialog.set_content(content)
+    ok = dialog.exec() == QDialog.DialogCode.Accepted
+    return edit.text(), ok
+
+
+def _prompt_item(parent, title: str, label: str, items: List[str],
+                 current: int = 0) -> Tuple[str, bool]:
+    """下拉选择对话框（UIKit Dialog + ComboBox，替代 QInputDialog.getItem）"""
+    dialog = Dialog(parent, title=title)
+    content = QWidget()
+    lay = QVBoxLayout(content)
+    lay.setContentsMargins(0, 0, 0, 0)
+    lay.addWidget(QLabel(label))
+    combo = ComboBox(items=items)
+    if 0 <= current < len(items):
+        combo.setCurrentIndex(current)
+    lay.addWidget(combo)
+    dialog.set_content(content)
+    ok = dialog.exec() == QDialog.DialogCode.Accepted
+    return combo.currentText(), ok
+
+
+def _bold_label(text: str) -> QLabel:
+    """加粗小标签（替代旧 captionBold 动态属性）"""
+    label = QLabel(text)
+    font = QFont()
+    font.setPixelSize(T("font.sm"))
+    font.setBold(True)
+    label.setFont(font)
+    return label
 
 
 def _version_relation(current: str, candidate: str) -> str:
@@ -104,7 +164,7 @@ class VersionSelectDialog(QDialog):
             version_text = rel.version or "未知版本"
             item = QListWidgetItem(f"{rel.tag}  —  {version_text}（{relation}）")
             if relation == "降级":
-                item.setForeground(Qt.GlobalColor.darkYellow)
+                item.setForeground(QColor(T("color.warning")))
             self.list_widget.addItem(item)
         if self.list_widget.count():
             self.list_widget.setCurrentRow(0)
@@ -112,9 +172,9 @@ class VersionSelectDialog(QDialog):
 
         btn_layout = QHBoxLayout()
         btn_layout.addStretch()
-        cancel_btn = QPushButton("取消")
+        cancel_btn = Button("取消", variant="default")
         cancel_btn.clicked.connect(self.reject)
-        ok_btn = QPushButton("安装所选版本")
+        ok_btn = Button("安装所选版本", variant="primary")
         ok_btn.setDefault(True)
         ok_btn.clicked.connect(self._on_accept)
         btn_layout.addWidget(cancel_btn)
@@ -125,7 +185,7 @@ class VersionSelectDialog(QDialog):
         """确认选择"""
         row = self.list_widget.currentRow()
         if row < 0:
-            QMessageBox.warning(self, "提示", "请选择要安装的版本")
+            Message.warning(self, "请选择要安装的版本")
             return
         self.selected = self._releases[row]
         self.accept()
@@ -181,8 +241,7 @@ class GroupEditorWidget(QWidget):
         box_layout.setContentsMargins(0, 0, 0, 0)
 
         # 标题：显示当前选中的分组
-        self.group_title = QLabel("")
-        self.group_title.setProperty("captionBold", "true")
+        self.group_title = _bold_label("")
         box_layout.addWidget(self.group_title)
 
         # 穿梭区：未分组插件 | 按钮列 | 组内插件（含排序）
@@ -201,7 +260,7 @@ class GroupEditorWidget(QWidget):
                               ("←", self._on_remove_member),
                               ("上移", lambda: self._move_member(-1)),
                               ("下移", lambda: self._move_member(1))):
-            btn = QPushButton(text)
+            btn = Button(text, variant="default", size="sm")
             btn.setFixedWidth(56)
             btn.clicked.connect(handler)
             btn_column.addWidget(btn)
@@ -220,12 +279,10 @@ class GroupEditorWidget(QWidget):
         return self.shuttle_box
 
     def _build_column(self, title: str, list_widget: QListWidget,
-                      buttons: List[QPushButton]) -> QVBoxLayout:
+                      buttons: List[Button]) -> QVBoxLayout:
         """构建一栏：标题 + 列表 + 按钮组"""
         column = QVBoxLayout()
-        label = QLabel(title)
-        label.setProperty("captionBold", "true")
-        column.addWidget(label)
+        column.addWidget(_bold_label(title))
         column.addWidget(list_widget, stretch=1)
         btn_layout = QGridLayout()
         for index, btn in enumerate(buttons):
@@ -233,7 +290,7 @@ class GroupEditorWidget(QWidget):
         column.addLayout(btn_layout)
         return column
 
-    def _panel_buttons(self) -> List[QPushButton]:
+    def _panel_buttons(self) -> List[Button]:
         """面板顺序列表的操作按钮"""
         specs = [
             ("新建分组", self._on_new_group), ("重命名", self._on_rename_group),
@@ -243,9 +300,9 @@ class GroupEditorWidget(QWidget):
         ]
         return [self._make_button(text, handler) for text, handler in specs]
 
-    def _make_button(self, text: str, handler: Callable) -> QPushButton:
+    def _make_button(self, text: str, handler: Callable) -> Button:
         """创建按钮并连接处理函数"""
-        btn = QPushButton(text)
+        btn = Button(text, variant="default", size="sm")
         btn.clicked.connect(handler)
         return btn
 
@@ -399,7 +456,7 @@ class GroupEditorWidget(QWidget):
 
     def _on_new_group(self) -> None:
         """新建分组（追加到面板顺序末尾）"""
-        name, ok = QInputDialog.getText(self, "新建分组", "分组名称:")
+        name, ok = _prompt_text(self, "新建分组", "分组名称:")
         if ok and name.strip():
             group = PluginGroup.new(name.strip())
             self.groups.append(group)
@@ -412,7 +469,7 @@ class GroupEditorWidget(QWidget):
         group = self._selected_group_item()
         if group is None:
             return
-        name, ok = QInputDialog.getText(self, "重命名分组", "分组名称:", text=group.name)
+        name, ok = _prompt_text(self, "重命名分组", "分组名称:", text=group.name)
         if ok and name.strip():
             group.name = name.strip()
             self._refresh_after_group_change(group)
@@ -424,8 +481,8 @@ class GroupEditorWidget(QWidget):
             return
         current = GROUP_ICON_CHOICES.index(group.icon_key) \
             if group.icon_key in GROUP_ICON_CHOICES else 0
-        icon, ok = QInputDialog.getItem(
-            self, "设置图标", "选择分组图标:", GROUP_ICON_CHOICES, current, False
+        icon, ok = _prompt_item(
+            self, "设置图标", "选择分组图标:", GROUP_ICON_CHOICES, current
         )
         if ok and icon:
             group.icon_key = icon
@@ -435,7 +492,7 @@ class GroupEditorWidget(QWidget):
         """获取面板列表中选中的分组（选中插件时提示并返回 None）"""
         selected = self._selected_panel_item()
         if selected is None or selected[1] != ITEM_TYPE_GROUP:
-            QMessageBox.information(self, "提示", "请先在左侧列表中选中一个分组")
+            Message.info(self, "请先在左侧列表中选中一个分组")
             return None
         return self._find_group(selected[2])
 
@@ -443,7 +500,7 @@ class GroupEditorWidget(QWidget):
         """删除选中分组（组内插件变为未分组，插入到分组原位置）"""
         selected = self._selected_panel_item()
         if selected is None or selected[1] != ITEM_TYPE_GROUP:
-            QMessageBox.information(self, "提示", "请先在左侧列表中选中一个分组")
+            Message.info(self, "请先在左侧列表中选中一个分组")
             return
         row, _type, group_id = selected
         group = self._find_group(group_id)
@@ -475,10 +532,10 @@ class GroupEditorWidget(QWidget):
         group = self._current_group()
         item = self.available_list.currentItem()
         if group is None:
-            QMessageBox.information(self, "提示", "请先在左侧列表中选中目标分组")
+            Message.info(self, "请先在左侧列表中选中目标分组")
             return
         if item is None:
-            QMessageBox.information(self, "提示", "请在「未分组插件」中选中要加入的插件")
+            Message.info(self, "请在「未分组插件」中选中要加入的插件")
             return
         uuid = item.data(Qt.ItemDataRole.UserRole)
         if uuid not in group.plugins:
@@ -582,7 +639,7 @@ class PluginManagementDialog(QDialog):
         self.tabs.addTab(self._build_groups_tab(), "分组与排序")
         layout.addWidget(self.tabs, stretch=1)
 
-        close_btn = QPushButton("关闭")
+        close_btn = Button("关闭", variant="default")
         close_btn.setFixedWidth(100)
         close_btn.clicked.connect(self.accept)
         bottom = QHBoxLayout()
@@ -599,7 +656,7 @@ class PluginManagementDialog(QDialog):
         for text, handler in (("从 GitHub 安装插件…", self._on_install_github),
                               ("安装本地插件包…", self._on_install_zip),
                               ("刷新", self._on_refresh)):
-            btn = QPushButton(text)
+            btn = Button(text, variant="default")
             btn.clicked.connect(handler)
             toolbar.addWidget(btn)
         toolbar.addStretch()
@@ -634,9 +691,9 @@ class PluginManagementDialog(QDialog):
             layout.addWidget(label)
         layout.addSpacing(10)
 
-        self.update_btn = QPushButton("检查更新 / 升级 / 降级…")
+        self.update_btn = Button("检查更新 / 升级 / 降级…", variant="default")
         self.update_btn.clicked.connect(self._on_check_updates)
-        self.uninstall_btn = QPushButton("卸载…")
+        self.uninstall_btn = Button("卸载…", variant="danger")
         self.uninstall_btn.clicked.connect(self._on_uninstall)
         layout.addWidget(self.update_btn)
         layout.addWidget(self.uninstall_btn)
@@ -656,10 +713,9 @@ class PluginManagementDialog(QDialog):
 
         btn_layout = QHBoxLayout()
         btn_layout.addStretch()
-        reset_btn = QPushButton("重置")
+        reset_btn = Button("重置", variant="default")
         reset_btn.clicked.connect(self._on_groups_reset)
-        save_btn = QPushButton("保存分组与排序")
-        save_btn.setProperty("class", "accentSave")
+        save_btn = Button("保存分组与排序", variant="primary")
         save_btn.clicked.connect(self._on_groups_save)
         btn_layout.addWidget(reset_btn)
         btn_layout.addWidget(save_btn)
@@ -736,12 +792,12 @@ class PluginManagementDialog(QDialog):
         """检查选中插件的可用版本（GitHub Release）"""
         uuid = self._selected_plugin_id()
         if uuid is None:
-            QMessageBox.information(self, "提示", "请先选择插件")
+            Message.info(self, "请先选择插件")
             return
         record = self.pm.registry.get(uuid)
         if not record or record.get("source_type") != "github" or not record.get("source_url"):
-            QMessageBox.information(
-                self, "提示",
+            Message.info(
+                self,
                 "该插件没有记录 GitHub 来源，无法检查更新。\n可使用「安装本地插件包」手动升级/降级。"
             )
             return
@@ -757,7 +813,7 @@ class PluginManagementDialog(QDialog):
     def _on_versions_fetched(self, uuid: str, releases: List[ReleaseInfo]) -> None:
         """版本列表获取完成，弹出选择对话框"""
         if not releases:
-            QMessageBox.information(self, "提示", "未获取到该仓库的 Release 版本")
+            Message.info(self, "未获取到该仓库的 Release 版本")
             return
         record = self.pm.registry.get(uuid) or {}
         current = record.get("version", "")
@@ -775,12 +831,12 @@ class PluginManagementDialog(QDialog):
                 f"当前版本: {current or '未知'}\n目标版本: {release.version or release.tag}")
         if relation == "降级":
             text += "\n\n警告：降级可能导致数据不兼容或配置丢失！"
-        if QMessageBox.question(self, "确认安装", text) != QMessageBox.StandardButton.Yes:
+        if not _confirm(self, "确认安装", text):
             return
 
         parsed = self.installer.parse_github_url(record["source_url"])
         if not parsed:
-            QMessageBox.warning(self, "错误", "来源仓库 URL 无效")
+            Message.warning(self, "来源仓库 URL 无效")
             return
         owner, repo = parsed
         target_dir = (self.pm.official_plugin_dir if record.get("scope") == "official"
@@ -798,9 +854,9 @@ class PluginManagementDialog(QDialog):
         failed = [r for r in results if not r.success]
         details = "\n".join(f"  - {r.plugin_name or r.plugin_id}: {r.message}" for r in results)
         if failed:
-            QMessageBox.warning(self, "安装结果", f"部分失败：\n{details}")
+            _notice(self, "安装结果", f"部分失败：\n{details}")
         else:
-            QMessageBox.information(self, "安装结果", f"全部成功：\n{details}")
+            _notice(self, "安装结果", f"全部成功：\n{details}")
         if success:
             self._refresh_after_change()
 
@@ -810,32 +866,35 @@ class PluginManagementDialog(QDialog):
         """卸载选中插件"""
         uuid = self._selected_plugin_id()
         if uuid is None:
-            QMessageBox.information(self, "提示", "请先选择插件")
+            Message.info(self, "请先选择插件")
             return
         record = self.pm.registry.get(uuid) or {}
         name = record.get("name", uuid)
         scope = record.get("scope", "")
 
-        box = QMessageBox(self)
-        box.setWindowTitle("确认卸载")
         text = f"确定卸载插件「{name}」？"
         if scope == "official":
             text += "\n\n该插件属于官方插件，卸载后需重新安装才能恢复。"
-        box.setText(text)
-        checkbox = QCheckBox("同时删除插件数据（不可恢复）")
-        box.setCheckBox(checkbox)
-        box.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-        if box.exec() != QMessageBox.StandardButton.Yes:
+        # UIKit Dialog + 自定义内容（替代 QMessageBox + setCheckBox）
+        dialog = Dialog(self, title="确认卸载")
+        content = QWidget()
+        lay = QVBoxLayout(content)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.addWidget(QLabel(text))
+        checkbox = CheckBox("同时删除插件数据（不可恢复）")
+        lay.addWidget(checkbox)
+        dialog.set_content(content)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
             return
 
         result = self.pm.uninstall_plugin(uuid, remove_data=checkbox.isChecked())
         if not result["success"]:
-            QMessageBox.warning(self, "卸载失败", result["message"])
+            _notice(self, "卸载失败", result["message"])
             return
         message = result["message"]
         if result["warnings"]:
             message += "\n\n警告：\n" + "\n".join(result["warnings"])
-        QMessageBox.information(self, "卸载完成", message)
+        _notice(self, "卸载完成", message)
         self._refresh_after_change()
 
     # ==================== 分组与排序保存 ====================
@@ -845,11 +904,11 @@ class PluginManagementDialog(QDialog):
         for scope, _title in self.SCOPES:
             editor = self._group_editors[scope]
             if not self.pm.save_groups(scope, editor.groups, editor.collect_panel_order()):
-                QMessageBox.warning(self, "保存失败", "无法保存分组配置，请检查权限和磁盘空间。")
+                _notice(self, "保存失败", "无法保存分组配置，请检查权限和磁盘空间。")
                 return
         _logger.info(get_name(), "插件分组与排序已保存")
         self.plugins_changed.emit()
-        QMessageBox.information(self, "保存成功", "分组与排序已保存")
+        Message.success(self, "分组与排序已保存")
 
     def _on_groups_reset(self) -> None:
         """放弃工作副本，重新加载分组配置"""
@@ -878,7 +937,7 @@ class PluginManagementDialog(QDialog):
             on_success: 成功回调（UI 线程执行）
         """
         if self._worker is not None and self._worker.isRunning():
-            QMessageBox.information(self, "提示", "正在执行其他操作，请稍候")
+            Message.info(self, "正在执行其他操作，请稍候")
             return
         self.setEnabled(False)
         self._worker = _Worker(fn, self)
@@ -890,4 +949,4 @@ class PluginManagementDialog(QDialog):
     def _on_background_error(self, error: str) -> None:
         """后台任务异常"""
         _logger.error(get_name(), f"插件管理后台操作失败: {error}")
-        QMessageBox.critical(self, "操作失败", error)
+        _notice(self, "操作失败", error)
