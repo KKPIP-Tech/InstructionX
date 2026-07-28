@@ -306,7 +306,7 @@ config/ data/ logs/         # 运行时生成：配置、数据、日志
 
 - 必需文件：
   - `entrance.py`：定义 `IPlugin` 子类（插件入口/胶水层），构造函数可接收 `services: PluginServices` 注入
-  - `information.py`：定义 `IPluginInfo` 子类（版本用 `PluginVersion.from_string("release.x.y.z")`、`service_api` 工具描述等）；提供 `service_api` + `service.py`（类名以 `Service` 结尾）时，框架**自动注册跨插件 API 并转换为 LLM 可调用工具**
+  - `information.py`：定义 `IPluginInfo` 子类（版本用 `PluginVersion.from_string("release.x.y.z")`、`service_api` 工具描述等）；提供 `service_api` + `service.py`（类名以 `Service` 结尾）时，框架**自动注册跨插件 API 并同步为 MCP 工具**（不自动进入 LLM ToolRegistry，LLM 直接调用需插件实现 `IPlugin.llm_tools` 或自行注册）
   - `service.py`：插件服务/公开 API 层
   - `config/`：插件配置目录
 - 硬性规则（见根目录 `plugin-development.md`，注意该文件是面向插件开发代理的规范）：
@@ -315,7 +315,7 @@ config/ data/ logs/         # 运行时生成：配置、数据、日志
   - 无魔法数字
 - GitHub 安装描述文件：`IXPlugin.json`（单插件仓库，文件名大小写敏感）、`IXRepo.json`（多插件仓库）；KKPIP-Tech 组织下的插件自动归类为官方插件。
 - 详细文档：`docs/core/plugin-system/plugin-development.md`、`docs/plugins/llm-integration-guide.md`。
-- 参考示例：`plugin/api-demo/`（最小完整结构）、`plugin/llm-chat/`。
+- 参考示例：`plugin/framework-api-demo/`、`plugin/llm-chat/`。
 
 ## 配置与数据文件（运行时生成，勿手改结构）
 
