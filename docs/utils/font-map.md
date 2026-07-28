@@ -438,7 +438,3 @@ FontMap 查询
 - [UIKit 主题系统](./uikit-theme.md)
 - [日志工具](./logging-tools.md)
 - [系统架构概述](../architecture/overview.md)
-
----
-
-*本文档由 Claude Code 自动生成*

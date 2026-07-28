@@ -249,7 +249,3 @@ def _write_to_disk(self, data: Dict[str, Any]) -> None:
 
 - [后台任务概述](overview.md)
 - [后台任务 API 参考](api-reference.md)
-
----
-
-*本文档由 Claude Code 自动生成*

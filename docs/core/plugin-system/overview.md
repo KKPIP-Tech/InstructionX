@@ -137,6 +137,7 @@ plugin_name/
 │                          # 定义可被调用的方法
 ├── information.py        # 插件元数据（必需）
 │                          # 继承 IPluginInfo，定义 API
+├── config/               # 配置文件目录（必需，开发规范）
 ├── icons/                # 图标目录（可选）
 │   └── icon.png
 └── assets/               # 资源目录（可选）
@@ -147,9 +148,12 @@ plugin_name/
 
 | 文件 | 必需 | 职责 | 关键内容 |
 |------|------|------|---------|
-| **entrance.py** | ✅ 是 | UI 入口 | 继承 `IPlugin`，实现 `_create_widget()` |
-| **service.py** | ✅ 是 | 业务逻辑 | 定义可被外部调用的方法 |
-| **information.py** | ✅ 是 | 元数据 | 继承 `IPluginInfo`，定义 `service_api` |
+| **entrance.py** | ✅ 是（框架硬校验） | UI 入口 | 继承 `IPlugin`，实现 `_create_widget()` |
+| **service.py** | ✅ 是（开发规范） | 业务逻辑 | 定义可被外部调用的方法，类名以 `Service` 结尾 |
+| **information.py** | ✅ 是（开发规范） | 元数据 | 继承 `IPluginInfo`，定义 `service_api` |
+| **config/** | ✅ 是（开发规范） | 配置 | 插件配置文件目录，禁止魔法数 |
+
+> **说明**：框架加载时仅对 `entrance.py` 做硬性校验（缺失则跳过该插件）；缺少 `service.py`/`information.py` 不影响插件本体加载，仅会跳过 API 自动注册。`service.py`、`information.py`、`config/` 的"必需"是插件开发规范的强制要求，框架不兜底校验。
 
 ---
 
@@ -168,7 +172,7 @@ flowchart TD
     F --> G[注册到 _api_registry]
 ```
 
-> **前置条件**：`entrance.py`、`service.py`、`information.py` 三者均为必需文件。插件缺少其中任何一个都将导致加载失败。
+> **前置条件**：API 自动注册要求 `information.py` 与 `service.py` 同时存在、且 `service_api` 非空；任一不满足时框架仅跳过注册，插件本体仍可正常加载（框架仅对 `entrance.py` 做硬性加载校验）。按插件开发规范，`entrance.py`、`service.py`、`information.py`、`config/` 均为必需文件。
 
 ### 4.2 service_api 定义示例
 
@@ -335,7 +339,3 @@ stateDiagram-v2
 - [PluginManager](plugin-manager.md)
 - [插件开发指南](plugin-development.md)
 - [MCP 协议模块概述](../mcp/overview.md)
-
----
-
-*本文档由 Claude Code 自动生成*

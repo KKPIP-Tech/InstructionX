@@ -451,7 +451,3 @@ task_id = manager.register_async_task(
 - [后台任务存储](task-storage.md)
 - [插件开发指南](../plugin-system/plugin-development.md)
 - [接口层概述](../interfaces/overview.md)
-
----
-
-*本文档由 Claude Code 自动生成*

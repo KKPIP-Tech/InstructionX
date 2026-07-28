@@ -838,7 +838,3 @@ print("任务管理器已关闭")
 
 - [后台任务概述](overview.md)
 - [插件开发指南](../plugin-system/plugin-development.md)
-
----
-
-*本文档由 Claude Code 自动生成*

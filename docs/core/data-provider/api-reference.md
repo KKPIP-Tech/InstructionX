@@ -676,7 +676,3 @@ print(f"已保存到: {thumb_path}")
 
 - [DataProvider 概述](overview.md)
 - [插件开发指南](../plugin-system/plugin-development.md)
-
----
-
-*本文档由 Claude Code 自动生成*

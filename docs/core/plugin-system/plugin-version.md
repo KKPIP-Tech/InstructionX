@@ -168,7 +168,3 @@ print(f"当前版本: {v1.get_display_version()}")  # 测试版 1.0.0
 
 - [IPluginInfo 接口](iplugin.md)
 - [插件开发指南](plugin-development.md)
-
----
-
-*本文档由 Claude Code 自动生成*

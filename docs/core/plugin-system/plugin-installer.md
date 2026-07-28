@@ -385,7 +385,3 @@ SkillsPanel.load_skills_from_manager()   # 按分组+顺序重新渲染
 - [PluginManager](plugin-manager.md)
 - [插件开发指南](plugin-development.md)
 - [对话框组件](../../ui/dialogs.md)
-
----
-
-*本文档由 Claude Code 自动生成*

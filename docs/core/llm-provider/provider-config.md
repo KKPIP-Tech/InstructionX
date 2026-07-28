@@ -292,7 +292,3 @@ config.add_provider("custom-a1b2c3d4", new_provider)  # 写入内存并立即落
 
 - [LLM Provider 概述](overview.md)
 - [LLM Provider API 参考](api-reference.md)
-
----
-
-*本文档由 Claude Code 自动生成*

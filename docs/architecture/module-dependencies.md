@@ -404,7 +404,3 @@ graph TD
 - [后台任务存储](../core/background-task/task-storage.md)
 - [MCP 协议模块概述](../core/mcp/overview.md)
 - [完整 API 参考](../api/full-reference.md)
-
----
-
-*本文档由 Claude Code 自动生成*

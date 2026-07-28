@@ -830,7 +830,3 @@ graph LR
 - [插件 LLM 集成指南](../../plugins/llm-integration-guide.md)
 - [插件开发指南](../plugin-system/plugin-development.md)
 - [系统架构概述](../../architecture/overview.md)
-
----
-
-*本文档由 Claude Code 自动生成*

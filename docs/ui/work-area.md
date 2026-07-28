@@ -250,7 +250,3 @@ flowchart TD
 - [主窗口](main-window.md)
 - [技能面板](skills-panel.md)
 - [IPlugin 接口](../core/plugin-system/iplugin.md)
-
----
-
-*本文档由 Claude Code 自动生成*

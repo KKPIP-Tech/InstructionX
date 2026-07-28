@@ -50,7 +50,3 @@ InstructionX 支持第三方插件。第三方插件通过 **GitHub 插件安装
 - [插件开发指南](../core/plugin-system/plugin-development.md)
 - [IPlugin 接口](../core/plugin-system/iplugin.md)
 - [PluginManager](../core/plugin-system/plugin-manager.md)
-
----
-
-*本文档由 Claude Code 自动生成*

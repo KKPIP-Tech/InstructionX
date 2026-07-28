@@ -530,7 +530,3 @@ class TextFormattingPlugin(IPlugin):
 - [插件系统概述](overview.md)
 - [PluginManager](plugin-manager.md)
 - [插件开发指南](plugin-development.md)
-
----
-
-*本文档由 Claude Code 自动生成*

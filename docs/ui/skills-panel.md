@@ -426,7 +426,3 @@ SkillButton[active="true"] {
 - [主窗口](main-window.md)
 - [工作区](work-area.md)
 - [IPlugin 接口](../core/plugin-system/iplugin.md)
-
----
-
-*本文档由 Claude Code 自动生成*

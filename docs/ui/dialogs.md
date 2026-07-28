@@ -340,7 +340,3 @@ dialog.exec()
 - [技能面板](skills-panel.md)
 - [插件系统概述](../core/plugin-system/overview.md)
 - [GitHub 插件安装器](../core/plugin-system/plugin-installer.md)
-
----
-
-*本文档由 Claude Code 自动生成*

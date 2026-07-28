@@ -534,8 +534,3 @@ def get_mcp_manager() -> "MCPManager":
 - [后台任务概述](../core/background-task/overview.md)
 - [LLM Provider 概述](../core/llm-provider/overview.md)
 - [MCP 协议模块概述](../core/mcp/overview.md)
-
----
-
-*本文档由 Claude Code 自动生成*
-

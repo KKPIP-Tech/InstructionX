@@ -571,7 +571,3 @@ def changeEvent(self, event):
 - [工作区](work-area.md)
 - [对话框组件](dialogs.md)
 - [系统架构概述](../architecture/overview.md)
-
----
-
-*本文档由 Claude Code 自动生成*

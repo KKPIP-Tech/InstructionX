@@ -1123,7 +1123,3 @@ class Service:
 - [接口层概述](../core/interfaces/overview.md)
 - [DataProvider 概述](../core/data-provider/overview.md)
 - [LLM Provider 概述](../core/llm-provider/overview.md)
-
----
-
-*本文档由 Claude Code 自动生成*

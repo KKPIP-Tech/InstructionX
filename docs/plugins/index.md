@@ -51,7 +51,3 @@ InstructionX 不再捆绑预装插件，而是通过 **GitHub 插件安装器** 
 - [PluginManager](../core/plugin-system/plugin-manager.md)
 - [GitHub 插件安装器](../core/plugin-system/plugin-installer.md)
 - [LLM 集成开发指南](llm-integration-guide.md)
-
----
-
-*本文档由 Claude Code 自动生成*

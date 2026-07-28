@@ -705,7 +705,3 @@ task_id = task_manager.register_scheduled_task(
 - [LLM Provider 概述](../core/llm-provider/overview.md)
 - [LLM Provider API 参考](../core/llm-provider/api-reference.md)
 - [插件系统概述](../core/plugin-system/overview.md)
-
----
-
-*本文档由 Claude Code 自动生成*

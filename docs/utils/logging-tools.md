@@ -234,7 +234,3 @@ from utils import get_name
 - [插件开发指南](../core/plugin-system/plugin-development.md)
 - [后台任务概述](../core/background-task/overview.md)
 - [LLM Provider 概述](../core/llm-provider/overview.md)
-
----
-
-*本文档由 Claude Code 自动生成*

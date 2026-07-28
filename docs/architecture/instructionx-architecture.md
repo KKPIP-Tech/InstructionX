@@ -860,4 +860,3 @@ class IDataProvider(ABC):
 
 *文档生成时间：2026-04-28*
 *框架版本：dev branch*
-*分析工具：Claude Code Architecture Analysis Agent*

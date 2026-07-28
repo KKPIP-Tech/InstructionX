@@ -235,7 +235,3 @@ mcp_manager = get_mcp_manager()
 ## 版本
 
 本文档对应 InstructionX 项目最新版本。
-
----
-
-*本文档由 Claude Code 自动生成*

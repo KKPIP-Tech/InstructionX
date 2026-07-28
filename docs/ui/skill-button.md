@@ -231,7 +231,3 @@ button.set_active(True)
 
 - [技能面板](skills-panel.md)
 - [主窗口](main-window.md)
-
----
-
-*本文档由 Claude Code 自动生成*

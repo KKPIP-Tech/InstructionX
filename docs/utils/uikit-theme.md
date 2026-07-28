@@ -383,7 +383,3 @@ def switch_to_light(app: QApplication):
 - [工作区文档](../ui/work-area.md)
 - [对话框组件](../ui/dialogs.md)
 - [系统架构概述](../architecture/overview.md)
-
----
-
-*本文档由 Claude Code 自动生成*
