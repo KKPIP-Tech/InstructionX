@@ -7,7 +7,7 @@
 MiniMax API 文档: https://platform.minimaxi.com/docs/api-reference
 
 支持的模型:
-    - CHAT_MODELS: 文本聊天模型（MiniMax-M2.5, MiniMax-M2.1 等）
+    - CHAT_MODELS: 文本聊天模型（MiniMax-M3, MiniMax-M2.7 等）
     - EMBEDDING_MODELS: 向量嵌入模型（embedding-2）
 
 Classes:
@@ -79,6 +79,7 @@ class MiniMaxProvider(BaseProvider):
     # MiniMax 官方没有提供模型列表 API，使用预设列表
     # 参考: https://platform.minimaxi.com/docs/api-reference/api-overview
     CHAT_MODELS = [
+        "MiniMax-M3",
         "MiniMax-M2.7",
         "MiniMax-M2.7-highspeed",
         "MiniMax-M2.5",
@@ -94,6 +95,11 @@ class MiniMaxProvider(BaseProvider):
 
     # 预设模型详情（从官方文档获取）
     MODEL_DETAILS = {
+        "MiniMax-M3": {
+            "context_length": 1000000,
+            "support_function_calling": True,
+            "description": "最新 M 系列语言模型，适用于 Agent 推理、工具调用、代码和长上下文任务"
+        },
         "MiniMax-M2.7": {
             "context_length": 204800,
             "support_function_calling": True,
