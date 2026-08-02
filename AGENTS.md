@@ -85,7 +85,7 @@ python -m pytest test/ -q --tb=short -p no:cacheprovider
 
 ## 框架开发流程与注意事项（重要）
 
-> 本节规范 **InstructionX 框架本身**（`core/`、`ui/`、`utils/` 等）的迭代开发流程，适用于所有框架级改动。插件开发请遵循 `plugin-development.md`。
+> 本节规范 **InstructionX 框架本身**（`core/`、`ui/`、`utils/` 等）的迭代开发流程，适用于所有框架级改动。插件开发请遵循 `AGENTS-for-PLUGIN-DEV.md`。
 
 ### 分支约定（重要）
 
@@ -316,7 +316,7 @@ config/ data/ logs/         # 运行时生成：配置、数据、日志
   - `information.py`：定义 `IPluginInfo` 子类（版本用 `PluginVersion.from_string("release.x.y.z")`、`service_api` 工具描述等）；提供 `service_api` + `service.py`（类名以 `Service` 结尾）时，框架**自动注册跨插件 API 并同步为 MCP 工具**（不自动进入 LLM ToolRegistry，LLM 直接调用需插件实现 `IPlugin.llm_tools` 或自行注册）
   - `service.py`：插件服务/公开 API 层
   - `config/`：插件配置目录
-- 硬性规则（见根目录 `plugin-development.md`，注意该文件是面向插件开发代理的规范）：
+- 硬性规则（见根目录 `AGENTS-for-PLUGIN-DEV.md`，注意该文件是面向插件开发代理的规范）：
   - **`ui/` 中不写业务逻辑**：槽函数不超过 5 行，委托给 `service.py` / `function/`
   - **所有 import 必须放在文件顶部**（PEP 8 顺序：标准库/第三方/本地），禁止函数级 import（包括为规避循环导入）
   - 无魔法数字
@@ -333,7 +333,7 @@ config/ data/ logs/         # 运行时生成：配置、数据、日志
 | `config/mcp_config.json` | MCP Server/Client 配置 |
 | `config/plugin_order.json` | 插件显示顺序（未分组插件之间的顺序） |
 | `config/plugin_groups.json` | 用户自定义分组（schema v2：official/thirdparty 各自含 groups 分组数组 + order 面板统一顺序（分组与未分组插件混排）；v1 自动迁移） |
-| `config/plugin_registry.json` | 已安装插件注册表（schema v1：版本/来源/安装时间，升级降级与更新检查依据；启动时自动回填） |
+| `config/plugin_registry.json` | 已安装插件注册表（schema v1：顶层显式 `version: 1`（`PluginRegistry.SCHEMA_VERSION`），插件条目含版本/来源/安装时间，升级降级与更新检查依据；启动时自动回填） |
 | `data/data.db` | 插件数据（SQLite + WAL；另有 `-wal`/`-shm` 伴生文件） |
 | `data/tasks.json` | 后台任务状态 |
 | `data/llm_usage.json` | LLM 用量记录 |
@@ -375,3 +375,6 @@ config/ data/ logs/         # 运行时生成：配置、数据、日志
 - LLM：`docs/core/llm-provider/`、`docs/plugins/llm-integration-guide.md`
 - MCP：`docs/core/mcp/overview.md`
 - API 参考：`docs/api/full-reference.md`
+
+**根目录历史设计报告**（已落地为正式文档，仅作决策溯源参考）：
+- `close-to-tray-report.md` — 关闭确认弹窗与系统托盘运行的实现分析报告（531 行，2026-07-31）；已被 `docs/ui/system-tray.md` 与 `docs/ui/dialogs.md §6 CloseConfirmDialog` 完整替代，**当前文档地图不再单列**。如需查阅决策溯源可在 git 历史中追踪。

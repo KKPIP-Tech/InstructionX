@@ -52,7 +52,7 @@ InstructionX 是一个功能强大的**插件集成框架**，允许你根据实
 
 内置多厂商 LLM 对接能力，通过 `LLMPluginService` 提供完整的对话管理和工具调用自动化：
 
-- **多 Provider 支持**：MiniMax、SiliconFlow、智谱 GLM、Ollama、OpenAI 等
+- **多 Provider 支持**：MiniMax、SiliconFlow、智谱 GLM、Ollama、OpenAI（共 5 个内置厂商预设） + 1 个 `openai-compatible` 兜底适配器（任意 OpenAI 兼容端点零代码接入）
 - **对话管理**：多会话创建、切换、历史自动管理（上下文自动截断当前未实现）
 - **ToolCallExecutor**：自动处理工具调用多轮循环（默认最多 `max_turns=5` 轮），插件只需注册工具
 - **多模态支持**：图片理解（Vision）、图片生成、TTS 语音合成
@@ -108,7 +108,7 @@ InstructionX 是一个功能强大的**插件集成框架**，允许你根据实
 内置 InstructionX_UIKit 组件库，提供统一的现代化界面外观：
 - **全局主题**：支持 light/dark/auto 三种主题模式，可通过菜单或快捷键切换，并根据操作系统设置自动跟随
 - **设计令牌**：统一的颜色、字体、间距、圆角等 Design Tokens，随主题实时换肤
-- **57+ 组件**：覆盖按钮、输入框、菜单、对话框、图表等常用界面元素，插件开发可直接复用
+- **57 组件**（+ 12 布局 + 8 蓝图节点 + 6 图表 + 2 动画 = 完整组件库）：覆盖按钮、输入框、菜单、对话框、图表等常用界面元素，插件开发可直接复用
 
 ### 🅰️ 多字体支持
 
@@ -207,7 +207,7 @@ graph TD
 | core/llm | `core/llm/` | LLM 提供者框架 |
 | ui | `ui/` | 用户界面组件 |
 | utils | `utils/` | 工具类（日志、主题） |
-| utils/style_qss | `utils/style_qss/` | 兼容 QSS 附录（标题栏/技能面板等主题排除区） |
+| 兼容 QSS 附录 | `ui/uikit_theme.py::_build_compat_qss()` | 主题排除区兼容 QSS 附录（标题栏/技能面板等，旧 `utils/style_qss/` 已被 UIKit 取代） |
 | plugin | `plugin/` | 官方插件目录 |
 | custom_plugin | `custom_plugin/` | 自定义插件目录 |
 | workers | `workers/` | 工作线程（预留扩展） |
@@ -275,7 +275,7 @@ class MyPlugin(IPlugin):
 在 `information.py` 中定义 `service_api`，框架会自动将其转换为 LLM 可调用的工具：
 
 ```python
-from core.interfaces import IPluginInfo  # 推荐导入路径
+from core.plugin import IPluginInfo  # 推荐导入路径（带缓存的框架实现）
 
 class MyPluginInfo(IPluginInfo):
     @property

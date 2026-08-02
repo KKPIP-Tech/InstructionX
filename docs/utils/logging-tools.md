@@ -85,8 +85,9 @@ module_name = get_name()  # 自动返回调用者模块名
 
 | 配置项 | 默认值 | 说明 |
 |--------|--------|------|
-| 日志目录 | `./logs` | 自动创建 |
+| 日志目录 | `./logs` | 自动创建；可通过环境变量 `INSTRUCTIONX_LOG_DIR` 覆盖 |
 | 日志文件 | `application.log` | 主日志文件 |
+| 全局日志等级 | `DEBUG` | 可通过环境变量 `INSTRUCTIONX_LOG_LEVEL` 调节，非法值回退 `DEBUG` |
 | 最大文件大小 | 10MB | 单文件最大字节数 |
 | 备份数量 | 5 | 保留的轮转文件数 |
 | 编码 | utf-8 | 文件编码 |
@@ -189,14 +190,23 @@ graph TB
 
 ### 7.1 模块导出
 
-通过 `utils/__init__.py` 导出：
+通过 `utils/__init__.py` 以 PEP 562 惰性导出（`_LAZY_EXPORTS` + 模块级 `__getattr__`，按需加载，避免 `import utils` 时牵入 PySide6 等重量依赖）：
 
 ```python
-from .logging_tools import LoggerManager, get_name
+_LAZY_EXPORTS = {
+    "LoggerManager": ("utils.logging_tools", "LoggerManager"),
+    "get_name": ("utils.logging_tools", "get_name"),
+    "is_ui_thread": ("utils.thread_utils", "is_ui_thread"),
+    "run_in_ui_thread": ("utils.thread_utils", "run_in_ui_thread"),
+    "run_in_ui_thread_sync": ("utils.thread_utils", "run_in_ui_thread_sync"),
+}
 
 __all__ = [
     "LoggerManager",
-    "get_name"
+    "get_name",
+    "is_ui_thread",
+    "run_in_ui_thread",
+    "run_in_ui_thread_sync",
 ]
 ```
 

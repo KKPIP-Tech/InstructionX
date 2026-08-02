@@ -230,7 +230,7 @@ flowchart TD
 
     subgraph Write [写入数据]
         W1[set_plugin_data] --> W2[点查/点写 SQLite]
-        W2 --> W3[更新 _cache 与 LRU 缓存]
+        W2 --> W3[更新 _cache 并使 LRU 缓存对应项失效]
         W3 --> W4{PUBLIC & notify?}
         W4 -->|是| W5[释放 _file_lock 后通知]
         W4 -->|否| W6[结束]
@@ -248,18 +248,7 @@ flowchart TD
 
 `set_plugin_data` 等单条写入使用 SQLite 语句级原子性（UPSERT）保证，不依赖显式事务。`save_data` / `reset_all_data` / `set_active_instance` 使用 `BEGIN IMMEDIATE` 显式事务，异常时自动回滚。
 
-```python
-def _write_to_disk(self, data):
-    """将完整字典结构写回 SQLite"""
-    with self._backend.transaction():
-        # 1. 先清空子表
-        txn.execute("DELETE FROM plugin_data;")
-        txn.execute("DELETE FROM active_instances;")
-        # 2. 再清空父表
-        txn.execute("DELETE FROM plugins;")
-        # 3. 重新插入 plugins、plugin_data、active_instances
-        ...
-```
+全量写回的等效逻辑位于 `SQLiteBackend.save_data()`（`core/data/sqlite_backend.py`）：在 `transaction()` 上下文（`BEGIN IMMEDIATE` ... `COMMIT` / `ROLLBACK`）中先清空子表（`plugin_data`、`active_instances`）再清空父表（`plugins`），随后重新插入 `plugins`、`plugin_data`、`active_instances` 三张表，提交后清空 LRU 缓存（`_value_cache.clear()`）。所有 SQL 语句统一取自 `sql_map.SQLMap`（`core/data/sql_map.py`），不在方法内散落字面 SQL。
 
 ### 7.3 JSON 应急回退
 
@@ -267,7 +256,7 @@ def _write_to_disk(self, data):
 
 ### 7.4 从 JSON 自动迁移
 
-首次启动时，如果检测到旧的 `data/data.json` 且 `data/data.db` 尚未初始化，`SQLiteBackend` 会自动将 JSON 数据导入 `data/data.db`。迁移成功后，原 `data.json` 会被重命名为 `data.json.migrated-<timestamp>.bak`；若迁移失败，不完整的数据库文件会被删除，下次启动仍可重试。
+首次启动时，如果检测到旧的 `data/data.json` 且 `data/data.db` 尚未初始化，`SQLiteBackend` 会自动将 JSON 数据导入 `data/data.db`。迁移成功后，原 `data.json` 会被重命名为 `data.migrated-<timestamp>.bak`；若迁移失败，不完整的数据库文件会被删除，下次启动仍可重试。
 
 ---
 

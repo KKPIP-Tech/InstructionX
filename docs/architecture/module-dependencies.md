@@ -109,7 +109,7 @@ self.config_manager: PluginConfigManager  # 插件顺序配置管理器
 **职责**:
 | 功能 | 说明 |
 |------|------|
-| 数据持久化 | JSON 文件 + 原子写入 |
+| 数据持久化 | SQLite（WAL）默认后端（`data/data.db`）；JSON 应急回退（`INSTRUCTIONX_DATAPROVIDER_BACKEND=json`，原子写入） |
 | 插件注册 | 插件实例 ID 管理 |
 | 命名空间 | PRIVATE / PUBLIC 数据隔离 |
 | 发布/订阅 | 插件间数据变更通知 |
@@ -121,7 +121,7 @@ self.data_dir: Path              # 数据目录
 self._cache: Dict                # 内存缓存
 self._subscriptions: Dict        # 订阅表
 self.assets_dir: Path            # 资源目录
-self.temp_file: Path             # 原子写入临时文件路径
+self.temp_file: Path             # 原子写入临时文件路径（仅 JSON 应急后端使用）
 ```
 
 ### 2.3 BackgroundTaskManager
@@ -146,7 +146,7 @@ self._running_tasks: Dict                    # 运行中的任务
 self._scheduled_task_factories: Dict         # 定时任务工厂
 self._long_running_task_factories: Dict      # 长期任务工厂
 self._storage: TaskStorage                   # 任务持久化存储
-self._scheduler: TaskScheduler              # 任务调度器（当前为空实现，实际调度判断由 SchedulerCallback 完成）
+self._scheduler: TaskScheduler              # 任务调度器（轻量生命周期占位，实际调度由 _check_scheduled_tasks() daemon 线程 + SchedulerCallback 完成）
 self._stop_event: threading.Event           # 优雅关闭事件
 self._is_shutdown: bool                     # 关闭标志
 ```
@@ -262,7 +262,7 @@ sequenceDiagram
 ```python
 @dataclass
 class PluginServices:
-    llm_facade: "LLMPluginService"              # LLM 服务（必需字段）
+    llm_facade: "ILLMService"                       # LLM 服务（必需字段，实际注入 LLMPluginService 单例）
     data_provider: "DataProvider"               # 数据服务（必需字段）
     task_manager: "BackgroundTaskManager"       # 任务服务（必需字段）
     logger: "ILogger"                           # 日志服务（必需字段）
@@ -320,6 +320,7 @@ class PluginServices:
             "task_id": "scheduled-uuid-1",
             "plugin_id": "plugin-uuid",
             "name": "定时任务",
+            "func_name": "MyService.my_scheduled_func",
             "interval": 60,
             "enabled": true,
             "last_run": "2026-01-01T00:00:00",
@@ -331,6 +332,7 @@ class PluginServices:
             "task_id": "long-running-uuid-1",
             "plugin_id": "plugin-uuid",
             "name": "Web服务",
+            "func_name": "MyService.my_long_running_func",
             "enabled": true,
             "auto_restart": true,
             "current_status": "running",
@@ -379,7 +381,7 @@ graph TD
     PS2 -.->|llm_facade| LLMS2
     PS2 -.->|"mcp_manager"| MCPM
     PS2 -.->|"mcp_client"| MCPC
-
+```
 
 **依赖规则**:
 - 入口层（main.py）直接持有 BackgroundTaskManager 的生命周期管理（初始化 + shutdown）

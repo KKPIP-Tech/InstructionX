@@ -17,9 +17,10 @@ docs/
 ├── README.md                         # 本文档 - 文档索引和导航
 │
 ├── architecture/                     # 架构文档
-│   ├── overview.md                  # 系统架构概述
-│   ├── module-dependencies.md      # 模块依赖关系
-│   └── full-analysis.md            # 完整架构分析
+│   ├── overview.md                       # 系统架构概述
+│   ├── module-dependencies.md            # 模块依赖关系
+│   ├── full-analysis.md                  # 完整架构分析
+│   └── instructionx-architecture.md      # 框架 dev-branch 架构分析（含自检清单）
 │
 ├── core/                            # 核心模块文档
 │   ├── interfaces/                  # 抽象接口层

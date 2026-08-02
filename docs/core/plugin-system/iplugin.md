@@ -527,6 +527,16 @@ class TextFormattingPlugin(IPlugin):
 
 ## 7. 相关文档
 
+**插件系统内部**：
 - [插件系统概述](overview.md)
-- [PluginManager](plugin-manager.md)
-- [插件开发指南](plugin-development.md)
+- [PluginManager](plugin-manager.md)（`PluginManager` 如何加载/调用 `IPlugin`）
+- [插件开发指南](plugin-development.md)（如何继承 `IPlugin` 开发新插件）
+- [GitHub 插件安装器](plugin-installer.md)（`entrance.py` 文件如何被发现）
+
+**接口层与 API 索引**：
+- [接口层概述](../interfaces/overview.md)（`IPlugin` / `IPluginInfo` 在接口层的定位）
+- [完整 API 参考 §7.2 IPlugin](../../api/full-reference.md#72-iplugin插件接口)
+
+**相关子系统**：
+- [MCP 协议模块概述](../mcp/overview.md)（`IMCPTool` 是 `IPlugin` 的 MCP 衍生接口）
+- [LLM 集成指南](../../plugins/llm-integration-guide.md)（插件如何通过 `PluginServices.llm_facade` 调 LLM）

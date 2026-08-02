@@ -51,7 +51,7 @@ Built-in GitHub plugin installer for installing plugins from any GitHub URL:
 
 Built-in multi-provider LLM integration with `LLMPluginService` providing complete conversation management and automated tool calling:
 
-- **Multi-Provider Support**: MiniMax, SiliconFlow, Zhipu GLM, Ollama, OpenAI, and more
+- **Multi-Provider Support**: MiniMax, SiliconFlow, Zhipu GLM, Ollama, OpenAI (5 built-in vendor presets) + 1 `openai-compatible` fallback adapter (zero-code integration for any OpenAI-compatible endpoint)
 - **Conversation Management**: Multi-session creation, switching, automatic history management (context auto-truncation is not currently implemented)
 - **ToolCallExecutor**: Automatic multi-turn tool calling loop (default max_turns=5), plugins only need to register tools
 - **Multimodal Support**: Image understanding (Vision), image generation, TTS voice synthesis
@@ -107,7 +107,7 @@ Plugins can call each other's APIs to achieve functional collaboration:
 Built-in InstructionX_UIKit component library providing a unified modern interface appearance:
 - **Global Theme**: Support for light/dark/auto theme modes, switchable via menu or shortcuts, with automatic OS-level theme following
 - **Design Tokens**: Unified color, font, spacing, and radius tokens that restyle in real time with theme switching
-- **57+ Components**: Covering buttons, inputs, menus, dialogs, charts, and other common UI elements, ready for plugin development reuse
+- **57 Components** (+ 12 Layouts + 8 Blueprint Nodes + 6 Charts + 2 Animations = complete component library): Covering buttons, inputs, menus, dialogs, charts, and other common UI elements, ready for plugin development reuse
 
 ### 🅰️ Multi-Font Support
 
@@ -205,7 +205,7 @@ graph TD
 | core/llm | `core/llm/` | LLM provider framework |
 | ui | `ui/` | User interface components |
 | utils | `utils/` | Utility classes (logging, themes) |
-| utils/style_qss | `utils/style_qss/` | Compatibility QSS appendix (title bar / skills panel and other theme exclusion zones) |
+| Compat QSS appendix | `ui/uikit_theme.py::_build_compat_qss()` | Theme-exclusion-zone compatibility QSS appendix (title bar / skills panel, etc.; old `utils/style_qss/` replaced by UIKit) |
 | plugin | `plugin/` | Official plugin directory |
 | custom_plugin | `custom_plugin/` | Custom plugin directory |
 | workers | `workers/` | Worker threads (reserved for extension) |
@@ -274,7 +274,7 @@ class MyPlugin(IPlugin):
 Define `service_api` in `information.py`, and the framework will automatically convert it to LLM-callable tools:
 
 ```python
-from core.plugin.plugin_info_interface import IPluginInfo
+from core.plugin import IPluginInfo  # Recommended import path (cached framework implementation)
 
 class MyPluginInfo(IPluginInfo):
     @property

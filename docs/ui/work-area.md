@@ -93,14 +93,12 @@ def clear(self, clear_highlight: bool = True):
                        设为 False 时仅清除 Widget，不触发高亮回调。
     """
     # 移除并销毁所有 Widget
-    while self.work_layout.count() > 0:
+    while self.work_layout.count():
         item = self.work_layout.takeAt(0)
         if item:
             widget = item.widget()
             if widget:
                 widget.deleteLater()
-        if item:
-            del item
 
     # 如果需要清除高亮，调用回调（使用 hasattr 做防御性检查）
     if clear_highlight and hasattr(self, '_clear_highlight_callback'):
@@ -117,21 +115,19 @@ def clear_keep_highlight(self):
     内部实现：遍历布局，调用 hide() 隐藏而非 deleteLater() 销毁 Widget，
     保留实例以供 IPlugin 缓存复用。用于切换插件时保留技能按钮的选中状态。
     """
-    while self.work_layout.count() > 0:
+    while self.work_layout.count():
         item = self.work_layout.takeAt(0)
         if item:
             widget = item.widget()
             if widget:
                 widget.hide()  # 隐藏而非销毁
             # 不调用 deleteLater()，保留 widget 实例以便缓存复用
-        if item:
-            del item
 ```
 
 ### 4.5 设置清除高亮回调
 
 ```python
-def set_clear_highlight_callback(self, callback: Callable):
+def set_clear_highlight_callback(self, callback):
     """
     设置清除高亮的回调函数
 
@@ -147,7 +143,10 @@ def set_clear_highlight_callback(self, callback: Callable):
 
 ```python
 class WorkArea:
-    def __init__(self, parent=None):
+    def __init__(self, parent: QWidget):
+        # 父窗口 widget 引用（全项目无外部访问，命名私有化）
+        self._parent_widget = parent
+
         # 创建根 Widget
         self.work_area = QWidget(parent)
 
@@ -162,10 +161,9 @@ class WorkArea:
         self.work_placeholder.style().unpolish(self.work_placeholder)
         self.work_placeholder.style().polish(self.work_placeholder)
         self.work_layout.addWidget(self.work_placeholder)
-
-        # 回调函数
-        self._clear_highlight_callback = None
 ```
+
+> **注意**：`_clear_highlight_callback` 不在 `__init__` 中初始化，仅由 `set_clear_highlight_callback()` 赋值；`clear()` 通过 `hasattr(self, '_clear_highlight_callback')` 做防御性检查，未设置回调时不会报错。
 
 ---
 
@@ -218,8 +216,8 @@ self.work_area.clear_keep_highlight()
 | 属性 | 值 |
 |------|------|
 | 布局类型 | QVBoxLayout |
-| 伸缩因子 | 1 (占用剩余空间) |
-| 尺寸策略 | Expanding |
+| 伸缩因子 | 1（由调用方 `addWidget(..., stretch=1)` 设置，占用剩余空间） |
+| 尺寸策略 | 未显式设置（QWidget 默认 Preferred），依靠伸缩因子拉伸 |
 | 布局边距 | 0 (无内边距) |
 
 ---

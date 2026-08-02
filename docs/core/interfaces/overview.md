@@ -76,7 +76,7 @@ graph TB
 | 接口 | 文件 | 说明 | 实现类 |
 |------|------|------|--------|
 | **IPlugin** | `i_plugin.py` | 插件抽象基类 | `core/plugin/plugin_interface.py` |
-| **IPluginInfo** | `i_plugin_info.py` | 插件信息抽象基类 | `core/plugin/plugin_info_interface.py` |
+| **IPluginInfo** | `i_plugin_info.py` | 插件信息抽象基类 | `core/plugin/plugin_info_interface.py`（仅为向后兼容导入路径，非实现类） |
 | **IDataProvider** | `i_data_provider.py` | 数据提供者接口 | `core/data/data_provider.py` |
 | **ITaskManager** | `i_task_manager.py` | 后台任务管理器接口 | `core/task/background_task.py` |
 | **ILLMService** | `i_llm_service.py` | LLM 插件服务接口 | `core/llm/plugin_service.py`（`LLMPluginService` **显式继承** `ILLMService`） |
@@ -115,6 +115,7 @@ graph TB
 - `_create_widget(parent, data_provider)`: 创建 UI（抽象方法，必须实现）
 - `get_widget(parent, data_provider)`: 获取 Widget（默认直接调用 `_create_widget`，具体实现可添加缓存）
 - `on_plugin_loaded(plugin_id=None, **kwargs)`: 加载完成回调（PluginManager 调用时不传任何参数，可通过 `self._services` 访问注入的服务容器）
+- `on_plugin_unloaded()`: 卸载/热重载前回调（框架在销毁插件实例前调用，子类可重写以释放资源，默认空实现保证旧插件向后兼容）
 
 **使用示例**:
 ```python
@@ -277,6 +278,7 @@ class MyPlugin(IPlugin):
 - `register_async_task(plugin_id, name, func, callback, args, kwargs)`: 注册异步任务
 - `cancel_task(task_id)`: 取消任务（仅限普通任务），返回是否成功
 - `clear_completed_tasks(plugin_id=None)`: 清理已完成的任务，返回清理数量
+- `shutdown()`: 关闭任务管理器，释放所有资源（应用退出链路调用）
 
 *定时任务*:
 - `register_scheduled_task(plugin_id, name, func, interval, callback, args, kwargs)`: 注册定时任务
@@ -374,6 +376,10 @@ class MyPlugin(IPlugin):
 - `get_tool_executor()`: 获取工具调用执行器
 - `get_shared_tool_registry()`: 获取共享工具注册表
 
+*多模态*:
+- `generate_image(prompt, provider, model, size, quality)`: 图像生成，返回 `ImageResult`
+- `text_to_speech(text, provider, model, voice)`: 语音合成，返回 `AudioResult`
+
 *实例与模型查询*:
 - `list_providers()`: 列出所有 Provider 实例信息（`List[ProviderInfo]`，不含 api_key）
 - `get_models(provider="default")`: 获取单实例模型列表（`List[ModelInfo]`）
@@ -385,7 +391,7 @@ class MyPlugin(IPlugin):
 - `validate_provider(provider)`: 验证 Provider 配置是否有效
 - `last_stream_response`（property）: 最近一次流式请求的聚合响应
 
-> **已移除的旧方法**：`get_provider` / `get_all_providers` / `get_raw_provider` / `get_cached_models` / `get_available_providers`（底层泄漏）；`load_image_as_base64` 迁至 `utils/image_utils.py`（纯文件工具）。迁移对照见 `temp/llm-api-v2-migration.md`。
+> **已移除的旧方法**：`get_provider` / `get_all_providers` / `get_raw_provider` / `get_cached_models` / `get_available_providers`（底层泄漏）；`load_image_as_base64` 迁至 `utils/image_utils.py`（纯文件工具）。旧插件迁移请对照 [LLM 集成指南](../../plugins/llm-integration-guide.md) 中的 `ILLMService` 用法改写调用。
 
 **使用示例**:
 ```python
@@ -625,7 +631,7 @@ from core.interfaces import IPlugin, IPluginInfo
 | 接口 | 实现类 | 文件位置 |
 |------|---------|-----------|
 | `IPlugin` | `IPlugin` | `core/plugin/plugin_interface.py` |
-| `IPluginInfo` | `IPluginInfo` | `core/plugin/plugin_info_interface.py` |
+| `IPluginInfo` | —（抽象接口，由各插件自行实现） | `core/interfaces/i_plugin_info.py`（`core/plugin/plugin_info_interface.py` 仅为向后兼容导入路径） |
 | `IDataProvider` | `DataProvider` | `core/data/data_provider.py` |
 | `ITaskManager` | `BackgroundTaskManager` | `core/task/background_task.py` |
 | `ILLMService` | `LLMPluginService` | `core/llm/plugin_service.py`（显式继承 `ILLMService`，经 `PluginServices.llm_facade` 注入） |
