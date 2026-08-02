@@ -14,7 +14,7 @@
 - SQLite WAL 数据持久化层（DataProvider）、后台任务系统（BackgroundTaskManager）
 - InstructionX_UIKit 主题与组件体系（`ui/InstructionX_UIKit` 组件库：设计令牌 + light/dark/auto 全局主题，57 组件 + 原生图表引擎）、FontMap 多字体系统
 
-- 应用标识：`InstructionX - CE`（组织名 `LumenThread`），当前版本 **Alpha 1.0.3**
+- 应用标识：`InstructionX - CE`（组织名 `LumenThread`），当前版本 **Alpha 1.0.4**
 - **版本号单一来源为 `core/version.py` 的 `VERSION` 常量**（pyproject 通过 AST 静态读取，修改版本只改这里）
 - 平台：**仅支持 Windows 10/11**，Python **>= 3.14**
 - 许可证：**InstructionX Commercial Source License（商业源码许可证，非开源）**，详见 `LICENSE`
