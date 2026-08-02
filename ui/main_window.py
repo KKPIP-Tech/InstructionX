@@ -36,7 +36,7 @@ from ui.dialog.close_confirm_dialog import CloseChoice, CloseConfirmDialog
 from core.plugin.manager import PluginManager
 from core.data.data_provider import DataProvider, DataNamespace
 from core.interfaces import IPlugin, TaskStatus
-from core.task.background_task import BackgroundTaskManager, LONG_TASK_STATUS_RUNNING
+from core.task.background_task import BackgroundTaskManager
 from core.llm.llm_provider import get_llm_provider
 from utils.logging_tools import LoggerManager, get_name
 from ui.uikit_theme import apply_uikit_theme, current_theme_mode
@@ -817,7 +817,10 @@ class InstructionXMainWindow(QMainWindow):
                 if task.status in (TaskStatus.RUNNING, TaskStatus.PENDING):
                     entries.append((task.name, self._resolve_plugin_name(task.plugin_id)))
             for long_task in manager.get_long_running_tasks():
-                if long_task.current_status == LONG_TASK_STATUS_RUNNING:
+                # current_status 同时承载生命周期状态与插件自由文本，
+                # 不能据文本判定运行态（背景：状态上报会覆盖 "running"），
+                # 以运行时表为准
+                if manager.is_long_task_running(long_task.task_id):
                     entries.append(
                         (long_task.name, self._resolve_plugin_name(long_task.plugin_id))
                     )
