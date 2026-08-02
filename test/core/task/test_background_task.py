@@ -624,3 +624,38 @@ def test_unregister_scheduled_task_not_found_returns_false(mocker):
     result = manager.unregister_scheduled_task("task-missing")
 
     assert result is False
+
+
+# ---------------------------------------------------------------------------
+# is_long_task_running 回归测试（以运行时表为准，不受状态文本影响）
+# ---------------------------------------------------------------------------
+
+def test_is_long_task_running_true_when_in_running_table(mocker):
+    """任务在运行时表中时返回 True。"""
+    manager, _, _, _ = _make_btm(mocker)
+    manager._running_long_running_tasks["task-1"] = MagicMock()
+
+    assert manager.is_long_task_running("task-1") is True
+
+
+def test_is_long_task_running_unaffected_by_status_text(mocker):
+    """回归：插件上报自由文本状态后运行态判定不受影响。
+
+    历史 bug：托盘按 current_status == "running" 过滤长期任务，
+    update_long_running_task_status 的自由文本覆盖后任务从托盘消失；
+    修复后判定以运行时表为准。
+    """
+    manager, mock_storage, _, _ = _make_btm(mocker)
+    task = MagicMock()
+    manager._running_long_running_tasks["task-1"] = task
+
+    manager.update_long_running_task_status("task-1", "已运行 3 秒")
+
+    assert manager.is_long_task_running("task-1") is True
+
+
+def test_is_long_task_running_false_when_not_in_table(mocker):
+    """任务不在运行时表中（停止/不存在）返回 False。"""
+    manager, _, _, _ = _make_btm(mocker)
+
+    assert manager.is_long_task_running("task-missing") is False
