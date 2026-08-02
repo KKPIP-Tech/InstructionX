@@ -659,3 +659,43 @@ def test_is_long_task_running_false_when_not_in_table(mocker):
     manager, _, _, _ = _make_btm(mocker)
 
     assert manager.is_long_task_running("task-missing") is False
+
+
+# ---------------------------------------------------------------------------
+# stop_long_running_task 清理已停止任务残留的回归测试
+# ---------------------------------------------------------------------------
+
+def test_stop_long_task_removes_stopped_storage_residue(mocker):
+    """回归：已停止（不在运行时表）但存储残留的记录可经停止（删除语义）清除。
+
+    历史 bug：stop_long_running_task 对不在运行时表的任务直接返回
+    False，残留记录（重启未恢复/历史会话遗留）永远无法删除。
+    """
+    manager, mock_storage, _, _ = _make_btm(mocker)
+    mock_storage.delete_long_running_task.return_value = True
+
+    result = manager.stop_long_running_task("stopped-task")
+
+    assert result is True
+    mock_storage.delete_long_running_task.assert_called_once_with("stopped-task")
+
+
+def test_stop_long_task_missing_record_returns_false(mocker):
+    """不在运行时表且存储无记录：删除语义返回 False。"""
+    manager, mock_storage, _, _ = _make_btm(mocker)
+    mock_storage.delete_long_running_task.return_value = False
+
+    result = manager.stop_long_running_task("missing-task")
+
+    assert result is False
+
+
+def test_stop_long_task_not_running_no_delete_returns_false(mocker):
+    """不在运行时表且 delete_from_storage=False：无停止对象，返回 False。"""
+    manager, mock_storage, _, _ = _make_btm(mocker)
+
+    result = manager.stop_long_running_task("stopped-task",
+                                            delete_from_storage=False)
+
+    assert result is False
+    mock_storage.delete_long_running_task.assert_not_called()
