@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (
     QApplication, QGraphicsDropShadowEffect
 )
 from PySide6.QtGui import (
-    QAction, QCursor, QMouseEvent, QColor, QCloseEvent, QIcon
+    QAction, QCursor, QMouseEvent, QColor, QCloseEvent, QIcon, QSessionManager
 )
 from PySide6.QtCore import Qt
 
@@ -720,6 +720,32 @@ class InstructionXMainWindow(QMainWindow):
         app = QApplication.instance()
         if app is not None:
             app.aboutToQuit.connect(self._tray_manager.hide)
+            self._setup_session_quit_guard(app)
+
+    def _setup_session_quit_guard(self, app: QApplication) -> None:
+        """接线 Windows 注销/关机守卫：会话结束时静默退出，不弹确认框。
+
+        Windows 注销/关机要求各进程快速响应结束会话；若此时弹出模态
+        确认框无人点击，系统关机会被本程序阻塞（「该应用阻止关机」）。
+        commitDataRequest 是 QGuiApplication 提供的会话结束信号
+        （Windows 上对应 WM_QUERYENDSESSION），回调中直接置 _force_quit
+        并退出事件循环：随后系统下发的 closeEvent 因 _force_quit 已置位
+        而直接 accept，不再弹窗、不阻塞关机。
+        """
+        # hasattr 兜底防御极端裁剪环境；Qt6 桌面平台该信号为标准能力
+        if hasattr(app, "commitDataRequest"):
+            app.commitDataRequest.connect(self._on_commit_data_request)
+
+    def _on_commit_data_request(self, _manager: QSessionManager) -> None:
+        """会话结束（注销/关机）回调：置显式退出标记并静默退出事件循环。
+
+        Args:
+            _manager: 会话管理器（Qt 传入，本应用无需与之交互）
+        """
+        self._force_quit = True
+        app = QApplication.instance()
+        if app is not None:
+            app.quit()
 
     def _minimize_to_tray(self) -> None:
         """最小化到系统托盘：隐藏主窗口、托盘图标驻留并弹通知提示。
