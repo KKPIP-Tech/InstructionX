@@ -32,6 +32,7 @@ from ui.work_area.work_area import WorkArea
 from ui.title_bar import CustomTitleBar
 from ui.usage_panel import UsagePanel
 from ui.tray import TrayIconManager
+from ui.dialog.close_confirm_dialog import CloseChoice, CloseConfirmDialog
 from core.plugin.manager import PluginManager
 from core.data.data_provider import DataProvider, DataNamespace
 from core.interfaces import IPlugin, TaskStatus
@@ -164,7 +165,7 @@ class InstructionXMainWindow(QMainWindow):
 
         # 托盘运行状态（closeEvent 编排用）
         self._force_quit = False            # 显式退出路径置位，closeEvent 直接放行
-        self._close_dialog_showing = False  # 关闭确认框防重入守卫（下一颗粒度使用）
+        self._close_dialog_showing = False  # 关闭确认框防重入守卫
         self._active_plugin: Optional[IPlugin] = None  # 当前激活插件，托盘子菜单标记用
 
         # 创建系统托盘管理器并接线
@@ -651,9 +652,8 @@ class InstructionXMainWindow(QMainWindow):
     def closeEvent(self, event: QCloseEvent) -> None:
         """拦截关闭事件（叉子 / Alt+F4 / 任务栏右键关闭的统一拦截点）。
 
-        本颗粒度（托盘基础能力）尚无确认对话框：除显式退出路径外一律
-        最小化到托盘。下一颗粒度将在此处插入「退出 / 最小化到托盘 / 取消」
-        三按钮确认对话框，分发逻辑已拆分为独立小方法便于插入。
+        每次弹窗询问「退出程序 / 最小化到托盘 / 取消」（不提供记忆选项，
+        每次必问）；显式退出路径（托盘菜单「退出」）直接放行。
         """
         if self._force_quit:
             # 托盘菜单「退出」等显式退出路径：放行关闭并显式结束事件循环
@@ -664,11 +664,45 @@ class InstructionXMainWindow(QMainWindow):
                 app.quit()
             return
         if self._close_dialog_showing:
-            # 防重入：确认框弹出期间的重复关闭触发直接忽略（下一颗粒度启用）
+            # 防重入：确认框弹出期间的重复关闭触发（Alt+F4 连按等）直接忽略
             event.ignore()
             return
+        choice = self._ask_close_choice()
+        self._dispatch_close_choice(choice, event)
+
+    def _ask_close_choice(self) -> CloseChoice:
+        """弹出关闭确认对话框（模态，每次必问），期间置防重入守卫。
+
+        Returns:
+            用户选择的三值枚举；Esc / 对话框叉号等价于 CANCEL
+        """
+        self._close_dialog_showing = True
+        try:
+            return CloseConfirmDialog.ask(self)
+        finally:
+            self._close_dialog_showing = False
+
+    def _dispatch_close_choice(self, choice: CloseChoice, event: QCloseEvent) -> None:
+        """按用户在确认框中的选择分发关闭行为。
+
+        Args:
+            choice: 用户在确认框中的选择
+            event: 原始关闭事件（按分支 accept / ignore）
+        """
+        if choice is CloseChoice.EXIT:
+            # setQuitOnLastWindowClosed(False) 后关窗不再自动退出，需显式 quit
+            self._force_quit = True
+            event.accept()
+            app = QApplication.instance()
+            if app is not None:
+                app.quit()
+            return
+        if choice is CloseChoice.MINIMIZE_TO_TRAY:
+            event.ignore()
+            self._minimize_to_tray()
+            return
+        # 取消：忽略关闭事件，窗口保持原状
         event.ignore()
-        self._minimize_to_tray()
 
     def _setup_tray(self) -> None:
         """创建托盘管理器并接线（信号连接、状态子菜单数据回调注入）。"""
