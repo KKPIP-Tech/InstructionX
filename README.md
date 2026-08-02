@@ -10,7 +10,7 @@
 [![PySide6](https://img.shields.io/badge/PySide6-6.10+-green.svg)](https://doc.qt.io/qtforpython/)
 [![Platform](https://img.shields.io/badge/Platform-Windows-lightgrey.svg)](#)
 [![License](https://img.shields.io/badge/License-Commercial%20Source-orange.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/Alpha-1.0.2%20CE-red.svg)](#)
+[![Version](https://img.shields.io/badge/Alpha-1.0.3%20CE-red.svg)](#)
 
 <p>基于 PySide6 的插件式桌面应用框架，支持 LLM 集成、MCP 协议（Server/Client）、多会话管理与热插拔插件系统</p>
 
@@ -103,14 +103,12 @@ InstructionX 是一个功能强大的**插件集成框架**，允许你根据实
 - **跨插件调用**：一个插件可以调用另一个插件的功能
 - **数据共享**：通过 PUBLIC 命名空间共享数据
 
-### 🎨 StyleQSS 主题系统
+### 🎨 InstructionX_UIKit 主题与组件体系
 
-内置完整的 StyleQSS 样式系统，提供现代化界面外观：
-- **手动切换**：支持 light/dark/auto 三种主题模式，可通过菜单或快捷键切换
-- **自动主题检测**：根据操作系统设置自动切换深色/浅色模式
-- **30+ 控件样式**：覆盖按钮、输入框、菜单、对话框等常用 Qt 控件
-- **9+ 按钮变体**：primary、danger、success、outline、subtle 等
-- **动态加载**：通过样式注册表动态加载和应用 QSS 样式
+内置 InstructionX_UIKit 组件库，提供统一的现代化界面外观：
+- **全局主题**：支持 light/dark/auto 三种主题模式，可通过菜单或快捷键切换，并根据操作系统设置自动跟随
+- **设计令牌**：统一的颜色、字体、间距、圆角等 Design Tokens，随主题实时换肤
+- **57+ 组件**：覆盖按钮、输入框、菜单、对话框、图表等常用界面元素，插件开发可直接复用
 
 ### 🅰️ 多字体支持
 
@@ -209,7 +207,7 @@ graph TD
 | core/llm | `core/llm/` | LLM 提供者框架 |
 | ui | `ui/` | 用户界面组件 |
 | utils | `utils/` | 工具类（日志、主题） |
-| utils/style_qss | `utils/style_qss/` | StyleQSS 样式系统 |
+| utils/style_qss | `utils/style_qss/` | 兼容 QSS 附录（标题栏/技能面板等主题排除区） |
 | plugin | `plugin/` | 官方插件目录 |
 | custom_plugin | `custom_plugin/` | 自定义插件目录 |
 | workers | `workers/` | 工作线程（预留扩展） |
@@ -229,7 +227,7 @@ graph TD
 - [DataProvider 概述](docs/core/data-provider/overview.md)
 - [后台任务概述](docs/core/background-task/overview.md)
 - [LLM 提供者概述](docs/core/llm-provider/overview.md)
-- [StyleQSS 样式系统](docs/utils/style-qss.md)
+- [UIKit 主题系统](docs/utils/uikit-theme.md)
 
 ---
 
@@ -357,7 +355,7 @@ InstructionX 采用 **InstructionX Commercial Source License**(商业源码许�
 
 | 技术 | 用途 | 版本 |
 |------|------|------|
-| InstructionX CE | 应用版本 | Alpha 1.0.2 |
+| InstructionX CE | 应用版本 | Alpha 1.0.3 |
 | PySide6 | Qt GUI 框架 | >= 6.10 |
 | Python | 编程语言 | >= 3.14 |
 | requests | HTTP 请求 | >= 2.32 |
@@ -366,7 +364,7 @@ InstructionX 采用 **InstructionX Commercial Source License**(商业源码许�
 | orjson | 高性能 JSON 序列化 | >= 3.11.0,<4 |
 | matplotlib | 用量统计图表 | >= 3.10 |
 | packaging | 插件依赖版本检查 | >= 23.0 |
-| StyleQSS | 界面主题 | 内置 |
+| InstructionX_UIKit | 界面主题与组件库 | 内置 |
 
 ---
 

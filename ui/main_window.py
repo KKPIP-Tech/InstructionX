@@ -22,7 +22,7 @@ from PySide6.QtCore import Qt
 # ===================================================================
 # 自定义工具
 from ui.skills_panel.panel import SkillsPanel
-from ui.dialog.plugin_order_dialog import PluginOrderDialog
+from ui.dialog.plugin_management_dialog import PluginManagementDialog
 from ui.dialog.about_dialog import AboutDialog
 from ui.dialog.license_dialog import LicenseDialog
 from ui.dialog.github_plugin_install_dialog import GitHubPluginInstallDialog
@@ -33,8 +33,9 @@ from ui.usage_panel import UsagePanel
 from core.plugin.manager import PluginManager
 from core.data.data_provider import DataProvider, DataNamespace
 from core.llm.llm_provider import get_llm_provider
-from utils.style_qss import get_style_qss, set_style_qss_theme
 from utils.logging_tools import LoggerManager, get_name
+from ui.uikit_theme import apply_uikit_theme, current_theme_mode
+from InstructionX_UIKit import T
 
 
 # ===================================================================
@@ -97,8 +98,7 @@ class InstructionXMainWindow(QMainWindow):
         self.resize(WINDOW_DEFAULT_WIDTH, WINDOW_DEFAULT_HEIGHT)
 
         # 获取当前主题
-        self._style_qss = get_style_qss()
-        self._current_theme = self._style_qss.theme()
+        self._current_theme = current_theme_mode()
 
         # 主题映射：浅色 → 深色 → 跟随系统
         self._theme_map = {'light': 'dark', 'dark': 'auto', 'auto': 'light'}
@@ -170,11 +170,11 @@ class InstructionXMainWindow(QMainWindow):
         # 编辑
         menu_edit = menu_bar.addMenu("编辑")
 
-        # 插件排序
-        menu_edit_plugin_order_action = QAction("插件排序", self)
-        menu_edit_plugin_order_action.setShortcut("Ctrl+P")
-        menu_edit_plugin_order_action.triggered.connect(self._open_plugin_order_dialog)
-        menu_edit.addAction(menu_edit_plugin_order_action)
+        # 插件管理（安装/升级/卸载/分组/排序）
+        menu_edit_plugin_manage_action = QAction("插件管理...", self)
+        menu_edit_plugin_manage_action.setShortcut("Ctrl+P")
+        menu_edit_plugin_manage_action.triggered.connect(self._open_plugin_management_dialog)
+        menu_edit.addAction(menu_edit_plugin_manage_action)
 
         # 主题切换
         self._menu_theme_action = QAction("切换主题", self)
@@ -286,17 +286,17 @@ class InstructionXMainWindow(QMainWindow):
             )
             self.work_area.add_widget(error_label)
 
-    def _open_plugin_order_dialog(self):
-        """
-        打开插件排序对话框
+    def _open_plugin_management_dialog(self):
+        """打开插件管理对话框（安装/升级/降级/卸载/分组/排序）"""
+        dialog = PluginManagementDialog(self.plugin_manager, self)
+        dialog.plugins_changed.connect(self._on_plugins_changed)
+        dialog.exec()
 
-        用户保存排序后，重新加载技能面板以显示新的顺序。
-        """
-        dialog = PluginOrderDialog(self.plugin_manager, self)
-
-        if dialog.exec() == QDialog.DialogCode.Accepted:
-            # 用户点击了保存，重新加载 skills panel
-            self.skills_panel.load_skills_from_manager()
+    def _on_plugins_changed(self):
+        """插件集合或分组排序变化后的统一刷新"""
+        self.skills_panel.load_skills_from_manager()
+        # 清空工作区，避免残留已卸载插件的 Widget
+        self.work_area.clear()
 
     def _open_about_dialog(self):
         """打开关于对话框"""
@@ -315,9 +315,11 @@ class InstructionXMainWindow(QMainWindow):
         dialog.exec()
 
     def _on_github_plugin_installed(self, results):
-        """GitHub 插件安装完成后的回调"""
-        # 重新加载技能面板
+        """GitHub 插件安装完成后的回调：重新加载插件并刷新技能面板"""
+        # 重新扫描插件目录加载新插件（此前只刷新面板导致新插件不可见）
+        self.plugin_manager.reload_plugins()
         self.skills_panel.load_skills_from_manager()
+        self.work_area.clear()
         # 注意：安装结果提示由 GitHubPluginInstallDialog 统一弹出，
         # 此处不再重复弹窗（避免安装成功时出现双弹窗）。
 
@@ -341,7 +343,7 @@ class InstructionXMainWindow(QMainWindow):
             # 如果保存的主题不是 auto，则应用它
             if saved_theme != "auto":
                 self._current_theme = saved_theme
-                set_style_qss_theme(QApplication.instance(), saved_theme)  # type: ignore
+                apply_uikit_theme(QApplication.instance(), saved_theme)  # type: ignore
         except Exception as e:
             # 加载失败时使用默认主题，但不静默吞掉错误
             self._logger.warning(get_name(), f"加载保存的主题设置失败，使用默认主题: {e}")
@@ -375,7 +377,7 @@ class InstructionXMainWindow(QMainWindow):
         """循环切换主题：浅色 → 深色 → 跟随系统"""
         next_theme = self._theme_map.get(self._current_theme, 'auto')
         self._current_theme = next_theme
-        set_style_qss_theme(QApplication.instance(), next_theme)  # type: ignore
+        apply_uikit_theme(QApplication.instance(), next_theme)  # type: ignore
         self._update_container_style()
         self._update_theme_action_text()
         self._save_theme(next_theme)
@@ -431,9 +433,8 @@ class InstructionXMainWindow(QMainWindow):
 
     def _update_container_style(self):
         """更新容器样式（圆角/最大化状态），适配当前主题"""
-        colors = self._style_qss.colors()
-        window_bg = colors.get('window', '#202020')
-        border_color = colors.get('borderLight', '#3C3C3C')
+        window_bg = T("color.bg.base")
+        border_color = T("color.border")
 
         if self.isMaximized() or self.isFullScreen():
             # 最大化/全屏时移除圆角和阴影

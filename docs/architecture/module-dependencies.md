@@ -13,6 +13,7 @@ graph TB
     end
 
     subgraph UI ["UI 层"]
+        UKTH[ui/uikit_theme.py + InstructionX_UIKit<br/>UIKit 主题系统]
         MW[ui/main_window.py<br/>InstructionXMainWindow]
         TB[ui/title_bar.py<br/>CustomTitleBar]
         SB[ui/skills_panel/skill_button.py<br/>SkillButton]
@@ -49,10 +50,6 @@ graph TB
         LLMS --> TR
     end
 
-    subgraph Utils ["工具层"]
-        STYLE[utils/style_qss/__init__.py<br/>StyleQSS]
-    end
-
     subgraph Plugins ["插件层"]
         PLUGIN[plugin/ + custom_plugin/]
     end
@@ -63,7 +60,7 @@ graph TB
     MW --> WA
     SP --> SB
     MW --> DP
-    MW --> STYLE
+    MW --> UKTH
     MW --> GPI
     GPI --> GInst
     GInst --> PM
@@ -407,7 +404,3 @@ graph TD
 - [后台任务存储](../core/background-task/task-storage.md)
 - [MCP 协议模块概述](../core/mcp/overview.md)
 - [完整 API 参考](../api/full-reference.md)
-
----
-
-*本文档由 Claude Code 自动生成*

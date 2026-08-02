@@ -21,7 +21,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QCheckBox, QDialog, QFrame, QHBoxLayout, QLabel, QLineEdit,
-    QMessageBox, QPushButton, QScrollArea, QVBoxLayout, QWidget,
+    QPushButton, QScrollArea, QVBoxLayout, QWidget,
 )
 
 from core.llm.catalog import PRESET_MODELS, get_provider_preset
@@ -38,6 +38,8 @@ from .constants import (
     SYNC_DIALOG_WIDTH, WORKER_STOP_WAIT_MS,
 )
 from .theme import apply_dialog_theme
+from .feedback import info as _info_toast
+from .feedback import success as _success_toast
 from .widgets import install_focus_halo, make_badge
 from .workers import FetchModelsWorker
 
@@ -459,7 +461,7 @@ class SyncModelsDialog(QDialog):
         """「添加选中到列表」：勾选的新增模型经规范化写入 custom_models 落盘"""
         ids = self._checked_ids(_GROUP_NEW)
         if not ids:
-            QMessageBox.information(self, "添加模型", "请先勾选要添加的新增模型。")
+            _info_toast(self, "请先勾选要添加的新增模型。")
             return
         added: List[str] = []
 
@@ -480,16 +482,14 @@ class SyncModelsDialog(QDialog):
         for model_id in added:
             self._local_by_id[model_id] = self._build_custom_entry(
                 self._remote_by_id[model_id])
-        QMessageBox.information(
-            self, "添加模型", f"已添加 {len(added)} 个模型到列表。")
+        _success_toast(self, f"已添加 {len(added)} 个模型到列表。")
         self._rebuild_list()
 
     def _on_clean_selected(self) -> None:
         """「清理选中失效模型」：从 custom_models 移除勾选的已失效条目落盘"""
         ids = set(self._checked_ids(_GROUP_INVALID))
         if not ids:
-            QMessageBox.information(
-                self, "清理失效模型", "请先勾选要清理的失效模型。")
+            _info_toast(self, "请先勾选要清理的失效模型。")
             return
         removed = 0
 
@@ -506,8 +506,7 @@ class SyncModelsDialog(QDialog):
         self._notify_changed()
         self._invalid_entries = [
             e for e in self._invalid_entries if e.get("id") not in ids]
-        QMessageBox.information(
-            self, "清理失效模型", f"已清理 {removed} 个失效模型。")
+        _success_toast(self, f"已清理 {removed} 个失效模型。")
         self._rebuild_list()
 
     # ==================== 关闭与 Worker 回收 ====================

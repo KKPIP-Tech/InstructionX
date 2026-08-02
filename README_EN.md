@@ -10,7 +10,7 @@
 [![PySide6](https://img.shields.io/badge/PySide6-6.10+-green.svg)](https://doc.qt.io/qtforpython/)
 [![Platform](https://img.shields.io/badge/Platform-Windows-lightgrey.svg)](#)
 [![License](https://img.shields.io/badge/License-Commercial%20Source-orange.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/Alpha-1.0.2%20CE-red.svg)](#)
+[![Version](https://img.shields.io/badge/Alpha-1.0.3%20CE-red.svg)](#)
 
 > A PySide6-based plugin desktop application framework with LLM integration, MCP Protocol (Server/Client), multi-conversation management, and hot-swappable plugin system
 
@@ -102,14 +102,12 @@ Plugins can call each other's APIs to achieve functional collaboration:
 - **Cross-Plugin Calls**: One plugin can call another plugin's functionality
 - **Data Sharing**: Share data through the PUBLIC namespace
 
-### 🎨 StyleQSS Theme System
+### 🎨 InstructionX_UIKit Theme & Component System
 
-Built-in complete StyleQSS styling system with modern interface appearance:
-- **Manual Switching**: Support for light/dark/auto theme modes, switchable via menu or shortcuts
-- **Auto Theme Detection**: Automatically switch between dark/light mode based on OS settings
-- **30+ Control Styles**: Covering buttons, inputs, menus, dialogs, and other common Qt controls
-- **9+ Button Variants**: primary, danger, success, outline, subtle, etc.
-- **Dynamic Loading**: Dynamically load and apply QSS styles through style registry
+Built-in InstructionX_UIKit component library providing a unified modern interface appearance:
+- **Global Theme**: Support for light/dark/auto theme modes, switchable via menu or shortcuts, with automatic OS-level theme following
+- **Design Tokens**: Unified color, font, spacing, and radius tokens that restyle in real time with theme switching
+- **57+ Components**: Covering buttons, inputs, menus, dialogs, charts, and other common UI elements, ready for plugin development reuse
 
 ### 🅰️ Multi-Font Support
 
@@ -207,7 +205,7 @@ graph TD
 | core/llm | `core/llm/` | LLM provider framework |
 | ui | `ui/` | User interface components |
 | utils | `utils/` | Utility classes (logging, themes) |
-| utils/style_qss | `utils/style_qss/` | StyleQSS styling system |
+| utils/style_qss | `utils/style_qss/` | Compatibility QSS appendix (title bar / skills panel and other theme exclusion zones) |
 | plugin | `plugin/` | Official plugin directory |
 | custom_plugin | `custom_plugin/` | Custom plugin directory |
 | workers | `workers/` | Worker threads (reserved for extension) |
@@ -228,7 +226,7 @@ graph TD
 - [DataProvider Overview](docs/core/data-provider/overview.md)
 - [Background Task Overview](docs/core/background-task/overview.md)
 - [LLM Provider Overview](docs/core/llm-provider/overview.md)
-- [StyleQSS Styling System](docs/utils/style-qss.md)
+- [UIKit Theme System](docs/utils/uikit-theme.md)
 
 ---
 
@@ -356,7 +354,7 @@ The project includes complete technical documentation (in Chinese) located in th
 
 | Technology | Purpose | Version |
 |------------|---------|---------|
-| InstructionX CE | Application version | Alpha 1.0.2 |
+| InstructionX CE | Application version | Alpha 1.0.3 |
 | PySide6 | Qt GUI framework | >= 6.10 |
 | Python | Programming language | >= 3.14 |
 | requests | HTTP requests | >= 2.32 |
@@ -365,7 +363,7 @@ The project includes complete technical documentation (in Chinese) located in th
 | orjson | High-performance JSON serialization | >= 3.11.0,<4 |
 | matplotlib | Usage statistics charts | >= 3.10 |
 | packaging | Plugin dependency version checking | >= 23.0 |
-| StyleQSS | UI theme | Built-in |
+| InstructionX_UIKit | UI theme & component library | Built-in |
 
 ---
 

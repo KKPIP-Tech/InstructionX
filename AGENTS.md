@@ -12,9 +12,9 @@
 - 多厂商 LLM 集成（MiniMax、SiliconFlow、智谱 GLM、Ollama、OpenAI 兼容接口等），多会话管理、工具调用自动化（ToolCallExecutor）、多模态、用量统计
 - MCP 协议双向支持（内置 MCP Server 暴露插件 API；MCP Client 连接外部 MCP Server）
 - SQLite WAL 数据持久化层（DataProvider）、后台任务系统（BackgroundTaskManager）
-- StyleQSS 主题系统（light/dark/auto）、FontMap 多字体系统
+- InstructionX_UIKit 主题与组件体系（`ui/InstructionX_UIKit` 组件库：设计令牌 + light/dark/auto 全局主题，57 组件 + 原生图表引擎）、FontMap 多字体系统
 
-- 应用标识：`InstructionX - CE`（组织名 `LumenThread`），当前版本 **Alpha 1.0.2**
+- 应用标识：`InstructionX - CE`（组织名 `LumenThread`），当前版本 **Alpha 1.0.3**
 - **版本号单一来源为 `core/version.py` 的 `VERSION` 常量**（pyproject 通过 AST 静态读取，修改版本只改这里）
 - 平台：**仅支持 Windows 10/11**，Python **>= 3.14**
 - 许可证：**InstructionX Commercial Source License（商业源码许可证，非开源）**，详见 `LICENSE`
@@ -28,8 +28,9 @@
 | requests / aiohttp | HTTP / 异步 HTTP |
 | mcp >= 1.0.0 | MCP 协议（FastMCP） |
 | orjson | JSON 序列化（SQLite 后端） |
-| matplotlib | 保留依赖（旧用量面板图表曾使用；现用量面板已改用 PySide6.QtCharts，暂为第三方插件兼容保留） |
+| matplotlib | 保留依赖（旧用量面板图表曾使用；现用量面板已改用 InstructionX_UIKit 原生图表引擎，暂为第三方插件兼容保留） |
 | packaging | 插件依赖版本检查 |
+| qrcode[pil] >= 7.4 | InstructionX_UIKit 组件库 QRCodeView 组件依赖（库规定唯一允许的第三方依赖） |
 
 - 依赖单一来源是 `pyproject.toml` 的 `[project].dependencies`；`requirements.txt` 与其保持同步（供 `run.ps1` 使用），**改依赖时两处都要改**。
 - 环境管理使用 **uv**（存在 `uv.lock`、`.python-version`、`.venv/`）。
@@ -71,7 +72,7 @@ python -m pytest test/ -q --tb=short -p no:cacheprovider
 - **注意**：`test/` 下当前仅保留 `test/core/data/test_data_provider.py` 一个有效测试文件（其余旧测试已在重构中删除，残留的 `__pycache__` 是过期产物，不要参考）。现有测试约定：中文 docstring、`tmp_path` fixture、测试单例类时需重置 `XxxManager._instance = None`。
 - UI 测试不配置 offscreen 平台，CI 跑在 `windows-latest` 上使用真实 GUI。
 - 项目还有一类**独立验证脚本**（非 pytest，放在 `scripts/`，用 `.venv\Scripts\python.exe scripts\<name>.py` 直接运行）：
-  - `smoke_*.py`：核心链路无网冒烟测试（LLM、task、utils）
+  - `smoke_*.py`：核心链路无网冒烟测试（LLM、task、utils、插件管理：安装/升级/降级/卸载/分组）
   - `screenshot_*.py`：对话框截图对比脚本（输出到 `scripts/screenshots/`）
   - `_mcp_smoke*.py`：真实 MCP SDK 冒烟测试
   - `demo_*.py`：功能演示脚本
@@ -218,12 +219,20 @@ core/
   interfaces/               # 抽象接口层：IPlugin、IPluginInfo、IDataProvider、ITaskManager、
                             #   ILLMService（i_llm_service.py，LLM 插件服务契约）、PluginServices（依赖注入容器）
   plugin/                   # 插件系统核心
-    manager.py              # PluginManager 单例：加载/注册插件、跨插件 API 注册
-    plugin_identity.py      # 插件 UUID（优先 {插件目录}/.plugin_info.json，不可写时回退 data/plugin_identity/{插件目录名}.json）
+    manager.py              # PluginManager 单例：加载/注册插件、热重载（完整卸载旧实例）、
+                            #   跨插件 API 注册、插件卸载（uninstall_plugin）、自定义分组与排序
+    plugin_identity.py      # 插件 UUID（优先 {插件目录}/.plugin_info.json，不可写时回退
+                            #   data/plugin_identity/{插件目录名}.json；卸载时 delete() 清理）
     config_manager.py       # 插件显示顺序（config/plugin_order.json）
+    plugin_registry.py      # 已安装插件注册表（config/plugin_registry.json：版本/来源/安装时间，
+                            #   升级降级依据，老版本启动时自动回填）
+    plugin_groups.py        # 用户自定义分组存储（config/plugin_groups.json schema v2：
+                            #   官方/第三方分类下的分组定义 + 面板统一顺序（分组与未分组插件混排）；
+                            #   PluginGroup + PluginGroupStore）
     plugin_version.py       # PluginVersion（如 release.1.0.0）、VersionType
-    dependency_manager.py   # 插件 Python 依赖检查/自动安装
-    github_plugin_installer.py  # GitHub 插件安装（IXPlugin.json / IXRepo.json 描述文件）
+    dependency_manager.py   # 插件 Python 依赖检查/自动安装（优先 uv，回退 pip）
+    github_plugin_installer.py  # 插件安装器：GitHub 一键安装（IXPlugin.json / IXRepo.json）、
+                            #   本地 zip 安装、GitHub Release 升级/降级、版本关系检测与注册表登记
   data/                     # 数据持久化层
     data_provider.py        # DataProvider 单例：PRIVATE/PUBLIC 双命名空间、发布订阅、内存缓存
     sqlite_backend.py       # SQLite WAL 后端（默认），schema 迁移
@@ -253,16 +262,26 @@ core/
     bridge.py               # 插件 API 注册表 ↔ MCP Server 双向同步
 ui/                         # 界面层
   main_window.py / title_bar.py / usage_panel/
-  skills_panel/             # 插件技能面板
+  uikit_bootstrap.py        # UIKit 导入引导（main.py 首个业务 import：扩展 sys.path 使
+                            #   InstructionX_UIKit 以顶层包导入，保证 ThemeManager 单例唯一）
+  uikit_theme.py            # 全局主题入口：apply_uikit_theme(app, light/dark/auto) +
+                            #   current_theme_mode() + 排除区（标题栏/技能面板/工作区）兼容 QSS 附录
+  InstructionX_UIKit/       # PySide6 组件库（独立仓库 KKPIP-Tech/InstructionX_UIKit 的同步副本，
+                            #   alpha-v1.0.0：tokens/theme 主题系统 + 57 组件 + 12 布局 + 52 动画 +
+                            #   原生图表引擎 + 蓝图节点图；主项目不修改库内文件）
+  skills_panel/             # 插件技能面板（含 plugin_group_widget.py 分组折叠控件：
+                            #   文件夹形式收起、点击行内向右展开、展开区区分背景）
   work_area/                # 插件 Widget 宿主区（切换插件时缓存 UI 状态）
-  dialog/                   # 各类对话框（插件顺序、GitHub 安装等）
+  dialog/                   # 各类对话框（GitHub 安装、开源许可等）
+    plugin_management_dialog.py  # 插件管理对话框：安装/升级/降级/卸载 + 分组与排序
+                                 #   （替代原 plugin_order_dialog 的菜单入口）
     llm_settings/           # LLM 设置对话框包：dialog 主壳 + provider_list_panel/provider_detail_panel/
                             #   model_section/provider_editor_dialog/model_edit_dialog/
-                            #   health_check_dialog/sync_models_dialog + workers/theme/icons/widgets/constants
-                            #   （自动保存语义；自主主题 token，apply_dialog_theme 跟随应用主题）
+                            #   health_check_dialog/sync_models_dialog + workers/theme/icons/widgets/
+                            #   constants/feedback（自动保存语义；Theme token 实时取自 UIKit 令牌，
+                            #   apply_dialog_theme 经 theme_changed 实时跟随应用主题）
 utils/
   logging_tools.py          # LoggerManager 单例（滚动文件日志，输出 logs/application.log）、get_name()
-  themes.py + style_qss/    # StyleQSS 主题系统（30+ 控件样式，light/dark/auto）
   font_map.py               # 字体映射状态机（font/ 目录下 5 个字体家族）
   image_utils.py            # 图片工具（load_image_as_base64，原 LLMPluginService 方法迁出）
   thread_utils.py           # 工作线程 → UI 线程封送（run_in_ui_thread 等）
@@ -287,7 +306,7 @@ config/ data/ logs/         # 运行时生成：配置、数据、日志
 
 - 必需文件：
   - `entrance.py`：定义 `IPlugin` 子类（插件入口/胶水层），构造函数可接收 `services: PluginServices` 注入
-  - `information.py`：定义 `IPluginInfo` 子类（版本用 `PluginVersion.from_string("release.x.y.z")`、`service_api` 工具描述等）；提供 `service_api` + `service.py`（类名以 `Service` 结尾）时，框架**自动注册跨插件 API 并转换为 LLM 可调用工具**
+  - `information.py`：定义 `IPluginInfo` 子类（版本用 `PluginVersion.from_string("release.x.y.z")`、`service_api` 工具描述等）；提供 `service_api` + `service.py`（类名以 `Service` 结尾）时，框架**自动注册跨插件 API 并同步为 MCP 工具**（不自动进入 LLM ToolRegistry，LLM 直接调用需插件实现 `IPlugin.llm_tools` 或自行注册）
   - `service.py`：插件服务/公开 API 层
   - `config/`：插件配置目录
 - 硬性规则（见根目录 `plugin-development.md`，注意该文件是面向插件开发代理的规范）：
@@ -296,7 +315,7 @@ config/ data/ logs/         # 运行时生成：配置、数据、日志
   - 无魔法数字
 - GitHub 安装描述文件：`IXPlugin.json`（单插件仓库，文件名大小写敏感）、`IXRepo.json`（多插件仓库）；KKPIP-Tech 组织下的插件自动归类为官方插件。
 - 详细文档：`docs/core/plugin-system/plugin-development.md`、`docs/plugins/llm-integration-guide.md`。
-- 参考示例：`plugin/api-demo/`（最小完整结构）、`plugin/llm-chat/`。
+- 参考示例：`plugin/framework-api-demo/`、`plugin/llm-chat/`。
 
 ## 配置与数据文件（运行时生成，勿手改结构）
 
@@ -305,7 +324,9 @@ config/ data/ logs/         # 运行时生成：配置、数据、日志
 | `config/llm_providers.json` | LLM Provider 实例配置（schema v2：顶层 `version: 2`，实例含 preset_id/adapter/order；v1 自动迁移并生成 .bak 备份；API Key 经 `secure_keys.py` 混淆存储） |
 | `config/llm_models_cache.json` | 模型列表缓存（键为实例 id） |
 | `config/mcp_config.json` | MCP Server/Client 配置 |
-| `config/plugin_order.json` | 插件显示顺序 |
+| `config/plugin_order.json` | 插件显示顺序（未分组插件之间的顺序） |
+| `config/plugin_groups.json` | 用户自定义分组（schema v2：official/thirdparty 各自含 groups 分组数组 + order 面板统一顺序（分组与未分组插件混排）；v1 自动迁移） |
+| `config/plugin_registry.json` | 已安装插件注册表（schema v1：版本/来源/安装时间，升级降级与更新检查依据；启动时自动回填） |
 | `data/data.db` | 插件数据（SQLite + WAL；另有 `-wal`/`-shm` 伴生文件） |
 | `data/tasks.json` | 后台任务状态 |
 | `data/llm_usage.json` | LLM 用量记录 |
@@ -319,6 +340,7 @@ config/ data/ logs/         # 运行时生成：配置、数据、日志
 |------|------|
 | `INSTRUCTIONX_DATAPROVIDER_BACKEND` | `sqlite`（默认）/ `json`（回退旧 JSON 后端，写 `data/data.json`） |
 | `INSTRUCTIONX_MCP_CONFIG` | 覆盖 MCP 配置文件路径 |
+| `INSTRUCTIONX_GITHUB_TOKEN` | GitHub API Token（可选）：插件安装/Release 更新检查时鉴权，提升限流阈值、支持私有仓库 |
 
 ## 代码风格
 
@@ -339,6 +361,7 @@ config/ data/ logs/         # 运行时生成：配置、数据、日志
 ## 文档地图（docs/）
 
 - 架构：`docs/architecture/overview.md`、`module-dependencies.md`
+- 主题与 UI 组件：`docs/utils/uikit-theme.md`（UIKit 主题系统）、`docs/ui/`
 - 插件系统：`docs/core/plugin-system/`（含 `plugin-development.md`）
 - 数据层：`docs/core/data-provider/`
 - 后台任务：`docs/core/background-task/`

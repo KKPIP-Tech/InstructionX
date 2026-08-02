@@ -125,9 +125,9 @@ graph TB
     end
 
     subgraph Utils ["Utils"]
-        STYLEQSS[StyleQSS]
+        UKIT[InstructionX_UIKit + uikit_theme<br/>全局主题]
         LOGGING[LoggerManager]
-        THEMES[themes]
+        FONTMAP[FontMap]
     end
 
     MW --> TB
@@ -162,7 +162,7 @@ graph TB
     Plugins -->|depend on| ILLMService_IF
 
     Interfaces -->|define| Core
-    StyleQSS -->|style| UI
+    UKIT -->|style| UI
 ```
 
 ### 2.2 四大核心子系统关系
@@ -760,26 +760,26 @@ sequenceDiagram
 
 ---
 
-## 9. 样式系统
+## 9. 主题系统
 
-### 9.1 StyleQSS 架构
+### 9.1 UIKit 主题架构
 
-**文件**：`utils/style_qss/__init__.py`
+**文件**：`ui/uikit_theme.py`（全局主题入口）+ `ui/InstructionX_UIKit/`（组件库：设计令牌 + ThemeManager）
 
 ```mermaid
 flowchart TD
-    A[set_style_qss_theme] --> B[detect_system_theme - read Windows Registry]
-    B --> C[app.setStyle - Fusion]
-    C --> D[create_qss_palette - set QPalette]
-    D --> E[create_qss - QssRegistry.get_all]
-    E --> F[app.setStyleSheet - qss]
+    A[apply_uikit_theme] --> B[auto 时 detect_system_theme - 读 Windows 注册表]
+    B --> C[ThemeManager.apply - Fusion + QPalette + 全局字体]
+    C --> D[ThemeManager.set_mode - 切换 LIGHT/DARK 令牌]
+    D --> E[build_qss tokens - 令牌参数化生成全局 QSS]
+    E --> F[app.setStyleSheet - build_qss + 排除区兼容附录]
 ```
 
-### 9.2 QssRegistry 优先级管理
+### 9.2 排除区兼容附录
 
-**文件**：`utils/style_qss/registry.py`
+**文件**：`ui/uikit_theme.py` 的 `_build_compat_qss()`
 
-`QssRegistry` 管理 26 个 QSS 片段文件，按优先级合并。变量替换机制：`{accent}`、`{window}` 等占位符在运行时替换为实际颜色值（来自 `colors.py`）。
+为三个不做 UI 迁移的区域（CustomTitleBar、SkillsPanel/SkillButton、WorkArea 占位标签）保留原选择器结构/尺寸/字号，颜色全部实时取 UIKit 令牌 `T()`；附录拼接在全局 QSS 之后，凭更具体的选择器（objectName / 类名 / 动态属性）天然胜出。详见 [UIKit 主题系统](../utils/uikit-theme.md)。
 
 ---
 
@@ -1060,6 +1060,9 @@ class Service:
 
 | 文件 | 核心职责 |
 |------|---------|
+| `InstructionX_UIKit/` | UIKit 组件库（设计令牌 + ThemeManager + 组件/布局/图表，同步副本不修改） |
+| `uikit_bootstrap.py` | sys.path 引导（使 UIKit 以顶层包可导入） |
+| `uikit_theme.py` | 全局主题入口（apply_uikit_theme + 排除区兼容附录） |
 | `main_window.py` | InstructionXMainWindow 主窗口 |
 | `title_bar.py` | CustomTitleBar 自定义标题栏 |
 | `usage_panel/` | UsagePanel 用量查询面板（包：panel/kpi_card/trend_chart/history_table/formatting） |
@@ -1068,7 +1071,7 @@ class Service:
 | `work_area/work_area.py` | WorkArea 工作区 |
 | `dialog/about_dialog.py` | 关于对话框 |
 | `dialog/license_dialog.py` | 开源许可对话框 |
-| `dialog/llm_settings/` | LLM 设置对话框包（dialog/provider_list_panel/provider_detail_panel/model_section/provider_editor_dialog/model_edit_dialog/health_check_dialog/sync_models_dialog/workers/theme/icons/widgets/constants） |
+| `dialog/llm_settings/` | LLM 设置对话框包（dialog/provider_list_panel/provider_detail_panel/model_section/provider_editor_dialog/model_edit_dialog/health_check_dialog/sync_models_dialog/workers/theme/feedback/icons/widgets/constants） |
 | `dialog/plugin_order_dialog.py` | 插件排序对话框（拖拽） |
 | `dialog/github_plugin_install_dialog.py` | GitHub 插件安装对话框 |
 
@@ -1078,12 +1081,9 @@ class Service:
 |------|---------|
 | `logging_tools.py` | LoggerManager 单例，旋转日志 |
 | `i_logger.py` | ILogger 接口 |
-| `themes.py` | 主题切换工具 |
-| `style_qss/__init__.py` | StyleQSS 主入口 |
-| `style_qss/colors.py` | 颜色变量定义 |
-| `style_qss/palette.py` | QPalette 创建 |
-| `style_qss/registry.py` | QssRegistry QSS 片段管理 |
-| `style_qss/styles/` | 26 个 QSS 片段文件 |
+| `font_map.py` | FontMap 字体映射 |
+| `image_utils.py` | 图片工具（load_image_as_base64） |
+| `thread_utils.py` | 工作线程 → UI 线程封送 |
 
 #### 配置文件结构
 
@@ -1123,7 +1123,3 @@ class Service:
 - [接口层概述](../core/interfaces/overview.md)
 - [DataProvider 概述](../core/data-provider/overview.md)
 - [LLM Provider 概述](../core/llm-provider/overview.md)
-
----
-
-*本文档由 Claude Code 自动生成*

@@ -380,6 +380,9 @@ InstructionX/
 │           └── openai_compatible.py  # 自定义 OpenAI 兼容兜底适配器
 │
 ├── ui/                       # UI 模块
+│   ├── InstructionX_UIKit/  # UIKit 组件库（设计令牌 + ThemeManager + 57 组件/布局/图表，同步副本不修改）
+│   ├── uikit_bootstrap.py   # sys.path 引导（使 UIKit 以顶层包可导入，main.py 第一个业务 import）
+│   ├── uikit_theme.py       # 全局主题入口（apply_uikit_theme 三模式 + 排除区兼容附录）
 │   ├── main_window.py       # 主窗口
 │   ├── title_bar.py        # 自定义标题栏
 │   ├── usage_panel/         # 用量查询面板（包：panel/kpi_card/trend_chart/history_table/formatting）
@@ -420,11 +423,9 @@ InstructionX/
 ├── utils/                    # 工具类
 │   ├── logging_tools.py     # 日志管理
 │   ├── i_logger.py         # ILogger 接口
-│   ├── themes.py           # 主题检测与切换
 │   ├── font_map.py         # 字体映射
 │   ├── image_utils.py      # 图片工具（load_image_as_base64）
-│   ├── thread_utils.py     # 工作线程 → UI 线程封送
-│   └── style_qss/          # StyleQSS 样式系统（QSS 片段注册 + 主题变量）
+│   └── thread_utils.py     # 工作线程 → UI 线程封送
 │
 └── docs/                     # 技术文档
 ```
@@ -436,7 +437,7 @@ InstructionX/
 ```mermaid
 flowchart TD
     A[main] --> B[QApplication 创建]
-    B --> C[set_style_qss_theme<br/>自动检测系统主题]
+    B --> C[apply_uikit_theme<br/>UIKit 全局主题，auto 自动检测系统主题]
     C --> D[LoggerManager 初始化]
     D --> E[InstructionXMainWindow 创建]
     E --> F[创建自定义标题栏 + 菜单栏]
@@ -533,8 +534,3 @@ def get_mcp_manager() -> "MCPManager":
 - [后台任务概述](../core/background-task/overview.md)
 - [LLM Provider 概述](../core/llm-provider/overview.md)
 - [MCP 协议模块概述](../core/mcp/overview.md)
-
----
-
-*本文档由 Claude Code 自动生成*
-

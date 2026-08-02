@@ -25,7 +25,7 @@
 
 - 项目 Logo（居中显示）
 - 项目名称: "InstructionX - CE"（加粗，16pt）
-- 版本号: "版本 Alpha 1.0.2"（次要样式）
+- 版本号: "版本 Alpha 1.0.3"（次要样式）
 - 版权声明: "© 2025-2026 dakuang. 保留所有权利。"
 - 专有软件声明:
   ```
@@ -60,7 +60,8 @@ dialog.exec()
 - **自动保存**：全部编辑（API 密钥、地址、启停开关、模型开关、默认模型等）即时经 `get_llm_config()` 落盘，无「取消/保存」按钮；删除类操作保留中文确认弹窗。
 - **预设/实例体系**：每个 Provider 是一个实例，经 `preset_id` 关联目录预设（`core/llm/catalog/`）；「＋ 添加提供商」弹出两页创建对话框（选预设或「自定义 OpenAI 兼容服务」→ 填名称/地址/密钥）。
 - **配置变更联动**：`LLMConfig` 变更订阅驱动左栏刷新；`LLMProvider` 惰性刷新保证运行时实例同步。
-- **主题跟随**：包内自主主题 token 体系（`theme.py` 的 LIGHT/DARK 两套 token），`apply_dialog_theme()` 按应用当前主题（`utils.style_qss.get_style_qss().theme()`）为对话框换肤，作用域仅限对话框自身，不触碰 QApplication 全局样式。
+- **主题跟随**：包内自主主题 token 体系（`theme.py` 的 `Theme` dataclass），token 值不再硬编码，而由 `_theme_from_uikit()` 从 UIKit 设计令牌（`T()`）按全局当前模式（`ui.uikit_theme.current_theme_mode()`）实时构建；`apply_dialog_theme()` 为对话框换肤并连接 UIKit `theme_changed` 信号，实现对话框打开期间实时跟随，作用域仅限对话框自身，不触碰 QApplication 全局样式。
+- **统一反馈**：包内 `feedback.py` 提供 `confirm` / `notice` / `info` / `warn` / `success`（基于 UIKit Dialog / Message），替代原 QMessageBox 确认框与轻提示。
 - **记住选中**：上次选中的实例经 QSettings（组织 `LumenThread` / 应用 `InstructionX-CE`）记忆，下次打开时恢复。
 
 ### 2.2 窗口属性
@@ -339,7 +340,3 @@ dialog.exec()
 - [技能面板](skills-panel.md)
 - [插件系统概述](../core/plugin-system/overview.md)
 - [GitHub 插件安装器](../core/plugin-system/plugin-installer.md)
-
----
-
-*本文档由 Claude Code 自动生成*

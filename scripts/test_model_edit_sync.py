@@ -33,12 +33,13 @@ from PySide6.QtWidgets import QApplication
 
 # ===================================================================
 # 项目模块
+import ui.uikit_bootstrap  # noqa: F401  # 必须为首个项目 import：扩展 sys.path 使 InstructionX_UIKit 可导入
 from core.llm.config import get_llm_config
 from core.llm.model_schema import CAPABILITY_REASONING, CAPABILITY_VISION
 from ui.dialog.llm_settings import LLMSettingsDialog
 from ui.dialog.llm_settings.constants import MODEL_TYPE_CHAT, MODEL_TYPE_LABELS
 from ui.dialog.llm_settings.widgets import _model_primary_type
-from utils.style_qss import set_style_qss_theme
+from ui.uikit_theme import apply_uikit_theme
 
 
 def find_model_row(detail_panel, model_id: str):
@@ -81,7 +82,7 @@ def restore_custom_models(instance_id: str, original_custom: list) -> None:
 
 def main():
     app = QApplication([])
-    set_style_qss_theme(app, "light")
+    apply_uikit_theme(app, "light")
 
     dialog = LLMSettingsDialog()
     dialog.resize(1200, 800)

@@ -231,7 +231,3 @@ else:
 - [GitHub 插件安装器](plugin-installer.md)
 - [插件开发指南](plugin-development.md)
 - [PluginManager](plugin-manager.md)
-
----
-
-*本文档由 Claude Code 自动生成*

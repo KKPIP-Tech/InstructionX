@@ -8,3 +8,4 @@ mcp>=1.0.0
 orjson>=3.11.0,<4
 matplotlib>=3.10
 packaging>=23.0
+qrcode[pil]>=7.4

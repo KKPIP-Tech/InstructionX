@@ -716,7 +716,3 @@ except Exception as e:
 - [LLM Provider 概述](../llm-provider/overview.md)
 - [MCP 协议模块概述](../mcp/overview.md)
 - [完整 API 参考](../../api/full-reference.md)
-
----
-
-*本文档由 Claude Code 自动生成*

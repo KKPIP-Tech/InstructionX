@@ -180,7 +180,3 @@ config_manager.save_plugin_order([], [])  # 清空两个列表
 
 - [PluginManager](plugin-manager.md)
 - [插件系统概述](overview.md)
-
----
-
-*本文档由 Claude Code 自动生成*

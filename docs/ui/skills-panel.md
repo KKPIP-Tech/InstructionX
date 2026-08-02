@@ -296,62 +296,55 @@ def _on_skill_clicked(self, plugin):
 
 ## 8. 深色模式支持
 
-SkillsPanel 完全支持深色模式，通过 StyleQSS 的颜色变量自动适配主题。
+SkillsPanel 完全支持深色模式。面板本身不做 UI 迁移，属于全局主题的「排除区」：样式由 `ui/uikit_theme.py` 的兼容附录（`_compat_skills_panel_qss()`）提供，颜色全部实时取 UIKit 设计令牌 `T()`，随主题切换自动适配（详见 [UIKit 主题系统](../utils/uikit-theme.md)）。
 
-### 8.1 颜色变量
+### 8.1 颜色令牌
 
-SkillsPanel 使用以下颜色变量：
+SkillsPanel 使用的 UIKit 令牌：
 
-| 颜色变量 | 浅色主题 | 深色主题 | 用途 |
-|---------|---------|---------|------|
-| `skillPanel` | `#F5F7FA` | `#2C2C2C` | 面板背景 |
-| `skillPanelHeaderBg` | `#EBEEF2` | `#363636` | Pill 按钮容器背景 |
-| `windowText` | `#000000` | `#FFFFFF` | 文字颜色 |
-| `textSecondary` | `#666666` | `#999999` | Pill 按钮未激活文字 |
-| `accent` | `#0078D4` | `#0078D4` | 激活/选中强调色 |
-| `accentDark` | `#005A9E` | `#005A9E` | 激活 Pill 按钮悬停背景 |
-| `skillButtonHover` | `#E8F4FD` | `#1A3A5C` | 技能按钮悬停背景 |
-| `skillButtonActiveText` | `#0078D4` | `#FFFFFF` | 技能按钮激活文字 |
-| `controlFillHover` | `rgba(0,0,0,12)` | `rgba(255,255,255,12)` | 通用悬停效果 |
+| UIKit 令牌 | 用途 |
+|-----------|------|
+| `color.bg.subtle` | 面板 / 头部 / 滚动区 / 技能按钮容器背景 |
+| `color.bg.muted` | Pill 按钮容器背景、Pill 按钮悬停背景 |
+| `color.border` | 面板底部分隔线、分隔符颜色 |
+| `color.text.primary` | 技能按钮文字 |
+| `color.text.secondary` | Pill 按钮未激活文字、计数标签 |
+| `color.text.tertiary` | 滚动条手柄悬停 |
+| `color.primary` | 激活/选中强调色（Pill 激活背景、激活按钮渐变左色与文字） |
+| `color.on.primary` | 激活 Pill 按钮文字 |
+| `color.primary.hover` | 激活 Pill 按钮悬停背景 |
+| `color.primary.subtle` | 技能按钮悬停背景、激活按钮渐变主色 |
 
 ### 8.2 色彩层次
 
-SkillsPanel 与工作区保持色彩层次区分：
+SkillsPanel 与工作区保持色彩层次区分：SkillsPanel 取 `color.bg.subtle`（弱化背景），WorkArea 所在工作区窗口底色为 `color.bg.base`（基底背景），亮/暗两套令牌由 UIKit 统一提供。
 
-**浅色模式：**
-- SkillsPanel: `#F5F7FA`（浅灰）
-- WorkArea: `#FFFFFF`（白色）
+### 8.3 样式定义
 
-**深色模式：**
-- SkillsPanel: `#2C2C2C`（深灰）
-- WorkArea: `#202020`（深灰）
-
-### 8.3 样式文件
-
-SkillsPanel 和 SkillButton 的样式定义在 `utils/style_qss/styles/custom.qss`（由 QssRegistry 按优先级 20 加载）：
+SkillsPanel 和 SkillButton 的样式定义在 `ui/uikit_theme.py` 的排除区兼容附录（`_compat_skills_panel_qss()`，结构沿用旧 custom.qss，颜色取 UIKit 令牌）：
 
 ```css
 /* SkillsPanel 容器 */
 SkillsPanel {
-    background-color: {skillPanel};
-    border-bottom: 1px solid {borderLight};
+    background-color: {T("color.bg.subtle")};
+    border-bottom: 1px solid {T("color.border")};
 }
 
 /* SkillsPanel 头部区域 */
 SkillsPanel QWidget#skillsPanelHeader {
-    background-color: {skillPanel};
+    background-color: {T("color.bg.subtle")};
 }
 
 /* Pill 按钮容器 */
 SkillsPanel QWidget#skillsPillContainer {
-    background-color: {skillPanelHeaderBg};
+    background-color: {T("color.bg.muted")};
     border-radius: 14px;
 }
 
 /* Pill 按钮（官方功能 / 第三方功能 切换） */
 SkillsPanel QPushButton#skillsPillButton {
     background-color: transparent;
-    color: {textSecondary};
+    color: {T("color.text.secondary")};
     border: none;
     border-radius: 10px;
     padding: 4px 14px;
@@ -359,24 +352,24 @@ SkillsPanel QPushButton#skillsPillButton {
     font-weight: 500;
 }
 SkillsPanel QPushButton#skillsPillButton:hover {
-    background-color: {controlFillHover};
+    background-color: {T("color.bg.muted")};
 }
 SkillsPanel QPushButton#skillsPillButton[active="true"] {
-    background-color: {accent};
-    color: #FFFFFF;
+    background-color: {T("color.primary")};
+    color: {T("color.on.primary")};
 }
 SkillsPanel QPushButton#skillsPillButton[active="true"]:hover {
-    background-color: {accentDark};
+    background-color: {T("color.primary.hover")};
 }
 
 /* 分隔线与计数标签 */
 SkillsPanel QLabel#skillsSeparator {
-    color: {borderLight};
+    color: {T("color.border")};
     font-size: 12px;
     background: transparent;
 }
 SkillsPanel QLabel#skillsCountLabel {
-    color: {textSecondary};
+    color: {T("color.text.secondary")};
     font-size: 11px;
     background: transparent;
 }
@@ -384,12 +377,12 @@ SkillsPanel QLabel#skillsCountLabel {
 /* 滚动区域样式 */
 SkillsPanel QScrollArea {
     border: none;
-    background: {skillPanel};
+    background: {T("color.bg.subtle")};
 }
 
 /* 技能按钮容器 */
 SkillsPanel QWidget#skillsContainer {
-    background-color: {skillPanel};
+    background-color: {T("color.bg.subtle")};
 }
 
 /* 非激活状态的技能按钮 */
@@ -398,27 +391,27 @@ SkillButton {
     border-radius: 8px;
     padding: 2px;
     background-color: transparent;
-    color: {windowText};
+    color: {T("color.text.primary")};
     text-align: top;
     font-size: 10px;
 }
 SkillButton:hover {
-    background-color: {skillButtonHover};
+    background-color: {T("color.primary.subtle")};
     border: none;
 }
 SkillButton:pressed {
-    background-color: {controlFillPressed};
+    background-color: {T("color.border")};
     border: none;
 }
 
 /* 激活状态的技能按钮（通过 setProperty("active", "true") 触发） */
 SkillButton[active="true"] {
     background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-        stop:0 {accent}, stop:0.04 {accent},
-        stop:0.04 {controlFillSelected}, stop:1 {controlFillSelected});
+        stop:0 {T("color.primary")}, stop:0.04 {T("color.primary")},
+        stop:0.04 {T("color.primary.subtle")}, stop:1 {T("color.primary.subtle")});
     border: none;
     border-radius: 8px;
-    color: {skillButtonActiveText};
+    color: {T("color.primary")};
     text-align: top;
     font-weight: 500;
     font-size: 10px;
@@ -433,7 +426,3 @@ SkillButton[active="true"] {
 - [主窗口](main-window.md)
 - [工作区](work-area.md)
 - [IPlugin 接口](../core/plugin-system/iplugin.md)
-
----
-
-*本文档由 Claude Code 自动生成*

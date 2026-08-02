@@ -1,9 +1,8 @@
 # 延迟导出（PEP 562）：按需加载，避免 import utils 或仅使用 utils.i_logger 等
-# 轻量子模块时牵入 themes / PySide6 等重量依赖。
-# 既有导入路径保持不变：from utils import set_style_qss_theme, LoggerManager, get_name
+# 轻量子模块时牵入 PySide6 等重量依赖。
+# 主题系统已迁移至 ui.uikit_theme（InstructionX_UIKit），utils 不再导出主题 API。
 
 _LAZY_EXPORTS = {
-    "set_style_qss_theme": ("utils.themes", "set_style_qss_theme"),
     "LoggerManager": ("utils.logging_tools", "LoggerManager"),
     "get_name": ("utils.logging_tools", "get_name"),
     "is_ui_thread": ("utils.thread_utils", "is_ui_thread"),
@@ -24,8 +23,6 @@ def __getattr__(name: str):
 
 
 __all__ = [
-    "set_style_qss_theme",
-
     "LoggerManager",
     "get_name",
 

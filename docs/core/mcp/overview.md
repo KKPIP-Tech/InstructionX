@@ -680,7 +680,3 @@ graph LR
 - [插件系统概述](../plugin-system/overview.md)
 - [模块依赖关系](../../architecture/module-dependencies.md)
 - [系统架构概述](../../architecture/overview.md)
-
----
-
-*本文档由 Claude Code 自动生成*

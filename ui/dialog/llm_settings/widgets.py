@@ -42,7 +42,7 @@ from .constants import (
     SWITCH_ANIM_DURATION_MS, SWITCH_HEIGHT, SWITCH_WIDTH,
 )
 from .icons import provider_icon_pixmap
-from .theme import LIGHT, Theme
+from .theme import Theme
 
 # HiDPI 渲染倍率（2x 保证高分屏清晰）
 _HIDPI_DPR = 2.0
@@ -119,7 +119,7 @@ def _badge_style(color_hex: str) -> str:
     color = QColor(color_hex)
     bg = QColor(color)
     bg.setAlpha(_BADGE_BG_ALPHA_LIGHT
-                if _theme_module.current_theme() is LIGHT
+                if _theme_module.current_theme().name == "light"
                 else _BADGE_BG_ALPHA_DARK)
     return (
         f"QLabel {{ color: {color_hex}; "

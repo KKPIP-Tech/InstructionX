@@ -339,7 +339,3 @@ class DataProvider:
 - [DataProvider API 参考](api-reference.md)
 - [插件开发指南](../plugin-system/plugin-development.md)
 - [系统架构概述](../../architecture/overview.md)
-
----
-
-*本文档由 Claude Code 自动生成*

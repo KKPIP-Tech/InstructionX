@@ -7,9 +7,9 @@
 智谱AI API 文档: https://open.bigmodel.cn/dev/api
 
 支持的模型类型:
-    - CHAT_MODELS: 文本聊天模型（如 glm-5, glm-4.7, glm-4-flash 等）
+    - CHAT_MODELS: 文本聊天模型（如 glm-5.2, glm-5, glm-4.7 等）
     - EMBEDDING_MODELS: 向量嵌入模型（embedding-3, embedding-2）
-    - VISION_MODELS: 视觉理解模型（glm-4.6v, glm-4v-flash 等）
+    - VISION_MODELS: 视觉理解模型（glm-5v-turbo, glm-4.6v, glm-ocr 等）
     - IMAGE_MODELS: 图像生成模型（glm-image, cogview-4 等）
     - VIDEO_MODELS: 视频生成模型（cogvideox-3, vidu-2 等）
     - AUDIO_MODELS: 音视频模型（glm-tts, glm-asr-2512 等）
@@ -93,6 +93,8 @@ class GLMProvider(BaseProvider):
     # 文本模型
     CHAT_MODELS = [
         # 旗舰模型
+        "glm-5.2",
+        "glm-5.1",
         "glm-5",
         "glm-5-turbo",
         # 高智能模型
@@ -121,7 +123,10 @@ class GLMProvider(BaseProvider):
 
     # 视觉理解模型 (Vision)
     VISION_MODELS = [
+        "glm-5v-turbo",
         "glm-4.6v",
+        "glm-ocr",
+        "autoglm-phone",
         "glm-4.1v-thinking-flashx",
         "glm-4.6v-flash",
         "glm-4.1v-thinking-flash",
@@ -165,11 +170,23 @@ class GLMProvider(BaseProvider):
     # 预设模型详情字典，包含上下文长度、输出限制、功能支持等信息
     MODEL_DETAILS = {
         # 文本模型
+        "glm-5.2": {
+            "context_length": 1000000,
+            "max_output": 128000,
+            "support_function_calling": True,
+            "description": "最新旗舰基座模型 - 1M 上下文，Coding 能力开源 SOTA"
+        },
+        "glm-5.1": {
+            "context_length": 200000,
+            "max_output": 128000,
+            "support_function_calling": True,
+            "description": "高智能旗舰模型 - Coding 能力对齐 Claude Opus 4.6"
+        },
         "glm-5": {
             "context_length": 200000,
             "max_output": 128000,
             "support_function_calling": True,
-            "description": "最新旗舰基座模型 - 编程能力对齐Claude Opus 4.5"
+            "description": "旗舰基座模型 - 编程能力对齐Claude Opus 4.5"
         },
         "glm-5-turbo": {
             "context_length": 200000,
@@ -249,11 +266,28 @@ class GLMProvider(BaseProvider):
             "description": "向量模型 V2"
         },
         # 视觉模型
+        "glm-5v-turbo": {
+            "context_length": 200000,
+            "max_output": 128000,
+            "support_function_calling": True,
+            "description": "多模态 Coding 基座 - 兼顾视觉理解、推理与代码生成"
+        },
         "glm-4.6v": {
             "context_length": 128000,
             "max_output": 32000,
             "support_function_calling": True,
             "description": "旗舰视觉推理模型 - 视觉推理模型SOTA"
+        },
+        "glm-ocr": {
+            "context_length": None,
+            "support_function_calling": False,
+            "description": "轻量图文解析模型 - 高精度、高效率文档理解"
+        },
+        "autoglm-phone": {
+            "context_length": 20000,
+            "max_output": 2048,
+            "support_function_calling": False,
+            "description": "手机智能助理 - 自然语言完成 App 操作任务"
         },
         "glm-4.1v-thinking-flashx": {
             "context_length": 64000,

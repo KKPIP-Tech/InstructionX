@@ -519,7 +519,3 @@ if not ok:
 - [插件开发指南](../core/plugin-system/plugin-development.md)
 - [IPlugin 接口](../core/plugin-system/iplugin.md)
 - [PluginManager 架构](../core/plugin-system/plugin-manager.md)
-
----
-
-*本文档由 Claude Code 自动生成*

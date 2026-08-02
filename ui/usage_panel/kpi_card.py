@@ -1,19 +1,28 @@
 """KPI 统计卡片组件
 
 移植自用量面板 Demo：每张卡片包含小标题、大数值与「较上周期 ±x.x%」同比小字。
-同比趋势通过 Qt 动态属性 trend（up/down/flat）驱动 QSS 变色，
-样式定义见 utils/style_qss/styles/usage_panel.qss。
+同比趋势（up/down/flat）直接以 UIKit 令牌着色（成功绿涨 / 危险红降 / 灰无数据），
+卡片外观（底色/边框/圆角）同样取自令牌；对话框为短生命周期，颜色在构建时取一次。
 """
 
 from PySide6.QtWidgets import QFrame, QLabel, QSizePolicy, QVBoxLayout
 
+from InstructionX_UIKit import T, set_property
+
 # ===== 卡片尺寸 =====
 CARD_HEIGHT = 92
 
-# ===== 同比趋势取值（与 usage_panel.qss 中 #kpiDelta[trend="..."] 选择器对应）=====
+# ===== 同比趋势取值 =====
 TREND_UP = "up"
 TREND_DOWN = "down"
 TREND_FLAT = "flat"
+
+#: 同比趋势 → UIKit 颜色令牌
+_TREND_COLOR_KEYS = {
+    TREND_UP: "color.success",
+    TREND_DOWN: "color.danger",
+    TREND_FLAT: "color.text.secondary",
+}
 
 # 同比百分比换算基数
 _PERCENT_BASE = 100.0
@@ -39,23 +48,28 @@ class KpiCard(QFrame):
             parent: 父控件
         """
         super().__init__(parent)
-        self.setObjectName("kpiCard")
         # 固定高度：窗口缩小时由外层滚动区接管，卡片自身不缩水
         self.setFixedHeight(CARD_HEIGHT)
+        self.setStyleSheet(
+            f"KpiCard {{ background-color: {T('color.bg.elevated')};"
+            f" border: 1px solid {T('color.border')};"
+            f" border-radius: {T('radius.md')}px; }}"
+        )
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(14, 10, 14, 10)
         layout.setSpacing(4)
 
         title_label = QLabel(title)
-        title_label.setObjectName("kpiTitle")
+        set_property(title_label, "role", "secondary")
 
         self._value_label = QLabel("—")
-        self._value_label.setObjectName("kpiValue")
+        self._value_label.setStyleSheet(
+            f"font-size: {T('font.display')}px; font-weight: 700;")
 
         self._delta_label = QLabel("较上周期 —")
-        self._delta_label.setObjectName("kpiDelta")
-        self._delta_label.setProperty("trend", TREND_FLAT)
+        self._trend = TREND_FLAT
+        self._apply_trend_color(TREND_FLAT)
 
         # 文本标签水平方向允许压缩（Ignored = 最小宽度为 0），
         # 避免 6 张卡片的文本宽度把整个内容区的最小宽度撑出窗口
@@ -90,11 +104,14 @@ class KpiCard(QFrame):
         self._apply_delta(f"较上周期 {pct:+.1f}%", trend)
 
     def _apply_delta(self, text: str, trend: str) -> None:
-        """更新同比文本并按需刷新 trend 属性触发 QSS 重绘"""
+        """更新同比文本与趋势颜色"""
         self._delta_label.setText(text)
-        if self._delta_label.property("trend") == trend:
-            return
-        self._delta_label.setProperty("trend", trend)
-        # 动态属性变化后需 unpolish/polish 才会重新匹配 QSS 选择器
-        self._delta_label.style().unpolish(self._delta_label)
-        self._delta_label.style().polish(self._delta_label)
+        if self._trend != trend:
+            self._trend = trend
+            self._apply_trend_color(trend)
+
+    def _apply_trend_color(self, trend: str) -> None:
+        """按趋势以 UIKit 令牌着色同比小字"""
+        color = T(_TREND_COLOR_KEYS.get(trend, "color.text.secondary"))
+        self._delta_label.setStyleSheet(
+            f"color: {color}; font-size: {T('font.xs')}px;")

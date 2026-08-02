@@ -121,17 +121,17 @@ self._theme_map = {'light': 'dark', 'dark': 'auto', 'auto': 'light'}
 
 **实现方法**:
 - `_load_saved_theme()`: 启动时从 DataProvider 加载保存的主题
-- `_cycle_theme()`: 循环切换主题（light → dark → auto），调用 `set_style_qss_theme()` 并保存
+- `_cycle_theme()`: 循环切换主题（light → dark → auto），调用 `apply_uikit_theme()` 并保存
 - `_save_theme(theme)`: 保存主题到 DataProvider
 - `_update_theme_action_text()`: 更新菜单项文字，显示当前主题
 - `_update_container_style()`: 重新应用容器圆角样式（切换主题或窗口状态时调用）
 
-**主题应用**:
+**主题应用**（UIKit 全局主题，详见 [UIKit 主题系统](../utils/uikit-theme.md)）:
 ```python
-from utils.style_qss import set_style_qss_theme
+from ui.uikit_theme import apply_uikit_theme
 
 # 设置主题
-set_style_qss_theme(QApplication.instance(), theme)
+apply_uikit_theme(QApplication.instance(), theme)
 ```
 
 **菜单显示**:
@@ -181,12 +181,12 @@ graph TB
 
 - **文件位置**: `ui/usage_panel/` 包（`panel.py` 组装与数据编排，`kpi_card.py` KPI 卡片，`trend_chart.py` 趋势面板，`history_table.py` 历史面板，`formatting.py` 格式化工具）
 - **打开方式**: 通过 **AI > 用量查询** 菜单，在模态对话框中展示
-- **布局**: 整体内容置于 `QScrollArea` 垂直滚动区内；KPI 卡片 / 趋势面板为固定高度（92 / 320px），历史面板高度随当前页行数自适应（行高 27px，保证整页记录完整显示）；窗口缩小时页面整体上下滚动，各区块高度不变
+- **布局**: 整体内容置于 `QScrollArea` 垂直滚动区内；KPI 卡片为固定高度（92px）；趋势面板高度按热力图内容自适应（单元格边长 = 可用宽度 / 周数，上限 28px，范围切换与窗口宽度变化时同步调整）；历史面板高度随当前页行数自适应（行高 27px，保证整页记录完整显示）；窗口缩小时页面整体上下滚动，各区块高度不变
 - **功能**: 提供 Token 用量统计、趋势图表和明细查询
 - **组件**:
   - 顶部标题行（主标题 + 副标题）
   - KPI 卡片区（总请求数、输入 Token、输出 Token、总 Token、缓存命中率、平均耗时，含「较上周期 ±x.x%」同比）
-  - 用量趋势面板（QtCharts QSplineSeries 平滑折线；近 7 天 / 近 30 天 / 自定义范围；请求数 / 输入 Token / 输出 Token 指标切换；悬停提示）
+  - 用量趋势面板（UIKit ChartWidget 日历热力图，GitHub 贡献图风格：行=星期、列=周序；近半年 / 近一年 / 自定义范围；请求数 / 输入 Token / 输出 Token 指标切换；悬停提示显示「日期: 当日值」；无 visualMap 指示条与图例；色带为 UIKit 令牌 primary.subtle→primary，随主题换肤。面板经引擎公开扩展点注册了两个扩展：系列类型 `calendarHeatmap`（hit_test 让 tooltip 行名回退为日期）与组件 `monthLabels`（补画跨年月份标签），均未修改组件库）
   - 使用历史面板（Provider / Model / 对话ID 筛选 + 明细表格 + 分页）
   - 明细表格（10 列：时间、Provider、Model、输入、输出、总Token、缓存命中、缓存Token、耗时、流式；按时间倒序，最新记录在第 1 页）
   - 分页控件（每页 50 条）
@@ -200,7 +200,7 @@ flowchart TD
     A[__init__] --> B[super.init]
     B --> C[设置窗口属性 - FramelessWindow + TranslucentBackground]
     C --> D[设置窗口尺寸]
-    D --> E[获取当前主题 get_style_qss]
+    D --> E[获取当前主题 current_theme_mode]
     E --> F[加载保存的主题 _load_saved_theme]
     F --> G[创建中心容器 _container]
     G --> H[创建 CustomTitleBar]
@@ -230,9 +230,8 @@ def __init__(self):
     self.setMinimumSize(800, 600)
     self.resize(1024, 768)
 
-    # 获取当前主题
-    self._style_qss = get_style_qss()
-    self._current_theme = self._style_qss.theme()
+    # 获取当前主题（UIKit 主题模式）
+    self._current_theme = current_theme_mode()
 
     # 主题映射
     self._theme_map = {'light': 'dark', 'dark': 'auto', 'auto': 'light'}
@@ -422,7 +421,7 @@ cursor_map = {
 
 #### 关于对话框
 
-通过 **帮助 > 关于** 打开，显示应用 Logo、名称（InstructionX - CE）、版本号（Alpha 1.0.2）、版权声明和专有软件声明。
+通过 **帮助 > 关于** 打开，显示应用 Logo、名称（InstructionX - CE）、版本号（Alpha 1.0.3）、版权声明和专有软件声明。
 
 ```python
 def _open_about_dialog(self):
@@ -504,18 +503,13 @@ def _open_github_plugin_install_dialog(self):
     dialog.exec()
 
 def _on_github_plugin_installed(self, results):
-    """GitHub 插件安装完成后的回调"""
-    # 重新加载技能面板
+    """GitHub 插件安装完成后的回调：重新加载插件并刷新技能面板"""
+    # 重新扫描插件目录加载新插件（此前只刷新面板导致新插件不可见）
+    self.plugin_manager.reload_plugins()
     self.skills_panel.load_skills_from_manager()
-
-    # 提示用户
-    success_count = sum(1 for r in results if isinstance(r, InstallResult) and r.success)
-    if success_count > 0:
-        QMessageBox.information(
-            self,
-            "安装成功",
-            f"成功安装 {success_count} 个插件，请刷新页面或重新启动应用以加载新插件。"
-        )
+    self.work_area.clear()
+    # 注意：安装结果提示由 GitHubPluginInstallDialog 统一弹出（UIKit 对话框），
+    # 此处不再重复弹窗（避免安装成功时出现双弹窗）。
 ```
 
 ### 5.7 窗口状态变化与容器样式
@@ -524,14 +518,14 @@ def _on_github_plugin_installed(self, results):
 
 - **最大化按钮文字**: 最大化时显示 `❐`，还原时显示 `□`
 - **容器圆角**: 最大化时移除圆角（`border-radius: 0px`），还原时恢复 8px 圆角
-- **主题自适应**: 使用 `self._style_qss.colors()` 获取当前主题颜色动态设置背景色和边框色
+- **主题自适应**: 使用 UIKit 设计令牌 `T()` 获取当前主题颜色动态设置背景色和边框色
 
 ```python
 def changeEvent(self, event):
     """监听窗口状态变化，更新标题栏按钮"""
     if event.type() == event.Type.WindowStateChange:
-        colors = self._style_qss.colors()
-        window_bg = colors.get('window', '#202020')
+        window_bg = T("color.bg.base")
+        border_color = T("color.border")
 
         if self.isMaximized():
             self._title_bar.set_maximized(True)
@@ -543,7 +537,6 @@ def changeEvent(self, event):
             """)
         else:
             self._title_bar.set_maximized(False)
-            border_color = colors.get('borderLight', '#3C3C3C')
             self._container.setStyleSheet(f"""
                 QWidget#mainContainer {{
                     background-color: {window_bg};
@@ -578,7 +571,3 @@ def changeEvent(self, event):
 - [工作区](work-area.md)
 - [对话框组件](dialogs.md)
 - [系统架构概述](../architecture/overview.md)
-
----
-
-*本文档由 Claude Code 自动生成*
