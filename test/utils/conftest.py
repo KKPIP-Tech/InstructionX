@@ -28,7 +28,21 @@ sys.path.insert(0, str(_PROJECT_ROOT))
 
 # 在全局 autouse mock 生效前捕获真实的 LoggerManager 类
 import utils.logging_tools as _logging_tools_module
-import utils.style_qss.registry as _registry_module
+
+# utils/style_qss（registry/colors）与 utils/themes 已在 dev 分支重构中删除
+# （由 ui/uikit_theme.py 取代），对应测试文件已失效：此处容错导入，
+# 并用 collect_ignore 跳过失效测试文件的收集（文件本体保留，
+# 待开发者确认后再删除）。
+try:
+    import utils.style_qss.registry as _registry_module
+except ModuleNotFoundError:
+    _registry_module = None
+
+collect_ignore = [
+    "test_style_qss_colors.py",
+    "test_style_qss_registry.py",
+    "test_themes.py",
+]
 
 _REAL_LOGGER_MANAGER = _logging_tools_module.LoggerManager
 
@@ -110,7 +124,10 @@ def fresh_logger_manager(real_logger_manager_class, patched_logger_env):
 
 @pytest.fixture(autouse=True)
 def reset_qss_registry():
-    """每个测试前后清空 QssRegistry 的类级状态。"""
+    """每个测试前后清空 QssRegistry 的类级状态（模块已删除时为空操作）。"""
+    if _registry_module is None:
+        yield
+        return
     _registry_module.QssRegistry.clear()
     yield
     _registry_module.QssRegistry.clear()

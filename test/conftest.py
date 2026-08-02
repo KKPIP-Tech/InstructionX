@@ -15,6 +15,10 @@ project_root = Path(__file__).parent.parent
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
+# UIKit 导入引导（与 main.py 一致）：扩展 sys.path 使 InstructionX_UIKit
+# 以顶层包可导入，UI 测试 import 对话框/主窗口时依赖该路径
+import ui.uikit_bootstrap  # noqa: F401  E402
+
 import pytest
 
 
