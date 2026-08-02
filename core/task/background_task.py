@@ -556,16 +556,15 @@ class BackgroundTaskManager(ITaskManager):
             task_id: 任务 ID
 
         Returns:
-            是否成功注销（任务不在运行列表中时返回 False）
+            是否成功注销（存储中不存在该任务记录时返回 False）
         """
         with self._task_lock:
-            task = self._running_scheduled_tasks.pop(task_id, None)
+            # 运行表与持久化存储是两套登记：禁用/未恢复的任务不在运行表，
+            # 但存储记录仍在，注销必须以存储删除为准（否则禁用态任务
+            # 永远无法注销，形成僵尸记录）
+            self._running_scheduled_tasks.pop(task_id, None)
 
-        if task:
-            self._storage.delete_scheduled_task(task_id)
-            return True
-
-        return False
+        return self._storage.delete_scheduled_task(task_id)
 
     def enable_scheduled_task(self, task_id: str) -> bool:
         """启用定时任务（重算下次执行时间并加入运行列表）

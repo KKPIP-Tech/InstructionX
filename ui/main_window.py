@@ -4,7 +4,8 @@
 定义应用程序主窗口类，包含菜单栏、主布局和插件系统集成。
 """
 
-from typing import Optional
+from pathlib import Path
+from typing import List, Optional, Tuple
 
 # ===================================================================
 # PySide 相关
@@ -15,7 +16,7 @@ from PySide6.QtWidgets import (
     QApplication, QGraphicsDropShadowEffect
 )
 from PySide6.QtGui import (
-    QAction, QCursor, QMouseEvent, QColor
+    QAction, QCursor, QMouseEvent, QColor, QCloseEvent, QIcon, QSessionManager
 )
 from PySide6.QtCore import Qt
 
@@ -30,8 +31,12 @@ from ui.dialog.llm_settings import LLMSettingsDialog
 from ui.work_area.work_area import WorkArea
 from ui.title_bar import CustomTitleBar
 from ui.usage_panel import UsagePanel
+from ui.tray import TrayIconManager
+from ui.dialog.close_confirm_dialog import CloseChoice, CloseConfirmDialog
 from core.plugin.manager import PluginManager
 from core.data.data_provider import DataProvider, DataNamespace
+from core.interfaces import IPlugin, TaskStatus
+from core.task.background_task import BackgroundTaskManager, LONG_TASK_STATUS_RUNNING
 from core.llm.llm_provider import get_llm_provider
 from utils.logging_tools import LoggerManager, get_name
 from ui.uikit_theme import apply_uikit_theme, current_theme_mode
@@ -64,6 +69,13 @@ SKILLS_PANEL_MIN_HEIGHT = 125
 # 应用配置在 DataProvider 中的插件标识与主题设置键
 APP_CONFIG_PLUGIN_ID = "__app_config__"
 THEME_SETTING_KEY = "theme"
+
+# 托盘图标路径（基于本文件位置推导，与 main.py 中窗口图标同一推导方式，
+# 避免相对 CWD 失效）
+TRAY_ICON_FILE = Path(__file__).resolve().parent / "logo.ico"
+
+# 任务所属插件无法解析时的兜底显示名
+UNKNOWN_PLUGIN_NAME = "未知插件"
 
 
 class InstructionXMainWindow(QMainWindow):
@@ -150,6 +162,14 @@ class InstructionXMainWindow(QMainWindow):
         # 开启鼠标追踪，确保 hover 状态下鼠标移动也能触发 mouseMoveEvent，
         # 从而及时更新边缘 resize 光标
         self.setMouseTracking(True)
+
+        # 托盘运行状态（closeEvent 编排用）
+        self._force_quit = False            # 显式退出路径置位，closeEvent 直接放行
+        self._close_dialog_showing = False  # 关闭确认框防重入守卫
+        self._active_plugin: Optional[IPlugin] = None  # 当前激活插件，托盘子菜单标记用
+
+        # 创建系统托盘管理器并接线
+        self._setup_tray()
 
     # ===============================================================
     # GUI 界面
@@ -263,6 +283,9 @@ class InstructionXMainWindow(QMainWindow):
         Args:
             plugin: 被点击的插件实例
         """
+        # 记录当前激活插件（托盘「正在运行的插件」子菜单标记用）
+        self._active_plugin = plugin
+
         # 清空工作区（不清除按钮高亮）
         self.work_area.clear_keep_highlight()
 
@@ -621,3 +644,198 @@ class InstructionXMainWindow(QMainWindow):
 
         # 调整窗口位置和大小
         self.setGeometry(new_x, new_y, new_width, new_height)
+
+    # ===============================================================
+    # 系统托盘与关闭编排
+    # ===============================================================
+
+    def closeEvent(self, event: QCloseEvent) -> None:
+        """拦截关闭事件（叉子 / Alt+F4 / 任务栏右键关闭的统一拦截点）。
+
+        每次弹窗询问「退出程序 / 最小化到托盘 / 取消」（不提供记忆选项，
+        每次必问）；显式退出路径（托盘菜单「退出」）直接放行。
+        """
+        if self._force_quit:
+            # 托盘菜单「退出」等显式退出路径：放行关闭并显式结束事件循环
+            # （setQuitOnLastWindowClosed(False) 后关窗不再自动退出）
+            event.accept()
+            app = QApplication.instance()
+            if app is not None:
+                app.quit()
+            return
+        if self._close_dialog_showing:
+            # 防重入：确认框弹出期间的重复关闭触发（Alt+F4 连按等）直接忽略
+            event.ignore()
+            return
+        choice = self._ask_close_choice()
+        self._dispatch_close_choice(choice, event)
+
+    def _ask_close_choice(self) -> CloseChoice:
+        """弹出关闭确认对话框（模态，每次必问），期间置防重入守卫。
+
+        Returns:
+            用户选择的三值枚举；Esc / 对话框叉号等价于 CANCEL
+        """
+        self._close_dialog_showing = True
+        try:
+            return CloseConfirmDialog.ask(self)
+        finally:
+            self._close_dialog_showing = False
+
+    def _dispatch_close_choice(self, choice: CloseChoice, event: QCloseEvent) -> None:
+        """按用户在确认框中的选择分发关闭行为。
+
+        Args:
+            choice: 用户在确认框中的选择
+            event: 原始关闭事件（按分支 accept / ignore）
+        """
+        if choice is CloseChoice.EXIT:
+            # setQuitOnLastWindowClosed(False) 后关窗不再自动退出，需显式 quit
+            self._force_quit = True
+            event.accept()
+            app = QApplication.instance()
+            if app is not None:
+                app.quit()
+            return
+        if choice is CloseChoice.MINIMIZE_TO_TRAY:
+            event.ignore()
+            self._minimize_to_tray()
+            return
+        # 取消：忽略关闭事件，窗口保持原状
+        event.ignore()
+
+    def _setup_tray(self) -> None:
+        """创建托盘管理器并接线（信号连接、状态子菜单数据回调注入）。"""
+        self._tray_manager = TrayIconManager(QIcon(str(TRAY_ICON_FILE)), parent=self)
+        self._tray_manager.set_status_providers(
+            self._collect_running_plugins, self._collect_running_tasks
+        )
+        self._tray_manager.show_main_window_requested.connect(self._restore_from_tray)
+        self._tray_manager.quit_requested.connect(self._quit_application)
+        self._tray_manager.plugin_activate_requested.connect(
+            self._activate_plugin_from_tray
+        )
+        # 退出事件循环前隐藏托盘图标，避免通知区域残留幽灵图标；
+        # 在主窗口内接线（而非 main.py），main.py 无需感知托盘存在
+        app = QApplication.instance()
+        if app is not None:
+            app.aboutToQuit.connect(self._tray_manager.hide)
+            self._setup_session_quit_guard(app)
+
+    def _setup_session_quit_guard(self, app: QApplication) -> None:
+        """接线 Windows 注销/关机守卫：会话结束时静默退出，不弹确认框。
+
+        Windows 注销/关机要求各进程快速响应结束会话；若此时弹出模态
+        确认框无人点击，系统关机会被本程序阻塞（「该应用阻止关机」）。
+        commitDataRequest 是 QGuiApplication 提供的会话结束信号
+        （Windows 上对应 WM_QUERYENDSESSION），回调中直接置 _force_quit
+        并退出事件循环：随后系统下发的 closeEvent 因 _force_quit 已置位
+        而直接 accept，不再弹窗、不阻塞关机。
+        """
+        # hasattr 兜底防御极端裁剪环境；Qt6 桌面平台该信号为标准能力
+        if hasattr(app, "commitDataRequest"):
+            app.commitDataRequest.connect(self._on_commit_data_request)
+
+    def _on_commit_data_request(self, _manager: QSessionManager) -> None:
+        """会话结束（注销/关机）回调：置显式退出标记并静默退出事件循环。
+
+        Args:
+            _manager: 会话管理器（Qt 传入，本应用无需与之交互）
+        """
+        self._force_quit = True
+        app = QApplication.instance()
+        if app is not None:
+            app.quit()
+
+    def _minimize_to_tray(self) -> None:
+        """最小化到系统托盘：隐藏主窗口、托盘图标驻留并弹通知提示。
+
+        托盘不可用（如裸 GNOME 桌面）时降级为普通最小化并记 WARNING。
+        """
+        if not self._tray_manager.is_tray_available():
+            self._logger.warning(
+                get_name(), "系统托盘不可用，「最小化到托盘」降级为普通最小化"
+            )
+            self.showMinimized()
+            return
+        # hide 才会从任务栏消失只留托盘（showMinimized 仍保留任务栏图标）
+        self.hide()
+        self._tray_manager.show()
+        # 每次最小化到托盘都弹通知提示（发送失败由门面降级为仅记日志）
+        self._tray_manager.show_minimize_hint()
+
+    def _restore_from_tray(self) -> None:
+        """从托盘恢复主窗口；托盘图标随恢复移除（下次最小化时再驻留）。"""
+        self.showNormal()
+        self.raise_()
+        self.activateWindow()
+        self._tray_manager.hide()
+
+    def _quit_application(self) -> None:
+        """真正退出程序（托盘菜单「退出」调用）：用户意图已明确，不再询问。"""
+        self._force_quit = True
+        app = QApplication.instance()
+        if app is not None:
+            app.quit()
+
+    def _activate_plugin_from_tray(self, plugin: IPlugin) -> None:
+        """托盘插件子菜单点击：恢复主窗口并切换到指定插件。
+
+        Args:
+            plugin: 目标插件实例
+        """
+        self._restore_from_tray()
+        self._on_skill_clicked(plugin)
+
+    def _collect_running_plugins(self) -> List[Tuple[IPlugin, bool]]:
+        """托盘「正在运行的插件」子菜单数据：已加载插件 + 当前激活标记。
+
+        Returns:
+            [(插件实例, 是否当前激活), ...]；查询异常记 WARNING 返回空列表
+        """
+        try:
+            plugins = self.plugin_manager.get_all_plugins()
+            return [(plugin, plugin is self._active_plugin) for plugin in plugins]
+        except Exception as e:
+            self._logger.warning(get_name(), f"收集已加载插件列表失败: {e}")
+            return []
+
+    def _collect_running_tasks(self) -> List[Tuple[str, str]]:
+        """托盘「后台正在运行的任务」子菜单数据。
+
+        合并一次性任务（RUNNING/PENDING）与运行中的长期任务。
+
+        Returns:
+            [(任务名, 所属插件名), ...]；查询异常记 WARNING 返回空列表
+        """
+        try:
+            manager = BackgroundTaskManager._instance
+            if manager is None:
+                return []
+            entries: List[Tuple[str, str]] = []
+            for task in manager.get_all_tasks():
+                if task.status in (TaskStatus.RUNNING, TaskStatus.PENDING):
+                    entries.append((task.name, self._resolve_plugin_name(task.plugin_id)))
+            for long_task in manager.get_long_running_tasks():
+                if long_task.current_status == LONG_TASK_STATUS_RUNNING:
+                    entries.append(
+                        (long_task.name, self._resolve_plugin_name(long_task.plugin_id))
+                    )
+            return entries
+        except Exception as e:
+            self._logger.warning(get_name(), f"收集后台运行任务列表失败: {e}")
+            return []
+
+    def _resolve_plugin_name(self, plugin_id: str) -> str:
+        """将任务记录的插件 UUID 解析为插件显示名。
+
+        Args:
+            plugin_id: 插件 UUID
+
+        Returns:
+            插件显示名；无法解析时回退为 UUID 本身，空 UUID 时为占位文案
+        """
+        plugin = self.plugin_manager.get_plugin_by_id(plugin_id)
+        if plugin is not None:
+            return plugin.plugin_name
+        return plugin_id if plugin_id else UNKNOWN_PLUGIN_NAME
