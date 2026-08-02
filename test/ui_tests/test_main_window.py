@@ -8,44 +8,6 @@ from PySide6.QtCore import QPoint, QEvent, Qt, Signal
 from PySide6.QtGui import QMouseEvent
 
 
-class MockStyleQSS:
-    """Mock for get_style_qss() return value."""
-    def __init__(self, theme_name='auto'):
-        self._theme = theme_name
-
-    def theme(self):
-        return self._theme
-
-    def colors(self):
-        return {
-            'window': '#202020',
-            'borderLight': '#3C3C3C',
-        }
-
-    def get_color_dict(self):
-        return self.colors()
-
-    def get(self, key, default=''):
-        return default
-
-
-def _make_window(mocker):
-    """Create a fully-mocked InstructionXMainWindow instance, bypassing _create_menus."""
-    from ui.main_window import InstructionXMainWindow
-
-    mock_get_style_qss = mocker.patch('ui.main_window.get_style_qss')
-    mock_get_style_qss.return_value = MockStyleQSS('auto')
-    mocker.patch('ui.main_window.SkillsPanel')
-    mocker.patch('ui.main_window.WorkArea')
-    mocker.patch('ui.main_window.DataProvider')
-    mocker.patch('ui.main_window.PluginManager')
-
-    with patch.object(InstructionXMainWindow, '_load_saved_theme'):
-        with patch.object(InstructionXMainWindow, '_create_menus'):
-            window = InstructionXMainWindow()
-    return window
-
-
 # ---------------------------------------------------------------------------
 # Test: _create_menus() creates expected menus
 # ---------------------------------------------------------------------------
@@ -53,7 +15,6 @@ def test_create_menus_creates_expected_menus(mocker, qtbot):
     """_create_menus() creates 编辑, 用户中心, AI, 帮助 menus."""
     from ui.main_window import InstructionXMainWindow
 
-    mocker.patch('ui.main_window.get_style_qss').return_value = MockStyleQSS('auto')
     mocker.patch('ui.main_window.SkillsPanel')
     mocker.patch('ui.main_window.WorkArea')
     mocker.patch('ui.main_window.DataProvider')
@@ -61,7 +22,7 @@ def test_create_menus_creates_expected_menus(mocker, qtbot):
 
     # Directly test _create_menus logic by checking the class has the expected helper methods
     assert hasattr(InstructionXMainWindow, '_create_menus')
-    assert hasattr(InstructionXMainWindow, '_open_plugin_order_dialog')
+    assert hasattr(InstructionXMainWindow, '_open_plugin_management_dialog')
     assert hasattr(InstructionXMainWindow, '_cycle_theme')
     assert hasattr(InstructionXMainWindow, '_open_about_dialog')
 
@@ -72,11 +33,11 @@ def test_create_menus_creates_expected_menus(mocker, qtbot):
 def test_create_main_layout_instantiates_components(mocker, qtbot):
     """_create_main_layout() instantiates plugin_manager, skills_panel, work_area."""
     mock_pm_instance = MagicMock()
-    mocker.patch('ui.main_window.get_style_qss').return_value = MockStyleQSS('auto')
     mocker.patch('ui.main_window.SkillsPanel')
     mocker.patch('ui.main_window.WorkArea')
     mocker.patch('ui.main_window.DataProvider')
     mocker.patch('ui.main_window.PluginManager').return_value = mock_pm_instance
+    mocker.patch('ui.main_window.TrayIconManager')
 
     from ui.main_window import InstructionXMainWindow
 
@@ -103,12 +64,13 @@ def test_create_main_layout_instantiates_components(mocker, qtbot):
 # ---------------------------------------------------------------------------
 def test_cycle_theme_cycles_all_states(mocker, qtbot):
     """_cycle_theme() cycles auto -> light -> dark -> auto."""
-    mocker.patch('ui.main_window.get_style_qss').return_value = MockStyleQSS('auto')
     mocker.patch('ui.main_window.SkillsPanel')
     mocker.patch('ui.main_window.WorkArea')
     mocker.patch('ui.main_window.DataProvider')
     mocker.patch('ui.main_window.PluginManager')
-    mocker.patch('utils.style_qss.set_style_qss_theme')
+    mocker.patch('ui.main_window.TrayIconManager')
+    # 隔离真实全局 QSS 应用（UIKit 主题迁移后 _cycle_theme 走 apply_uikit_theme）
+    mocker.patch('ui.main_window.apply_uikit_theme')
 
     from ui.main_window import InstructionXMainWindow
     with patch.object(InstructionXMainWindow, '_load_saved_theme'):
@@ -120,7 +82,9 @@ def test_cycle_theme_cycles_all_states(mocker, qtbot):
 
     window._menu_theme_action = MagicMock()
 
-    assert window._current_theme == 'auto'
+    # _current_theme 初值来自 current_theme_mode()（只返回 light/dark），
+    # 显式固定为 auto 作为循环起点
+    window._current_theme = 'auto'
     window._cycle_theme()
     assert window._current_theme == 'light'
     window._cycle_theme()
@@ -134,12 +98,13 @@ def test_cycle_theme_cycles_all_states(mocker, qtbot):
 # ---------------------------------------------------------------------------
 def test_theme_change_saved_via_dataprovider(mocker, qtbot):
     """_cycle_theme() calls _save_theme() which writes to DataProvider."""
-    mocker.patch('ui.main_window.get_style_qss').return_value = MockStyleQSS('auto')
     mocker.patch('ui.main_window.DataProvider')
     mocker.patch('ui.main_window.SkillsPanel')
     mocker.patch('ui.main_window.WorkArea')
     mocker.patch('ui.main_window.PluginManager')
-    mocker.patch('utils.style_qss.set_style_qss_theme')
+    mocker.patch('ui.main_window.TrayIconManager')
+    # 隔离真实全局 QSS 应用（UIKit 主题迁移后 _cycle_theme 走 apply_uikit_theme）
+    mocker.patch('ui.main_window.apply_uikit_theme')
 
     from ui.main_window import InstructionXMainWindow
     with patch.object(InstructionXMainWindow, '_load_saved_theme'):
@@ -151,6 +116,8 @@ def test_theme_change_saved_via_dataprovider(mocker, qtbot):
 
     window._menu_theme_action = MagicMock()
 
+    # 固定循环起点为 auto，下一步应切换到 light
+    window._current_theme = 'auto'
     with patch.object(window, '_save_theme') as mock_save:
         window._cycle_theme()
         mock_save.assert_called_once_with('light')
@@ -161,11 +128,11 @@ def test_theme_change_saved_via_dataprovider(mocker, qtbot):
 # ---------------------------------------------------------------------------
 def test_on_skill_clicked_with_valid_widget(mocker, qtbot):
     """_on_skill_clicked() with a valid plugin widget adds it to work area."""
-    mocker.patch('ui.main_window.get_style_qss').return_value = MockStyleQSS('auto')
     mocker.patch('ui.main_window.SkillsPanel')
     mocker.patch('ui.main_window.WorkArea')
     mocker.patch('ui.main_window.DataProvider')
     mocker.patch('ui.main_window.PluginManager')
+    mocker.patch('ui.main_window.TrayIconManager')
 
     from ui.main_window import InstructionXMainWindow
     with patch.object(InstructionXMainWindow, '_load_saved_theme'):
@@ -194,11 +161,11 @@ def test_on_skill_clicked_with_valid_widget(mocker, qtbot):
 # ---------------------------------------------------------------------------
 def test_on_skill_clicked_with_none_widget(mocker, qtbot):
     """_on_skill_clicked() with None widget shows error label in work area."""
-    mocker.patch('ui.main_window.get_style_qss').return_value = MockStyleQSS('auto')
     mocker.patch('ui.main_window.SkillsPanel')
     mocker.patch('ui.main_window.WorkArea')
     mocker.patch('ui.main_window.DataProvider')
     mocker.patch('ui.main_window.PluginManager')
+    mocker.patch('ui.main_window.TrayIconManager')
 
     from ui.main_window import InstructionXMainWindow
     with patch.object(InstructionXMainWindow, '_load_saved_theme'):
@@ -229,11 +196,11 @@ def test_on_skill_clicked_with_none_widget(mocker, qtbot):
 # ---------------------------------------------------------------------------
 def test_get_resize_direction_top_left(mocker, qtbot):
     """_get_resize_direction() returns 'top-left' for top-left edge."""
-    mocker.patch('ui.main_window.get_style_qss').return_value = MockStyleQSS('auto')
     mocker.patch('ui.main_window.SkillsPanel')
     mocker.patch('ui.main_window.WorkArea')
     mocker.patch('ui.main_window.DataProvider')
     mocker.patch('ui.main_window.PluginManager')
+    mocker.patch('ui.main_window.TrayIconManager')
 
     from ui.main_window import InstructionXMainWindow
     with patch.object(InstructionXMainWindow, '_load_saved_theme'):
@@ -259,11 +226,11 @@ def test_get_resize_direction_top_left(mocker, qtbot):
 # ---------------------------------------------------------------------------
 def test_get_resize_direction_bottom_right(mocker, qtbot):
     """_get_resize_direction() returns 'bottom-right' for bottom-right edge."""
-    mocker.patch('ui.main_window.get_style_qss').return_value = MockStyleQSS('auto')
     mocker.patch('ui.main_window.SkillsPanel')
     mocker.patch('ui.main_window.WorkArea')
     mocker.patch('ui.main_window.DataProvider')
     mocker.patch('ui.main_window.PluginManager')
+    mocker.patch('ui.main_window.TrayIconManager')
 
     from ui.main_window import InstructionXMainWindow
     with patch.object(InstructionXMainWindow, '_load_saved_theme'):
@@ -291,11 +258,11 @@ def test_get_resize_direction_bottom_right(mocker, qtbot):
 # ---------------------------------------------------------------------------
 def test_get_resize_direction_center(mocker, qtbot):
     """_get_resize_direction() returns None for center area."""
-    mocker.patch('ui.main_window.get_style_qss').return_value = MockStyleQSS('auto')
     mocker.patch('ui.main_window.SkillsPanel')
     mocker.patch('ui.main_window.WorkArea')
     mocker.patch('ui.main_window.DataProvider')
     mocker.patch('ui.main_window.PluginManager')
+    mocker.patch('ui.main_window.TrayIconManager')
 
     from ui.main_window import InstructionXMainWindow
     with patch.object(InstructionXMainWindow, '_load_saved_theme'):
@@ -321,7 +288,6 @@ def test_get_resize_direction_center(mocker, qtbot):
 # ---------------------------------------------------------------------------
 def test_menu_actions_exist_and_connected(mocker, qtbot):
     """Menu action methods exist and are callable on InstructionXMainWindow."""
-    mocker.patch('ui.main_window.get_style_qss').return_value = MockStyleQSS('auto')
     mocker.patch('ui.main_window.SkillsPanel')
     mocker.patch('ui.main_window.WorkArea')
     mocker.patch('ui.main_window.DataProvider')
@@ -332,6 +298,6 @@ def test_menu_actions_exist_and_connected(mocker, qtbot):
     # Verify menu-related methods exist
     assert hasattr(InstructionXMainWindow, '_create_menus')
     assert hasattr(InstructionXMainWindow, '_create_ai_menu')
-    assert hasattr(InstructionXMainWindow, '_open_plugin_order_dialog')
+    assert hasattr(InstructionXMainWindow, '_open_plugin_management_dialog')
     assert hasattr(InstructionXMainWindow, '_open_about_dialog')
     assert hasattr(InstructionXMainWindow, '_cycle_theme')

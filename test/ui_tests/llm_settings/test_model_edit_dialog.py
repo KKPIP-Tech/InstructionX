@@ -56,6 +56,8 @@ class TestCreateMode:
         qtbot.addWidget(dialog)
         dialog._on_confirm()
         assert block_message_boxes["warning"]
+        assert any("模型 ID" in str(arg)
+                   for call in block_message_boxes["warning"] for arg in call)
         assert dialog.result() == 0  # 未接受
 
 

@@ -124,6 +124,12 @@ def test_load_skills_from_manager_clears_and_reloads(qtbot):
 
     mock_manager.get_official_plugins.return_value = [mock_official]
     mock_manager.get_thirdparty_plugins.return_value = [mock_thirdparty]
+    # load_skills_from_manager() 的数据源为 get_sorted_plugins(scope)，
+    # 未分组插件以 ("plugin", 插件实例) 项返回，仍是布局直接子项
+    mock_manager.get_sorted_plugins.side_effect = (
+        lambda scope: [('plugin', mock_official)] if scope == 'official'
+        else [('plugin', mock_thirdparty)]
+    )
 
     panel.set_plugin_manager(mock_manager)
     panel.load_skills_from_manager()
@@ -133,6 +139,50 @@ def test_load_skills_from_manager_clears_and_reloads(qtbot):
     assert panel.thirdparty_layout.count() == 1
     assert panel.official_layout.itemAt(0).widget().skill_name == 'OfficialOne'
     assert panel.thirdparty_layout.itemAt(0).widget().skill_name == 'ThirdOne'
+
+
+# ---------------------------------------------------------------------------
+# Test: load_skills_from_manager() renders group item as PluginGroupWidget
+# ---------------------------------------------------------------------------
+def test_load_skills_from_manager_renders_group_widget(qtbot):
+    """load_skills_from_manager() 遇到 ("group", ...) 项时渲染 PluginGroupWidget，组内插件不直接加入页面布局。"""
+    from ui.skills_panel.panel import SkillsPanel
+    from ui.skills_panel.plugin_group_widget import PluginGroupWidget
+    from core.plugin.plugin_groups import PluginGroup
+
+    panel = SkillsPanel(None)
+    qtbot.addWidget(panel)
+
+    # 组内插件需具备分组机制所需的 plugin_id 属性
+    mock_plugin = MagicMock()
+    mock_plugin.plugin_id = 'grouped-plugin-uuid'
+    mock_plugin.plugin_name = 'GroupedOne'
+    mock_plugin.skill_icon = QIcon()
+    mock_plugin.skill_description = 'Grouped desc'
+
+    mock_group = PluginGroup.new('测试分组')
+    mock_group.plugins = [mock_plugin.plugin_id]
+
+    mock_manager = MagicMock()
+    mock_manager.get_official_plugins.return_value = [mock_plugin]
+    mock_manager.get_thirdparty_plugins.return_value = []
+    mock_manager.get_sorted_plugins.side_effect = (
+        lambda scope: [('group', mock_group, [mock_plugin])] if scope == 'official'
+        else []
+    )
+
+    panel.set_plugin_manager(mock_manager)
+    panel.load_skills_from_manager()
+
+    # 官方页布局中该项为 PluginGroupWidget 实例
+    assert panel.official_layout.count() == 1
+    group_widget = panel.official_layout.itemAt(0).widget()
+    assert isinstance(group_widget, PluginGroupWidget)
+
+    # 组内插件按钮位于分组控件的展开区，不直接出现在 official_layout 中
+    inner_layout = group_widget.expand_area.layout()
+    assert inner_layout.count() == 1
+    assert inner_layout.itemAt(0).widget().skill_name == 'GroupedOne'
 
 
 # ---------------------------------------------------------------------------

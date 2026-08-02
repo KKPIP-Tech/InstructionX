@@ -109,6 +109,8 @@ class TestCreateCustom:
         dialog._on_confirm()
         assert dialog.created_instance_id is None
         assert block_message_boxes["warning"]
+        assert any("Base URL" in str(arg)
+                   for call in block_message_boxes["warning"] for arg in call)
         assert get_llm_config().get_all_providers() == {}
 
     def test_empty_name_rejected(self, qtbot, block_message_boxes):
@@ -120,6 +122,8 @@ class TestCreateCustom:
         dialog._on_confirm()
         assert dialog.created_instance_id is None
         assert block_message_boxes["warning"]
+        assert any("实例名称" in str(arg)
+                   for call in block_message_boxes["warning"] for arg in call)
 
 
 class TestEditMode:
@@ -149,3 +153,5 @@ class TestEditMode:
         dialog._on_confirm()
         assert dialog.created_instance_id is None
         assert block_message_boxes["warning"]
+        assert any("实例不存在" in str(arg)
+                   for call in block_message_boxes["warning"] for arg in call)
