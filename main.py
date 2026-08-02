@@ -30,6 +30,10 @@ from core.llm.usage_record_store import get_usage_record_store
 def main():
     # 创建应用实例
     application = QApplication(sys.argv)
+
+    # 托盘模式前置条件：关闭「最后一个窗口关闭即退出」的隐式链路，
+    # 退出时机完全由代码显式控制（主窗口 closeEvent / 托盘菜单「退出」）
+    application.setQuitOnLastWindowClosed(False)
     
     # 设置应用名称
     application.setApplicationName("InstructionX - CE")
@@ -64,7 +68,6 @@ def main():
     
     # 运行应用
     result = application.exec()
-
     application.closeAllWindows()
 
     # 关闭后台任务管理器
