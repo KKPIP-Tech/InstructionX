@@ -1064,6 +1064,22 @@ class BackgroundTaskManager(ITaskManager):
             return self._storage.get_long_running_tasks_by_plugin(plugin_id)
         return self._storage.get_all_long_running_tasks()
 
+    def is_long_task_running(self, task_id: str) -> bool:
+        """判断长期任务当前是否在运行时表中（真正在执行/等待重启）。
+
+        ``current_status`` 字段同时承载生命周期状态与插件自由文本
+        （``update_long_running_task_status`` 的语义即为状态描述），
+        不能作为「是否在运行」的判定依据；运行时表才是唯一可靠来源。
+
+        Args:
+            task_id: 任务 ID
+
+        Returns:
+            任务在运行时表中返回 True，否则 False
+        """
+        with self._task_lock:
+            return task_id in self._running_long_running_tasks
+
     # ==================== 任务查询 ====================
 
     def get_task(self, task_id: str) -> Optional[BackgroundTask]:
