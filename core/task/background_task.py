@@ -856,11 +856,18 @@ class BackgroundTaskManager(ITaskManager):
             delete_from_storage: 是否从存储中删除任务（默认True，用户主动停止时删除）
 
         Returns:
-            是否成功停止
+            是否成功停止；任务不在运行时表时，delete_from_storage=True
+            返回存储记录的删除结果（清理已停止任务的残留记录），
+            delete_from_storage=False 返回 False
         """
         with self._task_lock:
             task = self._running_long_running_tasks.get(task_id)
             if not task:
+                # 已停止的任务不在运行时表，但存储可能残留记录（如重启后
+                # 未恢复、历史会话遗留）。用户主动停止（删除语义）时以
+                # 存储删除为准，避免残留记录永远无法清除
+                if delete_from_storage:
+                    return self._storage.delete_long_running_task(task_id)
                 return False
 
             # 取消待重启定时器
