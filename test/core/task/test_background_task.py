@@ -579,3 +579,48 @@ def test_clear_completed_tasks_delegates_to_storage(mocker):
 
     assert result == 5
     mock_storage.clear_completed_tasks.assert_called_once_with("plugin-19")
+
+
+# ---------------------------------------------------------------------------
+# unregister_scheduled_task 回归测试（禁用态任务必须可注销）
+# ---------------------------------------------------------------------------
+
+def test_unregister_scheduled_task_removes_running_and_storage(mocker):
+    """启用态定时任务注销：同时摘除运行表并删除存储记录。"""
+    manager, mock_storage, _, _ = _make_btm(mocker)
+    task = MagicMock()
+    manager._running_scheduled_tasks["task-1"] = task
+    mock_storage.delete_scheduled_task.return_value = True
+
+    result = manager.unregister_scheduled_task("task-1")
+
+    assert result is True
+    assert "task-1" not in manager._running_scheduled_tasks
+    mock_storage.delete_scheduled_task.assert_called_once_with("task-1")
+
+
+def test_unregister_scheduled_task_disabled_task_deletes_storage(mocker):
+    """回归：禁用态定时任务（不在运行表、存储记录仍在）必须可注销。
+
+    历史 bug：unregister_scheduled_task 只查运行表，禁用任务被
+    disable_scheduled_task 摘出运行表后永远无法注销，存储记录形成
+    僵尸数据；修复后以存储删除结果为准。
+    """
+    manager, mock_storage, _, _ = _make_btm(mocker)
+    assert "task-2" not in manager._running_scheduled_tasks
+    mock_storage.delete_scheduled_task.return_value = True
+
+    result = manager.unregister_scheduled_task("task-2")
+
+    assert result is True
+    mock_storage.delete_scheduled_task.assert_called_once_with("task-2")
+
+
+def test_unregister_scheduled_task_not_found_returns_false(mocker):
+    """存储中不存在的任务注销返回 False（不存在的判定以存储为准）。"""
+    manager, mock_storage, _, _ = _make_btm(mocker)
+    mock_storage.delete_scheduled_task.return_value = False
+
+    result = manager.unregister_scheduled_task("task-missing")
+
+    assert result is False
