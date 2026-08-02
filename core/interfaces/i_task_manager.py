@@ -121,8 +121,8 @@ class ITaskManager(ABC):
         auto_restart: bool = True,
         args: tuple = (),
         kwargs: dict = None
-    ) -> str:
-        """注册长期任务"""
+    ) -> Optional[str]:
+        """注册长期任务（管理器已关闭时返回 None）"""
         pass
 
     @abstractmethod

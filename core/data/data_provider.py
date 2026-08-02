@@ -395,7 +395,8 @@ class DataProvider(IDataProvider):
                        notify: bool = True) -> None:
         """写入插件在指定命名空间下的单个数据项
 
-        写入 PUBLIC 命名空间且 notify 为 True 时，会异步通知所有订阅者。
+        写入 PUBLIC 命名空间且 notify 为 True 时，会通知所有订阅者
+        （释放文件锁后在当前线程同步调用回调）。
 
         Args:
             instance_id: 插件实例唯一标识

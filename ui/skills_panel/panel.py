@@ -216,7 +216,7 @@ class SkillsPanel(QWidget):
         self.skill_clicked.emit(plugin)
 
     def load_skills_from_manager(self):
-        """从插件管理器加载所有技能（按「分组 → 组内 → 未分组」顺序渲染）"""
+        """从插件管理器加载所有技能（按 get_sorted_plugins 返回的统一顺序混排分组与未分组插件）"""
         if self.plugin_manager is None:
             return
 

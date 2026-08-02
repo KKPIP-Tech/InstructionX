@@ -208,7 +208,7 @@ class MCPManager:
         return self._server is not None and self._server.is_running
 
     def get_server_url(self) -> str:
-        """返回 MCP Server 的 HTTP 地址（仅 HTTP 模式有效）"""
+        """返回 MCP Server 的 HTTP 地址（Server 已初始化即返回，不看传输模式；未初始化返回空串）"""
         if self._server is None:
             return ""
         return f"http://{self._config.server.host}:{self._config.server.port}"
