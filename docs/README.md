@@ -65,6 +65,7 @@ docs/
 │   ├── skills-panel.md              # 技能面板
 │   ├── skill-button.md              # SkillButton 技能按钮
 │   ├── work-area.md                 # 工作区
+│   ├── system-tray.md               # 系统托盘与关闭行为
 │   └── dialogs.md                   # 对话框组件
 │       # 注：UsagePanel（用量查询面板）源码位于 ui/usage_panel/ 包
 

@@ -1,6 +1,6 @@
 # 对话框组件
 
-> InstructionX 应用程序中使用的五个对话框组件的完整说明
+> InstructionX 应用程序中使用的六个对话框组件的完整说明
 
 ---
 
@@ -334,9 +334,53 @@ dialog.exec()
 
 ---
 
-## 6. 相关文档
+## 6. CloseConfirmDialog 关闭确认对话框
+
+**文件位置**: `ui/dialog/close_confirm_dialog.py`
+
+### 6.1 概述
+
+`CloseConfirmDialog` 是主窗口关闭行为的确认对话框：所有关闭路径（自绘叉子 / 标题栏右键「关闭(C)」/ Alt+F4 / 任务栏右键「关闭窗口」）统一经主窗口 `closeEvent` 拦截后弹出，**每次必问**，不提供「记住我的选择」。
+
+说明文案：「您希望退出程序，还是最小化到系统托盘继续运行？托盘运行期间插件与后台任务将继续工作。」
+
+### 6.2 窗口属性
+
+| 属性 | 值 |
+|------|------|
+| 窗口类型 | QDialog，WindowModal（父窗口为主窗口） |
+| 最小宽度 | 420 |
+| 按钮 | 退出程序（primary，默认按钮）/ 最小化到托盘 / 取消 |
+| 样式 | 按钮 `variant` 由 UIKit 全局 QSS 驱动（`set_property(btn, "variant", ...)`），随全局主题自动切换 |
+
+### 6.3 行为语义
+
+- **退出程序**：真正退出（`closeEvent` accept + 显式 `QApplication.quit()`）
+- **最小化到托盘**：隐藏主窗口、托盘图标驻留、弹通知提示（每次都弹，详见 [系统托盘与关闭行为](system-tray.md)）
+- **取消**：Esc、对话框叉号、「取消」按钮统一走 `reject()`，等价于取消关闭，窗口保持原状
+
+### 6.4 使用方式
+
+```python
+from ui.dialog.close_confirm_dialog import CloseChoice, CloseConfirmDialog
+
+# 一站式：模态弹出并返回三值枚举
+choice = CloseConfirmDialog.ask(parent_window)
+
+# 或分步使用
+dialog = CloseConfirmDialog(parent_window)
+dialog.exec()
+choice = dialog.selected_choice()
+```
+
+`CloseChoice` 三值枚举：`EXIT`（退出程序）/ `MINIMIZE_TO_TRAY`（最小化到托盘）/ `CANCEL`（取消）；对话框被 reject（Esc / 叉号 / 取消按钮）时 `selected_choice()` 恒为 `CANCEL`。
+
+---
+
+## 7. 相关文档
 
 - [主窗口](main-window.md)
+- [系统托盘与关闭行为](system-tray.md)
 - [技能面板](skills-panel.md)
 - [插件系统概述](../core/plugin-system/overview.md)
 - [GitHub 插件安装器](../core/plugin-system/plugin-installer.md)

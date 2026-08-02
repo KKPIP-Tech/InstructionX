@@ -272,7 +272,13 @@ ui/                         # 界面层
   skills_panel/             # 插件技能面板（含 plugin_group_widget.py 分组折叠控件：
                             #   文件夹形式收起、点击行内向右展开、展开区区分背景）
   work_area/                # 插件 Widget 宿主区（切换插件时缓存 UI 状态）
+  tray/                     # 系统托盘子系统：TrayIconManager 门面（四项菜单：显示主窗口/
+                            #   正在运行的插件/后台正在运行的任务/退出，两个状态子菜单
+                            #   aboutToShow 动态重建）+ TrayBackend 平台后端注册表/工厂
+                            #   （win32 后端 + generic 兜底，macOS/Linux 预留扩展点）
   dialog/                   # 各类对话框（GitHub 安装、开源许可等）
+    close_confirm_dialog.py    # 关闭确认对话框：退出程序/最小化到托盘/取消 三按钮，
+                               #   每次关闭必问（无记忆选项），Esc/叉号等价于取消
     plugin_management_dialog.py  # 插件管理对话框：安装/升级/降级/卸载 + 分组与排序
                                  #   （替代原 plugin_order_dialog 的菜单入口）
     llm_settings/           # LLM 设置对话框包：dialog 主壳 + provider_list_panel/provider_detail_panel/
@@ -298,6 +304,7 @@ config/ data/ logs/         # 运行时生成：配置、数据、日志
 
 - **单例模式**：`PluginManager`、`DataProvider`、`BackgroundTaskManager`、`LLMProvider`、`LLMConfig`、`LLMPluginService`、`MCPManager`、`LoggerManager` 均为单例（`XxxManager._instance`，部分提供 `get_xxx()` 访问器；`LLMPluginService` 为模块级 `_instance`）。测试中重置单例要清 `_instance`。
 - **接口与实现分离**：共享类型统一定义在 `core/interfaces/`，其他模块从这里 re-export，避免循环导入。
+- **关闭行为约定**：`main.py` 已 `setQuitOnLastWindowClosed(False)`，「关窗即退出」的隐式链路被切断，退出时机完全由代码显式控制（`QApplication.quit()`）；主窗口 `closeEvent` 统一拦截全部关闭路径（自绘叉子 / 标题栏右键 / Alt+F4 / 任务栏右键关闭），每次弹出 `CloseConfirmDialog` 询问「退出程序 / 最小化到托盘 / 取消」（无记忆选项）；托盘菜单「退出」与 Windows 注销/关机（`commitDataRequest` 回调置 `_force_quit`）走静默直退，不弹窗、不阻塞系统关机。
 - 后台任务回调在**工作线程**执行，更新 UI 必须通过 `utils/thread_utils.py` 封送到 UI 线程。
 
 ### 插件开发约定（重要）
