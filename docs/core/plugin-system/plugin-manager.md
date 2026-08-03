@@ -499,6 +499,7 @@ def _create_plugin_services(self) -> PluginServices:
 | `logger` | `ILogger` | 日志服务（`LoggerManager` 实例） |
 | `mcp_manager` | `MCPManager` | MCP Server 管理器（失败时为 `None`） |
 | `mcp_client` | `MCPClientManager` | MCP 外部连接管理器（失败时为 `None`） |
+| `font_manager` | `FontManager` | 字体管理器（`core/font`，无降级保护、始终注入） |
 
 **使用流程**（见 `manager.py` 的 `_load_plugin_from_directory()` 方法）：
 

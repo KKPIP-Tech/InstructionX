@@ -34,7 +34,7 @@ graph TB
     Content --> WA
 ```
 
-> **注意**：菜单栏（编辑、用户中心、AI、帮助）实际嵌入在 `CustomTitleBar` 内部（通过 `set_menu_bar()` 放置在标题和窗口控制按钮之间）。无框架窗口额外设置了 `WA_TranslucentBackground` 属性。
+> **注意**：菜单栏（编辑、AI、帮助）实际嵌入在 `CustomTitleBar` 内部（通过 `set_menu_bar()` 放置在标题和窗口控制按钮之间）。无框架窗口额外设置了 `WA_TranslucentBackground` 属性。
 
 ---
 
@@ -42,7 +42,7 @@ graph TB
 
 ### 3.1 菜单栏
 
-菜单栏包含四个菜单：**编辑**、**用户中心**、**AI**、**帮助**。
+菜单栏包含三个菜单：**编辑**、**AI**、**帮助**。
 
 ```python
 def _create_menus(self) -> None:
@@ -54,12 +54,10 @@ def _create_menus(self) -> None:
     # 编辑菜单
     menu_edit = menu_bar.addMenu("编辑")
     menu_edit.addAction(menu_edit_plugin_manage_action)  # 插件管理... (Ctrl+P)
+    menu_edit.addAction(menu_edit_font_manage_action)    # 字体管理...
     menu_edit.addAction(self._menu_theme_action)         # 切换主题
     menu_edit.addSeparator()
     menu_edit.addAction(menu_edit_github_install_action) # 从 GitHub 安装插件...
-
-    # 用户中心菜单（预留，目前为空）
-    menu_user = menu_bar.addMenu("用户中心")
 
     # AI 菜单 - 由 _create_ai_menu 创建
     self._create_ai_menu(menu_bar)
@@ -67,7 +65,7 @@ def _create_menus(self) -> None:
     # 帮助菜单
     menu_help = menu_bar.addMenu("帮助")
     menu_help.addAction(menu_help_about_action)    # 关于
-    menu_help.addAction(menu_help_license_action)  # 许可信息
+    menu_help.addAction(menu_help_license_action)  # 开源组件许可
 ```
 
 **AI 菜单** (`_create_ai_menu`) 包含以下菜单项：
@@ -449,16 +447,29 @@ def _open_about_dialog(self):
     dialog.exec()
 ```
 
-#### 许可信息对话框
+#### 开源组件许可对话框
 
-通过 **帮助 > 许可信息** 打开，展示项目中字体和第三方依赖的许可证详情。
+通过 **帮助 > 开源组件许可** 打开，展示项目使用的第三方开源组件（依赖）的许可证详情。
 
 ```python
 # 文件顶部导入：from ui.dialog.license_dialog import LicenseDialog
 
 def _open_license_dialog(self):
-    """打开开源许可对话框"""
+    """打开开源组件许可对话框"""
     dialog = LicenseDialog(self)
+    dialog.exec()
+```
+
+#### 字体管理对话框
+
+通过 **编辑 > 字体管理...** 打开，提供字体安装/卸载、已安装与系统字体浏览、实时预览与回退提示（底层为 `core/font` 的 `FontManager`，详见 [对话框组件](dialogs.md)）。
+
+```python
+# 文件顶部导入：from ui.dialog.font_manager_dialog import FontManagerDialog
+
+def _open_font_manager_dialog(self):
+    """打开字体管理对话框（安装/卸载/预览）"""
+    dialog = FontManagerDialog(self)
     dialog.exec()
 ```
 

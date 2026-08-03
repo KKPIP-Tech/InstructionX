@@ -109,13 +109,13 @@ Built-in InstructionX_UIKit component library providing a unified modern interfa
 - **Design Tokens**: Unified color, font, spacing, and radius tokens that restyle in real time with theme switching
 - **57 Components** (+ 12 Layouts + 8 Blueprint Nodes + 6 Charts + 2 Animations = complete component library): Covering buttons, inputs, menus, dialogs, charts, and other common UI elements, ready for plugin development reuse
 
-### 🅰️ Multi-Font Support
+### 🅰️ Font Manager
 
-Built-in FontMap font mapping system:
+Built-in core/font font subsystem (the framework bundles no third-party fonts):
 
-- **5 Font Families**: Alibaba PuHuiTi 3.0, Alimama FangYuanTi, Alimama DongFang DaKai, ZenDots, SmileySans
-- **22 Font Files**: Covering standard weights, italics, etc.
-- **State Machine Lookup**: FontMap.get_path() avoids hardcoded paths
+- **Font Install/Uninstall**: Fonts installed by users or plugins are stored in `data/fonts/` and registered at the application level via QFontDatabase (process-local, no writes to the system font directory)
+- **Font Manager Dialog**: Browse installed and system fonts with live preview via "Edit → Font Manager..."
+- **System Font Fallback**: Plugins obtain fallback-aware QFont instances via `services.font_manager`; missing fonts automatically fall back to the system default font
 
 ### 💾 UI State Caching
 
@@ -216,7 +216,7 @@ graph TD
 | core/llm/types | `core/llm/types.py` | LLM data types (Conversation, UsageStats, etc.) |
 | core/plugin/github_plugin_installer | `core/plugin/github_plugin_installer.py` | GitHub plugin installer |
 | ui/usage_panel | `ui/usage_panel.py` | Usage query panel |
-| utils/font_map | `utils/font_map.py` | Font mapping system |
+| core/font/manager | `core/font/manager.py` | Font manager (install/uninstall/preview/system fallback) |
 
 ### Detailed Documentation
 

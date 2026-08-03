@@ -79,11 +79,14 @@ graph TB
                 DAO["DAO"]
                 DB["DatabaseConnection"]
             end
+
+            subgraph FontLayer["font/"]
+                FMGR["FontManager\n(singleton)"]
+            end
         end
 
         subgraph Utils["utils/"]
             LM["logging_tools.py\nLoggerManager"]
-            FM["font_map.py\nFontMap"]
         end
     end
 
@@ -103,6 +106,7 @@ graph TB
     P1 -.->|"via PluginServices"| DP
     P1 -.->|"via PluginServices"| BTM
     P1 -.->|"via PluginServices"| MCPM
+    P1 -.->|"via PluginServices"| FMGR
 
     LLMPS --> LLMP
     LLMP --> GLM
@@ -221,7 +225,7 @@ sequenceDiagram
         Note over PID: 读取/创建 .plugin_info.json<br/>写入 UUID
 
         PM->>PM: _create_plugin_services() → PluginServices
-        Note over PM: llm_facade = get_llm_plugin_service()<br/>data_provider = DataProvider()<br/>task_manager = BackgroundTaskManager()<br/>logger = LoggerManager()<br/>mcp_manager = get_mcp_manager()<br/>mcp_client = get_client_manager(tool_registry)
+        Note over PM: llm_facade = get_llm_plugin_service()<br/>data_provider = DataProvider()<br/>task_manager = BackgroundTaskManager()<br/>logger = LoggerManager()<br/>mcp_manager = get_mcp_manager()<br/>mcp_client = get_client_manager(tool_registry)<br/>font_manager = get_font_manager()
 
         PM->>PL: inspect.signature() → detect 'services' param
         PM->>PL: plugin_class(services=services) 或 plugin_class()

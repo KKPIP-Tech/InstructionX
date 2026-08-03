@@ -297,6 +297,7 @@ graph LR
         LG[logger<br/>LoggerManager]
         MCM[mcp_manager<br/>MCPManager]
         MCC[mcp_client<br/>MCPClientManager]
+        FTM[font_manager<br/>FontManager]
     end
 
     PluginServices --> LLM
@@ -305,6 +306,7 @@ graph LR
     PluginServices --> LG
     PluginServices --> MCM
     PluginServices --> MCC
+    PluginServices --> FTM
 ```
 
 | 服务字段 | 类型 | 说明 |
@@ -315,6 +317,7 @@ graph LR
 | `logger` | `ILogger` | 日志服务 |
 | `mcp_manager` | `MCPManager` | MCP Server 管理器 |
 | `mcp_client` | `MCPClientManager` | MCP 外部连接管理器 |
+| `font_manager` | `FontManager` | 字体管理器（安装/卸载/系统回退解析，`core/font`） |
 
 ---
 

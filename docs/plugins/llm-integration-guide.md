@@ -101,7 +101,7 @@ svc = get_llm_plugin_service()
 
 ## PluginServices 服务容器
 
-`PluginServices` 是框架自动注入的服务容器，包含 6 个核心服务字段：
+`PluginServices` 是框架自动注入的服务容器，包含 7 个核心服务字段：
 
 | 字段 | 类型 | 说明 | 注入失败时 |
 |------|------|------|-----------|
@@ -111,6 +111,7 @@ svc = get_llm_plugin_service()
 | `logger` | `ILogger` | 日志服务（实际为 `LoggerManager` 单例） | 不适用（无降级保护，构造失败将直接抛错） |
 | `mcp_manager` | `MCPManager` | MCP Server 管理器 | `None` |
 | `mcp_client` | `MCPClientManager` | MCP 外部连接管理器 | `None` |
+| `font_manager` | `FontManager` | 字体管理器（安装/卸载/回退解析，`core/font`） | 不适用（无降级保护，同 `logger`/`llm_facade`，始终注入） |
 
 完整说明见 [插件系统概述](../core/plugin-system/overview.md)。
 

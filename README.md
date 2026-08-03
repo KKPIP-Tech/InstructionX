@@ -110,13 +110,13 @@ InstructionX 是一个功能强大的**插件集成框架**，允许你根据实
 - **设计令牌**：统一的颜色、字体、间距、圆角等 Design Tokens，随主题实时换肤
 - **57 组件**（+ 12 布局 + 8 蓝图节点 + 6 图表 + 2 动画 = 完整组件库）：覆盖按钮、输入框、菜单、对话框、图表等常用界面元素，插件开发可直接复用
 
-### 🅰️ 多字体支持
+### 🅰️ 字体管理器
 
-内置 FontMap 字体映射系统：
+内置 core/font 字体子系统（框架不自带第三方字体）：
 
-- **5 字体家族**：阿里巴巴普惠体 3.0、阿里妈妈方圆体、阿里妈妈东方大楷、ZenDots、得意黑
-- **22 字体文件**：涵盖标准字重、意大利体等
-- **状态机查询**：FontMap.get_path() 避免硬编码路径
+- **字体安装/卸载**：用户或插件安装的字体统一存储于 `data/fonts/`，经 QFontDatabase 应用级注册（进程内生效，不写系统字体目录）
+- **字体管理对话框**：「编辑 → 字体管理...」浏览已安装与系统字体、实时预览效果
+- **系统字体回退**：插件经 `services.font_manager` 获取带回退链的 QFont，字体缺失时自动回退系统默认字体
 
 ### 💾 UI 状态缓存
 
@@ -217,7 +217,7 @@ graph TD
 | core/llm/types | `core/llm/types.py` | LLM 数据类型（Conversation、UsageStats 等） |
 | core/plugin/github_plugin_installer | `core/plugin/github_plugin_installer.py` | GitHub 插件安装器 |
 | ui/usage_panel | `ui/usage_panel.py` | 用量查询面板 |
-| utils/font_map | `utils/font_map.py` | 字体映射系统 |
+| core/font/manager | `core/font/manager.py` | 字体管理器（安装/卸载/预览/系统回退） |
 
 ### 详细文档
 

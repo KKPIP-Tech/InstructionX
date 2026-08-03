@@ -1,6 +1,6 @@
 # 对话框组件
 
-> InstructionX 应用程序中使用的七个对话框组件的完整说明
+> InstructionX 应用程序中使用的八个对话框组件的完整说明
 
 ---
 
@@ -316,13 +316,13 @@ def _on_plugin_installed(self, results):
 
 ---
 
-## 6. LicenseDialog 许可信息对话框
+## 6. LicenseDialog 开源组件许可对话框
 
 **文件位置**: `ui/dialog/license_dialog.py`
 
 ### 6.1 概述
 
-`LicenseDialog` 是开源许可证信息展示对话框，以分类卡片列表的形式展示项目中使用的所有字体和第三方依赖的许可证详情。
+`LicenseDialog` 是开源组件许可展示对话框，以卡片列表的形式展示项目使用的第三方开源组件（依赖）的许可证详情。窗口标题与页头均为「开源组件许可」。
 
 ### 6.2 窗口属性
 
@@ -336,13 +336,13 @@ def _on_plugin_installed(self, results):
 
 ```
 ┌────────────────────────────────────────────────────────────────────────────┐
-│  许可信息  Licenses                                                          │
+│  开源组件许可                                                                │
 ├──────────────────────┬─────────────────────────────────────────────────────┤
 │  [搜索名称...]        │                                                      │
 │  ─────────────────   │  MiniMax-Plus2 (MiniMax-M2.5)                       │
-│  字体项              │  ────────────────────────────                         │
-│  依赖项              │  [MIT]  v1.0.0 | 依赖                               │
-│  ...                 │  © xxxx                                             │
+│  依赖项              │  ────────────────────────────                         │
+│  ...                 │  [MIT]  v1.0.0 | 依赖                               │
+│                      │  © xxxx                                             │
 │                      │  https://example.com                                │
 │                      │                                                      │
 │                      │  ┌──────────────────────────────────────────────┐   │
@@ -359,7 +359,7 @@ def _on_plugin_installed(self, results):
 
 ### 6.4 数据来源
 
-许可证数据从 `licenses/manifest.json` 读取，分为 `fonts`（字体）和 `dependencies`（依赖）两类。每项包含 `name`、`display_name`、`license_type`、`version`、`url`、`copyright` 等字段。
+许可证数据从 `licenses/manifest.json` 的 `dependencies`（依赖）数组读取（框架不自带第三方字体，原 `fonts` 分类已移除）。每项包含 `name`、`display_name`、`license_type`、`version`、`url`、`copyright` 等字段。
 
 ### 6.5 功能特性
 
@@ -380,17 +380,77 @@ dialog.exec()
 
 ---
 
-## 7. CloseConfirmDialog 关闭确认对话框
+## 7. FontManagerDialog 字体管理对话框
+
+**文件位置**: `ui/dialog/font_manager_dialog.py`
+
+### 7.1 概述
+
+`FontManagerDialog` 是框架字体的管理入口：左栏展示已安装字体（框架管理，来自 `FontManager` 注册记录）与系统字体两个分组，右栏提供实时预览（示例文本可编辑、字号可调），底部提供安装/卸载操作。底层能力由 `core/font` 的 `FontManager` 单例提供（详见 [字体子系统概述](../core/font-manager/overview.md)）。
+
+### 7.2 窗口属性
+
+| 属性 | 值 |
+|------|------|
+| 窗口类型 | QDialog，模态 |
+| 最小尺寸 | 860 x 560 |
+| 默认尺寸 | 920 x 620 |
+| 窗口标题 | 字体管理 |
+
+### 7.3 布局结构
+
+```
+┌────────────────────────────────────────────────────────────────────────────┐
+│  字体管理                                                                    │
+├──────────────────────┬─────────────────────────────────────────────────────┤
+│  [搜索字体...]        │  [示例文本输入框]                                     │
+│  ─────────────────   │  字号 [ 24 ] (8-72)                                 │
+│  已安装字体（分组标题）│  ┌──────────────────────────────────────────────┐   │
+│   · SmileySans       │  │                                              │   │
+│  系统字体（分组标题）  │  │        预览卡片（示例文本实时渲染）            │   │
+│   · Microsoft YaHei  │  │                                              │   │
+│   · ...（只读）       │  └──────────────────────────────────────────────┘   │
+│                      │  当前字体：X / 字体 X 不可用，已回退到系统字体：Y      │
+├──────────────────────┴─────────────────────────────────────────────────────┤
+│  [安装字体...] [卸载]                                              [关闭]    │
+└────────────────────────────────────────────────────────────────────────────┘
+```
+
+- **左栏**（280px）：搜索框 + 字体列表，分「已安装字体」「系统字体」两个分组（分组标题行不可选）；系统字体分组来自 `QFontDatabase.families()`，只读
+- **右栏**：示例文本编辑（默认「InstructionX 字体预览 Font Preview 0123 ABCabc」）+ 字号 QSpinBox（8-72，默认 24）+ 预览卡片 + 解析结果提示
+- **底部栏**：安装字体... / 卸载 / 关闭（主按钮）
+
+### 7.4 功能特性
+
+- **搜索过滤**：按家族名实时过滤列表项（分组标题恒显示）
+- **实时预览**：预览经 `FontManager.get_font()` 构造，选中字体不可用时自动回退并提示「字体 X 不可用，已回退到系统字体：Y」
+- **安装字体**：`QFileDialog` 多选（过滤器 `字体文件 (*.ttf *.otf *.ttc)`），逐个安装；失败经 `Message.warning` 弹窗并记日志，不阻断其余文件
+- **卸载**：仅选中「已安装字体」分组项时可用，经 `feedback.confirm` 确认后执行；卸载后使用该字体的界面自动回退系统字体
+
+### 7.5 使用方式
+
+```python
+from ui.dialog import FontManagerDialog
+
+dialog = FontManagerDialog(parent_window)
+dialog.exec()
+```
+
+菜单入口：主窗口「编辑 → 字体管理...」（`InstructionXMainWindow._open_font_manager_dialog()`）。
+
+---
+
+## 8. CloseConfirmDialog 关闭确认对话框
 
 **文件位置**: `ui/dialog/close_confirm_dialog.py`
 
-### 7.1 概述
+### 8.1 概述
 
 `CloseConfirmDialog` 是主窗口关闭行为的确认对话框：所有关闭路径（自绘叉子 / 标题栏右键「关闭(C)」/ Alt+F4 / 任务栏右键「关闭窗口」）统一经主窗口 `closeEvent` 拦截后弹出，**每次必问**，不提供「记住我的选择」。
 
 说明文案：「您希望退出程序，还是最小化到系统托盘继续运行？托盘运行期间插件与后台任务将继续工作。」
 
-### 7.2 窗口属性
+### 8.2 窗口属性
 
 | 属性 | 值 |
 |------|------|
@@ -399,13 +459,13 @@ dialog.exec()
 | 按钮 | 退出程序（primary，默认按钮）/ 最小化到托盘 / 取消 |
 | 样式 | 按钮 `variant` 由 UIKit 全局 QSS 驱动（`set_property(btn, "variant", ...)`），随全局主题自动切换 |
 
-### 7.3 行为语义
+### 8.3 行为语义
 
 - **退出程序**：真正退出（`closeEvent` accept + 显式 `QApplication.quit()`）
 - **最小化到托盘**：隐藏主窗口、托盘图标驻留、弹通知提示（每次都弹，详见 [系统托盘与关闭行为](system-tray.md)）
 - **取消**：Esc、对话框叉号、「取消」按钮统一走 `reject()`，等价于取消关闭，窗口保持原状
 
-### 7.4 使用方式
+### 8.4 使用方式
 
 ```python
 from ui.dialog.close_confirm_dialog import CloseChoice, CloseConfirmDialog
@@ -423,10 +483,11 @@ choice = dialog.selected_choice()
 
 ---
 
-## 8. 相关文档
+## 9. 相关文档
 
 - [主窗口](main-window.md)
 - [系统托盘与关闭行为](system-tray.md)
 - [技能面板](skills-panel.md)
+- [字体子系统概述](../core/font-manager/overview.md)
 - [插件系统概述](../core/plugin-system/overview.md)
 - [GitHub 插件安装器](../core/plugin-system/plugin-installer.md)

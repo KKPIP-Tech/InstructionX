@@ -49,7 +49,7 @@ InstructionX 框架代码与用户插件代码是**两个独立的 git 仓库**�
 **你绝对禁止修改以下任何文件与目录：**
 
 - 框架核心：`core/`、`ui/`、`utils/`、`workers/`、`main.py`
-- 框架资源与运行数据：`config/`、`data/`、`logs/`、`assets/`、`font/`、`licenses/`、`docs/`（框架文档）
+- 框架资源与运行数据：`config/`、`data/`、`logs/`、`assets/`、`licenses/`、`docs/`（框架文档）
 - 框架工程文件：`pyproject.toml`、`requirements.txt`、`run.bat`、`run.ps1`、`AGENTS.md`、`README.md`、`.github/`、`.claude/`
 - **另一种模式对应的插件目录**（官方开发者禁止碰 `custom_plugin/`，第三方开发者禁止碰 `plugin/`）
 

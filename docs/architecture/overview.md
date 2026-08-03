@@ -356,6 +356,10 @@ InstructionX/
 │   │   ├── bridge.py         # MCPBridge（桥接器）
 │   │   ├── config.py         # MCP 配置
 │   │   └── plugin_interface.py  # MCP 插件接口
+│   ├── font/                 # 字体子系统（框架不自带字体）
+│   │   ├── manager.py        # FontManager 单例（安装/卸载/注册表持久化/系统回退）
+│   │   ├── font_record.py    # FontRecord 字体注册记录
+│   │   └── exceptions.py     # FontInstallError
 │   └── llm/                  # LLM 提供者实现
 │       ├── llm_provider.py  # LLMProvider 核心层（adapter 分发、check_*、惰性刷新）
 │       ├── provider_interface.py  # ILLM + Message/ChatResponse/ToolCall/ModelInfo/ModelCheckResult
@@ -434,7 +438,6 @@ InstructionX/
 ├── utils/                    # 工具类
 │   ├── logging_tools.py     # 日志管理
 │   ├── i_logger.py         # ILogger 接口
-│   ├── font_map.py         # 字体映射
 │   ├── image_utils.py      # 图片工具（load_image_as_base64）
 │   └── thread_utils.py     # 工作线程 → UI 线程封送
 │

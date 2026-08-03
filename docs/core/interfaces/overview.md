@@ -528,6 +528,7 @@ class MyPlugin(IPlugin):
 - `logger`: `ILogger` - 日志接口
 - `mcp_manager`: `MCPManager` - MCP Server 管理器实例（可为空，用于管理内置 MCP Server）
 - `mcp_client`: `MCPClientManager` - 外部 MCP Client 管理器实例（可为空，用于连接外部 MCP Server）
+- `font_manager`: `FontManager` - 字体管理器实例（`core/font`，安装/卸载/系统回退解析；无降级保护、始终注入，同 `logger`）
 
 **设计模式**: 依赖注入（Dependency Injection）
 

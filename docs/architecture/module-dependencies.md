@@ -268,6 +268,7 @@ class PluginServices:
     logger: "ILogger"                           # 日志服务（必需字段）
     mcp_manager: "MCPManager" = field(default=None)       # MCP Server 管理器
     mcp_client: "MCPClientManager" = field(default=None)  # MCP Client 管理器
+    font_manager: "FontManager" = field(default=None)     # 字体管理器（core/font，无降级保护、始终注入）
 ```
 
 新版插件通过 `self._services` 访问服务，旧版插件可通过直接导入单例兼容访问。

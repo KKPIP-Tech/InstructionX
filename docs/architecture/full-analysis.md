@@ -105,6 +105,9 @@ graph TB
                 OPENAI[OpenAIProvider]
             end
         end
+        subgraph CoreFont ["Font System"]
+            FM[FontManager<br/>core/font]
+        end
     end
 
     subgraph Interfaces ["Interface Layer"]
@@ -125,7 +128,6 @@ graph TB
     subgraph Utils ["Utils"]
         UKIT[InstructionX_UIKit + uikit_theme<br/>全局主题]
         LOGGING[LoggerManager]
-        FONTMAP[FontMap]
     end
 
     MW --> TB
@@ -138,6 +140,7 @@ graph TB
 
     PM -.->|创建并注入| PS
     PS -.->|llm_facade| LLMS
+    PS -.->|font_manager| FM
     PM -->|load/manage| Plugins
     PM -->|API registry| IPlugin_IF
 
@@ -346,6 +349,7 @@ class PluginServices:
     logger: "ILogger"                           # 日志服务（必需字段）
     mcp_manager: "MCPManager" = field(default=None)       # MCP Server 管理器
     mcp_client: "MCPClientManager" = field(default=None)  # MCP Client 管理器
+    font_manager: "FontManager" = field(default=None)     # 字体管理器（core/font，无降级保护、始终注入）
 ```
 
 **使用方式**：PluginManager 通过 `_create_plugin_services()` 创建容器实例，在加载插件时通过 `services` 参数注入。详见 [PluginManager](../core/plugin-system/plugin-manager.md)。
@@ -1029,6 +1033,14 @@ class Service:
 | `scheduler.py` | TaskScheduler（轻量生命周期占位，空转线程已移除）+ SchedulerCallback |
 | `__init__.py` | 模块导出 |
 
+#### 字体子系统 (`core/font/`)
+
+| 文件 | 核心职责 |
+|------|---------|
+| `manager.py` | FontManager 单例：字体安装/卸载、注册表持久化（data/fonts/fonts.json 原子写）、QFontDatabase 应用级注册、系统字体回退解析 |
+| `font_record.py` | FontRecord 字体注册记录（frozen dataclass） |
+| `exceptions.py` | FontInstallError 字体安装失败异常 |
+
 #### LLM 层 (`core/llm/`)
 
 | 文件 | 核心职责 |
@@ -1085,7 +1097,6 @@ class Service:
 |------|---------|
 | `logging_tools.py` | LoggerManager 单例，旋转日志 |
 | `i_logger.py` | ILogger 接口 |
-| `font_map.py` | FontMap 字体映射 |
 | `image_utils.py` | 图片工具（load_image_as_base64） |
 | `thread_utils.py` | 工作线程 → UI 线程封送 |
 

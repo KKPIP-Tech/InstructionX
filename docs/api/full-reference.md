@@ -729,6 +729,7 @@ task_id = task_manager.register_scheduled_task(
 | `logger` | `ILogger` | 日志管理器实例（`LoggerManager` 实现） |
 | `mcp_manager` | `MCPManager` | MCP 管理器实例（可能为 `None`） |
 | `mcp_client` | `MCPClientManager` | MCP 客户端管理器实例（可能为 `None`） |
+| `font_manager` | `FontManager` | 字体管理器实例（`core/font`，始终注入） |
 
 ### 7.8 ILogger（日志接口）
 
