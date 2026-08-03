@@ -9,6 +9,7 @@ from PySide6.QtGui import QIcon
 
 from utils.logging_tools import LoggerManager, get_name
 from .skill_button import SkillButton
+from .plugin_group_widget import PluginGroupWidget
 
 
 class SkillsPanel(QWidget):
@@ -48,8 +49,8 @@ class SkillsPanel(QWidget):
         pill_container = QWidget()
         pill_container.setObjectName("skillsPillContainer")
         pill_layout = QHBoxLayout(pill_container)
-        pill_layout.setContentsMargins(4, 4, 4, 4)
-        pill_layout.setSpacing(4)
+        pill_layout.setContentsMargins(2, 2, 2, 2)
+        pill_layout.setSpacing(2)
 
         # 官方功能按钮
         self.official_btn = QPushButton("官方功能")
@@ -139,9 +140,15 @@ class SkillsPanel(QWidget):
         self.thirdparty_btn.style().unpolish(self.thirdparty_btn)
         self.thirdparty_btn.style().polish(self.thirdparty_btn)
 
-        # 更新计数
-        target_layout = self.official_layout if is_official else self.thirdparty_layout
-        count = target_layout.count()
+        # 更新计数（按插件数量统计，分组不作为独立项计数）
+        if self.plugin_manager is not None:
+            if is_official:
+                count = len(self.plugin_manager.get_official_plugins())
+            else:
+                count = len(self.plugin_manager.get_thirdparty_plugins())
+        else:
+            target_layout = self.official_layout if is_official else self.thirdparty_layout
+            count = target_layout.count()
         self.count_label.setText(f"{count} Plugins")
 
     def add_skill_button(self, plugin, is_official: bool):
@@ -151,6 +158,28 @@ class SkillsPanel(QWidget):
         Args:
             plugin: 插件对象
             is_official: 是否为官方插件
+        """
+        skill_btn = self._create_skill_button(plugin)
+        if skill_btn is None:
+            return
+
+        # 添加到相应的布局
+        if is_official:
+            self.official_layout.addWidget(skill_btn)
+        else:
+            self.thirdparty_layout.addWidget(skill_btn)
+
+    def _create_skill_button(self, plugin):
+        """创建并连接一个技能按钮
+
+        供未分组插件与分组控件（PluginGroupWidget）共用，
+        保证按钮外观与激活逻辑一致。
+
+        Args:
+            plugin: 插件对象
+
+        Returns:
+            SkillButton 实例；获取插件信息失败时返回 None
         """
         # 获取插件图标和描述
         try:
@@ -164,19 +193,14 @@ class SkillsPanel(QWidget):
             description = getattr(plugin, 'skill_description', name)
         except Exception as e:
             self._logger.error(get_name(), f'获取插件信息失败: {e}')
-            return
+            return None
 
         # 创建技能按钮
         skill_btn = SkillButton(icon, name, description, self)
 
         # 绑定点击事件，传递按钮和插件对象
         skill_btn.clicked.connect(lambda checked=False, btn=skill_btn, p=plugin: self._on_skill_clicked(btn, p))
-
-        # 添加到相应的布局
-        if is_official:
-            self.official_layout.addWidget(skill_btn)
-        else:
-            self.thirdparty_layout.addWidget(skill_btn)
+        return skill_btn
 
     def _on_skill_clicked(self, button, plugin):
         """处理技能按钮点击事件"""
@@ -192,7 +216,7 @@ class SkillsPanel(QWidget):
         self.skill_clicked.emit(plugin)
 
     def load_skills_from_manager(self):
-        """从插件管理器加载所有技能"""
+        """从插件管理器加载所有技能（按 get_sorted_plugins 返回的统一顺序混排分组与未分组插件）"""
         if self.plugin_manager is None:
             return
 
@@ -204,22 +228,33 @@ class SkillsPanel(QWidget):
             # 清除激活状态（重要：因为旧按钮已被删除）
             self._active_button = None
 
-            # 加载官方技能
-            official_plugins = self.plugin_manager.get_official_plugins()
-            for plugin in official_plugins:
-                self.add_skill_button(plugin, is_official=True)
-
-            # 加载第三方技能
-            thirdparty_plugins = self.plugin_manager.get_thirdparty_plugins()
-            for plugin in thirdparty_plugins:
-                self.add_skill_button(plugin, is_official=False)
+            # 按 scope 渲染：分组控件 + 未分组插件按钮
+            for scope, layout in (("official", self.official_layout),
+                                  ("thirdparty", self.thirdparty_layout)):
+                for item in self.plugin_manager.get_sorted_plugins(scope):
+                    if item[0] == "group":
+                        self._add_group_widget(layout, item[1], item[2])
+                    else:
+                        skill_btn = self._create_skill_button(item[1])
+                        if skill_btn is not None:
+                            layout.addWidget(skill_btn)
 
             # 更新当前标签页的计数
-            current_index = self.stacked_widget.currentIndex()
-            self._switch_tab(current_index)
+            self._switch_tab(self.stacked_widget.currentIndex())
 
         except Exception as e:
             self._logger.error(get_name(), f'从插件管理器加载技能失败: {e}')
+
+    def _add_group_widget(self, layout, group, plugins):
+        """向布局添加一个分组折叠控件
+
+        Args:
+            layout: 目标布局（官方/第三方页面容器）
+            group: PluginGroup 分组数据
+            plugins: 组内插件实例列表
+        """
+        group_widget = PluginGroupWidget(group, plugins, self._create_skill_button)
+        layout.addWidget(group_widget)
 
     def _clear_layout(self, layout):
         """清空布局中的所有控件"""

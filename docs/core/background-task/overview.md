@@ -67,8 +67,8 @@ class TaskType(Enum):
 
 - **特点**: 按固定间隔重复执行
 - **适用场景**: 定期备份、自动同步等
-- **参数限制**: `SchedulerCallback.execute_scheduled_task()` 在执行时优先检查 `args`。当 `args` 和 `kwargs` 同时存在时，`kwargs` 会被忽略。如需同时使用两者，请在 `args` 中传递字典并在 `func` 内部解包。
-- **调度实现**: `TaskScheduler._check_and_run_tasks()` 当前为空实现（`pass`）。实际的定时任务检查与执行由 `BackgroundTaskManager._check_scheduled_tasks()` daemon 线程完成，该线程使用 `SchedulerCallback.should_run()` 判断到期，并通过 `SchedulerCallback.execute_scheduled_task()` 执行任务。
+- **参数传递**: `SchedulerCallback.execute_scheduled_task()` 以 `execute_func(*task.args, **task.kwargs)` 方式调用任务函数（见 `core/task/scheduler.py` 的 `execute_scheduled_task` 方法），`args` 与 `kwargs` 可同时传递、互不排斥。
+- **调度实现**: `TaskScheduler` 类目前仅作为**轻量生命周期占位**（仅保留 `start()` / `stop()` / `is_running`），其历史空转方法 `_check_and_run_tasks()`（早期为空实现 `pass`）已**整体移除**。实际的定时任务检查与执行由 `BackgroundTaskManager._check_scheduled_tasks()` daemon 线程（`ScheduledTaskChecker`）完成，该线程使用 `SchedulerCallback.should_run()` 判断到期，并通过 `SchedulerCallback.execute_scheduled_task()` 执行任务。**插件开发者请勿直接调用 `TaskScheduler`，仅在 `BackgroundTaskManager` 上下文中使用**。
 - **示例**:
   ```python
   task_id = manager.register_scheduled_task(
@@ -176,7 +176,7 @@ graph TB
     BTM -->|恢复| JSON
 ```
 
-> **注意**：`TaskScheduler` 类虽然被初始化并启动，但其 `_check_and_run_tasks()` 方法目前为空实现（`pass`）。实际的定时任务检查逻辑在 `BackgroundTaskManager._check_scheduled_tasks()` daemon 线程（`ScheduledTaskChecker`）中执行，该线程使用 `SchedulerCallback.should_run()` 判断到期，并通过 `SchedulerCallback.execute_scheduled_task()` 执行任务。
+> **注意**：`TaskScheduler` 类目前仅作为**轻量生命周期占位**（仅保留 `start()` / `stop()` / `is_running`），其历史空转方法 `_check_and_run_tasks()`（早期为空实现 `pass`）已**整体移除**；不要直接调用 `TaskScheduler` 来安排定时任务。实际的定时任务检查逻辑在 `BackgroundTaskManager._check_scheduled_tasks()` daemon 线程（`ScheduledTaskChecker`）中执行，该线程使用 `SchedulerCallback.should_run()` 判断到期，并通过 `SchedulerCallback.execute_scheduled_task()` 执行任务。
 
 ---
 
@@ -192,12 +192,12 @@ class BackgroundTask:
     name: str                 # 任务名称
     task_type: TaskType       # 任务类型
     status: TaskStatus        # 任务状态
-    func: Callable            # 执行函数
+    func: Optional[Callable]  # 执行函数
     callback: Optional[Callable]  # 回调函数
     args: tuple               # 函数参数
     kwargs: dict              # 关键字参数
     result: Any               # 执行结果
-    error: str                # 错误信息
+    error: Optional[str]      # 错误信息
     created_at: datetime      # 创建时间
     started_at: Optional[datetime]  # 开始时间
     finished_at: Optional[datetime]  # 完成时间
@@ -212,11 +212,19 @@ class ScheduledTask:
     plugin_id: str            # 插件 ID
     name: str                 # 任务名称
     interval: int             # 执行间隔（秒）
-    enabled: bool              # 是否启用
-    last_run: Optional[datetime]  # 上次执行时间
-    next_run: Optional[datetime]  # 下次执行时间
+    func_name: str            # 任务函数标识（func.__qualname__），用于重启后精确匹配工厂函数
+    enabled: bool             # 是否启用
+    args: tuple               # 函数参数
+    kwargs: dict              # 关键字参数
+
+    # 运行时属性（不参与序列化）
     func: Optional[Callable]   # 执行函数
     callback: Optional[Callable]  # 回调函数
+
+    # 时间戳
+    last_run: Optional[datetime]  # 上次执行时间
+    next_run: Optional[datetime]  # 下次执行时间
+    created_at: datetime      # 创建时间
 ```
 
 ### 5.3 LongRunningTask
@@ -229,6 +237,7 @@ class LongRunningTask:
     name: str                 # 任务名称
     enabled: bool             # 是否启用
     auto_restart: bool        # 失败后是否自动重启
+    func_name: str            # 任务函数标识（func.__qualname__），用于重启后精确匹配工厂函数
 
     # 运行时属性（不参与序列化）
     func: Optional[Callable]          # 执行函数
@@ -281,11 +290,11 @@ manager.register_long_running_task_factory(
 # BackgroundTaskManager 会在工厂注册后自动恢复
 ```
 
-### 6.3 工厂注册限制
+### 6.3 工厂注册机制（双级键归档）
 
-> **重要限制**：一个插件只能注册**一个定时任务工厂**和**一个长期任务工厂**。后注册的工厂会覆盖先注册的工厂（以 `plugin_id` 为键的字典存储）。
+> 定时任务工厂与长期任务工厂均为**双级键结构**：`{plugin_id: {"func": ..., "callback": ..., "funcs": {func_name: {...}}}}`（见 `core/task/background_task.py` 的 `_archive_scheduled_factory` / `_archive_long_running_factory`）。同一插件可注册**多个不同函数**，按 `func.__qualname__` 归档到 `funcs` 子表，互不覆盖；顶层 `func`/`callback` 等键仅保留最近注册的值，用于兼容旧结构。
 >
-> 如果插件需要多个定时任务，应在工厂函数内部通过参数区分不同的任务逻辑，或使用多个异步任务替代。
+> 注册任务时会把 `func.__qualname__` 记入任务的 `func_name` 字段并持久化；重启恢复时按 `plugin_id + func_name` 精确匹配工厂。旧版记录（无 `func_name`）回退到该插件唯一工厂；该插件注册了多个工厂时使用第一个并记 warning。
 
 ### 6.4 恢复流程
 
@@ -420,9 +429,13 @@ task_id = manager.register_async_task(
             "plugin_id": "plugin-uuid",
             "name": "定时备份",
             "interval": 3600,
+            "func_name": "backup_task",
             "enabled": true,
+            "args": [],
+            "kwargs": {},
             "last_run": "2026-01-01T10:00:00",
-            "next_run": "2026-01-01T11:00:00"
+            "next_run": "2026-01-01T11:00:00",
+            "created_at": "2026-01-01T09:00:00"
         }
     },
     "long_running_tasks": {
@@ -432,10 +445,14 @@ task_id = manager.register_async_task(
             "name": "Web服务",
             "enabled": true,
             "auto_restart": true,
+            "func_name": "web_service",
             "current_status": "running",
             "error": null,
+            "args": [],
+            "kwargs": {},
             "created_at": "2026-01-01T10:00:00",
             "last_started_at": "2026-01-01T10:00:05",
+            "last_stopped_at": null,
             "restart_count": 0
         }
     }
@@ -451,7 +468,3 @@ task_id = manager.register_async_task(
 - [后台任务存储](task-storage.md)
 - [插件开发指南](../plugin-system/plugin-development.md)
 - [接口层概述](../interfaces/overview.md)
-
----
-
-*本文档由 Claude Code 自动生成*

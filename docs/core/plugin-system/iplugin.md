@@ -328,7 +328,15 @@ PluginManager 在加载完成后会直接设置以下实例属性（无需插件
 
 ### 4.3 卸载
 
-当前框架不提供显式的插件卸载回调。若需清理资源，可在 Python 对象销毁时依赖 `__del__`（不推荐用于关键逻辑）。
+框架提供显式的卸载回调 `on_plugin_unloaded()`（`IPlugin` 基类默认空实现，插件可选重写）。卸载/热重载时由 `PluginManager` 在销毁插件实例前调用，插件应在此释放资源：
+
+- 取消 DataProvider 订阅
+- 停止定时器 / 后台线程
+- 关闭文件句柄、网络连接等
+
+框架侧在调用该回调后，会依次完成：跨插件 API 与 MCP 工具注销、缓存 Widget 销毁、`sys.modules` 清理；完整卸载（`PluginManager.uninstall_plugin()`）还会继续删除插件目录、UUID 文件、排序/分组/注册表记录，并可选删除 DataProvider 中的插件数据。
+
+用户侧入口：**编辑 → 插件管理...**（插件管理对话框中的「卸载…」按钮）。
 
 ---
 
@@ -519,10 +527,16 @@ class TextFormattingPlugin(IPlugin):
 
 ## 7. 相关文档
 
+**插件系统内部**：
 - [插件系统概述](overview.md)
-- [PluginManager](plugin-manager.md)
-- [插件开发指南](plugin-development.md)
+- [PluginManager](plugin-manager.md)（`PluginManager` 如何加载/调用 `IPlugin`）
+- [插件开发指南](plugin-development.md)（如何继承 `IPlugin` 开发新插件）
+- [GitHub 插件安装器](plugin-installer.md)（`entrance.py` 文件如何被发现）
 
----
+**接口层与 API 索引**：
+- [接口层概述](../interfaces/overview.md)（`IPlugin` / `IPluginInfo` 在接口层的定位）
+- [完整 API 参考 §7.2 IPlugin](../../api/full-reference.md#72-iplugin插件接口)
 
-*本文档由 Claude Code 自动生成*
+**相关子系统**：
+- [MCP 协议模块概述](../mcp/overview.md)（`IMCPTool` 是 `IPlugin` 的 MCP 衍生接口）
+- [LLM 集成指南](../../plugins/llm-integration-guide.md)（插件如何通过 `PluginServices.llm_facade` 调 LLM）

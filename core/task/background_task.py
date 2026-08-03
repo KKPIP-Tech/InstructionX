@@ -556,16 +556,15 @@ class BackgroundTaskManager(ITaskManager):
             task_id: 任务 ID
 
         Returns:
-            是否成功注销（任务不在运行列表中时返回 False）
+            是否成功注销（存储中不存在该任务记录时返回 False）
         """
         with self._task_lock:
-            task = self._running_scheduled_tasks.pop(task_id, None)
+            # 运行表与持久化存储是两套登记：禁用/未恢复的任务不在运行表，
+            # 但存储记录仍在，注销必须以存储删除为准（否则禁用态任务
+            # 永远无法注销，形成僵尸记录）
+            self._running_scheduled_tasks.pop(task_id, None)
 
-        if task:
-            self._storage.delete_scheduled_task(task_id)
-            return True
-
-        return False
+        return self._storage.delete_scheduled_task(task_id)
 
     def enable_scheduled_task(self, task_id: str) -> bool:
         """启用定时任务（重算下次执行时间并加入运行列表）
@@ -857,11 +856,18 @@ class BackgroundTaskManager(ITaskManager):
             delete_from_storage: 是否从存储中删除任务（默认True，用户主动停止时删除）
 
         Returns:
-            是否成功停止
+            是否成功停止；任务不在运行时表时，delete_from_storage=True
+            返回存储记录的删除结果（清理已停止任务的残留记录），
+            delete_from_storage=False 返回 False
         """
         with self._task_lock:
             task = self._running_long_running_tasks.get(task_id)
             if not task:
+                # 已停止的任务不在运行时表，但存储可能残留记录（如重启后
+                # 未恢复、历史会话遗留）。用户主动停止（删除语义）时以
+                # 存储删除为准，避免残留记录永远无法清除
+                if delete_from_storage:
+                    return self._storage.delete_long_running_task(task_id)
                 return False
 
             # 取消待重启定时器
@@ -1064,6 +1070,22 @@ class BackgroundTaskManager(ITaskManager):
         if plugin_id:
             return self._storage.get_long_running_tasks_by_plugin(plugin_id)
         return self._storage.get_all_long_running_tasks()
+
+    def is_long_task_running(self, task_id: str) -> bool:
+        """判断长期任务当前是否在运行时表中（真正在执行/等待重启）。
+
+        ``current_status`` 字段同时承载生命周期状态与插件自由文本
+        （``update_long_running_task_status`` 的语义即为状态描述），
+        不能作为「是否在运行」的判定依据；运行时表才是唯一可靠来源。
+
+        Args:
+            task_id: 任务 ID
+
+        Returns:
+            任务在运行时表中返回 True，否则 False
+        """
+        with self._task_lock:
+            return task_id in self._running_long_running_tasks
 
     # ==================== 任务查询 ====================
 

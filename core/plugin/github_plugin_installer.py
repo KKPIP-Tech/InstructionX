@@ -22,6 +22,8 @@ from utils.logging_tools import LoggerManager, get_name
 from .dependency_manager import DependencyManager
 # 无循环依赖（manager 不反向依赖本模块），置顶导入
 from .manager import get_plugin_manager
+from .plugin_identity import PluginIdentity
+from .plugin_version import PluginVersion
 
 
 @dataclass
@@ -31,6 +33,7 @@ class InstallResult:
     message: str = ""
     plugin_id: Optional[str] = None
     plugin_name: Optional[str] = None
+    relation: str = ""  # new / upgrade / downgrade / reinstall
 
     @staticmethod
     def ok(plugin_id: str, plugin_name: str, message: str = "安装成功") -> "InstallResult":
@@ -82,6 +85,16 @@ class RepoInspectionResult:
         return RepoInspectionResult(repo_type="invalid", error_message=message)
 
 
+@dataclass
+class ReleaseInfo:
+    """GitHub Release 版本信息（用于升级/降级选择）"""
+    tag: str
+    name: str
+    version: str = ""          # 从 IXPlugin.json 解析的插件版本，解析失败为空
+    prerelease: bool = False
+    published_at: str = ""
+
+
 class GitHubPluginInstaller:
     """
     从 GitHub 安装插件的安装器
@@ -106,6 +119,10 @@ class GitHubPluginInstaller:
     DEFAULT_BRANCH_TIMEOUT = 10        # 默认分支查询超时（秒）
     ARCHIVE_DOWNLOAD_TIMEOUT = 60      # 仓库压缩包下载超时（秒）
     DOWNLOAD_CHUNK_SIZE = 256 * 1024   # 流式下载分块大小（字节）
+    RELEASES_PER_PAGE = 30             # 查询 Release 列表的单页数量
+
+    # GitHub Token 环境变量（可选，用于提升 API 限流阈值/访问私有仓库）
+    GITHUB_TOKEN_ENV = "INSTRUCTIONX_GITHUB_TOKEN"
 
     def __init__(self, plugin_manager=None):
         self._plugin_manager = plugin_manager
@@ -113,8 +130,8 @@ class GitHubPluginInstaller:
         self._gh_api_base = "https://api.github.com"
 
     def _get_target_directory(self, owner: str, official_dir: Path, thirdparty_dir: Path) -> Tuple[Path, str]:
-        """根据 owner 确定安装目录和类型描述"""
-        if owner == self.KKPIP_TECH_ORG:
+        """根据 owner 确定安装目录和类型描述（GitHub 用户名大小写不敏感）"""
+        if owner.lower() == self.KKPIP_TECH_ORG.lower():
             return official_dir, "官方插件目录 (plugin/)"
         return thirdparty_dir, "第三方插件目录 (custom_plugin/)"
 
@@ -147,11 +164,21 @@ class GitHubPluginInstaller:
 
         return None
 
-    def _fetch_file_content(self, owner: str, repo: str, file_path: str) -> Optional[Dict[str, Any]]:
-        """通过 GitHub API 获取文件内容"""
+    def _github_headers(self) -> Dict[str, str]:
+        """构造 GitHub API 请求头（存在 Token 环境变量时附带鉴权）"""
+        token = os.environ.get(self.GITHUB_TOKEN_ENV, "").strip()
+        if token:
+            return {"Authorization": f"Bearer {token}"}
+        return {}
+
+    def _fetch_file_content(self, owner: str, repo: str, file_path: str,
+                            ref: str = "") -> Optional[Dict[str, Any]]:
+        """通过 GitHub API 获取文件内容，可选指定 ref（分支/tag）"""
         url = f"{self._gh_api_base}/repos/{owner}/{repo}/contents/{file_path}"
+        params = {"ref": ref} if ref else None
         try:
-            response = requests.get(url, timeout=self.GITHUB_API_TIMEOUT)
+            response = requests.get(url, headers=self._github_headers(),
+                                    params=params, timeout=self.GITHUB_API_TIMEOUT)
             if response.status_code == 200:
                 data = response.json()
                 if isinstance(data, dict) and data.get("encoding") == "base64":
@@ -166,7 +193,8 @@ class GitHubPluginInstaller:
         """通过 GitHub API 获取目录内容"""
         url = f"{self._gh_api_base}/repos/{owner}/{repo}/contents/{path}"
         try:
-            response = requests.get(url, timeout=self.GITHUB_API_TIMEOUT)
+            response = requests.get(url, headers=self._github_headers(),
+                                    timeout=self.GITHUB_API_TIMEOUT)
             if response.status_code == 200:
                 return response.json()
             return None
@@ -325,7 +353,8 @@ class GitHubPluginInstaller:
             repo_index_path = temp_dir / self.REPO_INDEX_FILE
             if repo_index_path.exists():
                 return self._install_from_multi_plugin_repo(
-                    repo_index_path, target_dir, selected_plugins, dir_desc, progress_callback
+                    repo_index_path, target_dir, selected_plugins, dir_desc,
+                    progress_callback, source_url=github_url
                 )
             else:
                 # 单插件仓库
@@ -333,7 +362,9 @@ class GitHubPluginInstaller:
                 if not plugin_path.exists():
                     return [InstallResult.error("插件描述文件不存在")]
 
-                return self._install_single_plugin(temp_dir, target_dir, dir_desc, progress_callback)
+                return self._install_single_plugin(
+                    temp_dir, target_dir, dir_desc, progress_callback, source_url=github_url
+                )
         finally:
             # 清理临时目录
             self._cleanup_temp_dir(temp_dir)
@@ -346,6 +377,7 @@ class GitHubPluginInstaller:
         try:
             response = requests.get(
                 f"{self._gh_api_base}/repos/{owner}/{repo}",
+                headers=self._github_headers(),
                 timeout=self.DEFAULT_BRANCH_TIMEOUT
             )
             if response.status_code == 200:
@@ -358,76 +390,89 @@ class GitHubPluginInstaller:
         return None
 
     def _download_repository(self, owner: str, repo: str) -> Optional[Path]:
-        """下载整个仓库到临时目录（流式下载 + 安全解压）"""
+        """下载整个仓库到临时目录（依次尝试默认分支 / main / master）"""
+        default_branch = self._get_default_branch(owner, repo)
+        candidate_branches = [default_branch] if default_branch else ["main", "master"]
+
+        last_status = None
+        for branch in candidate_branches:
+            archive_url = f"https://github.com/{owner}/{repo}/archive/refs/heads/{branch}.zip"
+            temp_dir, status = self._try_download_archive(archive_url, f"ix_plugin_{repo}_")
+            if temp_dir is not None:
+                return temp_dir
+            last_status = status
+            if status != 404:
+                # 网络错误或非 404 状态码不再尝试其他分支
+                break
+
+        self._logger.error(get_name(), f"Failed to download repo: {last_status}")
+        return None
+
+    def _try_download_archive(self, archive_url: str, temp_prefix: str) -> Tuple[Optional[Path], Optional[int]]:
+        """下载指定压缩包 URL 并安全解压到临时目录
+
+        Args:
+            archive_url: 仓库/Release 压缩包 URL
+            temp_prefix: 临时目录名前缀
+
+        Returns:
+            (临时目录, None) 成功；(None, HTTP状态码) 请求失败；(None, None) 网络/解压错误
+        """
         temp_dir = None
         completed = False
         try:
-            # 创建临时目录
-            temp_dir = Path(tempfile.mkdtemp(prefix=f"ix_plugin_{repo}_"))
-
-            # 优先查询默认分支，失败时回退依次尝试 main、master
-            default_branch = self._get_default_branch(owner, repo)
-            candidate_branches = [default_branch] if default_branch else ["main", "master"]
-
-            response = None
-            last_status = None
-            for branch in candidate_branches:
-                archive_url = f"https://github.com/{owner}/{repo}/archive/refs/heads/{branch}.zip"
-                try:
-                    resp = requests.get(
-                        archive_url, timeout=self.ARCHIVE_DOWNLOAD_TIMEOUT, stream=True
-                    )
-                except Exception as e:
-                    self._logger.error(get_name(), f"Error downloading repository: {e}")
-                    return None
-                if resp.status_code == 200:
-                    response = resp
-                    break
-                last_status = resp.status_code
-                resp.close()
-                if resp.status_code != 404:
-                    break
-
-            if response is None:
-                self._logger.error(get_name(), f"Failed to download repo: {last_status}")
-                return None
-
-            # 流式写入临时 zip 文件，避免整包读入内存，并限制下载大小
-            zip_path = temp_dir / "__repo_archive__.zip"
-            downloaded = 0
-            with response, open(zip_path, "wb") as f:
-                for chunk in response.iter_content(chunk_size=self.DOWNLOAD_CHUNK_SIZE):
-                    if not chunk:
-                        continue
-                    downloaded += len(chunk)
-                    if downloaded > self.MAX_DOWNLOAD_SIZE:
-                        self._logger.error(
-                            get_name(),
-                            f"仓库压缩包超过大小上限 ({self.MAX_DOWNLOAD_SIZE // (1024 * 1024)}MB)"
-                        )
-                        return None
-                    f.write(chunk)
-
-            # 安全解压（zip-slip 校验 + 大小/数量限制）
-            if not self._safe_extract_zip(zip_path, temp_dir):
-                return None
-
-            # 解压成功后删除压缩包
+            temp_dir = Path(tempfile.mkdtemp(prefix=temp_prefix))
             try:
-                zip_path.unlink()
-            except OSError:
-                pass
+                response = requests.get(
+                    archive_url, timeout=self.ARCHIVE_DOWNLOAD_TIMEOUT, stream=True
+                )
+            except Exception as e:
+                self._logger.error(get_name(), f"Error downloading archive: {e}")
+                return None, None
 
+            if response.status_code != 200:
+                status = response.status_code
+                response.close()
+                return None, status
+
+            if not self._stream_to_zip(response, temp_dir):
+                return None, None
             completed = True
-            return temp_dir
-
+            return temp_dir, None
         except Exception as e:
-            self._logger.error(get_name(), f"Error downloading repository: {e}")
-            return None
+            self._logger.error(get_name(), f"Error downloading archive: {e}")
+            return None, None
         finally:
             # 所有失败路径都要清理临时目录（成功路径由调用方负责清理）
             if not completed and temp_dir is not None and temp_dir.exists():
                 shutil.rmtree(temp_dir, ignore_errors=True)
+
+    def _stream_to_zip(self, response, temp_dir: Path) -> bool:
+        """流式写入压缩包并安全解压，成功时删除压缩包文件"""
+        zip_path = temp_dir / "__repo_archive__.zip"
+        downloaded = 0
+        with response, open(zip_path, "wb") as f:
+            for chunk in response.iter_content(chunk_size=self.DOWNLOAD_CHUNK_SIZE):
+                if not chunk:
+                    continue
+                downloaded += len(chunk)
+                if downloaded > self.MAX_DOWNLOAD_SIZE:
+                    self._logger.error(
+                        get_name(),
+                        f"压缩包超过大小上限 ({self.MAX_DOWNLOAD_SIZE // (1024 * 1024)}MB)"
+                    )
+                    return False
+                f.write(chunk)
+
+        # 安全解压（zip-slip 校验 + 大小/数量限制）
+        if not self._safe_extract_zip(zip_path, temp_dir):
+            return False
+
+        try:
+            zip_path.unlink()
+        except OSError:
+            pass
+        return True
 
     def _safe_extract_zip(self, zip_path: Path, temp_dir: Path) -> bool:
         """安全解压仓库 zip 到临时目录
@@ -438,12 +483,14 @@ class GitHubPluginInstaller:
         """
         try:
             with zipfile.ZipFile(zip_path) as zf:
-                all_names = zf.namelist()
+                all_names = [n for n in zf.namelist() if n]
                 if not all_names:
                     return False
 
-                # 找到根目录（通常是 repo-<branch>）
-                root_prefix = all_names[0].split("/")[0] + "/"
+                # 检测公共根目录（GitHub 压缩包通常是 repo-<branch>/；
+                # 用户上传的 zip 可能没有公共根，此时不剥离任何前缀）
+                roots = {n.split("/")[0] for n in all_names}
+                root_prefix = roots.pop() + "/" if len(roots) == 1 else ""
                 dest_root = temp_dir.resolve()
 
                 total_size = 0
@@ -502,7 +549,8 @@ class GitHubPluginInstaller:
         target_dir: Path,
         selected_plugins: List[str],
         dir_desc: str,
-        progress_callback=None
+        progress_callback=None,
+        source_url: str = ""
     ) -> List[InstallResult]:
         """从多插件仓库安装"""
         try:
@@ -533,7 +581,10 @@ class GitHubPluginInstaller:
                 results.append(InstallResult.error(f"插件目录不存在: {plugin_path_str}"))
                 continue
 
-            result = self._install_plugin_dir(plugin_dir, target_dir, plugin_id, dir_desc, progress_callback)
+            result = self._install_plugin_dir(
+                plugin_dir, target_dir, plugin_id, dir_desc, progress_callback,
+                source_type="github", source_url=source_url, source_path=plugin_path_str
+            )
             results.append(result)
 
         return results
@@ -543,10 +594,14 @@ class GitHubPluginInstaller:
         plugin_root: Path,
         target_dir: Path,
         dir_desc: str,
-        progress_callback=None
+        progress_callback=None,
+        source_url: str = ""
     ) -> List[InstallResult]:
         """安装单插件仓库（插件文件直接在仓库根目录）"""
-        return self._install_plugin_dir(plugin_root, target_dir, "", dir_desc, progress_callback)
+        return self._install_plugin_dir(
+            plugin_root, target_dir, "", dir_desc, progress_callback,
+            source_type="github", source_url=source_url
+        )
 
     def _install_plugin_dir(
         self,
@@ -554,7 +609,10 @@ class GitHubPluginInstaller:
         target_dir: Path,
         plugin_id: str = "",
         dir_desc: str = "",
-        progress_callback=None
+        progress_callback=None,
+        source_type: str = "unknown",
+        source_url: str = "",
+        source_path: str = ""
     ) -> InstallResult:
         """安装单个插件目录"""
         try:
@@ -577,6 +635,12 @@ class GitHubPluginInstaller:
             # 获取插件 ID 和名称
             actual_plugin_id = descriptor.get("id", plugin_id)
             plugin_name = descriptor.get("name", "Unknown")
+            new_version = descriptor.get("version", "release.0.0.0")
+
+            # 检测与已安装版本的关系（新装/升级/降级/重装）
+            relation, prev_version = self._detect_install_relation(
+                target_dir, actual_plugin_id, new_version
+            )
 
             # 检查并安装插件依赖
             dependencies = descriptor.get("dependencies", {})
@@ -618,6 +682,13 @@ class GitHubPluginInstaller:
                 init_file = target_plugin_dir / "__init__.py"
                 if not init_file.exists():
                     init_file.write_text("")
+
+                # 保留旧版本的插件 UUID 文件：覆盖/升级安装时 UUID 必须稳定，
+                # 否则注册表、排序、分组、DataProvider 数据会与插件脱节
+                backup_info = backup_dir / ".plugin_info.json"
+                target_info = target_plugin_dir / ".plugin_info.json"
+                if backup_info.exists() and not target_info.exists():
+                    shutil.copy2(backup_info, target_info)
             except Exception:
                 # 安装失败：清理半成品目录并从 .bak 恢复旧版本
                 if target_plugin_dir.exists():
@@ -630,8 +701,21 @@ class GitHubPluginInstaller:
             if backup_dir.exists():
                 shutil.rmtree(backup_dir, ignore_errors=True)
 
+            # 登记版本注册表（供后续升级/降级与更新检查）
+            self._record_install(
+                target_dir, target_plugin_dir, actual_plugin_id, plugin_name,
+                new_version, source_type, source_url, source_path
+            )
+
+            message = f"安装成功 ({dir_desc})"
+            if relation != "new":
+                label = {"upgrade": "升级", "downgrade": "降级", "reinstall": "重装"}[relation]
+                message += f"（{label} {prev_version} → {new_version}）"
+
             self._logger.info(get_name(), f"插件已安装到 {target_plugin_dir}")
-            return InstallResult.ok(actual_plugin_id, plugin_name, f"安装成功 ({dir_desc})")
+            result = InstallResult.ok(actual_plugin_id, plugin_name, message)
+            result.relation = relation
+            return result
 
         except Exception as e:
             self._logger.error(get_name(), f"安装插件失败: {e}")
@@ -644,3 +728,253 @@ class GitHubPluginInstaller:
                 shutil.rmtree(temp_dir, ignore_errors=True)
         except Exception as e:
             self._logger.warning(get_name(), f"清理临时目录失败: {e}")
+
+    # ==================== 版本登记与关系检测 ====================
+
+    def _scope_of_target_dir(self, target_dir: Path) -> str:
+        """判断目标目录属于官方还是第三方插件目录"""
+        pm = self._plugin_manager or get_plugin_manager()
+        if Path(target_dir) == Path(pm.official_plugin_dir):
+            return "official"
+        return "thirdparty"
+
+    def _detect_install_relation(self, target_dir: Path, descriptor_id: str,
+                                 new_version: str) -> Tuple[str, str]:
+        """检测本次安装与已安装版本的关系
+
+        Returns:
+            (relation, prev_version)：relation 为 new/upgrade/downgrade/reinstall
+        """
+        try:
+            pm = self._plugin_manager or get_plugin_manager()
+            scope = self._scope_of_target_dir(target_dir)
+            found = pm.registry.find_by_descriptor(scope, descriptor_id)
+        except Exception:
+            return "new", ""
+        if not found:
+            return "new", ""
+
+        prev_version = found[1].get("version", "")
+        try:
+            old_v = PluginVersion.from_string(prev_version)
+            new_v = PluginVersion.from_string(new_version)
+        except ValueError:
+            return "reinstall", prev_version
+        if new_v > old_v:
+            return "upgrade", prev_version
+        if new_v < old_v:
+            return "downgrade", prev_version
+        return "reinstall", prev_version
+
+    def _record_install(self, target_dir: Path, target_plugin_dir: Path,
+                        descriptor_id: str, plugin_name: str, version: str,
+                        source_type: str, source_url: str, source_path: str) -> None:
+        """安装成功后登记插件版本注册表
+
+        通过 PluginIdentity 获取/生成稳定 UUID（与后续加载时一致），
+        登记失败仅记录告警，不影响安装结果。
+        """
+        try:
+            pm = self._plugin_manager or get_plugin_manager()
+            scope = self._scope_of_target_dir(target_dir)
+            # 优先复用注册表中已有 UUID（升级/重装场景），避免产生重复记录
+            found = pm.registry.find_by_descriptor(scope, descriptor_id)
+            if found:
+                plugin_uuid = found[0]
+            else:
+                plugin_uuid = PluginIdentity(target_plugin_dir).load_or_create_id()
+            pm.registry.upsert(
+                plugin_uuid,
+                descriptor_id=descriptor_id,
+                name=plugin_name,
+                scope=scope,
+                version=version,
+                source_type=source_type,
+                source_url=source_url,
+                source_path=source_path,
+            )
+        except Exception as e:
+            self._logger.warning(get_name(), f"登记插件版本注册表失败: {e}")
+
+    # ==================== 本地插件包安装 ====================
+
+    def install_from_zip(
+        self,
+        zip_path,
+        target_dir: Path = None,
+        progress_callback=None
+    ) -> List[InstallResult]:
+        """从本地 zip 插件包安装/升级/降级插件
+
+        Args:
+            zip_path: 本地插件包路径（包含 IXPlugin.json 的 zip）
+            target_dir: 目标目录；为 None 时自动判定（已安装同 id 插件则沿用其
+                        目录，否则安装到第三方插件目录）
+            progress_callback: 进度回调
+
+        Returns:
+            单元素 InstallResult 列表
+        """
+        zip_path = Path(zip_path)
+        if not zip_path.exists():
+            return [InstallResult.error(f"插件包不存在: {zip_path}")]
+
+        temp_dir = Path(tempfile.mkdtemp(prefix="ix_plugin_zip_"))
+        try:
+            if not self._safe_extract_zip(zip_path, temp_dir):
+                return [InstallResult.error("插件包解压失败或内容不安全")]
+
+            plugin_root = self._locate_plugin_root(temp_dir)
+            if plugin_root is None:
+                return [InstallResult.error(f"插件包中未找到 {self.PLUGIN_DESCRIPTOR_FILE}")]
+
+            target = Path(target_dir) if target_dir else self._resolve_zip_target_dir(plugin_root)
+            return [self._install_plugin_dir(
+                plugin_root, target, "", "本地插件包", progress_callback,
+                source_type="local_zip"
+            )]
+        finally:
+            self._cleanup_temp_dir(temp_dir)
+
+    def _locate_plugin_root(self, temp_dir: Path) -> Optional[Path]:
+        """在解压目录中定位插件根目录（包含 IXPlugin.json 的目录）"""
+        if (temp_dir / self.PLUGIN_DESCRIPTOR_FILE).exists():
+            return temp_dir
+        subdirs = [p for p in temp_dir.iterdir() if p.is_dir()]
+        if len(subdirs) == 1 and (subdirs[0] / self.PLUGIN_DESCRIPTOR_FILE).exists():
+            return subdirs[0]
+        return None
+
+    def _resolve_zip_target_dir(self, plugin_root: Path) -> Path:
+        """为本地插件包确定安装目录：已安装同 id 插件沿用原目录，否则进第三方目录"""
+        pm = self._plugin_manager or get_plugin_manager()
+        try:
+            with open(plugin_root / self.PLUGIN_DESCRIPTOR_FILE, "r", encoding="utf-8") as f:
+                descriptor_id = json.load(f).get("id", "")
+        except (OSError, json.JSONDecodeError):
+            descriptor_id = ""
+        if descriptor_id:
+            for scope, directory in (("official", pm.official_plugin_dir),
+                                     ("thirdparty", pm.thirdparty_plugin_dir)):
+                if pm.registry.find_by_descriptor(scope, descriptor_id):
+                    return Path(directory)
+        return Path(pm.thirdparty_plugin_dir)
+
+    # ==================== GitHub Release 升级/降级 ====================
+
+    def get_available_versions(self, source_url: str,
+                               descriptor_path: str = "") -> List[ReleaseInfo]:
+        """获取来源仓库的可安装版本列表（按插件版本号降序）
+
+        对每个 Release tag 通过 Contents API 读取 IXPlugin.json 解析版本号，
+        避免下载完整压缩包。
+
+        Args:
+            source_url: 来源仓库 URL
+            descriptor_path: 描述文件在仓库中的路径（多插件仓库时为
+                             {source_path}/IXPlugin.json，单插件仓库留空）
+
+        Returns:
+            ReleaseInfo 列表；解析失败/网络错误时返回空列表
+        """
+        parsed = self.parse_github_url(source_url)
+        if not parsed:
+            return []
+        owner, repo = parsed
+
+        releases = self._fetch_releases(owner, repo)
+        if not releases:
+            return []
+
+        file_path = descriptor_path or self.PLUGIN_DESCRIPTOR_FILE
+        results = []
+        for rel in releases:
+            tag = rel.get("tag_name", "")
+            version = self._fetch_version_at_ref(owner, repo, tag, file_path)
+            results.append(ReleaseInfo(
+                tag=tag,
+                name=rel.get("name") or tag,
+                version=version or "",
+                prerelease=bool(rel.get("prerelease", False)),
+                published_at=rel.get("published_at", ""),
+            ))
+        results.sort(key=self._release_sort_key, reverse=True)
+        return results
+
+    def _fetch_releases(self, owner: str, repo: str) -> List[Dict[str, Any]]:
+        """查询仓库 Release 列表，失败返回空列表"""
+        url = f"{self._gh_api_base}/repos/{owner}/{repo}/releases"
+        try:
+            response = requests.get(
+                url, headers=self._github_headers(),
+                params={"per_page": self.RELEASES_PER_PAGE},
+                timeout=self.GITHUB_API_TIMEOUT
+            )
+            if response.status_code != 200:
+                self._logger.warning(
+                    get_name(), f"查询 Release 列表失败: HTTP {response.status_code}"
+                )
+                return []
+            data = response.json()
+            return data if isinstance(data, list) else []
+        except Exception as e:
+            self._logger.warning(get_name(), f"查询 Release 列表失败: {e}")
+            return []
+
+    def _fetch_version_at_ref(self, owner: str, repo: str, ref: str,
+                              file_path: str) -> Optional[str]:
+        """读取指定 ref 下描述文件的插件版本号"""
+        desc = self._fetch_file_content(owner, repo, file_path, ref=ref)
+        if not desc:
+            return None
+        return desc.get("version")
+
+    def _release_sort_key(self, info: ReleaseInfo) -> tuple:
+        """Release 排序键：可解析版本优先，按版本号降序"""
+        try:
+            v = PluginVersion.from_string(info.version)
+            return (1, v.version_type.get_priority(), v.major, v.minor, v.patch)
+        except ValueError:
+            return (0, 0, 0, 0, 0)
+
+    def install_release(
+        self,
+        owner: str,
+        repo: str,
+        tag: str,
+        target_dir: Path,
+        selected_plugins: List[str] = None,
+        progress_callback=None
+    ) -> List[InstallResult]:
+        """安装指定 Release tag 对应的插件版本（升级或降级）
+
+        Args:
+            owner/repo/tag: GitHub 仓库与 Release tag
+            target_dir: 安装目标目录
+            selected_plugins: 多插件仓库时要安装的插件路径列表，None 安装全部
+            progress_callback: 进度回调
+
+        Returns:
+            每个插件的安装结果列表
+        """
+        archive_url = f"https://github.com/{owner}/{repo}/archive/refs/tags/{tag}.zip"
+        temp_dir, status = self._try_download_archive(archive_url, f"ix_plugin_{repo}_{tag}_")
+        if temp_dir is None:
+            return [InstallResult.error(f"下载 Release {tag} 失败 (HTTP {status})")]
+
+        source_url = f"https://github.com/{owner}/{repo}"
+        try:
+            repo_index_path = temp_dir / self.REPO_INDEX_FILE
+            if repo_index_path.exists():
+                return self._install_from_multi_plugin_repo(
+                    repo_index_path, target_dir, selected_plugins,
+                    "GitHub Release", progress_callback, source_url=source_url
+                )
+            if not (temp_dir / self.PLUGIN_DESCRIPTOR_FILE).exists():
+                return [InstallResult.error("该 Release 中未找到插件描述文件")]
+            return self._install_single_plugin(
+                temp_dir, target_dir, "GitHub Release", progress_callback,
+                source_url=source_url
+            )
+        finally:
+            self._cleanup_temp_dir(temp_dir)

@@ -18,7 +18,7 @@ from typing import Any, Dict, List, Optional
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
-    QCheckBox, QHBoxLayout, QLabel, QMessageBox, QPushButton, QVBoxLayout,
+    QCheckBox, QHBoxLayout, QLabel, QPushButton, QVBoxLayout,
     QWidget,
 )
 
@@ -30,6 +30,7 @@ from .constants import (
     MODELS_HEADER_BUTTON_HEIGHT, MODELS_REFRESH_BUTTON_WIDTH,
 )
 from .theme import Theme
+from .feedback import confirm as _confirm_dialog
 from .widgets import ModelRow, _model_primary_type, make_hairline, make_section_label
 
 
@@ -315,11 +316,7 @@ class ModelSection(QWidget):
         Returns:
             bool: 用户是否确认删除
         """
-        answer = QMessageBox.question(
-            self, "删除模型", message,
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No)
-        return answer == QMessageBox.StandardButton.Yes
+        return _confirm_dialog(self, "删除模型", message)
 
     def _on_delete_row(self, entry: Dict[str, Any]) -> None:
         """单条删除：中文确认后外发模型 id 列表"""

@@ -15,8 +15,8 @@
 ## 2. 核心特性
 
 - **图标在上**: 按钮上方显示插件图标，下方显示插件名称
-- **激活状态**: 当前选中的插件按钮有高亮边框
-- **自动换行**: 长文本自动在合适位置换行，单行模式最多 13 字符，双行模式每行最多 8 字符
+- **激活状态**: 当前选中的插件按钮显示渐变背景高亮（无边框）
+- **文本截断**: 单行文本超过 13 字符时截断并追加省略号；含 `\n` 时最多显示两行，每行超过 8 字符时截断并追加省略号
 - **固定尺寸**: 78 x 64 像素，适合工具栏布局
 
 ---
@@ -69,7 +69,7 @@ def set_active(self, active: bool)
 设置按钮的激活状态。
 
 **参数**:
-- `active`: `True` 为激活状态（高亮边框），`False` 为普通状态
+- `active`: `True` 为激活状态（渐变高亮背景，无边框），`False` 为普通状态
 
 **示例**:
 ```python
@@ -105,7 +105,7 @@ self.skill_name = name
 self.skill_description = description
 ```
 
-这些属性主要用于调试和日志输出（如 `SkillsPanel._on_skill_clicked` 中的日志记录）。
+这些属性写入后当前框架侧没有读取点（`SkillsPanel._on_skill_clicked` 等方法均未消费它们），属于预留的实例属性，可供插件或调试场景按需读取。
 
 ---
 
@@ -115,15 +115,14 @@ self.skill_description = description
 
 自动处理按钮文本的换行和截断：
 
-- 如果文本包含 `\n`，按换行符分割
-- 否则，如果长度 > 13（单行模式）或长度 > 8（双行模式），在文本中点处换行（midpoint split）
-- 单行模式每行最大 13 个字符，双行模式每行最大 8 个字符，超出部分用 `...` 截断
+- 如果文本包含 `\n`，按换行符分割，最多取前 2 行；每行超过 8 个字符时截断为前 8 个字符并追加 `...`
+- 如果不含 `\n`（单行模式），长度超过 13 个字符时直接截断为前 13 个字符并追加 `...`，不自动换行
 - 最多显示 2 行
 
 **示例**:
 ```python
 # "LLM\nChat" -> 显示为两行
-# "超长插件名称" -> 显示为 "超长插" 和 "件名称"
+# "这是一个非常非常长的插件名称"（14 字符）-> 显示为 "这是一个非常非常长的插件名..."（前 13 字符 + ...）
 ```
 
 ### _apply_style()
@@ -142,10 +141,11 @@ self.skill_description = description
 | 状态 | 说明 |
 |------|------|
 | 普通状态 | 默认透明背景，无边框 |
-| 悬停状态 | `{skillButtonHover}` 背景高亮，无边框 |
-| 激活状态 | 渐变背景 `qlineargradient`（左侧 4% 为 `{accent}`，其余为 `{controlFillSelected}`），无边框，`{skillButtonActiveText}` 文字颜色 |
+| 悬停状态 | `T("color.primary.subtle")` 背景高亮，无边框 |
+| 按下状态 | `T("color.border")` 背景，无边框 |
+| 激活状态 | 渐变背景 `qlineargradient`（左侧 4% 为 `T("color.primary")`，其余为 `T("color.primary.subtle")`），无边框，`T("color.primary")` 文字颜色 |
 
-样式文件位于 `utils/style_qss/styles/custom.qss`：
+样式定义位于 `ui/uikit_theme.py` 的排除区兼容附录（`_compat_skills_panel_qss()`，结构沿用旧 custom.qss，颜色实时取 UIKit 令牌，详见 [UIKit 主题系统](../utils/uikit-theme.md)）：
 
 ```css
 /* 非激活状态 */
@@ -154,27 +154,27 @@ SkillButton {
     border-radius: 8px;
     padding: 2px;
     background-color: transparent;
-    color: {windowText};
+    color: {T("color.text.primary")};
     text-align: top;
     font-size: 10px;
 }
 SkillButton:hover {
-    background-color: {skillButtonHover};
+    background-color: {T("color.primary.subtle")};
     border: none;
 }
 SkillButton:pressed {
-    background-color: {controlFillPressed};
+    background-color: {T("color.border")};
     border: none;
 }
 
 /* 激活状态 */
 SkillButton[active="true"] {
     background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-        stop:0 {accent}, stop:0.04 {accent},
-        stop:0.04 {controlFillSelected}, stop:1 {controlFillSelected});
+        stop:0 {T("color.primary")}, stop:0.04 {T("color.primary")},
+        stop:0.04 {T("color.primary.subtle")}, stop:1 {T("color.primary.subtle")});
     border: none;
     border-radius: 8px;
-    color: {skillButtonActiveText};
+    color: {T("color.primary")};
     text-align: top;
     font-weight: 500;
     font-size: 10px;
@@ -182,8 +182,29 @@ SkillButton[active="true"] {
 }
 SkillButton[active="true"]:hover {
     background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-        stop:0 {accent}, stop:0.04 {accent},
-        stop:0.04 {controlFillSelected}, stop:1 {controlFillSelected});
+        stop:0 {T("color.primary")}, stop:0.04 {T("color.primary")},
+        stop:0.04 {T("color.primary.subtle")}, stop:1 {T("color.primary.subtle")});
+    border: none;
+    padding: 2px;
+}
+
+/* 分组按钮展开态（plugin_group_widget.py） */
+SkillButton#skillGroupButton[expanded="true"] {
+    background: qlineargradient(x1:1, y1:0, x2:0, y2:0,
+        stop:0 {T("color.primary")}, stop:0.04 {T("color.primary")},
+        stop:0.04 {T("color.primary.subtle")}, stop:1 {T("color.primary.subtle")});
+    border: none;
+    border-radius: 8px;
+    color: {T("color.primary")};
+    text-align: top;
+    font-weight: 500;
+    font-size: 10px;
+    padding: 2px;
+}
+SkillButton#skillGroupButton[expanded="true"]:hover {
+    background: qlineargradient(x1:1, y1:0, x2:0, y2:0,
+        stop:0 {T("color.primary")}, stop:0.04 {T("color.primary")},
+        stop:0.04 {T("color.primary.subtle")}, stop:1 {T("color.primary.subtle")});
     border: none;
     padding: 2px;
 }
@@ -217,7 +238,3 @@ button.set_active(True)
 
 - [技能面板](skills-panel.md)
 - [主窗口](main-window.md)
-
----
-
-*本文档由 Claude Code 自动生成*

@@ -220,7 +220,3 @@ class MyPluginInfo(IPluginInfo):
 
 - [IPluginInfo 接口](iplugin.md)
 - [插件开发指南](plugin-development.md)
-
----
-
-*本文档由 Claude Code 自动生成*

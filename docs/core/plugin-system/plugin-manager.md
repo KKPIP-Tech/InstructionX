@@ -60,10 +60,13 @@ manager = get_plugin_manager()
 
 ```python
 def load_plugins(self) -> None:
-    """加载所有插件（官方和第三方）"""
+    """加载所有插件（包括官方插件和第三方插件），并回填版本注册表"""
     self.load_official_plugins()
     self.load_thirdparty_plugins()
+    self._backfill_registry()
 ```
+
+> **说明**：`_backfill_registry()` 会在加载完成后扫描已加载插件，为注册表（`config/plugin_registry.json`）中缺失记录的插件回填版本/来源信息；回填失败仅记录警告日志，不影响插件加载主流程（见 `core/plugin/manager.py` 的 `_backfill_registry()` 方法）。
 
 #### load_official_plugins()
 
@@ -410,7 +413,7 @@ def get_all_function_tools(self) -> List[Dict[str, Any]]:
             {
                 "type": "function",
                 "function": {
-                    "name": "uuid.method_name",
+                    "name": "plugin_id__method_name",
                     "description": "[插件名] 方法描述",
                     "parameters": {
                         "type": "object",
@@ -422,6 +425,8 @@ def get_all_function_tools(self) -> List[Dict[str, Any]]:
         ]
     """
 ```
+
+> **说明**：工具名由 `sanitize_tool_name(f"{plugin_id}__{method_name}")` 生成——以双下划线分隔插件 ID 与方法名，并净化为 OpenAI function 名允许的字符集（`[a-zA-Z0-9_-]`，最长 64 字符）。`call_plugin_method()` 仍使用原始 `(plugin_id, method_name)` 调用，不受净化影响。
 
 ### 3.7 API 描述查询
 
@@ -494,6 +499,7 @@ def _create_plugin_services(self) -> PluginServices:
 | `logger` | `ILogger` | 日志服务（`LoggerManager` 实例） |
 | `mcp_manager` | `MCPManager` | MCP Server 管理器（失败时为 `None`） |
 | `mcp_client` | `MCPClientManager` | MCP 外部连接管理器（失败时为 `None`） |
+| `font_manager` | `FontManager` | 字体管理器（`core/font`，无降级保护、始终注入） |
 
 **使用流程**（见 `manager.py` 的 `_load_plugin_from_directory()` 方法）：
 
@@ -538,7 +544,7 @@ def _notify_mcp_new_tools(
     将 service_api 中定义的方法转换为 MCP 工具格式，
     通过 MCPManager.sync_plugin_tool() 同步到 MCP 系统。
 
-    注意: MCP 系统未初始化时静默忽略错误。
+    注意: MCP 系统未初始化等异常仅记录 WARNING 日志，不阻断插件注册。
     """
 ```
 
@@ -552,7 +558,7 @@ def _notify_mcp_remove_tools(self, plugin_id: str) -> None:
     在注销插件 API 时调用，通过 MCPManager.remove_plugin_tool()
     清理已注册的工具。
 
-    注意: MCP 系统未初始化时静默忽略错误。
+    注意: MCP 系统未初始化等异常仅记录 WARNING 日志，不阻断 API 注销。
     """
 ```
 
@@ -580,6 +586,15 @@ class PluginManager:
 
         # 配置管理器
         self.config_manager = PluginConfigManager()
+
+        # 已安装插件注册表（版本/来源，用于升级降级）
+        self.registry = PluginRegistry()
+
+        # 用户自定义分组存储
+        self.group_store = PluginGroupStore()
+
+        # 日志管理器
+        self._logger = LoggerManager()
 ```
 
 ### 4.2 PluginAPI 类
@@ -651,12 +666,21 @@ tools = manager.get_all_function_tools()
 
 ## 6. 相关文档
 
+**插件系统内部**：
 - [插件系统概述](overview.md)
-- [IPlugin 接口](iplugin.md)
-- [插件开发指南](plugin-development.md)
-- [GitHub 插件安装器](plugin-installer.md)
-- [MCP 协议模块概述](../mcp/overview.md)
+- [IPlugin 接口](iplugin.md)（被 `PluginManager` 加载与实例化的抽象基类）
+- [插件开发指南](plugin-development.md)（`PluginServices` 注入的消费者）
+- [GitHub 插件安装器](plugin-installer.md)（`PluginManager.uninstall_plugin()` 的入口）
 
----
+**接口层与 API 索引**：
+- [接口层概述](../interfaces/overview.md)
+- [完整 API 参考 §2.1 PluginManager](../../api/full-reference.md#21-pluginmanager)
 
-*本文档由 Claude Code 自动生成*
+**依赖的下游服务**（`PluginManager` 通过 `PluginServices` 注入给插件）：
+- [DataProvider 概述](../data-provider/overview.md)（持久化 + Pub/Sub）
+- [后台任务概述](../background-task/overview.md)（同步/异步/定时/长期任务）
+- [LLM Provider 概述](../llm-provider/overview.md)（`LLMPluginService` 门面）
+- [MCP 协议模块概述](../mcp/overview.md)（API 注册 → MCP 工具同步）
+
+**架构分析**：
+- [instructionx-architecture.md §3.1 插件系统](../../architecture/instructionx-architecture.md#31-插件系统-coreplugin)（含 `PluginManager` 单例架构图与插件加载完整链路时序图）

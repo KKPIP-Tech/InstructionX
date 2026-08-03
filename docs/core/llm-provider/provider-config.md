@@ -56,7 +56,7 @@ config = ProviderConfig(
 | `enabled_embedding` | `bool` | 建议配置 | 是否启用 Embedding 功能（默认 False） |
 | `support_vision` | `bool` | 否 | 是否支持 Vision（默认 True） |
 | `order` | `int` | 否 | 列表排序权重（默认 0，UI 排序持久化） |
-| `cache_fields` | `dict` | 否 | 缓存字段配置（用于 OpenAI 兼容接口的缓存偏好设置） |
+| `cache_fields` | `dict` | 否 | 缓存字段配置（任意 provider 均可用于覆盖 `DEFAULT_CACHE_CONFIG` 的默认字段路径，见 `core/llm/providers/base.py` 的 `_init_cache_adapter()`） |
 | `extra` | `dict` | 否 | 其他扩展配置（通过 `**kwargs` 吸收未定义字段，如 `timeout`、`custom_models` 等） |
 
 > **说明**：v1 的 `provider_type` 字段已废弃，迁移时映射为 `preset_id` 与 `adapter`；`from_dict` 会静默丢弃残留的 `provider_type` 键。
@@ -115,6 +115,19 @@ print(config.version)
 
 - 订阅回调签名为 `callback(event: str, provider_name: Optional[str])`；`event` 取值为 `EVENT_PROVIDERS_CHANGED`（`"providers_changed"`），`provider_name` 为变更涉及的实例 id（批量保存时为 `None`）。
 - 回调中的异常被捕获并记 WARNING 日志，不影响主流程与其余回调。
+
+> **⚠️ 线程契约（重要）**：`subscribe` 注册的回调**在触发 `add_provider` / `remove_provider` / `save_config` 的那个调用线程**中执行（**不**保证在主线程或 UI 线程——LLM 设置对话框在主线程调、插件代码可能在工作线程调）。如果回调需要更新 Qt 控件、弹窗或操作 `LoggerManager` 之外的单例 UI 状态等，**必须**经 `utils/thread_utils.py` 封送到 UI 线程：
+>
+> ```python
+> from utils.thread_utils import run_in_ui_thread
+>
+> def on_changed(event: str, provider_name):
+>     if event == "providers_changed":
+>         # 严禁在回调中直接调用 self.some_qt_widget.setText(...)
+>         run_in_ui_thread(self.some_qt_widget.setText, provider_name or "")
+> ```
+>
+> 详细说明与同步版本 `run_in_ui_thread_sync` 见 `docs/core/plugin-system/plugin-development.md §5.4`。
 
 ### 3.3 方法
 
@@ -290,9 +303,26 @@ config.add_provider("custom-a1b2c3d4", new_provider)  # 写入内存并立即落
 
 ## 8. 相关文档
 
-- [LLM Provider 概述](overview.md)
-- [LLM Provider API 参考](api-reference.md)
+**LLM 子系统内部**：
+- [LLM Provider 概述](overview.md)（`LLMProvider` 单例与多 Provider 管理架构）
+- [LLM Provider API 参考](api-reference.md)（`LLMProvider.reload_config()` / `add_provider()` / `remove_provider()` 完整签名）
+- [完整 API 参考 §5.1 LLMProvider](../../api/full-reference.md#51-llmprovider)
 
----
+**运行时文件**：
+- `config/llm_providers.json`（运行时生成，由 `LLMConfig` 加载/保存，schema v2 顶层 `version: 2`）
+- `config/llm_models_cache.json`（模型列表缓存，键为实例 id）
 
-*本文档由 Claude Code 自动生成*
+**面向插件开发者**：
+- [插件 LLM 集成指南](../../plugins/llm-integration-guide.md)
+- [插件开发指南](../plugin-system/plugin-development.md)
+- [IPlugin 接口](../plugin-system/iplugin.md)
+
+**接口与 API 索引**：
+- [接口层概述](../interfaces/overview.md)
+- [完整 API 参考 §5 LLM Provider API](../../api/full-reference.md#5-llm-provider-api)
+
+**线程契约**：
+- §3.2 变更订阅回调**运行在 `add_provider` / `remove_provider` / `save_config` 的调用线程**——详见 [插件开发指南 §5.4 线程模型](../plugin-system/plugin-development.md#54-线程模型订阅回调与-ui-封送)
+
+**架构分析**：
+- [instructionx-architecture.md §3.2 LLM 层](../../architecture/instructionx-architecture.md#32-llm-层-corellm)

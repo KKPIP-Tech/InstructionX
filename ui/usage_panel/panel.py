@@ -1,7 +1,7 @@
 """LLM 用量查询面板（组装与数据编排）
 
 按用量面板 Demo 的 UI 设计组装：顶部标题、KPI 卡片区（含同比）、
-用量趋势面板（QtCharts 平滑折线）、使用历史面板（筛选 + 表格 + 分页）。
+用量趋势面板（UIKit 原生图表引擎日历热力图）、使用历史面板（筛选 + 表格 + 分页）。
 数据来自 UsageRecordStore 单例，本模块负责查询编排与各子组件的联动。
 """
 
@@ -9,13 +9,16 @@ from datetime import datetime, timedelta
 from typing import Callable, Dict, List, Tuple
 
 from PySide6.QtCore import QTimer, Qt, Signal
+from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
-    QFrame, QHBoxLayout, QLabel, QMessageBox, QScrollArea, QVBoxLayout, QWidget,
+    QFrame, QHBoxLayout, QLabel, QScrollArea, QVBoxLayout, QWidget,
 )
 
 from core.llm.types import UsageRecord
 from core.llm.usage_record_store import get_usage_record_store
 from utils.logging_tools import LoggerManager, get_name
+from InstructionX_UIKit import T, set_property
+from InstructionX_UIKit.components import Message
 
 from .formatting import fmt_int, fmt_latency, fmt_percent, fmt_tokens
 from .history_table import HistoryPanel
@@ -103,9 +106,12 @@ class UsagePanel(QWidget):
         title_box = QVBoxLayout()
         title_box.setSpacing(2)
         title = QLabel("AI 用量面板")
-        title.setObjectName("usageTitle")
+        title_font = QFont()
+        title_font.setPixelSize(T("font.title.lg"))
+        title_font.setBold(True)
+        title.setFont(title_font)
         subtitle = QLabel("LLM API Usage Overview")
-        subtitle.setObjectName("usageSubtitle")
+        set_property(subtitle, "role", "secondary")
         title_box.addWidget(title)
         title_box.addWidget(subtitle)
         header.addLayout(title_box)
@@ -146,7 +152,7 @@ class UsagePanel(QWidget):
             self.data_refreshed.emit()
         except Exception as e:
             _logger.error(get_name(), f"刷新用量数据失败: {e}")
-            QMessageBox.warning(self, "刷新失败", f"刷新用量数据失败:\n{str(e)}")
+            Message.warning(self, f"刷新用量数据失败:\n{str(e)}")
 
     def _refresh_kpis(self) -> None:
         """刷新 KPI 卡片数值与上一等长周期的同比"""
@@ -249,4 +255,4 @@ class UsagePanel(QWidget):
             self._trend_panel.update_series(self._query_filtered_records())
         except Exception as e:
             _logger.error(get_name(), f"刷新用量趋势图失败: {e}")
-            QMessageBox.warning(self, "刷新失败", f"刷新用量趋势图失败:\n{str(e)}")
+            Message.warning(self, f"刷新用量趋势图失败:\n{str(e)}")

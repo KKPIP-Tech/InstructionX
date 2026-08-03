@@ -18,32 +18,34 @@
 graph TB
     subgraph SkillsPanel [SkillsPanel]
         SW[QStackedWidget<br/>堆叠窗口控件]
-        OB["_official_btn<br/>官方功能 Pill 按钮]
-        TB["_thirdparty_btn<br/>第三方功能 Pill 按钮"]
+        OB["official_btn<br/>官方功能 Pill 按钮"]
+        TB["thirdparty_btn<br/>第三方功能 Pill 按钮"]
+        SEP["skillsSeparator<br/>分隔符"]
+        CL["count_label<br/>计数标签"]
     end
 
     subgraph Page1 [官方功能 页面]
         SA1[ScrollArea<br/>可滚动区域]
         CT1["QWidget#skillsContainer<br/>水平布局容器"]
-        B1[技能按钮 1]
-        B2[技能按钮 2]
-        B3[技能按钮 N]
+        GW1[PluginGroupWidget<br/>分组折叠控件]
+        B1[未分组技能按钮 1]
+        B2[未分组技能按钮 N]
         SA1 --> CT1
+        CT1 --> GW1
         CT1 --> B1
         CT1 --> B2
-        CT1 --> B3
     end
 
     subgraph Page2 [第三方功能 页面]
         SA2[ScrollArea<br/>可滚动区域]
         CT2["QWidget#skillsContainer<br/>水平布局容器"]
-        C1[技能按钮 1]
-        C2[技能按钮 2]
-        C3[技能按钮 M]
+        GW2[PluginGroupWidget<br/>分组折叠控件]
+        C1[未分组技能按钮 1]
+        C2[未分组技能按钮 M]
         SA2 --> CT2
+        CT2 --> GW2
         CT2 --> C1
         CT2 --> C2
-        CT2 --> C3
     end
 
     OB -->|切换显示| Page1
@@ -57,6 +59,10 @@ graph TB
 **标签页结构**:
 - **官方功能**: 来自 `plugin/` 目录的官方插件
 - **第三方功能**: 来自 `custom_plugin/` 目录的第三方插件
+
+**插件分组**:
+- 每个标签页内，分组折叠控件（`PluginGroupWidget`，文件夹形式收起、点击展开组内插件按钮）与未分组插件的技能按钮按统一顺序混排（见 `load_skills_from_manager()`）
+- 头部区域包含 Pill 切换按钮、分隔符（`skillsSeparator`）与计数标签（`count_label`），计数按插件数量统计（分组不作为独立项计数），由 `_switch_tab()` 更新
 
 ---
 
@@ -72,8 +78,8 @@ graph TB
 
 **文本自动处理**:
 - 允许插件设计者自行决定换行位置（使用 `\n`）
-- 如果文本不含 `\n` 且长度大于 13 个字符（单行模式）或 8 个字符/行（双行模式），在中间位置分割（midpoint split，非 Unicode 感知）
-- 单行模式每行最多 13 个字符，双行模式每行最多 8 个字符，超出部分末尾自动添加省略号（`...`）
+- 文本不含 `\n`（单行模式）：长度大于 13 个字符时直接截断为前 13 个字符并追加省略号（`...`），不自动换行
+- 文本含 `\n`（双行模式）：按换行符分割，最多取前 2 行；每行超过 8 个字符时截断为前 8 个字符并追加省略号（`...`）
 - 最多显示 2 行
 - 避免按钮因文本过长而破坏布局
 
@@ -81,9 +87,10 @@ graph TB
 
 | 状态 | 说明 |
 |------|------|
-| 正常 | 默认透明背景，无边框，`windowText` 颜色 |
-| 悬停 | 背景变为 `{skillButtonHover}`，无边框 |
-| 选中/活跃 | 渐变背景 `qlineargradient`（左侧 4% 为 `{accent}`，其余为 `{controlFillSelected}`），无边框，`{skillButtonActiveText}` 文字颜色，`font-weight: 500` |
+| 正常 | 默认透明背景，无边框，`T("color.text.primary")` 文字颜色 |
+| 悬停 | 背景变为 `T("color.primary.subtle")`，无边框 |
+| 按下 | 背景变为 `T("color.border")`，无边框 |
+| 选中/活跃 | 渐变背景 `qlineargradient`（左侧 4% 为 `T("color.primary")`，其余为 `T("color.primary.subtle")`），无边框，`T("color.primary")` 文字颜色，`font-weight: 500` |
 
 ---
 
@@ -121,7 +128,7 @@ def set_plugin_manager(self, plugin_manager):
 
 ```python
 def load_skills_from_manager(self):
-    """从 PluginManager 加载技能按钮"""
+    """从插件管理器加载所有技能（按 get_sorted_plugins 返回的统一顺序混排分组与未分组插件）"""
     if self.plugin_manager is None:
         return
 
@@ -133,52 +140,74 @@ def load_skills_from_manager(self):
         # 清除激活状态（重要：因为旧按钮已被删除）
         self._active_button = None
 
-        # 加载官方技能
-        official_plugins = self.plugin_manager.get_official_plugins()
-        for plugin in official_plugins:
-            self.add_skill_button(plugin, is_official=True)
+        # 按 scope 渲染：分组控件 + 未分组插件按钮
+        for scope, layout in (("official", self.official_layout),
+                              ("thirdparty", self.thirdparty_layout)):
+            for item in self.plugin_manager.get_sorted_plugins(scope):
+                if item[0] == "group":
+                    self._add_group_widget(layout, item[1], item[2])
+                else:
+                    skill_btn = self._create_skill_button(item[1])
+                    if skill_btn is not None:
+                        layout.addWidget(skill_btn)
 
-        # 加载第三方技能
-        thirdparty_plugins = self.plugin_manager.get_thirdparty_plugins()
-        for plugin in thirdparty_plugins:
-            self.add_skill_button(plugin, is_official=False)
+        # 更新当前标签页的计数
+        self._switch_tab(self.stacked_widget.currentIndex())
+
     except Exception as e:
-        self._logger.error(get_name(), f'Error loading skills from manager: {e}')
+        self._logger.error(get_name(), f'从插件管理器加载技能失败: {e}')
 ```
+
+> **说明**: 按 scope 遍历 `plugin_manager.get_sorted_plugins(scope)` 的返回项：`"group"` 项渲染为分组折叠控件（`_add_group_widget()` 创建 `PluginGroupWidget`），其余项渲染为未分组插件的技能按钮，两者按统一顺序混排；末尾调用 `_switch_tab()` 刷新计数标签。
 
 ### 5.3 添加技能
 
 ```python
 def add_skill_button(self, plugin, is_official: bool):
     """
-    添加技能按钮到指定标签页
+    添加一个技能按钮到相应的标签页
 
     Args:
-        plugin: 插件实例
-        is_official: 是否为官方插件（True = 官方功能标签，False = 第三方功能标签）
+        plugin: 插件对象
+        is_official: 是否为官方插件
     """
-    # 获取插件图标和描述
-    try:
-        icon = getattr(plugin, 'skill_icon', None)
-        if icon is None or (isinstance(icon, QIcon) and icon.isNull()):
-            style = self.style()
-            icon = style.standardIcon(QStyle.StandardPixmap.SP_FileIcon)
-        name = plugin.plugin_name
-        description = getattr(plugin, 'skill_description', name)
-    except Exception as e:
-        self._logger.error(get_name(), f'Error getting plugin info: {e}')
+    skill_btn = self._create_skill_button(plugin)
+    if skill_btn is None:
         return
 
-    # 创建技能按钮
-    skill_btn = SkillButton(icon, name, description, self)
-    skill_btn.clicked.connect(lambda checked=False, btn=skill_btn, p=plugin: self._on_skill_clicked(btn, p))
-
-    # 添加到相应布局
+    # 添加到相应的布局
     if is_official:
         self.official_layout.addWidget(skill_btn)
     else:
         self.thirdparty_layout.addWidget(skill_btn)
 ```
+
+按钮的创建逻辑已抽取为 `_create_skill_button(plugin)` 工厂方法，供未分组插件按钮与分组控件（`PluginGroupWidget`）共用，保证按钮外观与激活逻辑一致：
+
+```python
+def _create_skill_button(self, plugin):
+    """创建并连接一个技能按钮（获取插件信息失败时返回 None）"""
+    # 获取插件图标和描述
+    try:
+        icon = getattr(plugin, 'skill_icon', None)
+        if icon is None or (isinstance(icon, QIcon) and icon.isNull()):
+            # 使用默认图标
+            style = self.style()
+            icon = style.standardIcon(QStyle.StandardPixmap.SP_FileIcon)
+
+        name = plugin.plugin_name
+        description = getattr(plugin, 'skill_description', name)
+    except Exception as e:
+        self._logger.error(get_name(), f'获取插件信息失败: {e}')
+        return None
+
+    # 创建技能按钮并绑定点击事件
+    skill_btn = SkillButton(icon, name, description, self)
+    skill_btn.clicked.connect(lambda checked=False, btn=skill_btn, p=plugin: self._on_skill_clicked(btn, p))
+    return skill_btn
+```
+
+> **说明**: `add_skill_button()` 只负责调用工厂并加入布局；`_add_group_widget()` 创建 `PluginGroupWidget` 时，将 `_create_skill_button` 作为 `button_factory` 参数传入（签名为 `callable(plugin) -> Optional[QWidget]`，见 `ui/skills_panel/plugin_group_widget.py`），组内插件按钮由该工厂创建。
 
 ### 5.4 刷新技能
 
@@ -202,16 +231,14 @@ def clear_active_state(self):
 
 def _clear_all_active_states(self):
     """内部方法：清除所有按钮的激活状态"""
-    active_count = 0
     for layout in [self.official_layout, self.thirdparty_layout]:
         for i in range(layout.count()):
             item = layout.itemAt(i)
             if item:
                 widget = item.widget()
                 if isinstance(widget, SkillButton):
-                    if widget.is_active():
-                        active_count += 1
                     widget.set_active(False)
+
     self._active_button = None
 ```
 
@@ -296,87 +323,83 @@ def _on_skill_clicked(self, plugin):
 
 ## 8. 深色模式支持
 
-SkillsPanel 完全支持深色模式，通过 StyleQSS 的颜色变量自动适配主题。
+SkillsPanel 完全支持深色模式。面板本身不做 UI 迁移，属于全局主题的「排除区」：样式由 `ui/uikit_theme.py` 的兼容附录（`_compat_skills_panel_qss()`）提供，颜色全部实时取 UIKit 设计令牌 `T()`，随主题切换自动适配（详见 [UIKit 主题系统](../utils/uikit-theme.md)）。
 
-### 8.1 颜色变量
+### 8.1 颜色令牌
 
-SkillsPanel 使用以下颜色变量：
+SkillsPanel 使用的 UIKit 令牌：
 
-| 颜色变量 | 浅色主题 | 深色主题 | 用途 |
-|---------|---------|---------|------|
-| `skillPanel` | `#F5F7FA` | `#2C2C2C` | 面板背景 |
-| `skillPanelHeaderBg` | `#EBEEF2` | `#363636` | Pill 按钮容器背景 |
-| `windowText` | `#000000` | `#FFFFFF` | 文字颜色 |
-| `textSecondary` | `#666666` | `#999999` | Pill 按钮未激活文字 |
-| `accent` | `#0078D4` | `#0078D4` | 激活/选中强调色 |
-| `accentDark` | `#005A9E` | `#005A9E` | 激活 Pill 按钮悬停背景 |
-| `skillButtonHover` | `#E8F4FD` | `#1A3A5C` | 技能按钮悬停背景 |
-| `skillButtonActiveText` | `#0078D4` | `#FFFFFF` | 技能按钮激活文字 |
-| `controlFillHover` | `rgba(0,0,0,12)` | `rgba(255,255,255,12)` | 通用悬停效果 |
+| UIKit 令牌 | 用途 |
+|-----------|------|
+| `color.bg.subtle` | 面板 / 头部 / 滚动区 / 技能按钮容器背景 |
+| `color.bg.muted` | Pill 按钮容器背景、Pill 按钮悬停背景 |
+| `color.border` | 面板底部分隔线、分隔符颜色、技能按钮按下背景 |
+| `color.text.primary` | 技能按钮文字 |
+| `color.text.secondary` | Pill 按钮未激活文字、计数标签 |
+| `color.text.tertiary` | 滚动条手柄悬停 |
+| `color.border.strong` | 滚动条手柄（正常态） |
+| `color.primary` | 激活/选中强调色（Pill 激活背景、激活按钮渐变左色与文字） |
+| `color.on.primary` | 激活 Pill 按钮文字 |
+| `color.primary.hover` | 激活 Pill 按钮悬停背景 |
+| `color.primary.subtle` | 技能按钮悬停背景、激活按钮渐变主色 |
 
 ### 8.2 色彩层次
 
-SkillsPanel 与工作区保持色彩层次区分：
+SkillsPanel 与工作区保持色彩层次区分：SkillsPanel 取 `color.bg.subtle`（弱化背景），WorkArea 所在工作区窗口底色为 `color.bg.base`（基底背景），亮/暗两套令牌由 UIKit 统一提供。
 
-**浅色模式：**
-- SkillsPanel: `#F5F7FA`（浅灰）
-- WorkArea: `#FFFFFF`（白色）
+### 8.3 样式定义
 
-**深色模式：**
-- SkillsPanel: `#2C2C2C`（深灰）
-- WorkArea: `#202020`（深灰）
-
-### 8.3 样式文件
-
-SkillsPanel 和 SkillButton 的样式定义在 `utils/style_qss/styles/custom.qss`（由 QssRegistry 按优先级 20 加载）：
+SkillsPanel 和 SkillButton 的样式定义在 `ui/uikit_theme.py` 的排除区兼容附录（`_compat_skills_panel_qss()`，结构沿用旧 custom.qss，颜色取 UIKit 令牌）：
 
 ```css
 /* SkillsPanel 容器 */
 SkillsPanel {
-    background-color: {skillPanel};
-    border-bottom: 1px solid {borderLight};
+    background-color: {T("color.bg.subtle")};
+    border-bottom: 1px solid {T("color.border")};
 }
 
 /* SkillsPanel 头部区域 */
 SkillsPanel QWidget#skillsPanelHeader {
-    background-color: {skillPanel};
+    background-color: {T("color.bg.subtle")};
 }
 
 /* Pill 按钮容器 */
 SkillsPanel QWidget#skillsPillContainer {
-    background-color: {skillPanelHeaderBg};
-    border-radius: 14px;
+    background-color: {T("color.bg.muted")};
+    border-radius: 12px;
 }
 
 /* Pill 按钮（官方功能 / 第三方功能 切换） */
 SkillsPanel QPushButton#skillsPillButton {
     background-color: transparent;
-    color: {textSecondary};
+    color: {T("color.text.secondary")};
     border: none;
-    border-radius: 10px;
-    padding: 4px 14px;
+    border-radius: 9px;
+    padding: 2px 12px;
+    min-height: 18px;
+    max-height: 18px;
     font-size: 12px;
     font-weight: 500;
 }
 SkillsPanel QPushButton#skillsPillButton:hover {
-    background-color: {controlFillHover};
+    background-color: {T("color.bg.muted")};
 }
 SkillsPanel QPushButton#skillsPillButton[active="true"] {
-    background-color: {accent};
-    color: #FFFFFF;
+    background-color: {T("color.primary")};
+    color: {T("color.on.primary")};
 }
 SkillsPanel QPushButton#skillsPillButton[active="true"]:hover {
-    background-color: {accentDark};
+    background-color: {T("color.primary.hover")};
 }
 
 /* 分隔线与计数标签 */
 SkillsPanel QLabel#skillsSeparator {
-    color: {borderLight};
+    color: {T("color.border")};
     font-size: 12px;
     background: transparent;
 }
 SkillsPanel QLabel#skillsCountLabel {
-    color: {textSecondary};
+    color: {T("color.text.secondary")};
     font-size: 11px;
     background: transparent;
 }
@@ -384,12 +407,36 @@ SkillsPanel QLabel#skillsCountLabel {
 /* 滚动区域样式 */
 SkillsPanel QScrollArea {
     border: none;
-    background: {skillPanel};
+    background: {T("color.bg.subtle")};
+}
+
+/* 横向滚动条 */
+SkillsPanel QScrollBar:horizontal {
+    height: 8px;
+    background: transparent;
+    margin: 0px;
+}
+SkillsPanel QScrollBar::handle:horizontal {
+    background: {T("color.border.strong")};
+    border-radius: 4px;
+    min-width: 30px;
+}
+SkillsPanel QScrollBar::handle:horizontal:hover {
+    background: {T("color.text.tertiary")};
+}
+SkillsPanel QScrollBar::add-line:horizontal,
+SkillsPanel QScrollBar::sub-line:horizontal {
+    width: 0px;
+    background: none;
+}
+SkillsPanel QScrollBar::add-page:horizontal,
+SkillsPanel QScrollBar::sub-page:horizontal {
+    background: none;
 }
 
 /* 技能按钮容器 */
 SkillsPanel QWidget#skillsContainer {
-    background-color: {skillPanel};
+    background-color: {T("color.bg.subtle")};
 }
 
 /* 非激活状态的技能按钮 */
@@ -398,30 +445,58 @@ SkillButton {
     border-radius: 8px;
     padding: 2px;
     background-color: transparent;
-    color: {windowText};
+    color: {T("color.text.primary")};
     text-align: top;
     font-size: 10px;
 }
 SkillButton:hover {
-    background-color: {skillButtonHover};
+    background-color: {T("color.primary.subtle")};
     border: none;
 }
 SkillButton:pressed {
-    background-color: {controlFillPressed};
+    background-color: {T("color.border")};
     border: none;
 }
 
 /* 激活状态的技能按钮（通过 setProperty("active", "true") 触发） */
 SkillButton[active="true"] {
     background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-        stop:0 {accent}, stop:0.04 {accent},
-        stop:0.04 {controlFillSelected}, stop:1 {controlFillSelected});
+        stop:0 {T("color.primary")}, stop:0.04 {T("color.primary")},
+        stop:0.04 {T("color.primary.subtle")}, stop:1 {T("color.primary.subtle")});
     border: none;
     border-radius: 8px;
-    color: {skillButtonActiveText};
+    color: {T("color.primary")};
     text-align: top;
     font-weight: 500;
     font-size: 10px;
+    padding: 2px;
+}
+SkillButton[active="true"]:hover {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+        stop:0 {T("color.primary")}, stop:0.04 {T("color.primary")},
+        stop:0.04 {T("color.primary.subtle")}, stop:1 {T("color.primary.subtle")});
+    border: none;
+    padding: 2px;
+}
+
+/* 分组按钮展开态（通过 PluginGroupWidget setProperty("expanded", "true") 触发，见 plugin_group_widget.py） */
+SkillButton#skillGroupButton[expanded="true"] {
+    background: qlineargradient(x1:1, y1:0, x2:0, y2:0,
+        stop:0 {T("color.primary")}, stop:0.04 {T("color.primary")},
+        stop:0.04 {T("color.primary.subtle")}, stop:1 {T("color.primary.subtle")});
+    border: none;
+    border-radius: 8px;
+    color: {T("color.primary")};
+    text-align: top;
+    font-weight: 500;
+    font-size: 10px;
+    padding: 2px;
+}
+SkillButton#skillGroupButton[expanded="true"]:hover {
+    background: qlineargradient(x1:1, y1:0, x2:0, y2:0,
+        stop:0 {T("color.primary")}, stop:0.04 {T("color.primary")},
+        stop:0.04 {T("color.primary.subtle")}, stop:1 {T("color.primary.subtle")});
+    border: none;
     padding: 2px;
 }
 ```
@@ -433,7 +508,3 @@ SkillButton[active="true"] {
 - [主窗口](main-window.md)
 - [工作区](work-area.md)
 - [IPlugin 接口](../core/plugin-system/iplugin.md)
-
----
-
-*本文档由 Claude Code 自动生成*

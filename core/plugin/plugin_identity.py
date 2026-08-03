@@ -133,3 +133,17 @@ class PluginIdentity:
         self._registered_at = datetime.now(timezone.utc)
         self._save_to_file()
         return self._plugin_id
+
+    def delete(self) -> None:
+        """
+        删除插件 UUID 持久化文件（插件卸载时调用）
+
+        同时清理插件目录内的 .plugin_info.json 与数据目录回退文件，
+        删除失败仅记录告警，不阻断卸载流程。
+        """
+        for path in (self.info_file, self.fallback_file):
+            try:
+                if path.exists():
+                    path.unlink()
+            except OSError as e:
+                self._logger.warning(get_name(), f'删除插件标识文件失败 {path}: {e}')

@@ -24,7 +24,7 @@ from PySide6.QtCore import Qt, QUrl, Signal
 from PySide6.QtGui import QColor, QDesktopServices, QFont
 from PySide6.QtWidgets import (
     QComboBox, QFrame, QHBoxLayout, QInputDialog, QLabel, QLineEdit, QMenu,
-    QMessageBox, QPushButton, QScrollArea, QToolButton, QVBoxLayout, QWidget,
+    QPushButton, QScrollArea, QToolButton, QVBoxLayout, QWidget,
 )
 
 from core.llm.catalog import PRESET_MODELS, ProviderPreset, get_provider_preset
@@ -52,6 +52,9 @@ from .icons import provider_icon_pixmap
 from .model_section import ModelSection
 from .sync_models_dialog import SyncModelsDialog
 from .theme import Theme
+from .feedback import confirm as _confirm_dialog
+from .feedback import info as _info_toast
+from .feedback import notice as _notice_dialog
 from .widgets import (
     SwitchButton, _badge_style, make_badge, make_eye_icon, make_field_label,
     make_hairline, make_section_label,
@@ -477,12 +480,9 @@ class ProviderDetailPanel(QWidget):
         cfg = self._current_config()
         if cfg is None or not self._instance_id:
             return
-        answer = QMessageBox.question(
-            self, "删除提供商",
-            f"确定删除「{cfg.name}」及其全部模型配置吗？",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No)
-        if answer != QMessageBox.StandardButton.Yes:
+        if not _confirm_dialog(
+                self, "删除提供商",
+                f"确定删除「{cfg.name}」及其全部模型配置吗？"):
             return
         self.shutdown_workers()
         # remove_provider 会同步触发配置变更通知，列表重载后可能立即
@@ -653,7 +653,7 @@ class ProviderDetailPanel(QWidget):
         self._model_section.set_refresh_status("")
         _logger.warning(
             get_name(), f"获取模型列表失败: {instance_id} ({error})")
-        QMessageBox.warning(
+        _notice_dialog(
             self, "获取模型列表失败",
             f"无法从 API 获取最新模型列表：\n{error or '未知错误'}")
 
@@ -666,9 +666,7 @@ class ProviderDetailPanel(QWidget):
         if not self._instance_id:
             return
         if not self._entries:
-            QMessageBox.information(
-                self, "模型健康检查",
-                "暂无可检查的模型，请先添加模型或刷新模型列表。")
+            _info_toast(self, "暂无可检查的模型，请先添加模型或刷新模型列表。")
             return
         cfg = self._current_config()
         name = cfg.name if cfg else self._instance_id

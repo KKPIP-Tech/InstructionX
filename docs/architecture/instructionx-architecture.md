@@ -40,7 +40,8 @@ graph TB
             SP["SkillsPanel"]
             WA["WorkArea"]
             UP["UsagePanel"]
-            DLG["Dialogs\n(LlamaSettings, PluginOrder, About...)"]
+            DLG["Dialogs\n(LLMSettings, PluginManagement, About...)"]
+            UK["InstructionX_UIKit + uikit_theme\n（设计令牌 / ThemeManager / 全局主题入口）"]
         end
 
         subgraph Core["core/"]
@@ -78,11 +79,14 @@ graph TB
                 DAO["DAO"]
                 DB["DatabaseConnection"]
             end
+
+            subgraph FontLayer["font/"]
+                FMGR["FontManager\n(singleton)"]
+            end
         end
 
         subgraph Utils["utils/"]
             LM["logging_tools.py\nLoggerManager"]
-            QSS["style_qss/\nStyleQSS + QssRegistry"]
         end
     end
 
@@ -102,6 +106,7 @@ graph TB
     P1 -.->|"via PluginServices"| DP
     P1 -.->|"via PluginServices"| BTM
     P1 -.->|"via PluginServices"| MCPM
+    P1 -.->|"via PluginServices"| FMGR
 
     LLMPS --> LLMP
     LLMP --> GLM
@@ -134,7 +139,9 @@ main()
   │
   ├── QApplication(sys.argv)          # Qt 应用实例
   │
-  ├── set_style_qss_theme(app)       # 检测系统主题 + 应用 QSS
+  ├── setQuitOnLastWindowClosed(False) # 切断「关窗即退出」隐式链路，退出时机由代码显式控制
+  │
+  ├── apply_uikit_theme(app)         # UIKit 全局主题（auto 检测系统主题 + build_qss + 兼容附录）
   │
   ├── LoggerManager()                # 日志系统单例初始化
   │
@@ -149,12 +156,22 @@ main()
   │     │     ├── SkillsPanel(plugin_manager)
   │     │     └── WorkArea(parent)
   │     │
-  │     └── skills_panel.load_skills_from_manager()
+  │     ├── skills_panel.load_skills_from_manager()
+  │     │
+  │     ├── TrayIconManager(...)    # 系统托盘（显示主窗口/运行中插件/后台任务/退出）
+  │     │
+  │     └── app.commitDataRequest.connect(...)  # Windows 注销/关机守卫（置 _force_quit 静默直退）
   │
   ├── main_window.show()
   │
-  └── application.exec()             # Qt 事件循环
+  ├── application.exec()             # Qt 事件循环
+  │
+  ├── BackgroundTaskManager.shutdown()  # 优雅关闭后台任务
+  │
+  └── UsageRecordStore.flush()       # 冲刷 LLM 用量记录待写数据
 ```
+
+**关闭确认机制**：主窗口 `closeEvent` 统一拦截全部关闭路径（自绘叉号 / 标题栏右键 / Alt+F4 / 任务栏关闭），每次弹出 `CloseConfirmDialog` 询问「退出程序 / 最小化到托盘 / 取消」（无记忆选项）；托盘菜单「退出」与系统注销/关机走静默直退，不弹窗。详见 [系统托盘](../ui/system-tray.md)。
 
 **单例初始化顺序**：`PluginManager` → `LLMPluginService` → `LLMProvider` → 各 LLM Provider 实例。
 
@@ -208,7 +225,7 @@ sequenceDiagram
         Note over PID: 读取/创建 .plugin_info.json<br/>写入 UUID
 
         PM->>PM: _create_plugin_services() → PluginServices
-        Note over PM: llm_facade = get_llm_plugin_service()<br/>data_provider = DataProvider()<br/>task_manager = BackgroundTaskManager()<br/>logger = LoggerManager()<br/>mcp_manager = get_mcp_manager()<br/>mcp_client = get_client_manager(tool_registry)
+        Note over PM: llm_facade = get_llm_plugin_service()<br/>data_provider = DataProvider()<br/>task_manager = BackgroundTaskManager()<br/>logger = LoggerManager()<br/>mcp_manager = get_mcp_manager()<br/>mcp_client = get_client_manager(tool_registry)<br/>font_manager = get_font_manager()
 
         PM->>PL: inspect.signature() → detect 'services' param
         PM->>PL: plugin_class(services=services) 或 plugin_class()
@@ -249,7 +266,7 @@ sequenceDiagram
 
 1. 从 `information.py` 的 `IPluginInfo` 子类读取 `service_api` 字典（方法名 → 描述/参数）
 2. 从 `service.py` 查找 `*Service` 后缀的类
-3. 尝试多组构造函数参数实例化 Service（`(plugin_id, mock_dp, real_llm, mock_ts)` → `(plugin_id,)` → `()`）
+3. 实例化 Service 类：先用 `inspect.signature` 分析构造函数可接受的位置参数个数，直接选择匹配的参数组合（仅签名分析失败时回退为逐个尝试）；保持 5 种候选组合的兼容顺序（参数从多到少）：`(plugin_id, dp, llm, ts)` → `(plugin_id, dp, llm)` → `(plugin_id, dp)` → `(plugin_id,)` → `()`（见 `core/plugin/manager.py` 的 `_instantiate_service()`）
 4. 对 `service_api` 中每个方法调用 `register_plugin_api()`
 5. 调用 `_notify_mcp_new_tools()` 通知 MCP 系统
 
@@ -300,7 +317,7 @@ sequenceDiagram
 
 #### 3.2.3 ConversationManager
 
-- **核心职责**：管理所有对话的**生命周期**（创建/发送/删除），包含历史消息管理、用量累计与持久化。上下文超出 `max_context` 时自动从最早的用户/助手消息开始截断（system prompt 与最近消息保留）。
+- **核心职责**：管理所有对话的**生命周期**（创建/发送/删除），包含历史消息管理、用量累计与持久化。上下文超出 `max_context_tokens`（默认 120000，见 `DEFAULT_MAX_CONTEXT_TOKENS`）时自动从最早的用户/助手消息开始截断（system prompt 与最近消息保留；旧参数名 `max_context` 为废弃兼容参数）。
 - **关键 API**：
   - `create_conversation(system_prompt, provider, model)` → `conv_id`
   - `send_message(conv_id, content)` → `(response_content, usage_info)`
@@ -465,7 +482,7 @@ sequenceDiagram
 
 #### 3.4.3 TaskScheduler / SchedulerCallback
 
-- **`TaskScheduler` 当前状态**：`core/task/scheduler.py` 中的 `TaskScheduler._check_and_run_tasks()` 为空实现（`pass`），仅被实例化并启动，**不实际承担调度职责**。
+- **`TaskScheduler` 当前状态**：`core/task/scheduler.py` 中的 `TaskScheduler` 为**轻量生命周期占位**——历史版本在后台线程中周期调用的 `_check_and_run_tasks()`（空实现、每秒空醒）已整体移除，当前仅保留 `start()`/`stop()` 生命周期接口以保持兼容，**不承担调度职责**。
 - **`SchedulerCallback` 实际职责**：定时任务的**调度判断**（基于 cron 表达式或间隔秒数）和回调执行。`BackgroundTaskManager._check_scheduled_tasks()` daemon 线程每 1 秒调用 `SchedulerCallback.should_run()` 判断到期任务，并通过 `SchedulerCallback.execute_scheduled_task()` 执行。
 - **模块关系**：
   - ⬅️ **SchedulerCallback 依赖**：`BackgroundTaskManager`（执行回调）
@@ -502,14 +519,15 @@ sequenceDiagram
 
 #### InstructionXMainWindow
 
-- **核心职责**：应用主窗口，**单窗口多面板布局**，负责插件系统初始化和 UI 协调。
+- **核心职责**：应用主窗口，**单窗口多面板布局**，负责插件系统初始化和 UI 协调；同时承载系统托盘（`TrayIconManager`）与关闭确认编排（`closeEvent` 拦截全部关闭路径，弹 `CloseConfirmDialog` 询问「退出程序 / 最小化到托盘 / 取消」；托盘退出与 `commitDataRequest` 系统关机守卫置 `_force_quit` 静默直退）。
 - **关键 API**：
   - `_create_main_layout()` — 创建技能面板和工作区
   - `_on_skill_clicked(plugin)` — 处理技能按钮点击事件
   - `_cycle_theme()` — 循环切换主题（light → dark → auto）
   - `_open_llm_settings_dialog()` / `_open_usage_panel()`
+  - `closeEvent(event)` — 关闭确认编排（见 [系统托盘](../ui/system-tray.md)）
 - **模块关系**：
-  - ⬅️ **我依赖**：`PluginManager`、`DataProvider`、`StyleQSS`、`SkillsPanel`、`WorkArea`、`CustomTitleBar`
+  - ⬅️ **我依赖**：`PluginManager`、`DataProvider`、`ui/uikit_theme`（apply_uikit_theme / T()）、`SkillsPanel`、`WorkArea`、`CustomTitleBar`
   - ➡️ **依赖我**：`main.py`（创建实例并 `show()`）
 
 **窗口布局结构**：
@@ -566,27 +584,26 @@ InstructionXMainWindow (Frameless, Transparent)
 | 对话框 | 用途 | 关键行为 |
 |--------|------|---------|
 | `LLMSettingsDialog` | LLM Provider/Model 配置 | 左列表+右详情双栏布局；保存后调用 `get_llm_provider().reload_config()` |
-| `PluginOrderDialog` | 插件显示顺序管理 | 拖拽排序；左右分栏（官方/第三方）；调用 `plugin_manager.apply_custom_order()` |
-| `UsagePanel` | 用量查询 | QtCharts 平滑折线趋势图（范围/指标切换）；KPI 卡片含同比；按日期/Provider/Model/对话ID 过滤，存储层分页 |
+| `PluginManagementDialog` | 插件统一管理（安装/升级/降级/卸载/分组与排序） | 编辑 > 插件管理...（Ctrl+P）打开；`plugins_changed` 信号触发技能面板刷新与工作区清空 |
+| `PluginOrderDialog`（遗留） | 插件显示顺序管理 | 遗留代码，无菜单入口、无实际调用方；排序功能已迁入 `PluginManagementDialog` 的「分组与排序」页 |
+| `UsagePanel` | 用量查询 | UIKit ChartWidget 日历热力趋势图（heatmap + calendar，近半年/近一年/自定义范围与指标切换，悬停显示日期，高度自适应，已从 QtCharts 迁移）；KPI 卡片含同比；按日期/Provider/Model/对话ID 过滤，存储层分页 |
 | `GitHubPluginInstallDialog` | 从 GitHub 安装插件 | QThread 后台克隆；`plugin_installed` 信号触发 UI 刷新 |
 
-### 4.5 样式系统 (`utils/style_qss/`)
+### 4.5 主题系统（`ui/uikit_theme.py` + `ui/InstructionX_UIKit/`）
 
 ```mermaid
 graph LR
-    A["colors.py\nStyleQSSColors"] --> B["palette.py\ncreate_qss_palette"]
-    B --> C["QStyleFactory.create('Fusion')"]
-    A --> D["registry.py\nQssRegistry"]
-    D --> E["styles/*.qss\n(30+ fragments)"]
-    E --> D
-    D --> F["app.setStyleSheet()"]
-    A --> F
+    A["tokens.py\nLIGHT / DARK 设计令牌"] --> D["theme.py\nThemeManager 单例"]
+    D --> C["QStyleFactory.create('Fusion')\n+ QPalette + 全局字体"]
+    A --> E["theme.py\nbuild_qss(tokens)"]
+    E --> F["app.setStyleSheet()"]
+    G["uikit_theme.py\n_build_compat_qss 排除区兼容附录"] --> F
     C --> F
 ```
 
-- **颜色系统**：`StyleQSSColors` 定义 light/dark 两套 ~50 个颜色 token
-- **QSS 注册表**：`QssRegistry` 支持插件通过 `register(name, qss_string, priority)` 添加样式；`get_all(theme)` 拼接所有片段并替换 `{variable}` 占位符
-- **主题切换**：`set_style_qss_theme(app, theme)` 替换整个应用 QSS；`detect_system_theme()` 读取 Windows 注册表 `AppsUseLightTheme`
+- **设计令牌**：`tokens.py` 定义 LIGHT / DARK 两套令牌（颜色 / 字号 / 间距 / 圆角 / 阴影 / 动画），运行时经 `T()` 取当前主题值；亮/暗双主题完全由令牌参数化
+- **主题切换**：`apply_uikit_theme(app, theme)` 为唯一全局入口（light/dark/auto，auto 读取 Windows 注册表 `AppsUseLightTheme`），经 `ThemeManager.set_mode` 切换后重置「build_qss + 兼容附录」完整样式表；主题选择持久化在 DataProvider `__app_config__/theme`
+- **排除区兼容附录**：`_build_compat_qss()` 为 CustomTitleBar / SkillsPanel / WorkArea 占位标签保留原选择器结构与尺寸，颜色实时取 `T()` 令牌（详见 [UIKit 主题系统](../utils/uikit-theme.md)）
 
 ---
 
@@ -609,10 +626,10 @@ graph LR
 | **BackgroundTaskManager** | 任务执行引擎 | `register_async_task()`, `register_scheduled_task_factory()` | `TaskStorage`, `SchedulerCallback`, `LoggerManager` | 所有插件 |
 | **TaskStorage** | 任务 JSON 持久化 | `save_task()`, `get_scheduled_tasks_by_plugin()` | `LoggerManager` | `BackgroundTaskManager` |
 | **DataProvider** | 数据持久化 + Pub/Sub | `get_plugin_data()`, `subscribe()`, `publish()` | `LoggerManager` | 所有插件 |
-| **InstructionXMainWindow** | 主窗口 + 插件协调 | `_on_skill_clicked()`, `_cycle_theme()` | `PluginManager`, `DataProvider`, `StyleQSS` | `main.py` |
+| **InstructionXMainWindow** | 主窗口 + 插件协调 | `_on_skill_clicked()`, `_cycle_theme()` | `PluginManager`, `DataProvider`, `ui/uikit_theme` | `main.py` |
 | **SkillsPanel** | 技能按钮管理 | `load_skills_from_manager()`, `clear_active_state()` | `PluginManager`, `SkillButton` | `InstructionXMainWindow` |
 | **WorkArea** | 插件界面显示区 | `add_widget()`, `clear_keep_highlight()` | 无 | `InstructionXMainWindow` |
-| **StyleQSS** | 样式主题系统 | `set_theme()`, `register()`, `get_all()` | `StyleQSSColors`, `QssRegistry` | `InstructionXMainWindow` |
+| **UIKit 主题（uikit_theme + InstructionX_UIKit）** | 全局主题系统 | `apply_uikit_theme()`, `T()`, `ThemeManager.set_mode()` | `tokens.py`（LIGHT/DARK 令牌）, `build_qss` | `main.py`, `InstructionXMainWindow`, 全部对话框 |
 | **LoggerManager** | 日志系统 | `info()`, `error()`, `warning()` | 无 | 所有模块 |
 
 ### 5.2 核心接口契约
@@ -780,7 +797,7 @@ class IDataProvider(ABC):
 4.  External MCP Server (filesystem, etc.)
        → MCPClientManager.connect(config)
            → session.list_tools() → MCPClientManager._make_handler() per tool
-           → _tool_registry.register(f"mcp:{server_id}:{tool_name}", handler)
+           → _tool_registry.register(f"mcp__{server_id}__{tool_name}", handler)
        → Tools available in ToolRegistry → LLM can use them in function_calling
 ```
 
@@ -823,7 +840,7 @@ class IDataProvider(ABC):
 | **观察者（Pub/Sub）** | `DataProvider.subscribe/publish` | 插件间事件驱动通信 |
 | **延迟初始化** | `IPlugin.get_widget()` 缓存, `MCPHostServer._init_fastmcp()` | 延迟到首次使用 |
 | **mtime 热重载** | `IPlugin._load_plugin_info()` | `information.py` 修改后无需重启 |
-| **原子写入** | `DataProvider._write_to_disk()` | 临时文件 + `os.replace` |
+| **原子写入** | `DataProvider._json_write_to_disk()`（仅 JSON 应急后端） | 临时文件 + `os.replace` |
 | **注册表模式** | `PROVIDER_REGISTRY` + `@register_provider` | 模块加载时自动注册 |
 | **桥接（Bridge）** | `MCPBridge` | 插件 API ↔ MCP 协议双向同步 |
 | **模板方法** | `BaseProvider._prepare_chat_payload` | 通用算法 + Provider 特定钩子 |
@@ -861,4 +878,3 @@ class IDataProvider(ABC):
 
 *文档生成时间：2026-04-28*
 *框架版本：dev branch*
-*分析工具：Claude Code Architecture Analysis Agent*

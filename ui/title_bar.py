@@ -11,7 +11,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, QPoint
 from PySide6.QtGui import QMouseEvent, QPainter, QColor, QPen, QAction, QCursor
 
-from utils.style_qss import get_style_qss
+from InstructionX_UIKit import T
 
 
 class IconButton(QPushButton):
@@ -46,9 +46,8 @@ class IconButton(QPushButton):
         w, h = rect.width(), rect.height()
         cx, cy = w / 2, h / 2
 
-        # 直接从主题系统获取当前主题的前景色，确保与 QSS 完全一致
-        text_primary = get_style_qss().colors().get('textPrimary', '#000000')
-        text_color = QColor(text_primary)
+        # 直接从 UIKit 主题令牌获取当前主题的前景色，确保与 QSS 完全一致
+        text_color = QColor(T("color.text.primary"))
 
         if self._icon_type == 'close':
             if self._hover:

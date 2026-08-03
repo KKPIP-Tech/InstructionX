@@ -151,7 +151,7 @@ from core.mcp import IMCPTool, IMCPClient
 | `plugin_info` | property | 插件信息对象 |
 | `llm_tools` | property | LLM 工具列表（用于 MCP/Function Calling） |
 | `_create_widget(parent, data_provider)` | method (abstract) | 创建 UI |
-| `get_widget(parent=None, data_provider=None)` | method | 获取 Widget（带缓存） |
+| `get_widget(parent=None, data_provider=None)` | method | 获取 Widget（接口基类无缓存，直接调用 `_create_widget`；缓存机制由 `core/plugin/plugin_interface.py` 中的实现提供） |
 | `on_plugin_loaded(plugin_id=None, **kwargs)` | method | 加载完成回调（PluginManager 调用时不传参数，向后兼容旧插件） |
 
 ### 2.3 IPluginInfo
@@ -186,14 +186,14 @@ from core.mcp import IMCPTool, IMCPClient
 | `DataProvider(data_dir=None, data_filename="data.json")` | 获取单例实例（参数均有默认值） | DataProvider |
 | `register_plugin(instance_id, plugin_type)` | 注册插件 | None |
 | `unregister_plugin(instance_id)` | 注销插件 | None |
-| `get_active_instance(type)` | 获取活跃实例 | Optional[str] |
+| `get_active_instance(plugin_type)` | 获取活跃实例 | Optional[str] |
 | `set_active_instance(instance_id)` | 设置活跃实例 | None |
 | `get_plugin_data(instance_id, key, namespace, default)` | 获取数据 | Any |
 | `set_plugin_data(instance_id, key, value, namespace, notify)` | 设置数据，notify 默认 True，控制是否通知订阅者 | None |
 | `get_all_plugin_data(instance_id, namespace)` | 获取所有数据 | Dict |
 | `subscribe(subscriber_id, target_plugin_id, target_key, callback)` | 订阅数据 | None |
-| `unsubscribe(subscriber, target=None)` | 取消订阅，target 为空则取消所有订阅 | None |
-| `publish(publisher, key, value, namespace)` | 发布数据 | None |
+| `unsubscribe(subscriber_id, target_plugin_id=None)` | 取消订阅，target_plugin_id 为 None 时取消所有订阅 | None |
+| `publish(publisher_id, key, value, namespace)` | 发布数据 | None |
 | `save_asset(plugin_id, filename, content)` | 保存资源 | str |
 | `get_asset_path(relative_path)` | 获取绝对路径 | str |
 | `load_asset(relative_path)` | 加载资源 | bytes |
@@ -235,7 +235,7 @@ from core.mcp import IMCPTool, IMCPClient
 | `enable_scheduled_task(task_id)` | 启用定时任务 | bool |
 | `disable_scheduled_task(task_id)` | 禁用定时任务 | bool |
 | `unregister_scheduled_task(task_id)` | 注销定时任务 | bool |
-| `register_long_running_task(plugin_id, name, func, callback, stop_callback, status_callback, auto_restart, args, kwargs)` | 注册长期任务 | str (task_id) |
+| `register_long_running_task(plugin_id, name, func, callback, stop_callback, status_callback, auto_restart, args, kwargs)` | 注册长期任务 | Optional[str]（task_id；shutdown 后为 None） |
 | `register_long_running_task_factory(plugin_id, func, callback, stop_callback, status_callback, restore_callback)` | 注册长期任务工厂 | None |
 | `restore_long_running_tasks(plugin_id)` | 恢复长期任务 | int |
 | `stop_long_running_task(task_id, delete_from_storage)` | 停止长期任务 | bool |
@@ -308,7 +308,7 @@ from core.mcp import IMCPTool, IMCPClient
 | `get_default_provider_id(feature)` | 默认实例解析结果（不抛异常） | Optional[str] |
 | `close()` | 关闭所有提供商连接 | None |
 | `config` | 配置管理器 | LLMConfig |
-| `available_providers` | 可用 Provider 列表 | List[str] |
+| `available_providers` | 支持的适配器类型列表（`PROVIDER_REGISTRY` 的键，如 minimax/siliconflow/glm/ollama/openai/openai-compatible，非已配置实例 id） | List[str] |
 
 ### 5.2 异常类
 
@@ -351,7 +351,7 @@ from core.mcp import IMCPTool, IMCPClient
 | `get_models(provider="default")` | 获取单实例模型列表 | List[ModelInfo] |
 | `resolve_provider_id(provider)` | 解析 "default" 为实际实例 id | str |
 | `get_default_provider_id(feature="chat")` | 默认实例解析结果（不抛异常） | Optional[str] |
-| `get_usage_stats(conversation_id?)` | 获取用量统计 | UsageStats |
+| `get_usage_stats(conversation_id?)` | 获取用量统计（conversation_id 不存在时返回 None） | Optional[UsageStats] |
 | `validate_provider(provider)` | 验证 Provider 配置 | Tuple[bool, str] |
 | `last_stream_response` (property) | 最近一次流式请求的聚合响应 | Optional[ChatResponse] |
 
@@ -365,11 +365,11 @@ from core.mcp import IMCPTool, IMCPClient
 
 | 方法 | 说明 | 返回值 |
 |------|------|--------|
-| `create_conversation(system_prompt?, provider?, model?)` | 创建对话 | str (conv_id) |
+| `create_conversation(system_prompt?, provider?, model?, metadata?)` | 创建对话 | str (conv_id) |
 | `get_conversation(conv_id)` | 获取对话 | Optional[Conversation] |
 | `list_conversations()` | 列出所有对话 | List[Conversation] |
 | `delete_conversation(conv_id)` | 删除对话 | bool |
-| `get_usage_stats(conv_id?)` | 获取用量统计 | UsageStats |
+| `get_usage_stats(conv_id?)` | 获取用量统计（conv_id 不存在时返回 None） | Optional[UsageStats] |
 
 ### 5.5 ToolCallExecutor / ToolRegistry
 
@@ -421,9 +421,62 @@ from core.mcp import IMCPTool, IMCPClient
 | `connect(config)` | 同步连接外部 MCP Server |
 | `disconnect(server_id)` | 断开连接 |
 | `list_connected_servers()` | 列出已连接 server_id |
-| `list_tools(server_id)` | 列出指定 Server 工具（带命名空间前缀 `mcp:{server_id}:{tool}`） |
+| `list_tools(server_id)` | 列出指定 Server 工具（注册进 ToolRegistry 时的命名空间前缀为 `mcp__{server_id}__{tool_name}`，双下划线） |
 | `get_connection(server_id)` | 获取指定连接的信息 |
 | `shutdown()` | 关闭所有连接 |
+
+### 5.8 MCPBridge
+
+**文件**: `core/mcp/bridge.py`
+
+| 方法 | 说明 |
+|------|------|
+| `sync_plugin_api_to_mcp_server()` | 将所有已注册插件 API 同步到 MCP Server（Server 启动时调用） |
+| `sync_new_plugin_tool(plugin_id, method_name, description, parameters)` | 同步单个新注册的插件工具到 MCP Server |
+| `remove_plugin_tool(plugin_id, method_name)` | 从 MCP Server 注销一个插件工具 |
+| `get_synced_tool_count()` | 返回已同步的工具数量 |
+
+### 5.9 MCPHostServer
+
+**文件**: `core/mcp/server.py`（基于 FastMCP，封装 `mcp` Python SDK）
+
+| 方法/属性 | 说明 |
+|------|------|
+| `add_tool(name, description, parameters, plugin_id, method_name)` | 动态注册一个 MCP 工具 |
+| `remove_tool(name)` | 注销一个 MCP 工具 |
+| `run_stdio()` | 启动 stdio 传输的 MCP Server（阻塞当前线程） |
+| `run_http()` | 启动 HTTP 传输的 MCP Server（后台线程） |
+| `stop()` | 停止 Server |
+| `is_running` | Server 运行状态（property） |
+| `registered_tools` | 返回所有已注册工具的映射（property） |
+
+默认监听 `127.0.0.1:8765`；对外暴露时务必启用 Bearer token 鉴权（`MCPHostServer` 内置中间件）。
+
+### 5.10 IMCPTool
+
+**文件**: `core/mcp/plugin_interface.py`（插件开发者接口）
+
+| 属性/方法 | 说明 |
+|-----------|------|
+| `mcp_tool_name` | 工具名称（property） |
+| `mcp_tool_description` | 工具描述（property） |
+| `mcp_tool_parameters` | JSON Schema 参数定义（property） |
+| `async mcp_invoke(**kwargs)` | 执行工具逻辑（必须为 async） |
+
+> **⚠️ 当前未自动注册**：当前版本 `PluginManager` / `MCPBridge` 尚未实现对 `IMCPTool` 子类的自动扫描与注册。继承 `IMCPTool` 不会自动将工具暴露到 MCP Server；详见 `docs/core/mcp/overview.md §7.2` 与 `docs/core/plugin-system/plugin-development.md §2.3.5`。
+
+### 5.11 IMCPClient
+
+**文件**: `core/mcp/plugin_interface.py`（预留接口）
+
+> 注意：接口定义为 async 方法，但 `MCPClientManager` 实现为**同步方法**（内部通过 `asyncio.run_coroutine_threadsafe` 调用异步 SDK），调用时请勿加 `await`。
+
+| 方法 | 说明 |
+|------|------|
+| `async connect(config)` | 连接到外部 MCP Server，返回 server_id |
+| `async disconnect(server_id)` | 断开连接 |
+| `list_connected_servers()` | 返回已连接 server_id 列表（同步） |
+| `list_tools(server_id)` | 列出指定 Server 工具（同步） |
 
 ---
 
@@ -593,7 +646,7 @@ task_id = task_manager.register_scheduled_task(
 | `save_asset(plugin_id, filename, content)` | 保存资源文件（content 为 bytes） |
 | `get_asset_path(relative_path)` | 获取资源绝对路径 |
 | `load_asset(relative_path)` | 加载资源文件 |
-| `get_plugin_assets_dir(plugin_id)` | 获取插件资源目录 | `str` |
+| `get_plugin_assets_dir(plugin_id)` | 获取插件资源目录 |
 | `clear_cache()` | 清除缓存，下次读取时重新从磁盘加载 |
 | `load_data(force_reload=False)` | 从磁盘加载数据到缓存 |
 | `save_data()` | 将当前缓存数据保存到磁盘 |
@@ -656,7 +709,7 @@ task_id = task_manager.register_scheduled_task(
 | `get_models(provider="default")` | 获取单实例模型列表，返回 `List[ModelInfo]` |
 | `resolve_provider_id(provider)` | 解析实例引用为实际实例 id |
 | `get_default_provider_id(feature="chat")` | 默认实例解析结果（不抛异常） |
-| `get_usage_stats(conv_id)` | 获取用量统计 |
+| `get_usage_stats(conv_id)` | 获取用量统计（conv_id 不存在时返回 None，返回 Optional[UsageStats]） |
 | `validate_provider(provider)` | 验证 Provider 配置 |
 | `last_stream_response` (property) | 最近一次流式请求的聚合响应 |
 
@@ -676,6 +729,7 @@ task_id = task_manager.register_scheduled_task(
 | `logger` | `ILogger` | 日志管理器实例（`LoggerManager` 实现） |
 | `mcp_manager` | `MCPManager` | MCP 管理器实例（可能为 `None`） |
 | `mcp_client` | `MCPClientManager` | MCP 客户端管理器实例（可能为 `None`） |
+| `font_manager` | `FontManager` | 字体管理器实例（`core/font`，始终注入） |
 
 ### 7.8 ILogger（日志接口）
 
@@ -705,7 +759,3 @@ task_id = task_manager.register_scheduled_task(
 - [LLM Provider 概述](../core/llm-provider/overview.md)
 - [LLM Provider API 参考](../core/llm-provider/api-reference.md)
 - [插件系统概述](../core/plugin-system/overview.md)
-
----
-
-*本文档由 Claude Code 自动生成*

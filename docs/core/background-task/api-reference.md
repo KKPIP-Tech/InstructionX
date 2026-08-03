@@ -136,7 +136,7 @@ def register_async_task(
     callback: Optional[Callable] = None,
     args: tuple = (),
     kwargs: dict = None
-) -> str
+) -> Optional[str]
 ```
 
 注册异步任务（在线程池中执行）。
@@ -150,7 +150,7 @@ def register_async_task(
 - `kwargs`: 关键字参数字典
 
 **返回**:
-- 任务 ID
+- 任务 ID；管理器已关闭（shutdown 后）时返回 None
 
 **示例**:
 ```python
@@ -184,7 +184,7 @@ def register_scheduled_task(
     callback: Optional[Callable] = None,
     args: tuple = (),
     kwargs: dict = None
-) -> str
+) -> Optional[str]
 ```
 
 注册定时任务。
@@ -199,9 +199,9 @@ def register_scheduled_task(
 - `kwargs`: 关键字参数字典
 
 **返回**:
-- 任务 ID
+- 任务 ID；管理器已关闭（shutdown 后）时返回 None
 
-> **注意**: `SchedulerCallback.execute_scheduled_task()` 在执行时优先检查 `args`，当 `args` 和 `kwargs` 同时存在时，`kwargs` 会被忽略。如需同时使用两者，请在 `args` 中传递字典并在 `func` 内部解包。
+> **注意**: `SchedulerCallback.execute_scheduled_task()` 以 `execute_func(*task.args, **task.kwargs)` 方式调用任务函数，`args` 与 `kwargs` 可同时传递、互不排斥。
 
 **示例**:
 ```python
@@ -273,7 +273,7 @@ def register_long_running_task(
     auto_restart: bool = True,
     args: tuple = (),
     kwargs: dict = None
-) -> str
+) -> Optional[str]
 ```
 
 注册长期任务（会持续运行直到被显式停止）。
@@ -290,7 +290,7 @@ def register_long_running_task(
 - `kwargs`: 关键字参数字典
 
 **返回**:
-- 任务 ID
+- 任务 ID；管理器已关闭（shutdown 后）时返回 None
 
 **示例**:
 ```python
@@ -415,7 +415,7 @@ def stop_long_running_task(self, task_id: str, delete_from_storage: bool = True)
 - `delete_from_storage`: 是否从持久化存储中删除任务，默认为 True
 
 **返回**:
-- 是否成功停止
+- 是否成功停止。任务不在运行时表中（如已停止、重启后未恢复的残留记录）时：`delete_from_storage=True` 以存储记录的删除结果为准（用于清理残留记录），`delete_from_storage=False` 返回 False
 
 ---
 
@@ -451,6 +451,24 @@ def get_long_running_tasks(self, plugin_id: Optional[str] = None) -> List[LongRu
 
 **返回**:
 - 长期任务列表
+
+---
+
+### is_long_task_running()
+
+```python
+def is_long_task_running(self, task_id: str) -> bool
+```
+
+判断长期任务当前是否在运行时表中（真正在执行或等待重启）。
+
+**参数**:
+- `task_id`: 任务 ID
+
+**返回**:
+- 任务在运行时表中返回 True，否则 False
+
+> **注意**：`current_status` 字段同时承载生命周期状态与插件自由文本，不能作为「是否在运行」的判定依据，应以本方法的返回为准。
 
 ---
 
@@ -621,7 +639,7 @@ def cancel_task(self, task_id: str) -> bool
 - `task_id`: 任务 ID
 
 **返回**:
-- 是否成功（如果任务已执行完成则返回 False）
+- 是否成功取消（任务不在运行列表中时返回 False）
 
 ---
 
@@ -638,6 +656,22 @@ def clear_completed_tasks(self, plugin_id: Optional[str] = None) -> int
 
 **返回**:
 - 清理的任务数量
+
+---
+
+### cleanup_old_tasks()
+
+```python
+def cleanup_old_tasks(self, max_age_days: int = 30) -> int
+```
+
+清理过期的任务记录（已完成/失败/已取消超过指定天数的后台任务记录）。
+
+**参数**:
+- `max_age_days`: 记录保留天数，默认 30 天
+
+**返回**:
+- 清理的记录数量
 
 ---
 
@@ -838,7 +872,3 @@ print("任务管理器已关闭")
 
 - [后台任务概述](overview.md)
 - [插件开发指南](../plugin-system/plugin-development.md)
-
----
-
-*本文档由 Claude Code 自动生成*

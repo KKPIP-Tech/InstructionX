@@ -5,10 +5,12 @@
 """
 
 import importlib.metadata
+import shutil
 import subprocess
 import sys
 import re
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Dict, List, Optional, Callable
 
 from packaging.specifiers import SpecifierSet, InvalidSpecifier
@@ -42,7 +44,7 @@ class DependencyManager:
 
     负责：
     - 检查插件依赖是否满足
-    - 自动安装缺失的依赖（通过 pip）
+    - 自动安装缺失的依赖（优先使用 uv，uv 不可用时回退到 pip）
     """
 
     # pip 子进程超时（秒）
@@ -182,7 +184,7 @@ class DependencyManager:
             if callback:
                 callback(f"正在安装 {package_spec}...")
 
-            success = self._pip_install(package_spec)
+            success = self._install_package(package_spec)
             if not success:
                 failed_packages.append(package_spec)
                 msg = f"安装失败: {package_spec}"
@@ -325,9 +327,67 @@ class DependencyManager:
         except InvalidVersion:
             return None
 
+    def _install_package(self, package_spec: str) -> bool:
+        """
+        安装单个依赖包
+
+        优先尝试使用 uv 安装，uv 不可用或 uv 安装失败时回退到 pip。
+
+        Args:
+            package_spec: 包规格，如 "requests>=2.25.0" 或 "numpy"
+
+        Returns:
+            bool: 是否成功
+        """
+        uv_path = self._find_uv_executable()
+        if uv_path and self._uv_install(uv_path, package_spec):
+            return True
+        if uv_path:
+            self._logger.warning(get_name(), f"uv 安装 {package_spec} 失败，回退到 pip")
+        return self._pip_install(package_spec)
+
+    def _find_uv_executable(self) -> Optional[str]:
+        """
+        查找 uv 可执行文件
+
+        优先在 PATH 中查找；未找到时回退到项目 .venv/Scripts/uv.exe（Windows）。
+        """
+        uv_path = shutil.which("uv")
+        if uv_path:
+            return uv_path
+        project_root = Path(__file__).parent.parent.parent
+        venv_uv = project_root / ".venv" / "Scripts" / "uv.exe"
+        if venv_uv.exists():
+            return str(venv_uv)
+        return None
+
+    def _uv_install(self, uv_path: str, package_spec: str) -> bool:
+        """
+        使用 uv 安装包
+
+        通过 --python 指定当前解释器，确保安装到当前虚拟环境。
+        """
+        try:
+            result = subprocess.run(
+                [uv_path, "pip", "install", "--python", sys.executable, package_spec],
+                capture_output=True,
+                text=True,
+                timeout=self.PIP_INSTALL_TIMEOUT
+            )
+            if result.returncode != 0:
+                self._logger.error(get_name(), f"uv install {package_spec} 失败: {result.stderr.strip()}")
+                return False
+            return True
+        except subprocess.TimeoutExpired:
+            self._logger.error(get_name(), f"uv install {package_spec} 超时")
+            return False
+        except Exception as e:
+            self._logger.error(get_name(), f"uv install {package_spec} 出错: {e}")
+            return False
+
     def _pip_install(self, package_spec: str) -> bool:
         """
-        使用 pip 安装包
+        使用 pip 安装包（uv 不可用时的回退）
 
         Args:
             package_spec: 包规格，如 "requests>=2.25.0" 或 "numpy"
@@ -340,7 +400,7 @@ class DependencyManager:
                 [sys.executable, "-m", "pip", "install", package_spec, "--quiet"],
                 capture_output=True,
                 text=True,
-                timeout=self.PIP_INSTALL_TIMEOUT  # 5 分钟超时
+                timeout=self.PIP_INSTALL_TIMEOUT
             )
 
             if result.returncode != 0:

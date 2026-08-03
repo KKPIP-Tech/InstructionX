@@ -2,7 +2,7 @@
 
 > 本文档面向第三方插件开发者，介绍如何使用 `LLMPluginService`（`ILLMService` 接口的唯一实现）访问 LLM 能力。
 > 完整 API 参考见 [LLM Provider API 参考](../core/llm-provider/api-reference.md)。
-> 旧接口（`ILLMFacade`）已删除，破坏性迁移对照见 `temp/llm-api-v2-migration.md`。
+> 旧接口（`ILLMFacade`）已删除；旧插件迁移请对照本文档中的 `ILLMService` 用法改写调用。
 
 ---
 
@@ -101,16 +101,17 @@ svc = get_llm_plugin_service()
 
 ## PluginServices 服务容器
 
-`PluginServices` 是框架自动注入的服务容器，包含 6 个核心服务字段：
+`PluginServices` 是框架自动注入的服务容器，包含 7 个核心服务字段：
 
 | 字段 | 类型 | 说明 | 注入失败时 |
 |------|------|------|-----------|
-| `llm_facade` | `ILLMService` | LLM 服务入口（实际为 `LLMPluginService` 单例） | 不会失败 |
+| `llm_facade` | `ILLMService` | LLM 服务入口（实际为 `LLMPluginService` 单例） | 不适用（无降级保护，构造失败将直接抛错） |
 | `data_provider` | `DataProvider` | 数据持久化服务 | `None` |
 | `task_manager` | `BackgroundTaskManager` | 后台任务管理 | `None` |
-| `logger` | `ILogger` | 日志服务（实际为 `LoggerManager` 单例） | `None` |
+| `logger` | `ILogger` | 日志服务（实际为 `LoggerManager` 单例） | 不适用（无降级保护，构造失败将直接抛错） |
 | `mcp_manager` | `MCPManager` | MCP Server 管理器 | `None` |
 | `mcp_client` | `MCPClientManager` | MCP 外部连接管理器 | `None` |
+| `font_manager` | `FontManager` | 字体管理器（安装/卸载/回退解析，`core/font`） | 不适用（无降级保护，同 `logger`/`llm_facade`，始终注入） |
 
 完整说明见 [插件系统概述](../core/plugin-system/overview.md)。
 
@@ -337,7 +338,7 @@ result = executor.chat_with_tools(
 
 # result 是 ToolChatResult（字段类型固定）
 for r in result.tool_results:  # List[ToolResult]
-    print(f"工具 {r.tool_name}: 结果={r.result}, 耗时={r.duration_ms}ms")
+    print(f"工具 {r.tool_name}: 结果={r.result}")
     if r.error:
         print(f"  错误: {r.error}")
 
@@ -494,7 +495,7 @@ if not ok:
 | 类型 | 来源文件 | 说明 |
 |---|---|---|
 | `Conversation` | `types.py` | 对话数据模型，含 `to_llm_format()`、`add_message()` |
-| `ToolResult` | `types.py` | 工具调用结果，含 `error`、`duration_ms` |
+| `ToolResult` | `types.py` | 工具调用结果，含 `error`（`duration_ms` 字段当前恒为 `None`，执行器未赋值） |
 | `ToolChatResult` | `types.py` | 工具调用对话的结构化结果（`messages` / `tool_results` / `final_response` / `final_text`） |
 | `ToolDefinition` | `types.py` | 类型化的工具定义（`register_typed` 入参） |
 | `UsageStats` | `types.py` | Token 累计统计，含 `total_tokens`、`total_cost`、`by_provider` |
@@ -513,13 +514,26 @@ if not ok:
 
 ## 相关文档
 
-- [LLM Provider API 参考](../core/llm-provider/api-reference.md) — LLMPluginService、ConversationManager、ToolCallExecutor 完整 API 清单
-- [LLM Provider 概述](../core/llm-provider/overview.md) — Provider 底层实现细节
-- [MCP 协议模块概述](../core/mcp/overview.md) — MCP Server 和 MCP Client 完整指南
-- [插件开发指南](../core/plugin-system/plugin-development.md)
-- [IPlugin 接口](../core/plugin-system/iplugin.md)
-- [PluginManager 架构](../core/plugin-system/plugin-manager.md)
+**LLM 子系统内部**（面向插件开发者的完整 LLM 知识栈）：
+- [LLM Provider 概述](../core/llm-provider/overview.md) — Provider 底层架构、单例与并发、工具调用
+- [LLM Provider API 参考](../core/llm-provider/api-reference.md) — `LLMPluginService` / `ConversationManager` / `ToolCallExecutor` 完整 API 清单
+- [LLM Provider 配置](../core/llm-provider/provider-config.md) — `ProviderConfig` / `LLMConfig` / schema v2
+- [完整 API 参考 §5 LLM Provider API](../../api/full-reference.md#5-llm-provider-api) — 方法索引
 
----
+**插件系统上下文**：
+- [插件开发指南](../core/plugin-system/plugin-development.md) — 插件结构与生命周期
+- [IPlugin 接口](../core/plugin-system/iplugin.md) — 插件基类
+- [PluginManager 架构](../core/plugin-system/plugin-manager.md) — `PluginServices` 注入机制
+- [插件系统概述](../core/plugin-system/overview.md) — 总览
 
-*本文档由 Claude Code 自动生成*
+**接口层**：
+- [接口层概述](../core/interfaces/overview.md) — `ILLMService` 抽象接口
+- [`core/interfaces/i_llm_service.py`](../../core/interfaces/i_llm_service.py) — 接口源文件
+
+**相关子系统**：
+- [MCP 协议模块概述](../core/mcp/overview.md) — MCP Server 和 MCP Client 完整指南；外部 MCP 工具可注册到 `ToolRegistry` 由 LLM 调用
+- [DataProvider 概述](../core/data-provider/overview.md) — `UsageRecordStore` 用量持久化
+
+**架构分析**：
+- [instructionx-architecture.md §3.2 LLM 层](../../architecture/instructionx-architecture.md#32-llm-层-corellm) — LLM 模块依赖图
+- [系统架构概述](../../architecture/overview.md)

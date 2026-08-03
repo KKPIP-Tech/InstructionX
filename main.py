@@ -2,23 +2,19 @@ import sys
 import traceback
 from pathlib import Path
 
+# 必须为第一行业务 import：扩展 sys.path 使 InstructionX_UIKit 以顶层包可导入
+import ui.uikit_bootstrap  # noqa: F401
+
 # ===================================================================
 # PySide 相关
-from PySide6.QtWidgets import (
-    QApplication, QMessageBox, QStyleFactory
-)
-from PySide6.QtGui import (
-    QPalette, QColor, QIcon
-)
+from PySide6.QtWidgets import QApplication
+from PySide6.QtGui import QIcon
 from PySide6.QtCore import Qt
 
 # ===================================================================
 # ui
 from ui.main_window import InstructionXMainWindow
-
-# ===================================================================
-# 自定义工具
-from utils.themes import set_style_qss_theme
+from ui.uikit_theme import apply_uikit_theme
 
 from utils.logging_tools import LoggerManager, get_name
 
@@ -34,13 +30,17 @@ from core.llm.usage_record_store import get_usage_record_store
 def main():
     # 创建应用实例
     application = QApplication(sys.argv)
+
+    # 托盘模式前置条件：关闭「最后一个窗口关闭即退出」的隐式链路，
+    # 退出时机完全由代码显式控制（主窗口 closeEvent / 托盘菜单「退出」）
+    application.setQuitOnLastWindowClosed(False)
     
     # 设置应用名称
     application.setApplicationName("InstructionX - CE")
     application.setOrganizationName("LumenThread")
     
-    # 设置 StyleQSS 主题（自动检测系统主题）
-    set_style_qss_theme(application)
+    # 设置 UIKit 全局主题（auto：自动检测系统主题）
+    apply_uikit_theme(application)
 
     # 初始化日志管理器
     logger = LoggerManager()
@@ -68,7 +68,6 @@ def main():
     
     # 运行应用
     result = application.exec()
-
     application.closeAllWindows()
 
     # 关闭后台任务管理器

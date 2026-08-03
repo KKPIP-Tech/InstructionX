@@ -8,13 +8,14 @@
 
 import os
 import sys
+import shutil
 import inspect
 import traceback
 import importlib
 import importlib.util
 from enum import Enum
 from pathlib import Path
-from typing import List, Dict, Optional, Any, Callable
+from typing import List, Dict, Optional, Any, Callable, Tuple
 from unittest.mock import MagicMock
 
 from core.interfaces import IPlugin
@@ -23,8 +24,11 @@ from core.task import BackgroundTaskManager
 from .config_manager import PluginConfigManager
 from .plugin_identity import PluginIdentity
 from .plugin_info_interface import IPluginInfo
+from .plugin_registry import PluginRegistry
+from .plugin_groups import PluginGroup, PluginGroupStore
 from core.interfaces.plugin_services import PluginServices
 from core.interfaces.i_llm_service import ILLMService
+from core.font import get_font_manager
 
 # re-export：保持 `core.plugin.manager.sanitize_tool_name` 引用路径兼容
 from .tool_name import sanitize_tool_name  # noqa: F401
@@ -95,6 +99,12 @@ class PluginManager:
         # 配置管理器
         self.config_manager = PluginConfigManager()
 
+        # 已安装插件注册表（版本/来源，用于升级降级）
+        self.registry = PluginRegistry()
+
+        # 用户自定义分组存储
+        self.group_store = PluginGroupStore()
+
         # 日志管理器
         self._logger = LoggerManager()
 
@@ -128,6 +138,7 @@ class PluginManager:
             logger=logger,
             mcp_manager=self._get_mcp_manager(),
             mcp_client=self._get_mcp_client(),
+            font_manager=get_font_manager(),
         )
 
     def _get_mcp_manager(self) -> Any:
@@ -152,9 +163,23 @@ class PluginManager:
             return None
 
     def load_plugins(self):
-        """加载所有插件（包括官方插件和第三方插件）"""
+        """加载所有插件（包括官方插件和第三方插件），并回填版本注册表"""
         self.load_official_plugins()
         self.load_thirdparty_plugins()
+        self._backfill_registry()
+
+    def _backfill_registry(self) -> None:
+        """扫描已加载插件，为注册表中缺失记录的插件回填版本信息"""
+        entries: List[Tuple[str, str, Path]] = []
+        for plugin in self._official_plugins:
+            entries.append((plugin.plugin_id, "official", plugin._plugin_dir))
+        for plugin in self._thirdparty_plugins:
+            entries.append((plugin.plugin_id, "thirdparty", plugin._plugin_dir))
+        try:
+            self.registry.backfill(entries)
+        except Exception as e:
+            # 回填失败不影响插件加载主流程
+            self._logger.warning(get_name(), f'插件注册表回填失败: {e}')
 
     def load_official_plugins(self) -> List[IPlugin]:
         """
@@ -347,16 +372,69 @@ class PluginManager:
         return self._plugin_registry.get(plugin_id)
 
     def reload_plugins(self):
-        """重新加载所有插件（清空注册表后重新扫描目录）"""
-        # 清注册表前，先通知 MCP 系统移除所有已注册的插件工具
-        for plugin_id in list(self._api_registry.keys()):
-            self._notify_mcp_remove_tools(plugin_id)
+        """重新加载所有插件（先完整卸载旧实例，再重新扫描目录）"""
+        for plugin in list(self._plugin_registry.values()):
+            self._unload_plugin_instance(plugin)
         self._official_plugins.clear()
         self._thirdparty_plugins.clear()
         self._plugin_registry.clear()
         self._plugin_name_to_id.clear()
         self._api_registry.clear()
         self.load_plugins()
+
+    def _unload_plugin_instance(self, plugin: IPlugin) -> None:
+        """卸载单个插件实例的运行时状态
+
+        依次执行：生命周期回调 → API/MCP 注销 → 缓存 Widget 销毁 → sys.modules 清理。
+        各步骤独立容错，单步失败不阻断后续清理。
+
+        Args:
+            plugin: 待卸载的插件实例
+        """
+        plugin_id = plugin.plugin_id
+        # 1. 生命周期回调，让插件自行释放资源（订阅、定时器等）
+        try:
+            plugin.on_plugin_unloaded()
+        except Exception as e:
+            self._logger.warning(get_name(), f'插件 {plugin_id} on_plugin_unloaded 执行失败: {e}')
+        # 2. 注销跨插件 API 并同步移除 MCP 工具
+        if plugin_id:
+            self.unregister_plugin_api(plugin_id)
+        # 3. 销毁缓存的 Widget（必须在 GUI 线程调用，失败仅记录）
+        self._destroy_cached_widget(plugin)
+        # 4. 清理 sys.modules 中的插件模块，保证重载时拿到新代码
+        plugin_dir = getattr(plugin, '_plugin_dir', None)
+        if plugin_dir is not None:
+            self._remove_plugin_sys_modules(plugin_dir.name)
+
+    def _destroy_cached_widget(self, plugin: IPlugin) -> None:
+        """销毁插件缓存的 Widget 并清空缓存引用"""
+        widget = getattr(plugin, '_cached_widget', None)
+        if widget is None:
+            return
+        try:
+            widget.hide()
+            widget.deleteLater()
+        except Exception as e:
+            self._logger.warning(get_name(), f'销毁插件缓存 Widget 失败: {e}')
+        plugin._cached_widget = None
+        plugin._cached_parent = None
+
+    def _remove_plugin_sys_modules(self, dir_name: str) -> None:
+        """从 sys.modules 移除插件相关模块
+
+        覆盖三种命名形态：
+        - {dir_name} 及其子模块（entrance 加载路径）
+        - plugin.{dir_name}.* / custom_plugin.{dir_name}.*（API 自动注册路径）
+
+        Args:
+            dir_name: 插件目录名
+        """
+        prefix = f"{dir_name}."
+        infix = f".{dir_name}."
+        for mod_name in list(sys.modules):
+            if mod_name == dir_name or mod_name.startswith(prefix) or infix in mod_name:
+                sys.modules.pop(mod_name, None)
 
     def get_plugin_by_id(self, plugin_id: str) -> Optional[IPlugin]:
         """
@@ -469,6 +547,196 @@ class PluginManager:
                 self._official_plugins.remove(plugin)
             if plugin in self._thirdparty_plugins:
                 self._thirdparty_plugins.remove(plugin)
+
+    # ==================== 插件卸载 ====================
+
+    def uninstall_plugin(self, plugin_id: str, remove_data: bool = False) -> Dict[str, Any]:
+        """完整卸载指定插件
+
+        流程：运行时卸载 → 注册表移除 → 删除插件目录 → 清理 UUID 文件 →
+        清理排序/分组/版本注册表 → 可选删除插件数据。
+        各步骤独立容错，尽可能多的清理项会被执行。
+
+        Args:
+            plugin_id: 插件 UUID
+            remove_data: 为 True 时同时删除 DataProvider 中的插件数据
+
+        Returns:
+            {"success": bool, "message": str, "warnings": List[str]}
+        """
+        plugin = self._plugin_registry.get(plugin_id)
+        if plugin is None:
+            return {"success": False, "message": "插件不存在或未加载", "warnings": []}
+
+        plugin_name = plugin.plugin_name
+        plugin_dir = getattr(plugin, '_plugin_dir', None)
+        warnings: List[str] = []
+        self._logger.info(get_name(), f'开始卸载插件: {plugin_name} ({plugin_id})')
+
+        # 1. 运行时卸载（生命周期回调、API/MCP、Widget、sys.modules）
+        self._unload_plugin_instance(plugin)
+
+        # 2. 从注册表与列表移除
+        self._plugin_registry.pop(plugin_id, None)
+        self._plugin_name_to_id.pop(plugin_name, None)
+        if plugin in self._official_plugins:
+            self._official_plugins.remove(plugin)
+        if plugin in self._thirdparty_plugins:
+            self._thirdparty_plugins.remove(plugin)
+
+        # 3. 删除插件目录
+        if plugin_dir is not None and plugin_dir.exists():
+            try:
+                shutil.rmtree(plugin_dir)
+            except OSError as e:
+                warnings.append(f"删除插件目录失败: {e}")
+                self._logger.error(get_name(), f'删除插件目录失败 {plugin_dir}: {e}')
+
+        # 4. 清理 UUID 持久化文件
+        if plugin_dir is not None:
+            PluginIdentity(plugin_dir).delete()
+
+        # 5. 清理排序、分组与版本注册表
+        self._remove_from_order_config(plugin_id)
+        self.group_store.remove_plugin(plugin_id)
+        self.registry.remove(plugin_id)
+
+        # 6. 可选删除插件持久化数据
+        if remove_data:
+            self._remove_plugin_data(plugin_id, warnings)
+
+        self._logger.info(get_name(), f'插件卸载完成: {plugin_name} ({plugin_id})')
+        return {"success": True, "message": f"插件 {plugin_name} 已卸载", "warnings": warnings}
+
+    def _remove_from_order_config(self, plugin_id: str) -> None:
+        """从 plugin_order.json 中移除指定插件 UUID"""
+        config = self.config_manager.load_plugin_order()
+        changed = False
+        for key in ("official_plugins", "thirdparty_plugins"):
+            if plugin_id in config[key]:
+                config[key] = [pid for pid in config[key] if pid != plugin_id]
+                changed = True
+        if changed:
+            self.config_manager.save_plugin_order(
+                config["official_plugins"], config["thirdparty_plugins"]
+            )
+
+    def _remove_plugin_data(self, plugin_id: str, warnings: List[str]) -> None:
+        """删除 DataProvider 中的插件数据，失败时记录警告"""
+        try:
+            provider = DataProvider()
+            # 插件从未在 DataProvider 注册（未写入过数据）时无数据可删；
+            # unregister_plugin 对未注册插件会抛错，此处先检查存在性
+            if provider.get_plugin_info(plugin_id) is None:
+                self._logger.debug(
+                    get_name(), f'插件 {plugin_id} 无持久化数据，跳过数据删除'
+                )
+                return
+            provider.unregister_plugin(plugin_id)
+        except Exception as e:
+            warnings.append(f"删除插件数据失败: {e}")
+            self._logger.error(get_name(), f'删除插件数据失败 {plugin_id}: {e}')
+
+    # ==================== 自定义分组与排序 ====================
+
+    def get_groups(self, scope: str) -> List[PluginGroup]:
+        """获取指定 scope 的用户自定义分组列表
+
+        Args:
+            scope: "official" 或 "thirdparty"
+
+        Returns:
+            PluginGroup 列表（顺序即显示顺序）
+        """
+        return self.group_store.load(scope)
+
+    def save_groups(self, scope: str, groups: List[PluginGroup],
+                    order: Optional[List[tuple]] = None) -> bool:
+        """保存指定 scope 的分组配置与面板统一顺序
+
+        Args:
+            scope: "official" 或 "thirdparty"
+            groups: PluginGroup 列表
+            order: 面板统一顺序 [("group"|"plugin", id), ...]，
+                   None 时保留已有顺序（新分组追加在后）
+
+        Returns:
+            保存是否成功
+        """
+        return self.group_store.save(scope, groups, order)
+
+    def get_sorted_plugins(self, scope: str) -> List[tuple]:
+        """按面板统一顺序（分组与未分组插件混排）返回渲染序列
+
+        Args:
+            scope: "official" 或 "thirdparty"
+
+        Returns:
+            渲染项列表，每项为：
+            - ("group", PluginGroup, [插件实例...])：一个分组及其组内插件
+            - ("plugin", 插件实例)：未分组插件
+        """
+        plugins = self._official_plugins if scope == "official" else self._thirdparty_plugins
+        by_id = {p.plugin_id: p for p in plugins if p.plugin_id}
+        groups_by_id = {g.id: g for g in self.group_store.load(scope)}
+
+        result: List[tuple] = []
+        assigned = set()   # 已分配进分组的插件 UUID
+        emitted = set()    # 已输出的分组 ID / 插件 UUID
+        for item_type, item_id in self.group_store.load_order(scope):
+            if item_type == "group":
+                group = groups_by_id.get(item_id)
+                if group is not None and item_id not in emitted:
+                    members = [by_id[pid] for pid in group.plugins if pid in by_id]
+                    assigned.update(p.plugin_id for p in members)
+                    emitted.add(item_id)
+                    result.append(("group", group, members))
+            elif item_id in by_id and item_id not in assigned and item_id not in emitted:
+                emitted.add(item_id)
+                result.append(("plugin", by_id[item_id]))
+
+        result.extend(self._get_tail_items(scope, groups_by_id, by_id, assigned, emitted))
+        return result
+
+    def _get_tail_items(self, scope: str, groups_by_id: Dict[str, PluginGroup],
+                        by_id: Dict[str, IPlugin], assigned: set,
+                        emitted: set) -> List[tuple]:
+        """收集未出现在面板顺序中的分组与插件，追加在末尾
+
+        分组按保存顺序、插件按 plugin_order.json 顺序追加（新插件排最后）。
+        """
+        tail: List[tuple] = []
+        for group in groups_by_id.values():
+            if group.id in emitted:
+                continue
+            members = [by_id[pid] for pid in group.plugins if pid in by_id]
+            assigned.update(p.plugin_id for p in members)
+            emitted.add(group.id)
+            tail.append(("group", group, members))
+
+        for plugin in self._get_ungrouped_plugins(scope, by_id, assigned):
+            if plugin.plugin_id not in emitted:
+                emitted.add(plugin.plugin_id)
+                tail.append(("plugin", plugin))
+        return tail
+
+    def _get_ungrouped_plugins(self, scope: str, by_id: Dict[str, IPlugin],
+                               assigned: set) -> List[IPlugin]:
+        """获取未分组插件，按 plugin_order.json 顺序排列，新插件追加在后"""
+        order_key = "official_plugins" if scope == "official" else "thirdparty_plugins"
+        order = self.config_manager.load_plugin_order().get(order_key, [])
+
+        ungrouped: List[IPlugin] = []
+        seen = set()
+        for pid in order:
+            plugin = by_id.get(pid)
+            if plugin is not None and pid not in assigned:
+                ungrouped.append(plugin)
+                seen.add(pid)
+        for pid, plugin in by_id.items():
+            if pid not in assigned and pid not in seen:
+                ungrouped.append(plugin)
+        return ungrouped
 
     def apply_custom_order(self):
         """从配置文件加载并应用用户自定义的插件显示顺序"""

@@ -13,7 +13,7 @@
 **核心功能**:
 - 检查插件依赖是否已满足
 - 获取缺失的依赖包列表
-- 自动安装缺失的依赖（通过 pip）
+- 自动安装缺失的依赖（优先使用 uv，uv 不可用或 uv 安装失败时回退 pip，见 `DependencyManager._install_package()`）
 - 支持版本约束检查（如 `>=2.25.0`）
 
 ---
@@ -138,6 +138,7 @@ print(f"安装结果: {result.message}")
 | `==` | `==2.25.0` | 等于 |
 | `!=` | `!=2.25.0` | 不等于 |
 | 空字符串 | `""` | 仅检查包是否存在 |
+| 复合约束 | `>=1.0,<2.0` | 逗号分隔多个子约束，需全部满足 |
 
 ### 4.2 版本比较规则
 
@@ -231,7 +232,3 @@ else:
 - [GitHub 插件安装器](plugin-installer.md)
 - [插件开发指南](plugin-development.md)
 - [PluginManager](plugin-manager.md)
-
----
-
-*本文档由 Claude Code 自动生成*

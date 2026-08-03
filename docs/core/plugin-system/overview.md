@@ -57,8 +57,10 @@ flowchart TD
     H --> I[实例化插件]
     J[生成/加载 UUID] --> I[实例化插件]
     I --> K[调用 on_plugin_loaded]
-    K --> L[注册到 SkillsPanel]
+    K --> L[写入注册表并自动注册 API]
 ```
+
+> **说明**：`PluginManager` 的加载链路止于「写入 `_plugin_registry` 并调用 `_auto_register_plugin_api()`」。技能面板（SkillsPanel）不属于加载链路——它由 UI 层（`ui/main_window.py`）在 `load_plugins()` 完成后构建并通过 `load_skills_from_manager()` 从 `PluginManager` 读取已加载插件。
 
 ### 2.2 动态导入实现
 
@@ -82,10 +84,13 @@ def _load_plugin_from_directory(self, plugin_dir: Path) -> Optional[IPlugin]:
     # 4. 查找 IPlugin 子类（排除框架内置 IPlugin）
     for attr_name in dir(module):
         attr = getattr(module, attr_name)
-        if isinstance(attr, type) and issubclass(attr, IPlugin) and attr is not IPlugin:
-            # 同时排除 core.interfaces.IPlugin 和 core.plugin.plugin_interface.IPlugin
-            plugin_class = attr
-            break
+        if not (isinstance(attr, type) and issubclass(attr, IPlugin)) or attr is IPlugin:
+            continue
+        # 同时排除 core.plugin.plugin_interface.IPlugin（按 __module__ 判断）
+        if getattr(attr, '__module__', '') == 'core.plugin.plugin_interface':
+            continue
+        plugin_class = attr
+        break
 
     # 5. 生成 UUID
     identity = PluginIdentity(plugin_dir)
@@ -95,7 +100,6 @@ def _load_plugin_from_directory(self, plugin_dir: Path) -> Optional[IPlugin]:
     services = self._create_plugin_services()
 
     # 7. 实例化插件（尝试注入 services）
-    import inspect
     sig = inspect.signature(plugin_class)
     params = [p.name for p in sig.parameters.values()]
     if 'services' in params:
@@ -120,6 +124,8 @@ def _load_plugin_from_directory(self, plugin_dir: Path) -> Optional[IPlugin]:
     return plugin_instance
 ```
 
+> **说明**：本片段为示意简化——`inspect`、`importlib.util` 等 import 均位于文件顶部（`core/plugin/manager.py`），且省略了插件名重复检测与异常处理；完整实现见 `PluginManager._load_plugin_from_directory()`。
+
 > **注意**: `PluginManager` 调用 `on_plugin_loaded()` 时不传递任何参数。插件应通过 `self.plugin_id` 访问 UUID，通过 `self._services` 访问服务容器。详见 [IPlugin 接口](iplugin.md)。
 
 ---
@@ -137,6 +143,7 @@ plugin_name/
 │                          # 定义可被调用的方法
 ├── information.py        # 插件元数据（必需）
 │                          # 继承 IPluginInfo，定义 API
+├── config/               # 配置文件目录（必需，开发规范）
 ├── icons/                # 图标目录（可选）
 │   └── icon.png
 └── assets/               # 资源目录（可选）
@@ -147,9 +154,12 @@ plugin_name/
 
 | 文件 | 必需 | 职责 | 关键内容 |
 |------|------|------|---------|
-| **entrance.py** | ✅ 是 | UI 入口 | 继承 `IPlugin`，实现 `_create_widget()` |
-| **service.py** | ✅ 是 | 业务逻辑 | 定义可被外部调用的方法 |
-| **information.py** | ✅ 是 | 元数据 | 继承 `IPluginInfo`，定义 `service_api` |
+| **entrance.py** | ✅ 是（框架硬校验） | UI 入口 | 继承 `IPlugin`，实现 `_create_widget()` |
+| **service.py** | ✅ 是（开发规范） | 业务逻辑 | 定义可被外部调用的方法，类名以 `Service` 结尾 |
+| **information.py** | ✅ 是（开发规范） | 元数据 | 继承 `IPluginInfo`，定义 `service_api` |
+| **config/** | ✅ 是（开发规范） | 配置 | 插件配置文件目录，禁止魔法数 |
+
+> **说明**：框架加载时仅对 `entrance.py` 做硬性校验（缺失则跳过该插件）；缺少 `service.py`/`information.py` 不影响插件本体加载，仅会跳过 API 自动注册。`service.py`、`information.py`、`config/` 的"必需"是插件开发规范的强制要求，框架不兜底校验。
 
 ---
 
@@ -168,7 +178,7 @@ flowchart TD
     F --> G[注册到 _api_registry]
 ```
 
-> **前置条件**：`entrance.py`、`service.py`、`information.py` 三者均为必需文件。插件缺少其中任何一个都将导致加载失败。
+> **前置条件**：API 自动注册要求 `information.py` 与 `service.py` 同时存在、且 `service_api` 非空；任一不满足时框架仅跳过注册，插件本体仍可正常加载（框架仅对 `entrance.py` 做硬性加载校验）。按插件开发规范，`entrance.py`、`service.py`、`information.py`、`config/` 均为必需文件。
 
 ### 4.2 service_api 定义示例
 
@@ -237,6 +247,7 @@ classDiagram
         +_create_widget(parent, data_provider): QWidget
         +get_widget(parent, data_provider): QWidget  (框架实现带缓存)
         +on_plugin_loaded(): None  (调用时不传参)
+        +on_plugin_unloaded(): None  (卸载/热重载前调用)
     }
 
     class IPluginInfo {
@@ -273,6 +284,7 @@ classDiagram
 
     IPlugin --> PluginManager : 注册到
     IPlugin --> IPluginInfo : 通过 plugin_info 属性访问
+```
 
 ### 6.1 PluginServices 架构
 
@@ -285,6 +297,7 @@ graph LR
         LG[logger<br/>LoggerManager]
         MCM[mcp_manager<br/>MCPManager]
         MCC[mcp_client<br/>MCPClientManager]
+        FTM[font_manager<br/>FontManager]
     end
 
     PluginServices --> LLM
@@ -293,6 +306,7 @@ graph LR
     PluginServices --> LG
     PluginServices --> MCM
     PluginServices --> MCC
+    PluginServices --> FTM
 ```
 
 | 服务字段 | 类型 | 说明 |
@@ -303,6 +317,7 @@ graph LR
 | `logger` | `ILogger` | 日志服务 |
 | `mcp_manager` | `MCPManager` | MCP Server 管理器 |
 | `mcp_client` | `MCPClientManager` | MCP 外部连接管理器 |
+| `font_manager` | `FontManager` | 字体管理器（安装/卸载/系统回退解析，`core/font`） |
 
 ---
 
@@ -313,12 +328,12 @@ stateDiagram-v2
     [*] --> 初始化: 应用启动
     初始化 --> 扫描目录: PluginManager 初始化
     扫描目录 --> 动态导入: 遍历子目录
-    动态导入 --> 实例化: 找到 IPlugin 子类
-    实例化 --> 生成UUID: PluginIdentity 生成/加载
-    生成UUID --> 回调: on_plugin_loaded()
-    回调 --> 注册API: _auto_register_plugin_api
-    注册API --> 注册表: 写入 _plugin_registry
-    注册表 --> 注册面板: 注册到 SkillsPanel
+    动态导入 --> 生成UUID: 找到 IPlugin 子类
+    生成UUID --> 实例化: PluginIdentity 生成/加载
+    实例化 --> 回调: on_plugin_loaded()
+    回调 --> 注册表: 写入 _plugin_registry
+    注册表 --> 注册API: _auto_register_plugin_api
+    注册API --> 注册面板: UI 层构建 SkillsPanel
     注册面板 --> 等待点击: 用户交互
     等待点击 --> 创建UI: 首次点击
     等待点击 --> 返回缓存: 后续点击
@@ -326,6 +341,8 @@ stateDiagram-v2
     缓存Widget --> 等待点击
     返回缓存 --> 等待点击
 ```
+
+> **说明**：「注册面板」及之后的状态属于 UI 层——`PluginManager` 的加载链路止于「写入 `_plugin_registry` 并调用 `_auto_register_plugin_api()`」；SkillsPanel 由 `ui/main_window.py` 在 `load_plugins()` 完成后构建，通过 `load_skills_from_manager()` 读取已加载插件。
 
 ---
 
@@ -335,7 +352,3 @@ stateDiagram-v2
 - [PluginManager](plugin-manager.md)
 - [插件开发指南](plugin-development.md)
 - [MCP 协议模块概述](../mcp/overview.md)
-
----
-
-*本文档由 Claude Code 自动生成*

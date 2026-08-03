@@ -26,7 +26,7 @@ from PySide6.QtCore import QSize, Qt
 from PySide6.QtGui import QColor, QIcon
 from PySide6.QtWidgets import (
     QHBoxLayout, QLabel, QLineEdit, QListWidget, QListWidgetItem,
-    QMessageBox, QPushButton, QStackedWidget, QVBoxLayout, QWidget,
+    QPushButton, QStackedWidget, QVBoxLayout, QWidget,
 )
 
 from core.llm.catalog import (
@@ -43,6 +43,7 @@ from .constants import (
 )
 from .icons import provider_icon_pixmap
 from .theme import apply_dialog_theme
+from .feedback import warn as _warn_toast
 from .widgets import _BaseFormDialog, install_focus_halo, make_field_label
 
 # 对话框工作模式
@@ -404,5 +405,5 @@ class ProviderEditorDialog(_BaseFormDialog):
         return True
 
     def _warn(self, title: str, message: str) -> None:
-        """弹出中文警告对话框"""
-        QMessageBox.warning(self, title, message)
+        """弹出中文警告轻提示（UIKit Message，标题并入文案）"""
+        _warn_toast(self, f"{title}：{message}")

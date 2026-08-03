@@ -92,7 +92,7 @@ def delete_task(self, task_id: str) -> bool
 ### clear_completed_tasks()
 
 ```python
-def clear_completed_tasks(self, plugin_id: str = None) -> int
+def clear_completed_tasks(self, plugin_id: Optional[str] = None) -> int
 ```
 
 清理已完成的任务。返回清理数量。
@@ -136,10 +136,10 @@ def get_scheduled_tasks_by_plugin(self, plugin_id: str) -> List[ScheduledTask]
 ### delete_scheduled_task()
 
 ```python
-def delete_scheduled_task(self, task_id: str)
+def delete_scheduled_task(self, task_id: str) -> bool
 ```
 
-删除定时任务。
+删除定时任务。返回是否成功删除。
 
 ### update_scheduled_task()
 
@@ -188,10 +188,10 @@ def get_long_running_tasks_by_plugin(self, plugin_id: str) -> List[LongRunningTa
 ### delete_long_running_task()
 
 ```python
-def delete_long_running_task(self, task_id: str)
+def delete_long_running_task(self, task_id: str) -> bool
 ```
 
-删除长期任务。
+删除长期任务。返回是否成功删除。
 
 ### update_long_running_task()
 
@@ -249,7 +249,3 @@ def _write_to_disk(self, data: Dict[str, Any]) -> None:
 
 - [后台任务概述](overview.md)
 - [后台任务 API 参考](api-reference.md)
-
----
-
-*本文档由 Claude Code 自动生成*

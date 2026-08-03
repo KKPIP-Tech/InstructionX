@@ -195,7 +195,3 @@ class MyPlugin(IPlugin):
 - [接口层概述](overview.md)
 - [PluginServices](./overview.md)
 - [日志工具](../../utils/logging-tools.md)
-
----
-
-*本文档由 Claude Code 自动生成*

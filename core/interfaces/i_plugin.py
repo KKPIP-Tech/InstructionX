@@ -108,6 +108,16 @@ class IPlugin(ABC):
         """
         pass
 
+    def on_plugin_unloaded(self) -> None:
+        """
+        插件即将被卸载/重载时的回调钩子
+
+        框架在销毁插件实例前调用（卸载、reload_plugins 热重载）。
+        子类可重写此方法释放资源：取消 DataProvider 订阅、停止定时器、
+        关闭文件句柄等。默认空实现保证旧插件向后兼容。
+        """
+        pass
+
     @property
     def plugin_info(self) -> Optional['IPluginInfo']:
         """获取插件信息对象"""
