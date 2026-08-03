@@ -1,46 +1,4 @@
 {
-  "fonts": [
-    {
-      "name": "SmileySans",
-      "display_name": "得意黑",
-      "license_type": "OFL-1.1",
-      "license_file": "font/SmileySans/LICENSE",
-      "url": "https://github.com/atelier-anchor/smiley-sans",
-      "copyright": "Copyright (c) 2022–2024, atelierAnchor"
-    },
-    {
-      "name": "ZenDots",
-      "display_name": "ZenDots",
-      "license_type": "OFL-1.1",
-      "license_file": "font/ZenDots/LICENSE",
-      "url": "https://github.com/googlefonts/zen-dots",
-      "copyright": "Copyright 2021 The Dots Project Authors"
-    },
-    {
-      "name": "AlimamaFangYuanTiVF",
-      "display_name": "阿里妈妈方圆体",
-      "license_type": "阿里妈妈专有协议",
-      "license_file": "font/AlimamaFangYuanTiVF/LICENSE",
-      "url": "https://fonts.alibabafont.com/",
-      "copyright": "© 淘宝（中国）软件有限公司"
-    },
-    {
-      "name": "AlimamaDongFangDaKai",
-      "display_name": "阿里妈妈东方大楷体",
-      "license_type": "阿里妈妈专有协议",
-      "license_file": "font/AlimamaDongFangDaKai/LICENSE",
-      "url": "https://fonts.alibabafont.com/",
-      "copyright": "© 淘宝（中国）软件有限公司"
-    },
-    {
-      "name": "AlibabaPuHuiTi-3",
-      "display_name": "阿里巴巴普惠体 3.0",
-      "license_type": "阿里巴巴专有协议",
-      "license_file": "font/AlibabaPuHuiTiv3/LICENSE",
-      "url": "https://fonts.alibabafont.com/",
-      "copyright": "© 阿里巴巴（中国）有限公司"
-    }
-  ],
   "dependencies": [
     {
       "name": "PySide6",

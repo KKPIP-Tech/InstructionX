@@ -178,7 +178,7 @@ class InstructionXMainWindow(QMainWindow):
         """
         创建菜单栏
 
-        包含编辑、用户中心、帮助等菜单项。
+        包含编辑、AI、帮助等菜单项。
         菜单栏将移动到自定义标题栏中。
         """
 
@@ -219,10 +219,6 @@ class InstructionXMainWindow(QMainWindow):
         menu_edit.addAction(menu_edit_github_install_action)
 
         # -------------------------------------------------
-        # 用户中心
-        menu_user = menu_bar.addMenu("用户中心")
-
-        # -------------------------------------------------
         # AI 菜单
         self._create_ai_menu(menu_bar)
 
@@ -235,8 +231,8 @@ class InstructionXMainWindow(QMainWindow):
         menu_help_about_action.triggered.connect(self._open_about_dialog)
         menu_help.addAction(menu_help_about_action)
 
-        # 许可信息
-        menu_help_license_action = QAction("许可信息", self)
+        # 开源组件许可
+        menu_help_license_action = QAction("开源组件许可", self)
         menu_help_license_action.triggered.connect(self._open_license_dialog)
         menu_help.addAction(menu_help_license_action)
 

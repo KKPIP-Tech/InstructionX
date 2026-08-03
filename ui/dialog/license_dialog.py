@@ -1,7 +1,7 @@
 """
-许可信息对话框
+开源组件许可对话框
 
-读取 licenses/manifest.json 中登记的字体与第三方依赖许可证信息，
+读取 licenses/manifest.json 中登记的第三方开源组件许可证信息，
 左侧列表展示条目、支持搜索过滤，右侧展示许可证全文，并提供
 「复制全文」「打开文件夹」操作。
 
@@ -42,8 +42,6 @@ LICENSE_COLORS = {
     "PSF-2.0": ("#E0F2F1", "#00695C"),
     "BSD-2-Clause": ("#FCE4EC", "#AD1457"),
     "MPL-2.0": ("#E8EAF6", "#283593"),
-    "阿里妈妈专有协议": ("#FFF8E1", "#F57F17"),
-    "阿里巴巴专有协议": ("#FFF3E0", "#E65100"),
     "Unknown": ("#F5F5F5", "#616161"),
 }
 
@@ -153,18 +151,18 @@ class _LicenseItemWidget(QWidget):
 
 
 class LicenseDialog(QDialog):
-    """许可信息对话框
+    """开源组件许可对话框
 
-    职责：读取 licenses/manifest.json 中登记的字体与第三方依赖许可证信息，
+    职责：读取 licenses/manifest.json 中登记的第三方开源组件许可证信息，
     左侧列表展示条目、支持搜索过滤，右侧展示许可证全文，并提供
     「复制全文」「打开文件夹」操作。
 
-    典型用法：由主窗口「帮助 → 许可信息」菜单创建并 exec() 显示。
+    典型用法：由主窗口「帮助 → 开源组件许可」菜单创建并 exec() 显示。
     """
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("许可信息")
+        self.setWindowTitle("开源组件许可")
         self.setMinimumSize(900, 600)
         self.resize(950, 650)
         self.setModal(True)
@@ -211,7 +209,7 @@ class LicenseDialog(QDialog):
         hl = QHBoxLayout(self._header)
         hl.setContentsMargins(20, 0, 16, 0)
 
-        title = QLabel("许可信息  Licenses")
+        title = QLabel("开源组件许可")
         font = QFont()
         font.setPixelSize(T("font.title.sm"))
         font.setBold(True)
@@ -357,15 +355,12 @@ class LicenseDialog(QDialog):
             _logger.warning(get_name(), f"许可证 manifest 读取失败，许可列表为空: {e}")
             return
 
-        fonts = data.get("fonts", [])
         deps = data.get("dependencies", [])
 
-        for d in fonts:
-            d["_category"] = "字体"
         for d in deps:
             d["_category"] = "依赖"
 
-        self._all_items = fonts + deps
+        self._all_items = deps
         self._all_items.sort(key=lambda x: x.get("name", ""))
 
         self._populate_list()
