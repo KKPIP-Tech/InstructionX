@@ -232,7 +232,7 @@ class TestCollectRunningTasks:
         ]
 
     def test_merges_running_long_tasks_after_normal_tasks(self, mocker, qtbot):
-        """长期任务按 current_status == "running" 合并，排在一次性任务之后"""
+        """长期任务按 is_long_task_running() 运行时表判定合并，排在一次性任务之后"""
         window = self._make_window_with_plugin_names(mocker, qtbot)
         tasks = [
             BackgroundTask(
@@ -254,7 +254,12 @@ class TestCollectRunningTasks:
                 current_status=LONG_TASK_STATUS_RESTARTING,
             ),
         ]
-        _install_task_manager(tasks, long_tasks)
+        manager = _install_task_manager(tasks, long_tasks)
+        # current_status 可能承载插件自由文本，运行态以运行时表为准：
+        # mock 仅让第一个（运行中）长期任务返回 True
+        manager.is_long_task_running.side_effect = (
+            lambda task_id: task_id == long_tasks[0].task_id
+        )
 
         result = window._collect_running_tasks()
 
