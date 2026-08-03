@@ -8,6 +8,8 @@
 
 `UIKit 主题系统` 是 InstructionX 项目的 UI 主题模块，基于内置的 **InstructionX_UIKit** PySide6 组件库，为应用提供统一的设计令牌（Design Token）与亮/暗双主题。它取代了已删除的旧 StyleQSS 主题系统（`utils/style_qss/` 整包与 `utils/themes.py`），全局配色已统一为 UIKit 设计，不保留旧色板。
 
+> **⚠️ 残留清理项**：上述 `utils/style_qss/` 整包已从源码中**整体移除**（不再被任何代码引用），但磁盘上仍残留 5 个 `__pycache__/*.pyc` 缓存文件（`__init__/colors/palette/registry/styles.__init__`），系迁移前编译产物；这些缓存已被根 `.gitignore`（第 2 行 `__pycache__/`、第 3 行 `*.py[codz]`，第 1 行为注释）排除，**不会污染 git**，但占用磁盘空间。建议在下次涉及 `utils/` 的清理 commit 中一并 `rm -rf utils/style_qss/`。
+
 **相关文件**:
 
 | 文件 | 说明 |
@@ -22,7 +24,7 @@
 - 设计令牌 `T()` 实时取色，主题切换全局生效
 - 57 个组件、12 布局、动画与原生图表引擎
 - 排除区兼容附录：为不做 UI 迁移的区域保留原选择器结构，颜色取 UIKit 令牌
-- 全部对话框与 QMessageBox 已迁移到 UIKit Dialog / Message 组件
+- 对话框与 QMessageBox 已迁移到 UIKit Dialog / Message 组件（仅遗留的 `ui/dialog/plugin_order_dialog.py` 除外，见 §6.1）
 
 ---
 
@@ -201,7 +203,7 @@ font_size = T("font.md")        # 正文字号 13px
 | `color.bg.base` / `color.bg.subtle` / `color.bg.muted` / `color.bg.elevated` | 背景层级（基底 / 弱化 / 沉默 / 抬升面） |
 | `color.text.primary` / `color.text.secondary` / `color.text.tertiary` / `color.text.disabled` | 文字层级 |
 | `color.primary` / `color.primary.hover` / `color.primary.pressed` / `color.primary.subtle` / `color.on.primary` | 主色及交互态 |
-| `color.success` / `color.warning` / `color.danger`（及 `.hover` / `.subtle`） | 语义色 |
+| `color.success` / `color.warning` / `color.danger` | 语义色（success / danger 各有 `.hover` 与 `.subtle`；warning 仅有 `.subtle`，**没有** `.hover`，取 `T("color.warning.hover")` 会抛 `KeyError`） |
 | `color.border` / `color.border.strong` | 边框 |
 | `color.overlay` | 遮罩 |
 
@@ -280,7 +282,7 @@ chart.set_option({"xAxis": {...}, "series": [...]})
 
 ### 6.1 QMessageBox → Dialog / Message 替换规则
 
-QMessageBox 在框架中已全部移除，替换规则：
+QMessageBox 在框架中已基本移除（仅遗留的 `ui/dialog/plugin_order_dialog.py` 仍在使用，属待迁移代码），替换规则：
 
 | 旧用法 | 新用法 |
 |--------|--------|

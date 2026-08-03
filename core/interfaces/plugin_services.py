@@ -19,6 +19,7 @@ if TYPE_CHECKING:
     from utils.i_logger import ILogger
     from core.mcp.manager import MCPManager
     from core.mcp.client import MCPClientManager
+    from core.font import FontManager
 
 
 @dataclass
@@ -54,3 +55,5 @@ class PluginServices:
     logger: "ILogger"
     mcp_manager: Optional["MCPManager"] = field(default=None)
     mcp_client: Optional["MCPClientManager"] = field(default=None)
+    # 字体管理器（安装/卸载/回退解析），无降级保护、始终注入
+    font_manager: Optional["FontManager"] = field(default=None)

@@ -17,9 +17,10 @@ docs/
 ├── README.md                         # 本文档 - 文档索引和导航
 │
 ├── architecture/                     # 架构文档
-│   ├── overview.md                  # 系统架构概述
-│   ├── module-dependencies.md      # 模块依赖关系
-│   └── full-analysis.md            # 完整架构分析
+│   ├── overview.md                       # 系统架构概述
+│   ├── module-dependencies.md            # 模块依赖关系
+│   ├── full-analysis.md                  # 完整架构分析
+│   └── instructionx-architecture.md      # 框架 dev-branch 架构分析（含自检清单）
 │
 ├── core/                            # 核心模块文档
 │   ├── interfaces/                  # 抽象接口层
@@ -49,6 +50,9 @@ docs/
 │   │   ├── api-reference.md         # 后台任务 API 参考
 │   │   └── task-storage.md         # TaskStorage 持久化存储
 │   │
+│   ├── font-manager/               # 字体子系统
+│   │   └── overview.md             # FontManager 概述（安装/卸载/预览/系统回退）
+│   │
 │   ├── llm-provider/                # LLM 提供者
 │   │   ├── overview.md              # LLM Provider 概述
 │   │   ├── api-reference.md         # LLM Provider API 参考
@@ -71,8 +75,7 @@ docs/
 
 ├── utils/                           # 工具模块文档
 │   ├── logging-tools.md             # 日志工具
-│   ├── uikit-theme.md               # UIKit 主题系统（InstructionX_UIKit 组件库 + 全局主题入口）
-│   └── font-map.md                  # 字体映射模块
+│   └── uikit-theme.md               # UIKit 主题系统（InstructionX_UIKit 组件库 + 全局主题入口）
 
 └── plugins/                         # 插件文档
     ├── index.md                     # 插件索引
@@ -129,6 +132,7 @@ docs/
 - **LLMProvider** - LLM 核心层（多厂商 LLM 底层管理，通过 get_llm_provider() 获取）
 - **LLMPluginService** - LLM 插件服务层（对话管理、工具调用、多模态，插件开发者入口）
 - **MCPManager** - MCP 协议协调器（Server 模式暴露插件工具，Client 模式消费外部 MCP Server 工具）
+- **FontManager** - 字体管理器（字体安装/卸载、注册表持久化、系统字体回退，通过 get_font_manager() 获取）
 
 ### 插件系统
 

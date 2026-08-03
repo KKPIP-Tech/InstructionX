@@ -1,6 +1,6 @@
 # 对话框组件
 
-> InstructionX 应用程序中使用的六个对话框组件的完整说明
+> InstructionX 应用程序中使用的八个对话框组件的完整说明
 
 ---
 
@@ -16,24 +16,23 @@
 
 | 属性 | 值 |
 |------|------|
-| 窗口类型 | QDialog，固定大小 |
-| 尺寸 | 400 x 350 |
+| 窗口类型 | QDialog |
+| 尺寸 | 最小尺寸 400 x 350，默认尺寸相同（用最小尺寸而非固定尺寸，保证高 DPI/大字体下内容不被裁切） |
 | Logo 尺寸 | 128 x 128 |
 | Logo 缩放模式 | KeepAspectRatio |
 
 ### 1.3 内容
 
 - 项目 Logo（居中显示）
-- 项目名称: "InstructionX - CE"（加粗，16pt）
-- 版本号: "版本 Alpha 1.0.3"（次要样式）
-- 版权声明: "© 2025-2026 dakuang. 保留所有权利。"
-- 专有软件声明:
+- 项目名称: "InstructionX - CE"（加粗，字号取 UIKit 令牌 `font.title.lg` = 20px）
+- 版本号: "版本 Alpha 1.0.4"（次要样式）
+- 版权声明: "© 2025-2026 dakuang 版权所有，保留所有权利。"
+- 专有软件声明（中文摘要 + 英文法律声明，代码中以 `\n` 换行，实际显示为三行）:
   ```
+  本软件为专有软件，商业使用超过阈值需获得授权。
   Proprietary software.
   Commercial use requires authorization if thresholds are exceeded.
   ```
-  （代码中以 `\n` 换行，实际显示为两行）
-- 关闭按钮
 
 ### 1.4 使用方式
 
@@ -134,6 +133,8 @@ dialog = LLMSettingsDialog(parent_window)
 if dialog.exec() == QDialog.DialogCode.Accepted:
     # 自动保存语义下编辑已即时落盘；reload_config() 为幂等保底调用
     get_llm_provider().reload_config()
+# exec() 返回后对话框仅被隐藏，需显式销毁，防止隐藏对话框与信号连接累积
+dialog.deleteLater()
 ```
 
 ### 2.8 信号与配置同步
@@ -142,22 +143,67 @@ if dialog.exec() == QDialog.DialogCode.Accepted:
 
 ---
 
-## 3. PluginOrderDialog 插件排序对话框
+## 3. PluginManagementDialog 插件管理对话框
 
-**文件位置**: `ui/dialog/plugin_order_dialog.py`
+**文件位置**: `ui/dialog/plugin_management_dialog.py`
 
 ### 3.1 概述
 
-`PluginOrderDialog` 是插件顺序配置对话框，允许用户通过拖拽调整官方插件和第三方插件的显示顺序。
+`PluginManagementDialog` 是插件的统一管理对话框，集成插件的安装、升级/降级、卸载与自定义分组/排序管理，通过 **编辑 > 插件管理...**（Ctrl+P）打开。
 
 ### 3.2 窗口属性
 
 | 属性 | 值 |
 |------|------|
 | 窗口类型 | QDialog |
+| 最小尺寸 | 860 x 560 |
+| 布局 | QTabWidget 两页（「插件管理」/「分组与排序」）+ 底部「关闭」按钮 |
+
+### 3.3 功能特性
+
+- **插件管理页**: 官方/第三方两个插件列表 + 右侧详情面板（名称/版本/来源）；工具栏提供「从 GitHub 安装插件…」（内嵌 `GitHubPluginInstallDialog`）、「安装本地插件包…」（本地 zip）、「刷新」；详情面板提供「检查更新 / 升级 / 降级…」（列出 GitHub Release 版本供选择，降级二次确认并警告数据不兼容风险）与「卸载…」（确认弹窗，可选「同时删除插件数据」）
+- **分组与排序页**: 官方/第三方各一个 `GroupEditorWidget`——左侧「面板顺序」为分组与未分组插件的统一混排列表（新建/重命名/设置图标/删除分组、上移/下移），右侧穿梭框编辑选中分组的组内成员与组内顺序；「保存分组与排序」统一提交两个 scope，「重置」放弃工作副本重新加载
+- **后台执行**: 下载/安装等耗时操作经 `_Worker`（QThread）后台执行，期间禁用对话框防止并发操作
+- **确认与提示**: 统一使用 UIKit Dialog / Message（模块级 `_confirm` / `_notice` / `_prompt_text` / `_prompt_item` 辅助函数），替代 QMessageBox / QInputDialog
+
+### 3.4 信号
+
+```python
+plugins_changed = Signal()
+```
+
+插件集合或分组/排序发生变化（安装/升级/降级/卸载完成、分组与排序保存）时发射；主窗口连接该信号统一刷新技能面板并清空工作区。
+
+### 3.5 使用方式
+
+```python
+from ui.dialog.plugin_management_dialog import PluginManagementDialog
+
+dialog = PluginManagementDialog(plugin_manager, parent_window)
+dialog.plugins_changed.connect(self._on_plugins_changed)
+dialog.exec()
+```
+
+---
+
+## 4. PluginOrderDialog 插件排序对话框（遗留）
+
+**文件位置**: `ui/dialog/plugin_order_dialog.py`
+
+### 4.1 概述
+
+`PluginOrderDialog` 是插件顺序配置对话框，允许用户通过拖拽调整官方插件和第三方插件的显示顺序。
+
+> **注意**：本对话框为遗留代码，无菜单入口、无实际调用方（仅 `ui/dialog/__init__.py` 仍残留 re-export）；其排序功能已被 `PluginManagementDialog` 的「分组与排序」页取代，本节内容仅供参考。
+
+### 4.2 窗口属性
+
+| 属性 | 值 |
+|------|------|
+| 窗口类型 | QDialog |
 | 最小尺寸 | 700 x 500 |
 
-### 3.3 布局
+### 4.3 布局
 
 左右分栏布局：
 
@@ -176,14 +222,14 @@ if dialog.exec() == QDialog.DialogCode.Accepted:
 └──────────────────────────────────────────────────────┘
 ```
 
-### 3.4 功能特性
+### 4.4 功能特性
 
 - **拖拽排序**: 使用自定义 `OrderListWidget`（继承自 `QListWidget`）的 `InternalMove` 拖拽模式
 - **编号图标**: 每个插件项左侧显示编号图标（格式: 编号 + 插件图标）
 - **独立排序**: 官方插件和第三方插件分别独立排序
 - **重置功能**: 将排序恢复到默认顺序
 
-### 3.5 使用方式
+### 4.5 使用方式
 
 ```python
 from ui.dialog.plugin_order_dialog import PluginOrderDialog
@@ -195,15 +241,15 @@ if dialog.exec() == QDialog.DialogCode.Accepted:
 ```
 
 ---
-## 4. GitHubPluginInstallDialog GitHub 插件安装对话框
+## 5. GitHubPluginInstallDialog GitHub 插件安装对话框
 
 **文件位置**: `ui/dialog/github_plugin_install_dialog.py`
 
-### 4.1 概述
+### 5.1 概述
 
 `GitHubPluginInstallDialog` 是从 GitHub 仓库安装插件的对话框，支持单插件和多插件仓库的用户选择性安装。
 
-### 4.2 窗口属性
+### 5.2 窗口属性
 
 | 属性 | 值 |
 |------|------|
@@ -211,7 +257,7 @@ if dialog.exec() == QDialog.DialogCode.Accepted:
 | 最小尺寸 | 600 x 450 |
 | 布局 | 垂直布局 + 堆叠窗口 |
 
-### 4.3 布局结构
+### 5.3 布局结构
 
 ```
 ┌─────────────────────────────────────────────┐
@@ -238,7 +284,7 @@ if dialog.exec() == QDialog.DialogCode.Accepted:
 └─────────────────────────────────────────────┘
 ```
 
-### 4.4 功能特性
+### 5.4 功能特性
 
 - **仓库检查**: 输入 URL 后点击「检查」分析仓库类型
 - **单/多插件识别**: 自动识别单插件仓库（IXPlugin.json）或多插件仓库（IXRepo.json）
@@ -246,7 +292,7 @@ if dialog.exec() == QDialog.DialogCode.Accepted:
 - **自动目录判定**: 根据 GitHub 组织自动判定安装目录（KKPIP-Tech → plugin/，其他 → custom_plugin/）
 - **后台下载**: 使用 QThread 后台下载，不阻塞 UI
 
-### 4.5 信号
+### 5.5 信号
 
 ```python
 plugin_installed = Signal(list)  # List[InstallResult]
@@ -254,7 +300,7 @@ plugin_installed = Signal(list)  # List[InstallResult]
 
 安装完成后发射，携带每个插件的安装结果。
 
-### 4.6 使用方式
+### 5.6 使用方式
 
 ```python
 from ui.dialog.github_plugin_install_dialog import GitHubPluginInstallDialog
@@ -270,15 +316,15 @@ def _on_plugin_installed(self, results):
 
 ---
 
-## 5. LicenseDialog 许可信息对话框
+## 6. LicenseDialog 开源组件许可对话框
 
 **文件位置**: `ui/dialog/license_dialog.py`
 
-### 5.1 概述
+### 6.1 概述
 
-`LicenseDialog` 是开源许可证信息展示对话框，以分类卡片列表的形式展示项目中使用的所有字体和第三方依赖的许可证详情。
+`LicenseDialog` 是开源组件许可展示对话框，以卡片列表的形式展示项目使用的第三方开源组件（依赖）的许可证详情。窗口标题与页头均为「开源组件许可」。
 
-### 5.2 窗口属性
+### 6.2 窗口属性
 
 | 属性 | 值 |
 |------|------|
@@ -286,17 +332,17 @@ def _on_plugin_installed(self, results):
 | 最小尺寸 | 900 x 600 |
 | 默认尺寸 | 950 x 650 |
 
-### 5.3 布局结构
+### 6.3 布局结构
 
 ```
 ┌────────────────────────────────────────────────────────────────────────────┐
-│  许可信息  Licenses                                                          │
+│  开源组件许可                                                                │
 ├──────────────────────┬─────────────────────────────────────────────────────┤
 │  [搜索名称...]        │                                                      │
 │  ─────────────────   │  MiniMax-Plus2 (MiniMax-M2.5)                       │
-│  字体项              │  ────────────────────────────                         │
-│  依赖项              │  [MIT]  v1.0.0 | 依赖                               │
-│  ...                 │  © xxxx                                             │
+│  依赖项              │  ────────────────────────────                         │
+│  ...                 │  [MIT]  v1.0.0 | 依赖                               │
+│                      │  © xxxx                                             │
 │                      │  https://example.com                                │
 │                      │                                                      │
 │                      │  ┌──────────────────────────────────────────────┐   │
@@ -311,11 +357,11 @@ def _on_plugin_installed(self, results):
 - **右栏**：详情区，含标题、许可证标签、版本、分类、版权信息、链接，下方为许可文件内容（代码块样式，支持复制）
 - **底部栏**：操作按钮（复制全文、打开 licenses 文件夹、关闭）
 
-### 5.4 数据来源
+### 6.4 数据来源
 
-许可证数据从 `licenses/manifest.json` 读取，分为 `fonts`（字体）和 `dependencies`（依赖）两类。每项包含 `name`、`display_name`、`license_type`、`version`、`url`、`copyright` 等字段。
+许可证数据从 `licenses/manifest.json` 的 `dependencies`（依赖）数组读取（框架不自带第三方字体，原 `fonts` 分类已移除）。每项包含 `name`、`display_name`、`license_type`、`version`、`url`、`copyright` 等字段。
 
-### 5.5 功能特性
+### 6.5 功能特性
 
 - **搜索过滤**：输入名称实时过滤列表项（基于字符串包含匹配）
 - **空状态提示**：无匹配结果时显示"未找到匹配的许可证"
@@ -323,7 +369,7 @@ def _on_plugin_installed(self, results):
 - **复制全文**：将当前显示的许可证全文复制到剪贴板，按钮文字临时变为"已复制！"
 - **打开文件夹**：直接打开 `licenses/` 目录
 
-### 5.6 使用方式
+### 6.6 使用方式
 
 ```python
 from ui.dialog.license_dialog import LicenseDialog
@@ -334,17 +380,77 @@ dialog.exec()
 
 ---
 
-## 6. CloseConfirmDialog 关闭确认对话框
+## 7. FontManagerDialog 字体管理对话框
+
+**文件位置**: `ui/dialog/font_manager_dialog.py`
+
+### 7.1 概述
+
+`FontManagerDialog` 是框架字体的管理入口：左栏展示已安装字体（框架管理，来自 `FontManager` 注册记录）与系统字体两个分组，右栏提供实时预览（示例文本可编辑、字号可调），底部提供安装/卸载操作。底层能力由 `core/font` 的 `FontManager` 单例提供（详见 [字体子系统概述](../core/font-manager/overview.md)）。
+
+### 7.2 窗口属性
+
+| 属性 | 值 |
+|------|------|
+| 窗口类型 | QDialog，模态 |
+| 最小尺寸 | 860 x 560 |
+| 默认尺寸 | 920 x 620 |
+| 窗口标题 | 字体管理 |
+
+### 7.3 布局结构
+
+```
+┌────────────────────────────────────────────────────────────────────────────┐
+│  字体管理                                                                    │
+├──────────────────────┬─────────────────────────────────────────────────────┤
+│  [搜索字体...]        │  [示例文本输入框]                                     │
+│  ─────────────────   │  字号 [ 24 ] (8-72)                                 │
+│  已安装字体（分组标题）│  ┌──────────────────────────────────────────────┐   │
+│   · SmileySans       │  │                                              │   │
+│  系统字体（分组标题）  │  │        预览卡片（示例文本实时渲染）            │   │
+│   · Microsoft YaHei  │  │                                              │   │
+│   · ...（只读）       │  └──────────────────────────────────────────────┘   │
+│                      │  当前字体：X / 字体 X 不可用，已回退到系统字体：Y      │
+├──────────────────────┴─────────────────────────────────────────────────────┤
+│  [安装字体...] [卸载]                                              [关闭]    │
+└────────────────────────────────────────────────────────────────────────────┘
+```
+
+- **左栏**（280px）：搜索框 + 字体列表，分「已安装字体」「系统字体」两个分组（分组标题行不可选）；系统字体分组来自 `QFontDatabase.families()`，只读
+- **右栏**：示例文本编辑（默认「InstructionX 字体预览 Font Preview 0123 ABCabc」）+ 字号 QSpinBox（8-72，默认 24）+ 预览卡片 + 解析结果提示
+- **底部栏**：安装字体... / 卸载 / 关闭（主按钮）
+
+### 7.4 功能特性
+
+- **搜索过滤**：按家族名实时过滤列表项（分组标题恒显示）
+- **实时预览**：预览经 `FontManager.get_font()` 构造，选中字体不可用时自动回退并提示「字体 X 不可用，已回退到系统字体：Y」
+- **安装字体**：`QFileDialog` 多选（过滤器 `字体文件 (*.ttf *.otf *.ttc)`），逐个安装；失败经 `Message.warning` 弹窗并记日志，不阻断其余文件
+- **卸载**：仅选中「已安装字体」分组项时可用，经 `feedback.confirm` 确认后执行；卸载后使用该字体的界面自动回退系统字体
+
+### 7.5 使用方式
+
+```python
+from ui.dialog import FontManagerDialog
+
+dialog = FontManagerDialog(parent_window)
+dialog.exec()
+```
+
+菜单入口：主窗口「编辑 → 字体管理...」（`InstructionXMainWindow._open_font_manager_dialog()`）。
+
+---
+
+## 8. CloseConfirmDialog 关闭确认对话框
 
 **文件位置**: `ui/dialog/close_confirm_dialog.py`
 
-### 6.1 概述
+### 8.1 概述
 
 `CloseConfirmDialog` 是主窗口关闭行为的确认对话框：所有关闭路径（自绘叉子 / 标题栏右键「关闭(C)」/ Alt+F4 / 任务栏右键「关闭窗口」）统一经主窗口 `closeEvent` 拦截后弹出，**每次必问**，不提供「记住我的选择」。
 
 说明文案：「您希望退出程序，还是最小化到系统托盘继续运行？托盘运行期间插件与后台任务将继续工作。」
 
-### 6.2 窗口属性
+### 8.2 窗口属性
 
 | 属性 | 值 |
 |------|------|
@@ -353,13 +459,13 @@ dialog.exec()
 | 按钮 | 退出程序（primary，默认按钮）/ 最小化到托盘 / 取消 |
 | 样式 | 按钮 `variant` 由 UIKit 全局 QSS 驱动（`set_property(btn, "variant", ...)`），随全局主题自动切换 |
 
-### 6.3 行为语义
+### 8.3 行为语义
 
 - **退出程序**：真正退出（`closeEvent` accept + 显式 `QApplication.quit()`）
 - **最小化到托盘**：隐藏主窗口、托盘图标驻留、弹通知提示（每次都弹，详见 [系统托盘与关闭行为](system-tray.md)）
 - **取消**：Esc、对话框叉号、「取消」按钮统一走 `reject()`，等价于取消关闭，窗口保持原状
 
-### 6.4 使用方式
+### 8.4 使用方式
 
 ```python
 from ui.dialog.close_confirm_dialog import CloseChoice, CloseConfirmDialog
@@ -377,10 +483,11 @@ choice = dialog.selected_choice()
 
 ---
 
-## 7. 相关文档
+## 9. 相关文档
 
 - [主窗口](main-window.md)
 - [系统托盘与关闭行为](system-tray.md)
 - [技能面板](skills-panel.md)
+- [字体子系统概述](../core/font-manager/overview.md)
 - [插件系统概述](../core/plugin-system/overview.md)
 - [GitHub 插件安装器](../core/plugin-system/plugin-installer.md)

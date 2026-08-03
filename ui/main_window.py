@@ -26,6 +26,7 @@ from ui.skills_panel.panel import SkillsPanel
 from ui.dialog.plugin_management_dialog import PluginManagementDialog
 from ui.dialog.about_dialog import AboutDialog
 from ui.dialog.license_dialog import LicenseDialog
+from ui.dialog.font_manager_dialog import FontManagerDialog
 from ui.dialog.github_plugin_install_dialog import GitHubPluginInstallDialog
 from ui.dialog.llm_settings import LLMSettingsDialog
 from ui.work_area.work_area import WorkArea
@@ -177,7 +178,7 @@ class InstructionXMainWindow(QMainWindow):
         """
         创建菜单栏
 
-        包含编辑、用户中心、帮助等菜单项。
+        包含编辑、AI、帮助等菜单项。
         菜单栏将移动到自定义标题栏中。
         """
 
@@ -196,6 +197,11 @@ class InstructionXMainWindow(QMainWindow):
         menu_edit_plugin_manage_action.triggered.connect(self._open_plugin_management_dialog)
         menu_edit.addAction(menu_edit_plugin_manage_action)
 
+        # 字体管理（安装/卸载/预览）
+        menu_edit_font_manage_action = QAction("字体管理...", self)
+        menu_edit_font_manage_action.triggered.connect(self._open_font_manager_dialog)
+        menu_edit.addAction(menu_edit_font_manage_action)
+
         # 主题切换
         self._menu_theme_action = QAction("切换主题", self)
         self._menu_theme_action.setToolTip("浅色 → 深色 → 跟随系统")
@@ -213,10 +219,6 @@ class InstructionXMainWindow(QMainWindow):
         menu_edit.addAction(menu_edit_github_install_action)
 
         # -------------------------------------------------
-        # 用户中心
-        menu_user = menu_bar.addMenu("用户中心")
-
-        # -------------------------------------------------
         # AI 菜单
         self._create_ai_menu(menu_bar)
 
@@ -229,8 +231,8 @@ class InstructionXMainWindow(QMainWindow):
         menu_help_about_action.triggered.connect(self._open_about_dialog)
         menu_help.addAction(menu_help_about_action)
 
-        # 许可信息
-        menu_help_license_action = QAction("许可信息", self)
+        # 开源组件许可
+        menu_help_license_action = QAction("开源组件许可", self)
         menu_help_license_action.triggered.connect(self._open_license_dialog)
         menu_help.addAction(menu_help_license_action)
 
@@ -313,6 +315,11 @@ class InstructionXMainWindow(QMainWindow):
         """打开插件管理对话框（安装/升级/降级/卸载/分组/排序）"""
         dialog = PluginManagementDialog(self.plugin_manager, self)
         dialog.plugins_changed.connect(self._on_plugins_changed)
+        dialog.exec()
+
+    def _open_font_manager_dialog(self):
+        """打开字体管理对话框（安装/卸载/预览）"""
+        dialog = FontManagerDialog(self)
         dialog.exec()
 
     def _on_plugins_changed(self):

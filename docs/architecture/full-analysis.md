@@ -34,10 +34,8 @@
 
 | 技术 | 版本 | 角色 |
 |------|------|------|
-| Python | 3.14 | 编程语言 |
-| PySide6 | 6.10.2 | Qt for Python，UI 框架 |
-| opencv-python | 4.13.0 | 图像处理（截图等） |
-| numpy | 2.4.2 | 数值计算 |
+| Python | >=3.14 | 编程语言 |
+| PySide6 | >=6.10 | Qt for Python，UI 框架 |
 | SQLite + WAL | — | DataProvider 默认持久化后端（插件数据） |
 | JSON | — | TaskStorage 持久化格式；DataProvider 应急回退后端 |
 | Windows | 11 | 目标平台 |
@@ -91,10 +89,10 @@ graph TB
         end
         subgraph CoreData ["Data Layer"]
             DP[DataProvider]
-            TS[TaskStorage]
         end
         subgraph CoreTask ["Task System"]
             BTM[BackgroundTaskManager]
+            TS[TaskStorage]
         end
         subgraph CoreLLM ["LLM Layer"]
             LLMS[LLMPluginService<br/>插件开发者入口]
@@ -106,6 +104,9 @@ graph TB
                 OLLAMA[OllamaProvider]
                 OPENAI[OpenAIProvider]
             end
+        end
+        subgraph CoreFont ["Font System"]
+            FM[FontManager<br/>core/font]
         end
     end
 
@@ -127,7 +128,6 @@ graph TB
     subgraph Utils ["Utils"]
         UKIT[InstructionX_UIKit + uikit_theme<br/>全局主题]
         LOGGING[LoggerManager]
-        FONTMAP[FontMap]
     end
 
     MW --> TB
@@ -140,10 +140,10 @@ graph TB
 
     PM -.->|创建并注入| PS
     PS -.->|llm_facade| LLMS
+    PS -.->|font_manager| FM
     PM -->|load/manage| Plugins
     PM -->|API registry| IPlugin_IF
 
-    DP -->|persist| TS
     DP -->|pub/sub| Plugins
 
     BTM -->|task scheduling| TS
@@ -175,7 +175,7 @@ graph LR
     PM -->|lifecycle| LLMS[LLMPluginService]
 
     DP -.->|persist| storage[data/data.db]
-    BTM -.->|persist| storage
+    BTM -.->|persist| taskstore[data/tasks.json]
     LLMP -.->|config| llmcfg[llm_providers.json]
     LLMS --> LLMP
     PM -.->|order| porder[plugin_order.json]
@@ -216,8 +216,8 @@ graph LR
 **文件**：`core/interfaces/i_plugin.py`（纯接口）与 `core/plugin/plugin_interface.py`（带缓存实现）
 
 **重要**：存在**两套 IPlugin**：
-- `core/interfaces/i_plugin.py` —— 纯抽象基类，无实现。docstring 注明"已迁移至此"
-- `core/plugin/plugin_interface.py` —— 带 Widget 缓存实现的版本，是**实际被插件继承**的类。docstring 注明"保留作为向后兼容"
+- `core/interfaces/i_plugin.py` —— 纯抽象基类，无实现
+- `core/plugin/plugin_interface.py` —— 带 Widget 缓存实现的版本，是**实际被插件继承**的类。其 docstring 注明"此文件已迁移至 core/interfaces/i_plugin.py，此处保留作为向后兼容的导入路径"
 
 **核心方法**：
 
@@ -349,6 +349,7 @@ class PluginServices:
     logger: "ILogger"                           # 日志服务（必需字段）
     mcp_manager: "MCPManager" = field(default=None)       # MCP Server 管理器
     mcp_client: "MCPClientManager" = field(default=None)  # MCP Client 管理器
+    font_manager: "FontManager" = field(default=None)     # 字体管理器（core/font，无降级保护、始终注入）
 ```
 
 **使用方式**：PluginManager 通过 `_create_plugin_services()` 创建容器实例，在加载插件时通过 `services` 参数注入。详见 [PluginManager](../core/plugin-system/plugin-manager.md)。
@@ -500,7 +501,7 @@ def get_all_function_tools(self) -> List[Dict[str, Any]]:
 JSON 应急后端仍保留旧的原子写入实现：
 ```python
 # 仅 INSTRUCTIONX_DATAPROVIDER_BACKEND=json 时生效
-def _write_to_disk(self, data):
+def _json_write_to_disk(self, data):
     with open(self.temp_file, 'w') as f:   # 写入 data.json.tmp
         json.dump(data, f, ...)
     os.replace(self.temp_file, self.data_file)  # 原子重命名
@@ -547,9 +548,9 @@ sequenceDiagram
 
 | 模型 | 文件 | 持久化 | 用途 |
 |------|------|--------|------|
-| `BackgroundTask` | `task_model.py:33` | ✅ `data/tasks.json` 的 `tasks` 段 | 一次性同步/异步任务 |
-| `ScheduledTask` | `task_model.py:166` | ✅ `data/tasks.json` 的 `scheduled_tasks` 段 | 定时循环任务 |
-| `LongRunningTask` | `task_model.py:264` | ✅ `data/tasks.json` 的 `long_running_tasks` 段 | 长期驻留任务 |
+| `BackgroundTask` | `core/task/task_model.py` 的 `BackgroundTask` 类 | ✅ `data/tasks.json` 的 `tasks` 段 | 一次性同步/异步任务 |
+| `ScheduledTask` | `core/task/task_model.py` 的 `ScheduledTask` 类 | ✅ `data/tasks.json` 的 `scheduled_tasks` 段 | 定时循环任务 |
+| `LongRunningTask` | `core/task/task_model.py` 的 `LongRunningTask` 类 | ✅ `data/tasks.json` 的 `long_running_tasks` 段 | 长期驻留任务 |
 
 **⚠️ 重要限制**：持久化时 `func` 和 `callback` 不序列化（`repr=False`），仅存储 args/kwargs。任务重启后必须通过**工厂注册机制**重新注入函数引用。
 
@@ -600,15 +601,15 @@ stateDiagram-v2
     PENDING --> CANCELLED : cancelled before execution
 ```
 
-### 6.5 TaskScheduler 死代码问题
+### 6.5 TaskScheduler 现状（轻量生命周期占位）
 
-**文件**：`core/task/scheduler.py` vs `core/task/background_task.py:396-425`
+**文件**：`core/task/scheduler.py`
 
-`TaskScheduler` 在 `background_task.py:91` 被实例化为 `self._scheduler`，`104` 行调用 `self._scheduler.start()`。但 `scheduler.py:67-74` 的 `_check_and_run_tasks()` 方法体为空（只有 `pass`）。
+`TaskScheduler` 在 `BackgroundTaskManager` 中被实例化为 `self._scheduler` 并调用 `start()`。历史版本曾在后台线程中周期调用 `_check_and_run_tasks()`（空实现，线程每秒空醒一次）；该空转线程已**整体移除**，当前 `TaskScheduler` 仅保留 `start()`/`stop()` 生命周期接口以保持兼容，不承担调度职责。
 
-**实际定时任务检查**由 `background_task.py:396` 的 `_check_scheduled_tasks()` daemon 线程承担，它使用 `SchedulerCallback` 类（`scheduler.py:77-153`）执行任务。
+**实际定时任务检查**由 `BackgroundTaskManager._check_scheduled_tasks()` daemon 线程承担，它使用 `SchedulerCallback` 类（同文件）判断并执行到期任务。
 
-**结论**：`TaskScheduler` 是一个**空壳类**，`SchedulerCallback` 是实际工作的组件。
+**结论**：`TaskScheduler` 是一个**轻量生命周期占位类**，`SchedulerCallback` 是实际工作的组件。
 
 ---
 
@@ -718,7 +719,7 @@ classDiagram
 
 ### 8.1 无边框窗口设计
 
-**文件**：`ui/main_window.py:65-66`
+**文件**：`ui/main_window.py`（`InstructionXMainWindow.__init__`）
 
 ```python
 self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
@@ -872,24 +873,24 @@ sequenceDiagram
 
 | 位置 | 内容 |
 |------|------|
-| `core/interfaces/i_task_manager.py:27` | `STOPPED = "stopped"`（存在于接口枚举中） |
-| `core/task/task_model.py:31` | `STOPPED = "stopped"`（实现层枚举已添加） |
-| `core/task/background_task.py:568` | 使用字符串比较 `if task.current_status in ("completed", "failed", "stopped")` |
+| `core/interfaces/i_task_manager.py` | `TaskStatus` 枚举的**单一来源**，含 `STOPPED = "stopped"` |
+| `core/task/task_model.py` | 从接口层 re-export（`from ..interfaces.i_task_manager import TaskType, TaskStatus`），保持旧导入路径可用 |
+| `core/task/background_task.py` | 长期任务状态使用 `LONG_TASK_STATUS_*` 字符串常量比较（`LONG_TASK_STATUS_COMPLETED/FAILED/STOPPED`） |
 
-**判断**：`STOPPED` 状态枚举已在 `task_model.py:31` 添加，与接口层保持一致。附录 B 中已标记为"已修复"。`LongRunningTask.current_status` 仍使用字符串比较而非枚举，但这是局部实现细节，不影响枚举本身的可用性。
+**判断**：`STOPPED` 状态枚举的唯一定义在接口层 `i_task_manager.py`，`task_model.py` 仅 re-export。附录 B 中已标记为"已修复"。`LongRunningTask.current_status` 仍使用字符串常量比较而非枚举，但这是局部实现细节，不影响枚举本身的可用性。
 
-### 12.2 TaskScheduler 死代码
+### 12.2 TaskScheduler 轻量生命周期占位
 
 `core/task/scheduler.py` 的 `TaskScheduler` 类：
-- 在 `background_task.py:91` 被实例化为 `self._scheduler`
-- `background_task.py:104` 调用 `self._scheduler.start()`
-- 但 `_check_and_run_tasks()` 方法体为空（只有 `pass`）
+- 在 `BackgroundTaskManager.__init__` 中被实例化为 `self._scheduler`，启动时调用 `self._scheduler.start()`
+- 历史版本的空转线程（周期调用空实现的 `_check_and_run_tasks()`）已**整体移除**
+- 当前仅保留 `start()`/`stop()` 生命周期接口以保持兼容，不承担调度职责
 
-**实际工作者**：`background_task.py:396` 的 `_check_scheduled_tasks()` daemon 线程 + `scheduler.py:77` 的 `SchedulerCallback` 类。
+**实际工作者**：`BackgroundTaskManager._check_scheduled_tasks()` daemon 线程 + 同文件的 `SchedulerCallback` 类。
 
-### 12.3 _restore_all_scheduled_tasks() 未被调用
+### 12.3 定时任务恢复由工厂注册触发
 
-`background_task.py:114` 定义了 `_restore_all_scheduled_tasks()` 方法，但 `__init__` 中从未调用。定时任务恢复通过 `register_scheduled_task_factory()` 自动触发（`background_task.py:317`）。
+定时任务恢复**没有全局恢复入口**：插件调用 `register_scheduled_task_factory()` 注册工厂时，内部自动调用 `restore_scheduled_tasks(plugin_id)` 按插件恢复（见 `core/task/background_task.py`）。历史版本中遗留的 `_restore_all_scheduled_tasks()` 方法已随重构移除。
 
 ### 12.4 PluginServices DI 容器
 
@@ -897,7 +898,7 @@ PluginManager 通过 `_create_plugin_services()` 创建 `PluginServices` 容器�
 
 ### 12.5 API 注册类名偏好
 
-`core/plugin/manager.py:585`：
+`core/plugin/manager.py` 的 API 自动注册逻辑：
 ```python
 if attr.__name__.endswith('Service'):
     service_class = attr
@@ -1007,6 +1008,9 @@ class Service:
 | `plugin_interface.py` | IPlugin 带缓存实现 |
 | `plugin_info_interface.py` | IPluginInfo 实现（向后兼容导出） |
 | `config_manager.py` | PluginConfigManager，插件排序持久化 |
+| `plugin_groups.py` | PluginGroup + PluginGroupStore，用户自定义分组存储（config/plugin_groups.json） |
+| `plugin_registry.py` | 已安装插件注册表（config/plugin_registry.json：版本/来源/安装时间，升级降级依据） |
+| `tool_name.py` | 工具命名/清洗工具 |
 | `plugin_identity.py` | PluginIdentity，UUID 生成/持久化 |
 | `plugin_version.py` | PluginVersion 版本解析与比较 |
 | `plugin_icon.py` | PluginIcon 图标处理（5 种来源） |
@@ -1026,8 +1030,16 @@ class Service:
 |------|---------|
 | `background_task.py` | BackgroundTaskManager 单例，调度核心 |
 | `task_model.py` | BackgroundTask/ScheduledTask/LongRunningTask 模型 |
-| `scheduler.py` | TaskScheduler **死代码** + SchedulerCallback |
+| `scheduler.py` | TaskScheduler（轻量生命周期占位，空转线程已移除）+ SchedulerCallback |
 | `__init__.py` | 模块导出 |
+
+#### 字体子系统 (`core/font/`)
+
+| 文件 | 核心职责 |
+|------|---------|
+| `manager.py` | FontManager 单例：字体安装/卸载、注册表持久化（data/fonts/fonts.json 原子写）、QFontDatabase 应用级注册、系统字体回退解析 |
+| `font_record.py` | FontRecord 字体注册记录（frozen dataclass） |
+| `exceptions.py` | FontInstallError 字体安装失败异常 |
 
 #### LLM 层 (`core/llm/`)
 
@@ -1067,11 +1079,15 @@ class Service:
 | `title_bar.py` | CustomTitleBar 自定义标题栏 |
 | `usage_panel/` | UsagePanel 用量查询面板（包：panel/kpi_card/trend_chart/history_table/formatting） |
 | `skills_panel/panel.py` | SkillsPanel 技能面板 |
+| `skills_panel/plugin_group_widget.py` | 分组折叠控件 |
 | `skills_panel/skill_button.py` | SkillButton 技能按钮 |
+| `tray/` | 系统托盘子系统（TrayIconManager 门面 + TrayBackend 后端注册表） |
 | `work_area/work_area.py` | WorkArea 工作区 |
 | `dialog/about_dialog.py` | 关于对话框 |
 | `dialog/license_dialog.py` | 开源许可对话框 |
+| `dialog/close_confirm_dialog.py` | 关闭确认对话框（退出/最小化到托盘/取消） |
 | `dialog/llm_settings/` | LLM 设置对话框包（dialog/provider_list_panel/provider_detail_panel/model_section/provider_editor_dialog/model_edit_dialog/health_check_dialog/sync_models_dialog/workers/theme/feedback/icons/widgets/constants） |
+| `dialog/plugin_management_dialog.py` | 插件管理对话框（安装/升级/降级/卸载 + 分组与排序） |
 | `dialog/plugin_order_dialog.py` | 插件排序对话框（拖拽） |
 | `dialog/github_plugin_install_dialog.py` | GitHub 插件安装对话框 |
 
@@ -1081,7 +1097,6 @@ class Service:
 |------|---------|
 | `logging_tools.py` | LoggerManager 单例，旋转日志 |
 | `i_logger.py` | ILogger 接口 |
-| `font_map.py` | FontMap 字体映射 |
 | `image_utils.py` | 图片工具（load_image_as_base64） |
 | `thread_utils.py` | 工作线程 → UI 线程封送 |
 
@@ -1090,23 +1105,26 @@ class Service:
 | 文件 | 结构 |
 |------|------|
 | `config/plugin_order.json` | `{official_plugins: [uuid], thirdparty_plugins: [uuid]}` |
+| `config/plugin_groups.json` | schema v2：`{version: 2, official: {groups, order}, thirdparty: {groups, order}}`（分组定义 + 面板统一顺序，分组与未分组插件混排） |
+| `config/plugin_registry.json` | 已安装插件注册表：`{version, plugins: {uuid: {descriptor_id, name, scope, version, installed_at, source_type, source_url}}}`（升级降级与更新检查依据） |
 | `config/llm_providers.json` | schema v2：`{version: 2, providers: {instance_id: {preset_id, adapter, api_key, base_url, chat_model, order, ...}}}` |
 | `config/llm_models_cache.json` | `{instance_id: [ModelInfo] 或 {timestamp, models}}`（键为实例 id） |
 | `config/mcp_config.json` | `{server: {...}, remote_servers: [...]}` |
 | `data/data.db` | SQLite 数据库：plugins、plugin_data、active_instances 表 |
 | `data/data.json` | `{plugins: {id: {type, active, private, public}}, active_instances: {}}`（JSON 应急后端） |
-| `data/tasks.json` | `{tasks: {}, scheduled_tasks: {}, long_running_tasks: {}}` |
+| `data/tasks.json` | `{tasks: {}, scheduled_tasks: {}, long_running_tasks: {}}`（任务记录含 `func_name` 字段，用于重启后精确匹配工厂函数） |
 | `data/llm_usage.json` | `[UsageRecord, ...]` |
+| `data/conversations.json` | LLM 会话持久化 |
 
 ### 附录 B：已知问题汇总
 
 | # | 问题 | 严重程度 | 位置 | 状态 |
 |---|------|---------|------|------|
-| 1 | ~~TaskStatus.STOPPED 存在于接口但不在实现枚举~~ | ~~已修复~~ | `task_model.py` 已添加 STOPPED 枚举 | ✅ 已修复 |
-| 2 | TaskScheduler 是死代码 | 低 | `scheduler.py` 含空方法，实际由 daemon 线程执行 | 📝 已文档化 |
-| 3 | _restore_all_scheduled_tasks() 从未被调用 | 低 | 恢复由工厂注册自动触发，非全局恢复 | 📝 已文档化 |
+| 1 | ~~TaskStatus.STOPPED 存在于接口但不在实现枚举~~ | ~~已修复~~ | 单一来源为 `core/interfaces/i_task_manager.py`，`task_model.py` re-export | ✅ 已修复 |
+| 2 | TaskScheduler 为轻量生命周期占位（空转线程已移除） | 低 | `scheduler.py` 仅保留 start/stop 生命周期接口，实际调度由 `_check_scheduled_tasks()` daemon 线程 + SchedulerCallback 承担 | 📝 已文档化 |
+| 3 | 定时任务恢复无全局入口 | 低 | 恢复由 `register_scheduled_task_factory()` 自动触发（按插件恢复）；历史遗留的 `_restore_all_scheduled_tasks()` 已移除 | 📝 已文档化 |
 | 4 | PluginServices DI 已启用 | 低 | PluginManager._create_plugin_services() 已实现 DI 注入 | 📝 已完成 |
-| 5 | API 注册优先选择名称以 'Service' 结尾的类 | 低 | `manager.py:585` 含注释说明 | 📝 已文档化 |
+| 5 | API 注册优先选择名称以 'Service' 结尾的类 | 低 | `manager.py` API 自动注册逻辑含注释说明 | 📝 已文档化 |
 | 6 | ~~DAO/database 模块为占位桩~~ | ~~低~~ | ~~SQLite 迁移已完成：`sqlite_backend.py` + `sql_map.py` + `schema_migrations.py`~~ | ✅ 已修复 |
 
 ---

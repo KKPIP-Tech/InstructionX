@@ -16,7 +16,7 @@ provider = DataProvider()
 
 > **导入说明**：`core/__init__.py` 导出了 `DataProvider` 和 `DataNamespace`，但**未导出 `DataProviderError`**。如需使用异常类，请从 `core.data` 导入。
 
-> **DataNamespace 来源**：`core/interfaces/i_data_provider.py`（第 12-16 行）为规范定义位置；`core/data/data_provider.py` 中包含同名枚举，与接口定义一致。
+> **DataNamespace 来源**：`core/interfaces/i_data_provider.py`（第 12-15 行）为单一来源；`core/data/data_provider.py` 从接口层 import 并 re-export，保持 `from core.data.data_provider import DataNamespace` 导入路径可用。
 
 ---
 
@@ -331,6 +331,18 @@ def subscribe(
 - `DataProviderError`: 目标插件不存在时抛出
 
 **注意**: 系统不阻止订阅任意 key，仅在 `notify=True` 且 `namespace=PUBLIC` 时才会触发回调通知。
+
+> **⚠️ 线程契约（重要）**：`subscribe` 注册的回调**在**触发 `set_plugin_data(PUBLIC, notify=True)` 的**那个工作线程**中执行（**不**保证在主线程或 UI 线程）。如果回调需要更新 Qt 控件、弹窗、操作 `LoggerManager` 之外的单例 UI 状态等，**必须**经 `utils/thread_utils.py` 封送到 UI 线程：
+>
+> ```python
+> from utils.thread_utils import run_in_ui_thread
+>
+> def _on_data_changed(target_plugin_id, key, old_value, new_value):
+>     # 严禁在回调中直接调用 self.status_label.setText(...)
+>     run_in_ui_thread(self.status_label.setText, str(new_value))
+> ```
+>
+> 详细说明与同步版本 `run_in_ui_thread_sync` 见 `docs/core/plugin-system/plugin-development.md §5.4`。
 
 **示例**:
 ```python

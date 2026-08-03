@@ -89,12 +89,16 @@ self._logger           # LoggerManager 单例
 
 #### 2.3.1 实际调用代码示例
 
-**`core/plugin/manager.py` 注入方式**（第 91-128 行）：
+**`core/plugin/manager.py` 注入方式**（`PluginManager._create_plugin_services` 方法）：
 
 ```python
+# 模块顶部（manager.py 文件头部）：
+from core.data import DataProvider
+
 def _create_plugin_services(self) -> PluginServices:
+    # 函数级 import 仅 get_llm_plugin_service（用于打破 core.plugin ↔ core.llm/mcp 循环依赖）
+    from core.llm import get_llm_plugin_service
     try:
-        from core.data import DataProvider
         data_provider = DataProvider()          # 单例
     except Exception:
         data_provider = None                    # 异常降级为 None
@@ -111,7 +115,7 @@ def _create_plugin_services(self) -> PluginServices:
 
 `PluginServices` 将 `data_provider` 注入到每个插件的 `Service` 实例；插件通过 `self._services.data_provider` 访问。**注意**：当前实现中 `data_provider` 在初始化失败时可能为 `None`，迁移后仍需保持该降级行为，确保插件侧已有 `if services.data_provider:` 判断继续生效。
 
-**`ui/main_window.py` 直接使用方式**（第 302-512 行）：
+**`ui/main_window.py` 直接使用方式**（迁移前历史快照）：
 
 ```python
 from core.data.data_provider import DataProvider, DataNamespace
@@ -155,6 +159,8 @@ def _load_llm_preference(self) -> tuple:
     return provider, model
 ```
 
+> **实现备注**：上例为迁移前的历史快照。当前 `ui/main_window.py` 中 `_load_saved_theme` / `_save_theme` 的读写模式仍然成立，但 `_load_llm_preference` 与 `_LLM_PREF_KEY` 已不存在（LLM 偏好读写已不在主窗口中实现）。
+>
 > 兼容性要点：迁移后 `DataProvider()` 的签名、单例行为、`DataNamespace` 枚举值、`register_plugin` / `set_plugin_data` / `get_plugin_data` 的语义必须保持不变，否则主应用启动、主题加载、LLM 偏好恢复都会受影响。
 
 ### 2.4 资源文件
@@ -414,6 +420,10 @@ def _upgrade_schema(self, conn: sqlite3.Connection) -> None:
 ```
 
 > **事务嵌套注意**：`_upgrade_schema` 内部为每个迁移使用 `with conn:` 开启独立事务。调用 `_upgrade_schema` 时，调用方不应已处于外层 SQLite 事务中，以避免事务嵌套错误。推荐在 `ensure_database()` 中先完成版本检测与升级，再开启业务事务。
+>
+> **实现备注**：最终实现中连接使用 `isolation_level=None`（autocommit），`with conn:` 不会开启事务；实际改为显式 `BEGIN IMMEDIATE` ... `COMMIT` / `ROLLBACK`（见 `core/data/sqlite_backend.py` 的 `_upgrade_schema` 与 `transaction()`），每个迁移仍是独立事务，语义与本节示例等价。
+>
+> **实现备注**：示例中 `_get_schema_version` / `_upgrade_schema` 的 4 处 `raise DataProviderError` 为计划阶段写法；最终实现中这两个方法位于 `SQLiteBackend`，抛出后端层异常 `SQLiteBackendError`（见 `core/data/sqlite_backend.py` 的 `_get_schema_version` 与 `_upgrade_schema`），由 `DataProvider.__init__` 捕获后统一包装为 `DataProviderError` 再抛给上层，与 §6.4 的"异常包装"规则一致。
 
 ### 5.5 版本初始化规则
 
@@ -458,6 +468,8 @@ core/data/data_provider.py
   │     ├── SQLiteBackend        # 连接、DDL、CRUD、事务、LRU 缓存
   │     ├── _serialize/_deserialize
   │     └── _sanitize_for_migration
+  ├── core/data/sql_map.py
+  │     └── SQLMap               # SQL 指令版本管理器（v1 指令集）
   └── core/data/schema_migrations.py
         ├── TARGET_SCHEMA_VERSION
         └── MIGRATIONS
@@ -466,6 +478,7 @@ core/data/data_provider.py
 - `DataProvider` 持有 `SQLiteBackend` 实例（例如 `self._backend`），所有持久化操作委托给 `SQLiteBackend`。
 - `SQLiteBackend` 负责数据库连接、DDL、事务、版本调度、按 key 的 CRUD、LRU 缓存、序列化/反序列化。
 - `schema_migrations.py` 仅存放 `TARGET_SCHEMA_VERSION` 与 `MIGRATIONS` 注册表，由 `SQLiteBackend.ensure_database()` 调用。
+- `sql_map.py` 集中管理全部 SQL 语句（`SQLMap` 按 schema 版本组织指令集），`sqlite_backend.py` 中的所有 SQL 均经 `sql_map.SQLMap.v1` 引用。
 - `_file_lock` 仍保留在 `DataProvider` 中，`SQLiteBackend` 的所有公共方法假设调用方已持有该锁（或内部在需要时获取）。推荐实现：`DataProvider` 在调用 `SQLiteBackend` 前后获取/释放 `_file_lock`，`SQLiteBackend` 内部不再重复加锁。
 
 核心改动集中在 `core/data/data_provider.py` 与新增文件；`core/interfaces/i_data_provider.py` 不需要改动；`core/data/__init__.py` 不需要改动。
@@ -672,6 +685,8 @@ def _get_plugin_data_with_cache(self, instance_id, namespace_str, key, default):
   - `set_plugin_data` 更新 `_cache` 时，存入 `copy.deepcopy(value)`，防止插件后续修改传入对象污染缓存。
   - 推荐在缓存中存不可变表示或返回前深拷贝，确保缓存与数据库一致。
 
+> **实现备注**：最终实现中 LRU 缓存归属 `SQLiteBackend`（`core/data/sqlite_backend.py` 的 `_value_cache` 字段，类型 `_LRUCache`，容量取 `_LRUCache` 默认值 4096），并非本节示例所暗示的 `DataProvider` 内部成员；`get_plugin_data` 等点查的"先查缓存、未命中查库回填"逻辑在 `SQLiteBackend` 的对应方法中完成，`DataProvider` 只做调用转发与异常包装。`_LRUCache.get()` 实际以 `MISSING` sentinel 区分"未命中"与"缓存值为 None"（签名与示例中的 `get(key, _MISSING)` 不同），线程安全由调用方在 `DataProvider` 的锁保护下保证。
+
 #### 6.3.3 高频读写路径总结
 
 | 操作 | 是否走 SQLite | 是否走 LRU 缓存 | 是否序列化/反序列化 |
@@ -796,7 +811,7 @@ def _serialize(value: Any) -> str:
             default=_raise_non_serializable,
         ).decode('utf-8')
     except (TypeError, ValueError, orjson.JSONEncodeError) as e:
-        raise DataProviderError(f"数据序列化失败: {e}")
+        raise SQLiteBackendError(f"数据序列化失败: {e}")
 ```
 
 ```python
@@ -805,8 +820,10 @@ def _deserialize(text: str) -> Any:
     try:
         return orjson.loads(text)
     except (orjson.JSONDecodeError, TypeError, ValueError) as e:
-        raise DataProviderError(f"数据反序列化失败: {e}")
+        raise SQLiteBackendError(f"数据反序列化失败: {e}")
 ```
+
+> **实现备注**：最终实现中 `_serialize` / `_deserialize` 抛出后端层异常 `SQLiteBackendError`（定义于 `core/data/sqlite_backend.py`），由 `DataProvider` 公共方法捕获后统一包装为 `DataProviderError` 再抛给插件层（见 `core/data/data_provider.py` 的 `get_plugin_data` 等方法），与上一节"异常包装"规则一致。
 
 **兼容性保证**：
 - `orjson.loads` 可解析标准库 `json.dumps(..., ensure_ascii=False)` 产生的旧数据（常规类型；含 `NaN/Infinity` 非标准标记的旧数据会解析失败，迁移阶段需清洗）。
@@ -1217,7 +1234,7 @@ def _sanitize_for_migration(obj: Any, path: str = "") -> Any:
    - 事务成功提交后，`data.db` 中已包含完整数据与元数据。
    - 若提交过程中发生异常（如磁盘满、WAL 写入失败、序列化失败），视为迁移未完全成功：回滚 SQLite 事务、关闭连接、删除不完整的 `data.db` / `-wal`/`-shm`、保留原始 `data.json`，并抛出 `DataProviderError`。
 6. **重命名 `data.json` 为备份**。
-   - 只有在 SQLite 事务成功提交后，才将 `data.json` 重命名为 `data.json.migrated-<ISO8601-微秒>.bak`。
+   - 只有在 SQLite 事务成功提交后，才将 `data.json` 重命名为 `data.migrated-<ISO8601-微秒>.bak`。
    - 若重命名失败（权限、磁盘满等），数据本身已经安全保存在 `data.db` 中；此时 `data.json` 仍在原位，下次启动不会触发重复迁移。应用应记录 error 日志并提示用户手动处理备份文件。
 
 > **关于 `NaN/Inf` 的说明**：标准库 `json` 默认允许输出非标准的 `NaN`/`Infinity` 标记（可被 `json.loads` 读回），但 `orjson.loads` 无法解析这些标记。为保证迁移后后端一致可用，迁移阶段必须将 `NaN/Inf` 清洗为 `None`。新后端下写入 `NaN/Inf` 会统一抛出 `DataProviderError`。
@@ -1247,10 +1264,10 @@ def _sanitize_for_migration(obj: Any, path: str = "") -> Any:
    - 若已合并但保留临时开关：设置环境变量 `INSTRUCTIONX_DATAPROVIDER_BACKEND=json` 后启动应用。
    - **关键：仅删除数据库文件而不切换代码，下次启动时会因触发自动迁移条件而再次迁移到 SQLite，导致回退失败。**
 3. 删除 `data/data.db`、`data/data.db-wal`、`data/data.db-shm`。
-4. 根据时间戳选取最新的 `data.json.migrated-<ISO8601-毫秒>.bak`，将其重命名为 `data.json`。示例（bash，注意文件名中的 `+` 需要转义或加引号）：
+4. 根据时间戳选取最新的 `data.migrated-<时间戳>.bak`，将其重命名为 `data.json`。示例（bash）：
    ```bash
    cd data
-   latest=$(ls -1 data.json.migrated-*.bak | sort | tail -n 1)
+   latest=$(ls -1 data.migrated-*.bak | sort | tail -n 1)
    mv "$latest" data.json
    ```
 5. 重新启动应用。
@@ -1305,13 +1322,15 @@ SQLite 迁移解决了“全量文件读写”问题，但单次 `get_plugin_dat
 
 #### 8.2.3 方案：LRU 反序列化缓存
 
-在 `DataProvider` 内部维护按 key 的 LRU 缓存：
+在 `SQLiteBackend` 内部维护按 key 的 LRU 缓存：
 
 - key：`(instance_id, namespace, key)`
 - value：反序列化后的 Python 对象
 - 命中时直接返回深拷贝，避免重复 `orjson.loads`。
 - `set_plugin_data` 写入后使对应缓存项失效。
 - `unregister_plugin` / `reset_all_data` / `clear_cache` 清空相关/全部缓存。
+
+> **实现备注**：最终实现中该 LRU 缓存归属 `SQLiteBackend._value_cache`（`core/data/sqlite_backend.py`），容量取 `_LRUCache` 默认值 4096，由 `SQLiteBackend` 的读写方法内部查询与回填，`DataProvider` 只做调用转发。
 
 **效果**：
 - 写操作：序列化次数从“每次写整个文件”变为“每次写单个 value”，再乘以 `orjson` 10x 加速。
@@ -1461,8 +1480,8 @@ SQLite 迁移解决了“全量文件读写”问题，但单次 `get_plugin_dat
 | # | 任务 | 说明 |
 |---|------|------|
 | 0.1 | 创建 feature 分支 | 如 `feature/dataprovider-sqlite-migration`。 |
-| 0.2 | 备份 `data/data.json` | 复制到 `data/data.json.bak`，作为本次 feature 分支的人工迁移回退基线。注意：这与阶段 4 自动迁移成功后生成的 `data.json.migrated-<时间戳>.bak` 不同；前者由开发者手动保留，后者由迁移流程自动生成。 |
-| 0.3 | 确认 `orjson` 依赖 | **已就绪**。`pyproject.toml` 第 10 行已包含 `orjson>=3.11.0,<4`；本地 `.venv`（Python 3.14.3）验证 `orjson.__version__ == 3.11.9`，可正常导入。`uv.lock` 需与 `pyproject.toml` 保持同步。 |
+| 0.2 | 备份 `data/data.json` | 复制到 `data/data.json.bak`，作为本次 feature 分支的人工迁移回退基线。注意：这与阶段 4 自动迁移成功后生成的 `data.migrated-<时间戳>.bak` 不同；前者由开发者手动保留，后者由迁移流程自动生成。 |
+| 0.3 | 确认 `orjson` 依赖 | **已就绪**。`pyproject.toml` 第 17 行已包含 `orjson>=3.11.0,<4`；本地 `.venv`（Python 3.14.3）验证 `orjson.__version__ == 3.11.9`，可正常导入。`uv.lock` 需与 `pyproject.toml` 保持同步。 |
 | 0.4 | 冻结当前行为基线 | 运行 `core/data/data_provider.py` 的 `__main__` 演示，记录输出。记录当前 `data/data.json` 状态（当前为默认空结构 `{\"plugins\": {}, \"active_instances\": {}}`）。 |
 | 0.5 | 创建新增文件占位 | 创建 `core/data/sqlite_backend.py`、`core/data/schema_migrations.py`、`test/core/data/test_data_provider.py`（空文件或仅含模块 docstring）。 |
 
@@ -1628,7 +1647,7 @@ SQLite 迁移解决了“全量文件读写”问题，但单次 `get_plugin_dat
 |---|------|------|
 | 4.1 | 实现迁移触发逻辑 | 在 `_ensure_database` 中检测：若 `data.json` 存在，且 `data.db` 不存在、或 `data.db` 文件大小为 0 字节、或 `data.db` 未创建任何表，则执行迁移。 |
 | 4.2 | 实现 JSON → SQLite 迁移 | 读取 `data.json`，插入 `plugins`、`plugin_data`、`active_instances`、`db_metadata`；对含 `NaN/Inf` 的 value 调用 `_sanitize_for_migration` 清洗。 |
-| 4.3 | 实现迁移备份 | 迁移成功后将 `data.json` 重命名为 `data.json.migrated-<ISO8601-毫秒>.bak`（例如 `data.json.migrated-20260626T205238.123+0800.bak`），避免同一秒内重复迁移覆盖旧备份。 |
+| 4.3 | 实现迁移备份 | 迁移成功后将 `data.json` 重命名为 `data.migrated-<ISO8601-微秒>.bak`（例如 `data.migrated-20260626T205238.123456.bak`，UTC 时间），避免同一秒内重复迁移覆盖旧备份。 |
 | 4.4 | 实现迁移失败回滚 | 任何异常回滚 SQLite 事务，删除不完整的 `data.db` 及 `-wal`/`-shm`，保留原始 `data.json`。 |
 | 4.5 | 编写迁移测试 | 完善 `TestMigration`，覆盖：正常迁移、含 `NaN/Inf` 数据迁移、迁移失败回滚、备份文件生成、`db_metadata` 正确写入。 |
 | 4.6 | 验证链式升级 | 手动构造版本 `0` / `1` / `2` 数据库，验证 `_upgrade_schema` 行为。 |
@@ -1640,7 +1659,7 @@ SQLite 迁移解决了“全量文件读写”问题，但单次 `get_plugin_dat
 **验收标准（DoD）**：
 - [ ] 存在 `data.json` 且不存在 `data.db` 时，首次启动自动完成迁移。
 - [ ] 迁移后 SQLite 中数据与 `data.json` 内容一致（`NaN/Inf` 按策略清洗为 `None`）。
-- [ ] 迁移成功后生成 `data.json.migrated-<ISO8601-毫秒>.bak`。
+- [ ] 迁移成功后生成 `data.migrated-<ISO8601-微秒>.bak`。
 - [ ] 迁移失败时 `data.db` 不完整文件被清理，原始 `data.json` 保留。
 - [ ] 手动构造的低版本数据库能链式升级到当前目标版本。
 - [ ] 高版本数据库被当前代码打开时抛出 `DataProviderError`。
@@ -1651,7 +1670,7 @@ SQLite 迁移解决了“全量文件读写”问题，但单次 `get_plugin_dat
 - 回退（迁移失败时）：异常会自动回滚 SQLite 事务并删除不完整的 `data.db` / `data.db-wal` / `data.db-shm`，原始 `data.json` 保留，应用回到 JSON 模式。
 - 回退（迁移成功后想恢复 JSON 模式）：
   1. 停止应用，确保 SQLite 连接已释放。
-  2. 根据时间戳选取最新的 `data.json.migrated-<ISO8601-毫秒>.bak`。
+  2. 根据时间戳选取最新的 `data.migrated-<ISO8601-微秒>.bak`。
   3. 删除 `data.db`、`data.db-wal`、`data.db-shm`。
   4. 将选中的 `.bak` 重命名为 `data.json`。
   5. 切换/回退代码到 JSON 实现，或设置环境变量 `INSTRUCTIONX_DATAPROVIDER_BACKEND=json` 启用临时 JSON 后端开关。
@@ -1933,7 +1952,7 @@ SQLite 迁移解决了“全量文件读写”问题，但单次 `get_plugin_dat
 
 **剩余可接受差异**：
 1. JSON 后端开关保留旧实现的锁顺序（`subscribe` / `unregister_plugin` 先 `_file_lock` 后 `_subscription_lock`）。该后端仅作为应急回退，不影响默认 SQLite 路径。
-2. 备份文件名使用微秒精度（`%Y%m%dT%H%M%S.%f`），文档原描述为"毫秒"。实际粒度更细，可避免同一秒内重复覆盖。
+2. 备份文件名为 `data.migrated-<时间戳>.bak`（不含原 `.json` 扩展名），时间戳为 UTC 微秒精度（`%Y%m%dT%H%M%S.%f`）。文档相关章节已同步为该命名。
 3. `save_data()` 清空 LRU 缓存后未重新填充。文档描述为"可选"，当前实现满足一致性要求。
 
 ---
@@ -1948,7 +1967,7 @@ SQLite 迁移解决了“全量文件读写”问题，但单次 `get_plugin_dat
 2. **首次启动**：应用会自动检测 `data.db` 是否存在；若不存在且 `data.json` 可解析，则执行迁移。
 3. **迁移过程中**：
    - 应用会先解析 `data.json`，在 SQLite 事务中完成数据导入并写入 `db_metadata`，然后提交事务。
-   - 事务提交成功后，`data.json` 会被重命名为 `data.json.migrated-<ISO8601-微秒>.bak`。
+   - 事务提交成功后，`data.json` 会被重命名为 `data.migrated-<ISO8601-微秒>.bak`。
    - 同级目录可能出现 `data.db-wal`、`data.db-shm`，属正常 SQLite WAL 文件，请勿删除。
 4. **迁移成功后**：
    - 应用使用 `data/data.db` 作为持久化后端。
@@ -1961,7 +1980,7 @@ SQLite 迁移解决了“全量文件读写”问题，但单次 `get_plugin_dat
 6. **回退到 JSON 模式（仅限必要时）**：
    - 停止应用。
    - 删除 `data/data.db`、`data/data.db-wal`、`data/data.db-shm`。
-   - 将最新的 `data.json.migrated-<时间戳>.bak` 重命名为 `data.json`。
+   - 将最新的 `data.migrated-<时间戳>.bak` 重命名为 `data.json`。
    - 设置环境变量 `INSTRUCTIONX_DATAPROVIDER_BACKEND=json`，或使用 JSON 后端代码版本。
    - 重新启动。
    - ⚠️ 注意：迁移成功后写入 SQLite 的新数据无法通过此方式恢复。
@@ -1987,7 +2006,7 @@ SQLite 迁移解决了“全量文件读写”问题，但单次 `get_plugin_dat
 
 - [x] 存在 `data.json` 且不存在 `data.db` 时，首次启动自动完成迁移。
 - [x] 迁移后 SQLite 数据与 `data.json` 一致（`NaN/Inf` 清洗为 `None`）。
-- [x] 迁移成功后生成 `data.json.migrated-<时间戳>.bak`。
+- [x] 迁移成功后生成 `data.migrated-<时间戳>.bak`。
 - [x] 迁移失败时原始 `data.json` 保留，不完整的 `data.db` 被清理。
 - [x] 新建数据库 `schema_version` 为 `'1'`。
 - [x] 从 JSON 迁移后 `schema_version` 为 `'1'`，`migrated_from` 记录原始 JSON 文件名。

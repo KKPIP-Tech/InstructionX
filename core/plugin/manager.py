@@ -28,6 +28,7 @@ from .plugin_registry import PluginRegistry
 from .plugin_groups import PluginGroup, PluginGroupStore
 from core.interfaces.plugin_services import PluginServices
 from core.interfaces.i_llm_service import ILLMService
+from core.font import get_font_manager
 
 # re-export：保持 `core.plugin.manager.sanitize_tool_name` 引用路径兼容
 from .tool_name import sanitize_tool_name  # noqa: F401
@@ -137,6 +138,7 @@ class PluginManager:
             logger=logger,
             mcp_manager=self._get_mcp_manager(),
             mcp_client=self._get_mcp_client(),
+            font_manager=get_font_manager(),
         )
 
     def _get_mcp_manager(self) -> Any:

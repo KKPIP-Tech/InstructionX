@@ -125,8 +125,8 @@ manager.load_plugins()
 
 # 重新排序后保存
 manager.save_plugin_order(
-    official_plugins=["uuid-2", "uuid-1", "uuid-3"],
-    thirdparty_plugins=["uuid-b", "uuid-a"]
+    official_plugin_ids=["uuid-2", "uuid-1", "uuid-3"],
+    thirdparty_plugin_ids=["uuid-b", "uuid-a"]
 )
 ```
 
@@ -152,7 +152,7 @@ def apply_custom_order(self):
 
 ### 重置顺序
 
-通过 `PluginOrderDialog` 的"重置"按钮调用:
+> ⚠️ **入口说明**：`PluginOrderDialog` 目前**没有菜单入口**——排序功能已迁入 `PluginManagementDialog` 的「分组与排序」页（菜单：**编辑 → 插件管理...**），`PluginOrderDialog` 为遗留代码。重置即清空两个顺序列表（`PluginOrderDialog` 的「重置」按钮即如此实现）：
 
 ```python
 config_manager.save_plugin_order([], [])  # 清空两个列表

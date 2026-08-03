@@ -119,7 +119,7 @@ usage.input_cost           # float | None: 输入费用（元）
 usage.output_cost          # float | None: 输出费用（元）
 usage.total_cost           # float | None: 总费用（元）
 usage.cache_read_tokens    # int | None: 缓存命中读取的 token 数
-usage.cache_creation_tokens # int | None: 缓存命中所节省的 token 数（模型生成）
+usage.cache_creation_tokens # int | None: 写入缓存的 token 数
 ```
 
 > **注意**: `UsageInfo` 通常作为 `ChatResponse.usage` 字段返回，也可由 `ConversationManager.send_message()` 等方法直接获取。
@@ -156,7 +156,7 @@ tool_call.to_dict()        # 序列化为 OpenAI tool_calls 格式
 ToolCall.from_dict(d)      # 从 OpenAI 风格 / 扁平风格字典解析
 ```
 
-### 2.3 EmbeddingResponse
+### 2.4 EmbeddingResponse
 
 ```python
 from core.llm.provider_interface import EmbeddingResponse
@@ -167,7 +167,7 @@ response.model      # str: 使用的模型
 response.extra      # Dict: 额外信息
 ```
 
-### 2.4 ModelInfo
+### 2.5 ModelInfo
 
 ```python
 from core.llm.provider_interface import ModelInfo
@@ -195,7 +195,7 @@ ModelInfo.from_dict(d)   # 从字典创建（兼容旧缓存的 per_1k 键：
 
 ---
 
-### 2.5 UsageRecord
+### 2.6 UsageRecord
 
 ```python
 from core.llm.types import UsageRecord
@@ -223,7 +223,7 @@ UsageRecord.from_dict(d) # 从字典创建
 
 ---
 
-### 2.6 CacheType
+### 2.7 CacheType
 
 ```python
 from core.llm.types_cache import CacheType
@@ -239,7 +239,7 @@ class CacheType(Enum):
 
 ---
 
-### 2.7 CacheInfo
+### 2.8 CacheInfo
 
 ```python
 from core.llm.types_cache import CacheInfo
@@ -263,7 +263,7 @@ info.efficiency         # float: 缓存效率（cached_tokens / total_input_toke
 
 ---
 
-### 2.8 CacheAdapter
+### 2.9 CacheAdapter
 
 ```python
 from core.llm.cache_adapter import CacheAdapter, get_cache_adapter, DEFAULT_CACHE_CONFIG
@@ -288,17 +288,19 @@ adapter.prepare_cache_params(config: Dict) -> Dict
 
 | Provider | 缓存类型 | TTL |
 |----------|---------|-----|
-| minimax | prompt_cache | - |
+| minimax | none（默认禁用） | - |
 | openai | kv_cache | - |
 | anthropic | anthropic_cache | 300s |
 | gemini | context_cache | 3600s |
-| glm | prompt_cache | - |
+| glm | none（默认禁用） | - |
 | siliconflow | kv_cache | - |
 | ollama | none | - |
 
+> **说明**：MiniMax 与 GLM 官方响应未返回缓存相关字段，默认配置中缓存统计被禁用（`enabled: False, cache_type: "none"`，见 `core/llm/cache_adapter.py` 的 `DEFAULT_CACHE_CONFIG`）。
+
 ---
 
-### 2.9 UsageRecordStore
+### 2.10 UsageRecordStore
 
 ```python
 from core.llm.usage_record_store import UsageRecordStore, get_usage_record_store
@@ -1208,7 +1210,7 @@ def available_providers(self) -> List[str]
 **示例**:
 ```python
 print(provider.available_providers)
-# ['minimax', 'siliconflow', 'glm', 'ollama', 'openai']
+# ['minimax', 'siliconflow', 'glm', 'ollama', 'openai', 'openai-compatible']
 ```
 
 ---
@@ -1265,7 +1267,7 @@ classDiagram
         +get_models(provider) List~ModelInfo~
         +resolve_provider_id(provider) str
         +get_default_provider_id(feature) Optional~str~
-        +get_usage_stats(conv_id?) UsageStats
+        +get_usage_stats(conv_id?) Optional~UsageStats~
         +validate_provider(provider) Tuple
     }
 
@@ -1278,7 +1280,7 @@ classDiagram
         +get_conversation(conv_id) Conversation
         +list_conversations() List
         +delete_conversation(conv_id) bool
-        +get_usage_stats(conv_id?) UsageStats
+        +get_usage_stats(conv_id?) Optional~UsageStats~
     }
 
     class ToolCallExecutor {
@@ -1292,7 +1294,7 @@ classDiagram
     class ToolRegistry {
         -Dict _tools
         -Dict _handlers
-        +register(name, description, parameters, handler) void
+        +register(name, description, parameters, handler, replace=False) void
         +register_typed(definition: ToolDefinition) void
         +unregister(name) bool
         +get_tools() List
@@ -1304,7 +1306,7 @@ classDiagram
         -Dict _models_cache
         -LLMConfig _config
         +chat(messages, provider?, model?, ...) ChatResponse
-        +stream_chat(messages, callback, provider?, ...) void
+        +stream_chat(messages, callback, provider?, ...) str
         +embed(texts, provider?, model?) List
         +async_chat(messages, ...) ChatResponse
         +async_stream_chat(messages, ...) AsyncIterator
@@ -1342,7 +1344,7 @@ from core.llm import get_llm_plugin_service
 svc = get_llm_plugin_service()
 ```
 
-### 5.2 对话管理
+### 5.3 对话管理
 
 #### create_conversation()
 
@@ -1511,7 +1513,7 @@ def delete_conversation(conversation_id: str) -> bool
 
 获取/列出/删除对话。
 
-### 5.3 直接 Chat（无对话状态）
+### 5.4 直接 Chat（无对话状态）
 
 #### chat()
 
@@ -1551,7 +1553,7 @@ def stream_chat(
 
 流式版本 chat（无对话状态）。callback 签名: `(str, bool) -> None`，每次接收文本片段 `chunk`，`done` 标记是否结束。**返回拼接后的完整响应文本**（`str`）；聚合响应（含 tool_calls / usage）在 `last_stream_response` 属性。
 
-### 5.4 工具调用
+### 5.5 工具调用
 
 #### chat_with_tools()
 
@@ -1565,7 +1567,7 @@ def chat_with_tools(
 ) -> ToolChatResult
 ```
 
-自动处理工具调用多轮循环（默认最多 `max_turns=5` 轮）。返回 `ToolChatResult`（dataclass）：
+自动处理工具调用多轮循环（默认最多 `max_turns=5` 轮，**`5` 等同于 `core.llm.tool_call_executor.DEFAULT_MAX_TOOL_TURNS` 常量；接口层以字面量声明避免循环 import，实现层统一引用常量**）。返回 `ToolChatResult`（dataclass）：
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
@@ -1712,7 +1714,7 @@ def get_shared_tool_registry() -> ToolRegistry
 
 获取共享工具注册表（全局注册，供多个插件共享）。
 
-### 5.5 向量嵌入
+### 5.6 向量嵌入
 
 #### embed()
 
@@ -1726,7 +1728,7 @@ def embed(
 
 文本向量化。返回 `EmbeddingResponse` 列表（向量在各项的 `embedding` 字段）。
 
-### 5.6 多模态
+### 5.7 多模态
 
 #### generate_image()
 
@@ -1767,7 +1769,7 @@ def load_image_as_base64(file_path: str) -> str
 
 > **说明**：该函数已迁移至 `utils/image_utils.py`（纯文件工具，不属于 LLM 门面），不再经 `LLMPluginService` 暴露。文件不存在或读取失败时抛出 `OSError`。
 
-### 5.7 实例与模型查询
+### 5.8 实例与模型查询
 
 #### list_providers()
 
@@ -1801,15 +1803,15 @@ def get_default_provider_id(feature: str = "chat") -> Optional[str]
 
 获取默认实例解析结果（不抛异常）。`feature` 为 `"chat"` 或 `"embedding"`；无可用实例时返回 `None`。
 
-### 5.8 统计与校验
+### 5.9 统计与校验
 
 #### get_usage_stats()
 
 ```python
-def get_usage_stats(conversation_id: Optional[str] = None) -> UsageStats
+def get_usage_stats(conversation_id: Optional[str] = None) -> Optional[UsageStats]
 ```
 
-获取用量统计。`conversation_id` 为 None 时返回全局统计。
+获取用量统计。`conversation_id` 为 None 时返回全局统计；指定的对话不存在时返回 `None`。
 
 **返回字段**: `total_tokens`, `total_cost`, `request_count`（消息总条数）, `by_provider`
 
@@ -1867,7 +1869,7 @@ stateDiagram-v2
 | `get_conversation()` | `Conversation \| None` | 获取对话 |
 | `list_conversations()` | `List[Conversation]` | 列出所有对话 |
 | `delete_conversation()` | `bool` | 删除对话 |
-| `get_usage_stats()` | `UsageStats` | 用量统计 |
+| `get_usage_stats()` | `UsageStats \| None` | 用量统计（对话不存在时返回 `None`） |
 
 ---
 
@@ -1879,7 +1881,7 @@ stateDiagram-v2
 
 ```python
 class ToolRegistry:
-    def register(name, description, parameters, handler)  # 注册工具
+    def register(name, description, parameters, handler, replace: bool = False)  # 注册工具（默认重名抛 ValueError；replace=True 覆盖同名旧注册，用于 MCP 重连等重复注册场景）
     def register_typed(definition: ToolDefinition)        # 类型化注册（内部转发 register）
     def unregister(name) -> bool                         # 注销工具
     def get_tools() -> List[Dict]                       # 获取工具定义列表
@@ -1894,7 +1896,7 @@ class ToolCallExecutor:
     @property
     def tools(self) -> ToolRegistry          # 工具注册表
 
-    def chat_with_tools(...) -> ToolChatResult        # 工具调用（见 5.4）
+    def chat_with_tools(...) -> ToolChatResult        # 工具调用（见 5.5）
     def chat_with_tools_stream(...) -> ToolChatResult  # 流式版本
 ```
 
@@ -1910,7 +1912,7 @@ Provider 实现类的细节（如请求格式差异、响应解析逻辑等）�
 
 ## 9. 完整示例
 
-### 8.1 基础使用
+### 9.1 基础使用
 
 ```python
 from core.llm import get_llm_provider
@@ -1932,7 +1934,7 @@ print(f"Model: {response.model}")
 print(f"Response: {response.content}")
 ```
 
-### 8.2 使用 Vision
+### 9.2 使用 Vision
 
 > **注意**：MiniMax Provider 不支持 Vision，请使用 SiliconFlow、GLM 或 Ollama。
 
@@ -1958,7 +1960,7 @@ response = provider.chat(
 print(response.content)
 ```
 
-### 8.3 并发调用
+### 9.3 并发调用
 
 ```python
 import asyncio
@@ -1993,7 +1995,7 @@ async def concurrent_chat():
 asyncio.run(concurrent_chat())
 ```
 
-### 8.4 Embedding 相似度计算
+### 9.4 Embedding 相似度计算
 
 ```python
 import numpy as np
@@ -2015,7 +2017,7 @@ similarity = np.dot(vec1, vec2) / (np.linalg.norm(vec1) * np.linalg.norm(vec2))
 print(f"相似度: {similarity:.4f}")
 ```
 
-### 8.5 Function Calling
+### 9.5 Function Calling
 
 ```python
 from core.llm import get_llm_provider
@@ -2086,5 +2088,23 @@ if response.tool_calls:
 
 ## 10. 相关文档
 
-- [LLM Provider 概述](overview.md)
+**LLM 子系统内部**：
+- [LLM Provider 概述](overview.md)（架构图 / 核心特性 / 单例与并发 / 工具调用 / 异常处理）
+- [LLM Provider 配置](provider-config.md)（`ProviderConfig` / `LLMConfig` / schema v2 迁移）
+- [完整 API 参考 §5](../../api/full-reference.md#5-llm-provider-api)（`LLMProvider` / `LLMPluginService` / `ConversationManager` / `ToolCallExecutor` / `MCPManager` 方法索引）
+
+**接口层与契约**：
+- [接口层概述](../interfaces/overview.md)（`ILLMService` 抽象接口的 22 个方法）
+- [`core/interfaces/i_llm_service.py`](../../../core/interfaces/i_llm_service.py)（接口源文件，含 `max_turns=5` 与 `DEFAULT_MAX_TOOL_TURNS` 等价说明）
+
+**面向插件开发者**：
 - [插件开发指南](../plugin-system/plugin-development.md)
+- [插件 LLM 集成指南](../../plugins/llm-integration-guide.md)
+- [IPlugin 接口](../plugin-system/iplugin.md)
+
+**上下游与相关**：
+- [MCP 协议模块概述](../mcp/overview.md)（`MCPBridge` 同步插件 API 为 MCP 工具 / `MCPClientManager` 注入外部工具到 `ToolRegistry`）
+- [DataProvider 概述](../data-provider/overview.md)（`UsageRecordStore` 用量持久化）
+
+**架构分析**：
+- [instructionx-architecture.md §3.2 LLM 层](../../architecture/instructionx-architecture.md#32-llm-层-corellm)（`LLMPluginService` → `LLMProvider` → 各 Provider 实现类的依赖关系）

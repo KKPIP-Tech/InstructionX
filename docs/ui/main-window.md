@@ -34,7 +34,7 @@ graph TB
     Content --> WA
 ```
 
-> **注意**：菜单栏（编辑、用户中心、AI、帮助）实际嵌入在 `CustomTitleBar` 内部（通过 `set_menu_bar()` 放置在标题和窗口控制按钮之间）。无框架窗口额外设置了 `WA_TranslucentBackground` 属性。
+> **注意**：菜单栏（编辑、AI、帮助）实际嵌入在 `CustomTitleBar` 内部（通过 `set_menu_bar()` 放置在标题和窗口控制按钮之间）。无框架窗口额外设置了 `WA_TranslucentBackground` 属性。
 
 ---
 
@@ -42,7 +42,7 @@ graph TB
 
 ### 3.1 菜单栏
 
-菜单栏包含四个菜单：**编辑**、**用户中心**、**AI**、**帮助**。
+菜单栏包含三个菜单：**编辑**、**AI**、**帮助**。
 
 ```python
 def _create_menus(self) -> None:
@@ -53,13 +53,11 @@ def _create_menus(self) -> None:
 
     # 编辑菜单
     menu_edit = menu_bar.addMenu("编辑")
-    menu_edit.addAction(menu_edit_plugin_order_action)  # 插件排序 (Ctrl+P)
+    menu_edit.addAction(menu_edit_plugin_manage_action)  # 插件管理... (Ctrl+P)
+    menu_edit.addAction(menu_edit_font_manage_action)    # 字体管理...
     menu_edit.addAction(self._menu_theme_action)         # 切换主题
     menu_edit.addSeparator()
     menu_edit.addAction(menu_edit_github_install_action) # 从 GitHub 安装插件...
-
-    # 用户中心菜单（预留，目前为空）
-    menu_user = menu_bar.addMenu("用户中心")
 
     # AI 菜单 - 由 _create_ai_menu 创建
     self._create_ai_menu(menu_bar)
@@ -67,7 +65,7 @@ def _create_menus(self) -> None:
     # 帮助菜单
     menu_help = menu_bar.addMenu("帮助")
     menu_help.addAction(menu_help_about_action)    # 关于
-    menu_help.addAction(menu_help_license_action)  # 许可信息
+    menu_help.addAction(menu_help_license_action)  # 开源组件许可
 ```
 
 **AI 菜单** (`_create_ai_menu`) 包含以下菜单项：
@@ -102,7 +100,7 @@ def _create_ai_menu(self, menu_bar):
 - **标题文字**: 从 `QApplication.applicationName()` 获取，默认显示 "InstructionX"
 - **菜单栏集成**: 内嵌 QMenuBar，与样式系统无缝结合
 - **固定高度**: 40px（`setFixedHeight(40)`）
-- **窗口控制按钮**: 三个按钮（最小化—、最大化/还原□、关闭X），每个按钮 45x40；最小化按钮最小化到任务栏，关闭按钮（及 Alt+F4 等全部关闭路径）经主窗口 `closeEvent` 拦截后弹出关闭确认对话框（详见 [系统托盘与关闭行为](system-tray.md)）
+- **窗口控制按钮**: 三个按钮（最小化、最大化/还原、关闭），均为 `IconButton`（图标由 QPainter 自绘），每个按钮 45x40；最小化按钮最小化到任务栏，关闭按钮（及 Alt+F4 等全部关闭路径）经主窗口 `closeEvent` 拦截后弹出关闭确认对话框（详见 [系统托盘与关闭行为](system-tray.md)）
 - **拖拽移动**: 按住标题栏拖动可移动窗口；从最大化状态拖动时自动先还原到正常窗口再移动
 - **双击操作**: 双击标题栏切换最大化/还原状态
 
@@ -175,7 +173,7 @@ graph TB
 - **位置**: 窗口中部（技能面板下方）
 - **特性**: 可伸缩，占用剩余空间
 - **功能**: 显示当前选中插件的 Widget
-- **初始状态**: 显示占位文本 "点击上方技能按钮，在此处显示插件功能" (`ui/work_area/work_area.py` 第32行)
+- **初始状态**: 显示占位文本 "点击上方技能按钮，在此处显示插件功能" (`ui/work_area/work_area.py` 第33行)
 
 ### 3.6 用量查询面板 (UsagePanel)
 
@@ -217,7 +215,10 @@ flowchart TD
     O --> P
     P --> Q[连接 skill_clicked 信号]
     Q --> R[应用容器样式 _update_container_style]
-    R --> S[完成]
+    R --> R2[Qt 阴影效果 QGraphicsDropShadowEffect]
+    R2 --> R3[setMouseTracking 开启鼠标追踪]
+    R3 --> R4[托盘状态变量 + _setup_tray 接线]
+    R4 --> S[完成]
 ```
 
 ```python
@@ -227,8 +228,10 @@ def __init__(self):
     # 设置窗口属性：无边框 + 透明背景 + 最小尺寸
     self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
     self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-    self.setMinimumSize(800, 600)
-    self.resize(1024, 768)
+    # 窗口尺寸常量为 ui/main_window.py 模块级常量：
+    # WINDOW_MIN_WIDTH/HEIGHT = 800/600，WINDOW_DEFAULT_WIDTH/HEIGHT = 1024/768
+    self.setMinimumSize(WINDOW_MIN_WIDTH, WINDOW_MIN_HEIGHT)
+    self.resize(WINDOW_DEFAULT_WIDTH, WINDOW_DEFAULT_HEIGHT)
 
     # 获取当前主题（UIKit 主题模式）
     self._current_theme = current_theme_mode()
@@ -262,10 +265,28 @@ def __init__(self):
     # 应用容器样式
     self._update_container_style()
 
+    # 创建 Qt 阴影效果（替代 DWM 原生阴影，避免 WM_NCCALCSIZE 坐标错位）
+    self._shadow_effect = QGraphicsDropShadowEffect(self)
+    self._shadow_effect.setBlurRadius(20)
+    self._shadow_effect.setColor(QColor(0, 0, 0, 80))
+    self._shadow_effect.setOffset(0, 4)
+    self._container.setGraphicsEffect(self._shadow_effect)
+
     # 边缘 resize 相关变量
     self._resize_margin = 8
     self._resize_dir = None
     self._resize_start = None
+
+    # 开启鼠标追踪，确保 hover 状态下也能及时更新边缘 resize 光标
+    self.setMouseTracking(True)
+
+    # 托盘运行状态（closeEvent 编排用）
+    self._force_quit = False            # 显式退出路径置位，closeEvent 直接放行
+    self._close_dialog_showing = False  # 关闭确认框防重入守卫
+    self._active_plugin = None          # 当前激活插件，托盘子菜单标记用
+
+    # 创建系统托盘管理器并接线
+    self._setup_tray()
 
 
 def _create_main_layout(self) -> None:
@@ -329,6 +350,9 @@ def _on_skill_clicked(self, plugin):
     处理技能按钮点击事件
     在工作区显示插件的 widget
     """
+    # 记录当前激活插件（托盘「正在运行的插件」子菜单标记用）
+    self._active_plugin = plugin
+
     # 清空工作区（不清除按钮高亮）
     self.work_area.clear_keep_highlight()
 
@@ -338,31 +362,22 @@ def _on_skill_clicked(self, plugin):
     if plugin_widget:
         self.work_area.add_widget(plugin_widget)
     else:
-        # 如果插件 widget 创建失败，显示错误信息
-        error_label = QLabel(f"无法加载插件：{plugin.plugin_name}")
+        # 如果插件 widget 创建失败，显示错误信息，并附带“重试”链接
+        # （重试通过链接触发，重新调用本方法）
+        error_label = QLabel(
+            f"无法加载插件：{plugin.plugin_name}　<a href='retry'>点击重试</a>"
+        )
         error_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         error_label.setProperty("error", "true")
         error_label.style().unpolish(error_label)
         error_label.style().polish(error_label)
+        error_label.linkActivated.connect(
+            lambda _link, p=plugin: self._on_skill_clicked(p)
+        )
         self.work_area.add_widget(error_label)
 ```
 
-### 5.2 LLM Provider 切换
-
-主窗口维护 LLM Provider 偏好设置，并通过信号通知其他组件：
-
-```python
-# 信号定义
-llm_provider_changed = Signal(str, str)  # (provider_name, model_name)
-```
-
-相关方法：
-- `_load_llm_preference()`: 从 DataProvider 的 `__app_llm__` 插件加载上次选中的 provider 和 model
-- `_save_llm_preference(provider, model)`: 保存选中的 provider 和 model
-- `_rebuild_quick_provider_menu()`: 动态构建快速切换 Provider 子菜单（显示能力标记 👁/🔧 和健康状态 ⚠️）
-- `_on_quick_switch_provider(provider_name)`: 快速切换 Provider，发射 `llm_provider_changed` 信号
-
-### 5.3 窗口边缘缩放
+### 5.2 窗口边缘缩放
 
 主窗口支持 8 个方向的边缘拖拽缩放（无边框窗口的标准交互）：
 
@@ -417,29 +432,44 @@ cursor_map = {
 }
 ```
 
-### 5.4 对话框
+### 5.3 对话框
 
 #### 关于对话框
 
-通过 **帮助 > 关于** 打开，显示应用 Logo、名称（InstructionX - CE）、版本号（Alpha 1.0.3）、版权声明和专有软件声明。
+通过 **帮助 > 关于** 打开，显示应用 Logo、名称（InstructionX - CE）、版本号（Alpha 1.0.4）、版权声明和专有软件声明。
 
 ```python
+# 文件顶部导入：from ui.dialog.about_dialog import AboutDialog
+
 def _open_about_dialog(self):
     """打开关于对话框"""
-    from ui.dialog.about_dialog import AboutDialog
     dialog = AboutDialog(self)
     dialog.exec()
 ```
 
-#### 许可信息对话框
+#### 开源组件许可对话框
 
-通过 **帮助 > 许可信息** 打开，展示项目中字体和第三方依赖的许可证详情。
+通过 **帮助 > 开源组件许可** 打开，展示项目使用的第三方开源组件（依赖）的许可证详情。
 
 ```python
+# 文件顶部导入：from ui.dialog.license_dialog import LicenseDialog
+
 def _open_license_dialog(self):
-    """打开开源许可对话框"""
-    from ui.dialog.license_dialog import LicenseDialog
+    """打开开源组件许可对话框"""
     dialog = LicenseDialog(self)
+    dialog.exec()
+```
+
+#### 字体管理对话框
+
+通过 **编辑 > 字体管理...** 打开，提供字体安装/卸载、已安装与系统字体浏览、实时预览与回退提示（底层为 `core/font` 的 `FontManager`，详见 [对话框组件](dialogs.md)）。
+
+```python
+# 文件顶部导入：from ui.dialog.font_manager_dialog import FontManagerDialog
+
+def _open_font_manager_dialog(self):
+    """打开字体管理对话框（安装/卸载/预览）"""
+    dialog = FontManagerDialog(self)
     dialog.exec()
 ```
 
@@ -458,6 +488,10 @@ def _open_llm_settings_dialog(self):
     if dialog.exec() == QDialog.DialogCode.Accepted:
         # 幂等保底：确保 LLM Provider 配置为最新
         get_llm_provider().reload_config()
+    # 对话框以主窗口为父对象，exec 返回后不会自动销毁；
+    # 显式 deleteLater 释放其 C++ 对象树（含配置订阅面板），
+    # 避免多次打开累积隐藏对话框与悬挂回调
+    dialog.deleteLater()
 ```
 
 #### 用量查询面板
@@ -465,14 +499,15 @@ def _open_llm_settings_dialog(self):
 通过 **AI > 用量查询** 打开，在一个模态对话框中展示 `UsagePanel`。
 
 ```python
+# 文件顶部导入：from ui.usage_panel import UsagePanel
+
 def _open_usage_panel(self):
     """打开用量查询面板对话框"""
-    from ui.usage_panel import UsagePanel
-
     dialog = QDialog(self)
     dialog.setWindowTitle("用量查询")
     dialog.setMinimumSize(900, 600)
-    dialog.resize(960, 680)
+    # 尺寸对齐用量面板 Demo 的设计密度（1100×760）
+    dialog.resize(1100, 760)
     layout = QVBoxLayout(dialog)
     layout.setContentsMargins(0, 0, 0, 0)
     usage_panel = UsagePanel(dialog)
@@ -480,24 +515,31 @@ def _open_usage_panel(self):
     dialog.exec()
 ```
 
-### 5.5 插件排序
+### 5.4 插件管理
+
+通过 **编辑 > 插件管理...** (Ctrl+P) 打开 `PluginManagementDialog`（安装/升级/降级/卸载 + 分组与排序，详见 [对话框组件](dialogs.md)）。
 
 ```python
-def _open_plugin_order_dialog(self):
-    """打开插件排序对话框"""
-    dialog = PluginOrderDialog(self.plugin_manager, self)
+def _open_plugin_management_dialog(self):
+    """打开插件管理对话框（安装/升级/降级/卸载/分组/排序）"""
+    dialog = PluginManagementDialog(self.plugin_manager, self)
+    dialog.plugins_changed.connect(self._on_plugins_changed)
+    dialog.exec()
 
-    if dialog.exec() == QDialog.DialogCode.Accepted:
-        # 用户点击了保存，重新加载 skills panel
-        self.skills_panel.load_skills_from_manager()
+def _on_plugins_changed(self):
+    """插件集合或分组排序变化后的统一刷新"""
+    self.skills_panel.load_skills_from_manager()
+    # 清空工作区，避免残留已卸载插件的 Widget
+    self.work_area.clear()
 ```
 
-### 5.6 GitHub 插件安装
+> **注意**：`PluginOrderDialog`（`ui/dialog/plugin_order_dialog.py`）为遗留代码，无菜单入口、无实际调用方（仅 `ui/dialog/__init__.py` 仍残留 re-export）；其排序功能已被 `PluginManagementDialog` 的「分组与排序」页取代。
+
+### 5.5 GitHub 插件安装
 
 ```python
 def _open_github_plugin_install_dialog(self):
     """打开从 GitHub 安装插件对话框"""
-    from ui.dialog.github_plugin_install_dialog import GitHubPluginInstallDialog
     dialog = GitHubPluginInstallDialog(self)
     dialog.plugin_installed.connect(self._on_github_plugin_installed)
     dialog.exec()
@@ -508,42 +550,25 @@ def _on_github_plugin_installed(self, results):
     self.plugin_manager.reload_plugins()
     self.skills_panel.load_skills_from_manager()
     self.work_area.clear()
-    # 注意：安装结果提示由 GitHubPluginInstallDialog 统一弹出（UIKit 对话框），
+    # 注意：安装结果提示由 GitHubPluginInstallDialog 统一弹出，
     # 此处不再重复弹窗（避免安装成功时出现双弹窗）。
 ```
 
-### 5.7 窗口状态变化与容器样式
+### 5.6 窗口状态变化与容器样式
 
 主窗口通过 `changeEvent` 监听 `WindowStateChange` 事件，同步更新：
 
-- **最大化按钮文字**: 最大化时显示 `❐`，还原时显示 `□`
-- **容器圆角**: 最大化时移除圆角（`border-radius: 0px`），还原时恢复 8px 圆角
+- **最大化/还原按钮图标**: 最大化按钮为 `IconButton`（`ui/title_bar.py`），图标由 QPainter 自绘而非文字符号；`set_maximized()` 内部调用 `set_icon_type("restore" / "maximize")` 切换图标
+- **容器圆角与阴影**: 最大化/全屏时移除圆角（`border-radius: 0px`）并停用阴影，还原时恢复 8px 圆角并启用阴影；圆角与阴影的启停统一由 `_update_container_style()` 处理
 - **主题自适应**: 使用 UIKit 设计令牌 `T()` 获取当前主题颜色动态设置背景色和边框色
 
 ```python
 def changeEvent(self, event):
-    """监听窗口状态变化，更新标题栏按钮"""
+    """监听窗口状态变化，更新标题栏按钮和阴影"""
     if event.type() == event.Type.WindowStateChange:
-        window_bg = T("color.bg.base")
-        border_color = T("color.border")
-
-        if self.isMaximized():
-            self._title_bar.set_maximized(True)
-            self._container.setStyleSheet(f"""
-                QWidget#mainContainer {{
-                    background-color: {window_bg};
-                    border-radius: 0px;
-                }}
-            """)
-        else:
-            self._title_bar.set_maximized(False)
-            self._container.setStyleSheet(f"""
-                QWidget#mainContainer {{
-                    background-color: {window_bg};
-                    border-radius: 8px;
-                    border: 1px solid {border_color};
-                }}
-            """)
+        self._title_bar.set_maximized(self.isMaximized() or self.isFullScreen())
+        # 容器圆角/阴影样式统一由 _update_container_style 处理，避免重复代码
+        self._update_container_style()
     super().changeEvent(event)
 ```
 

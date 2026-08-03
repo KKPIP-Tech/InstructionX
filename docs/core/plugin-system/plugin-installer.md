@@ -52,6 +52,8 @@
 | `keywords` | array | 否 | 关键词列表 |
 | `dependencies` | object | 否 | Python 依赖，key 为包名，value 为版本约束 |
 
+> **当前实现说明**：上表 `id`（`^[a-zA-Z0-9_-]+$`）与 `version`（`^(release|pre-release|beta|alpha|internal)\.\d+\.\d+\.\d+$`）约束已由 `validate_descriptor()` 做**代码级正则硬校验**（见 `core/plugin/github_plugin_installer.py` 的 `validate_descriptor` 方法）；安装时 `_install_plugin_dir()` 内联读取描述文件，并调用 `validate_descriptor()` 完成校验，格式不符会直接拒绝安装。
+
 ### 2.2 IXRepo.json（多插件仓库索引）
 
 适用于多插件仓库，放在仓库根目录。
@@ -89,10 +91,21 @@
 ```python
 @dataclass
 class InstallResult:
-    success: bool
+    success: bool = False
     message: str = ""
     plugin_id: Optional[str] = None
     plugin_name: Optional[str] = None
+    relation: str = ""  # new / upgrade / downgrade / reinstall
+
+    @staticmethod
+    def ok(plugin_id: str, plugin_name: str, message: str = "安装成功") -> "InstallResult":
+        """构造成功结果"""
+        ...
+
+    @staticmethod
+    def error(message: str) -> "InstallResult":
+        """构造失败结果"""
+        ...
 ```
 
 ### 3.2 PluginInfo
@@ -366,7 +379,7 @@ SkillsPanel.load_skills_from_manager()   # 按分组+顺序重新渲染
 
 ---
 
-## 10. 升级 / 降级与卸载
+## 9. 升级 / 降级与卸载
 
 - **版本注册表**：每次安装成功后，安装器将插件的版本、来源（GitHub URL / 本地 zip）、安装时间写入 `config/plugin_registry.json`（以插件 UUID 为键）；老版本插件在启动时自动回填。
 - **升级/降级**：
@@ -379,9 +392,18 @@ SkillsPanel.load_skills_from_manager()   # 按分组+顺序重新渲染
 
 ---
 
-## 9. 相关文档
+## 10. 相关文档
 
+**插件系统内部**：
 - [插件系统概述](overview.md)
-- [PluginManager](plugin-manager.md)
-- [插件开发指南](plugin-development.md)
-- [对话框组件](../../ui/dialogs.md)
+- [IPlugin 接口](iplugin.md)（`GitHubPluginInstaller` 安装后由 `PluginManager` 加载 `IPlugin` 实例）
+- [PluginManager](plugin-manager.md)（安装完成后调用 `uninstall_plugin()` 删除）
+- [插件开发指南](plugin-development.md)（被安装的插件必须遵守的开发约定）
+
+**相关子系统**：
+- [MCP 协议模块概述](../mcp/overview.md)（`IXRepo.json` / `IXPlugin.json` 描述的插件如何注册为 MCP 工具）
+- [DataProvider 概述](../data-provider/overview.md)（安装/卸载时 `PluginManager` 同步注册/注销 DataProvider 命名空间）
+
+**UI 集成**：
+- [对话框组件](../../ui/dialogs.md)（`GitHubPluginInstallDialog` 调 `GitHubPluginInstaller` 后台安装）
+- [主窗口](../../ui/main-window.md)（安装完成后刷新技能面板）

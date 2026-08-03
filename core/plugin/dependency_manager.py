@@ -331,7 +331,7 @@ class DependencyManager:
         """
         安装单个依赖包
 
-        优先尝试使用 uv 安装，uv 不可用时回退到 pip。
+        优先尝试使用 uv 安装，uv 不可用或 uv 安装失败时回退到 pip。
 
         Args:
             package_spec: 包规格，如 "requests>=2.25.0" 或 "numpy"

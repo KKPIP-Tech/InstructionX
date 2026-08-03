@@ -12,9 +12,9 @@
 - 多厂商 LLM 集成（MiniMax、SiliconFlow、智谱 GLM、Ollama、OpenAI 兼容接口等），多会话管理、工具调用自动化（ToolCallExecutor）、多模态、用量统计
 - MCP 协议双向支持（内置 MCP Server 暴露插件 API；MCP Client 连接外部 MCP Server）
 - SQLite WAL 数据持久化层（DataProvider）、后台任务系统（BackgroundTaskManager）
-- InstructionX_UIKit 主题与组件体系（`ui/InstructionX_UIKit` 组件库：设计令牌 + light/dark/auto 全局主题，57 组件 + 原生图表引擎）、FontMap 多字体系统
+- InstructionX_UIKit 主题与组件体系（`ui/InstructionX_UIKit` 组件库：设计令牌 + light/dark/auto 全局主题，57 组件 + 原生图表引擎）、字体管理器（`core/font` 子系统：字体安装/卸载/预览/系统字体回退，框架不自带字体）
 
-- 应用标识：`InstructionX - CE`（组织名 `LumenThread`），当前版本 **Alpha 1.0.3**
+- 应用标识：`InstructionX - CE`（组织名 `LumenThread`），当前版本 **Alpha 1.0.4**
 - **版本号单一来源为 `core/version.py` 的 `VERSION` 常量**（pyproject 通过 AST 静态读取，修改版本只改这里）
 - 平台：**仅支持 Windows 10/11**，Python **>= 3.14**
 - 许可证：**InstructionX Commercial Source License（商业源码许可证，非开源）**，详见 `LICENSE`
@@ -85,7 +85,7 @@ python -m pytest test/ -q --tb=short -p no:cacheprovider
 
 ## 框架开发流程与注意事项（重要）
 
-> 本节规范 **InstructionX 框架本身**（`core/`、`ui/`、`utils/` 等）的迭代开发流程，适用于所有框架级改动。插件开发请遵循 `plugin-development.md`。
+> 本节规范 **InstructionX 框架本身**（`core/`、`ui/`、`utils/` 等）的迭代开发流程，适用于所有框架级改动。插件开发请遵循 `AGENTS-for-PLUGIN-DEV.md`。
 
 ### 分支约定（重要）
 
@@ -159,7 +159,7 @@ python -m pytest test/ -q --tb=short -p no:cacheprovider
   - 善用卫语句（guard clause）提前返回、条件表达式、拆分小方法等手段消除“倒三角”式层层缩进的代码；
   - 复杂分支逻辑优先考虑查表（字典映射）、策略分发替代 if-elif 长链。
 - **熟练运用软件工程设计模式**：
-  - 根据场景妥善应用工厂模式、状态机、策略、注册表、观察者（发布订阅）、门面等经典设计模式，参考项目既有实践：`core/llm/providers/` 的 `PROVIDER_REGISTRY`（注册表/工厂）、`utils/font_map.py`（状态机）、`DataProvider` 的发布订阅、`LLMPluginService`（门面）；
+  - 根据场景妥善应用工厂模式、状态机、策略、注册表、观察者（发布订阅）、门面等经典设计模式，参考项目既有实践：`core/llm/providers/` 的 `PROVIDER_REGISTRY`（注册表/工厂）、`DataProvider` 的发布订阅、`LLMPluginService`（门面）、`ui/tray/` 的 TrayBackend 平台后端注册表/工厂；
   - 模式服务于解决问题，不为用模式而用模式；选择模式时优先考虑与项目现有实现的一致性。
 - **完善且合理的错误处理机制**：
   - 不得使用裸 `except`、不得静默吞掉异常（`except: pass`）；捕获异常后必须处理或继续抛出，避免程序在异常状态下“带病运行”；
@@ -260,6 +260,12 @@ core/
     server.py               # MCPHostServer（FastMCP，默认 127.0.0.1:8765，可选 Bearer 鉴权）
     client.py               # 连接外部 MCP Server，工具注册进 ToolRegistry
     bridge.py               # 插件 API 注册表 ↔ MCP Server 双向同步
+  font/                     # 字体子系统（框架不自带字体）
+    font_record.py          # FontRecord dataclass（frozen, slots）：字体注册记录
+    exceptions.py           # FontInstallError：字体安装失败异常
+    manager.py              # FontManager 单例：字体安装/卸载（复制到 data/fonts/）、
+                            #   注册表持久化（data/fonts/fonts.json 原子写，惰性恢复）、
+                            #   QFontDatabase 应用级注册（进程内生效）、系统字体回退解析
 ui/                         # 界面层
   main_window.py / title_bar.py / usage_panel/
   uikit_bootstrap.py        # UIKit 导入引导（main.py 首个业务 import：扩展 sys.path 使
@@ -288,7 +294,6 @@ ui/                         # 界面层
                             #   apply_dialog_theme 经 theme_changed 实时跟随应用主题）
 utils/
   logging_tools.py          # LoggerManager 单例（滚动文件日志，输出 logs/application.log）、get_name()
-  font_map.py               # 字体映射状态机（font/ 目录下 5 个字体家族）
   image_utils.py            # 图片工具（load_image_as_base64，原 LLMPluginService 方法迁出）
   thread_utils.py           # 工作线程 → UI 线程封送（run_in_ui_thread 等）
 plugin/                     # 官方/示例插件（kebab-case 目录，15 个）
@@ -302,7 +307,7 @@ config/ data/ logs/         # 运行时生成：配置、数据、日志
 
 ### 核心设计约定
 
-- **单例模式**：`PluginManager`、`DataProvider`、`BackgroundTaskManager`、`LLMProvider`、`LLMConfig`、`LLMPluginService`、`MCPManager`、`LoggerManager` 均为单例（`XxxManager._instance`，部分提供 `get_xxx()` 访问器；`LLMPluginService` 为模块级 `_instance`）。测试中重置单例要清 `_instance`。
+- **单例模式**：`PluginManager`、`DataProvider`、`BackgroundTaskManager`、`LLMProvider`、`LLMConfig`、`LLMPluginService`、`MCPManager`、`FontManager`、`LoggerManager` 均为单例（`XxxManager._instance`，部分提供 `get_xxx()` 访问器；`LLMPluginService` 为模块级 `_instance`）。测试中重置单例要清 `_instance`。
 - **接口与实现分离**：共享类型统一定义在 `core/interfaces/`，其他模块从这里 re-export，避免循环导入。
 - **关闭行为约定**：`main.py` 已 `setQuitOnLastWindowClosed(False)`，「关窗即退出」的隐式链路被切断，退出时机完全由代码显式控制（`QApplication.quit()`）；主窗口 `closeEvent` 统一拦截全部关闭路径（自绘叉子 / 标题栏右键 / Alt+F4 / 任务栏右键关闭），每次弹出 `CloseConfirmDialog` 询问「退出程序 / 最小化到托盘 / 取消」（无记忆选项）；托盘菜单「退出」与 Windows 注销/关机（`commitDataRequest` 回调置 `_force_quit`）走静默直退，不弹窗、不阻塞系统关机。
 - 后台任务回调在**工作线程**执行，更新 UI 必须通过 `utils/thread_utils.py` 封送到 UI 线程。
@@ -316,7 +321,7 @@ config/ data/ logs/         # 运行时生成：配置、数据、日志
   - `information.py`：定义 `IPluginInfo` 子类（版本用 `PluginVersion.from_string("release.x.y.z")`、`service_api` 工具描述等）；提供 `service_api` + `service.py`（类名以 `Service` 结尾）时，框架**自动注册跨插件 API 并同步为 MCP 工具**（不自动进入 LLM ToolRegistry，LLM 直接调用需插件实现 `IPlugin.llm_tools` 或自行注册）
   - `service.py`：插件服务/公开 API 层
   - `config/`：插件配置目录
-- 硬性规则（见根目录 `plugin-development.md`，注意该文件是面向插件开发代理的规范）：
+- 硬性规则（见根目录 `AGENTS-for-PLUGIN-DEV.md`，注意该文件是面向插件开发代理的规范）：
   - **`ui/` 中不写业务逻辑**：槽函数不超过 5 行，委托给 `service.py` / `function/`
   - **所有 import 必须放在文件顶部**（PEP 8 顺序：标准库/第三方/本地），禁止函数级 import（包括为规避循环导入）
   - 无魔法数字
@@ -333,11 +338,12 @@ config/ data/ logs/         # 运行时生成：配置、数据、日志
 | `config/mcp_config.json` | MCP Server/Client 配置 |
 | `config/plugin_order.json` | 插件显示顺序（未分组插件之间的顺序） |
 | `config/plugin_groups.json` | 用户自定义分组（schema v2：official/thirdparty 各自含 groups 分组数组 + order 面板统一顺序（分组与未分组插件混排）；v1 自动迁移） |
-| `config/plugin_registry.json` | 已安装插件注册表（schema v1：版本/来源/安装时间，升级降级与更新检查依据；启动时自动回填） |
+| `config/plugin_registry.json` | 已安装插件注册表（schema v1：顶层显式 `version: 1`（`PluginRegistry.SCHEMA_VERSION`），插件条目含版本/来源/安装时间，升级降级与更新检查依据；启动时自动回填） |
 | `data/data.db` | 插件数据（SQLite + WAL；另有 `-wal`/`-shm` 伴生文件） |
 | `data/tasks.json` | 后台任务状态 |
 | `data/llm_usage.json` | LLM 用量记录 |
 | `data/conversations.json` | LLM 会话持久化 |
+| `data/fonts/` | 框架安装字体的存储目录（字体文件 + `fonts.json` 注册表，schema v1：顶层 `version` + `fonts` 数组） |
 | `{插件目录}/.plugin_info.json` 或 `data/plugin_identity/{插件目录名}.json` | 插件 UUID（优先前者，插件目录不可写时回退后者） |
 | `logs/application.log` | 应用日志 |
 
@@ -372,6 +378,10 @@ config/ data/ logs/         # 运行时生成：配置、数据、日志
 - 插件系统：`docs/core/plugin-system/`（含 `plugin-development.md`）
 - 数据层：`docs/core/data-provider/`
 - 后台任务：`docs/core/background-task/`
+- 字体子系统：`docs/core/font-manager/overview.md`
 - LLM：`docs/core/llm-provider/`、`docs/plugins/llm-integration-guide.md`
 - MCP：`docs/core/mcp/overview.md`
 - API 参考：`docs/api/full-reference.md`
+
+**根目录历史设计报告**（已落地为正式文档，仅作决策溯源参考）：
+- `close-to-tray-report.md` — 关闭确认弹窗与系统托盘运行的实现分析报告（531 行，2026-07-31）；已被 `docs/ui/system-tray.md` 与 `docs/ui/dialogs.md §8 CloseConfirmDialog` 完整替代，**当前文档地图不再单列**。如需查阅决策溯源可在 git 历史中追踪。

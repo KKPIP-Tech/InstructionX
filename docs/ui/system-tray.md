@@ -74,7 +74,9 @@ ui/tray/
   PluginManager / BackgroundTaskManager；查询异常记 WARNING 并降级为占位项，
   不影响托盘菜单弹出。
 - 任务条目合并一次性任务（RUNNING/PENDING）与运行中的长期任务
-  （`LongRunningTask.current_status == "running"`）。
+  （以 `manager.is_long_task_running(task_id)` 运行时表为准；`LongRunningTask.current_status`
+  同时承载生命周期状态与插件自由文本，不能据文本判定运行态——状态上报会覆盖 `"running"`，
+  见 `ui/main_window.py` 的 `_collect_running_tasks`）。
 - Windows 上**双击托盘图标**同样恢复主窗口（`DoubleClick` 激活原因由后端声明）。
 
 ### 2.3 恢复与退出

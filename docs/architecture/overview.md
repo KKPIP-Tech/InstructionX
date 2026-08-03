@@ -159,7 +159,7 @@ graph TB
 
 **职责**:
 - 对话生命周期管理（创建、更新、查询）
-- 上下文截断（超出 `max_context` 时自动从最早的用户/助手消息开始截断，system prompt 与最近消息保留）
+- 上下文截断（超出 `max_context_tokens`（默认 120000）时自动从最早的用户/助手消息开始截断，system prompt 与最近消息保留；旧参数名 `max_context` 为废弃兼容参数）
 - Token 估算（中文字符按 1:1 计，英文按 4:1 估算）
 - 费用计算（基于 `DEFAULT_PRICING` 定价表，随配置变更热更新）
 
@@ -332,6 +332,9 @@ InstructionX/
 │   │   ├── plugin_icon.py
 │   │   ├── plugin_identity.py
 │   │   ├── config_manager.py
+│   │   ├── plugin_groups.py   # 用户自定义分组存储（config/plugin_groups.json）
+│   │   ├── plugin_registry.py # 已安装插件注册表（config/plugin_registry.json）
+│   │   ├── tool_name.py       # 工具命名/清洗工具
 │   │   ├── dependency_manager.py  # 插件依赖管理
 │   │   └── github_plugin_installer.py  # GitHub 插件安装器
 │   ├── data/                 # 数据层实现
@@ -353,6 +356,10 @@ InstructionX/
 │   │   ├── bridge.py         # MCPBridge（桥接器）
 │   │   ├── config.py         # MCP 配置
 │   │   └── plugin_interface.py  # MCP 插件接口
+│   ├── font/                 # 字体子系统（框架不自带字体）
+│   │   ├── manager.py        # FontManager 单例（安装/卸载/注册表持久化/系统回退）
+│   │   ├── font_record.py    # FontRecord 字体注册记录
+│   │   └── exceptions.py     # FontInstallError
 │   └── llm/                  # LLM 提供者实现
 │       ├── llm_provider.py  # LLMProvider 核心层（adapter 分发、check_*、惰性刷新）
 │       ├── provider_interface.py  # ILLM + Message/ChatResponse/ToolCall/ModelInfo/ModelCheckResult
@@ -386,8 +393,10 @@ InstructionX/
 │   ├── main_window.py       # 主窗口
 │   ├── title_bar.py        # 自定义标题栏
 │   ├── usage_panel/         # 用量查询面板（包：panel/kpi_card/trend_chart/history_table/formatting）
+│   ├── tray/                # 系统托盘子系统（TrayIconManager 门面 + TrayBackend 后端注册表）
 │   ├── skills_panel/        # 技能面板
 │   │   ├── panel.py        # SkillsPanel 面板
+│   │   ├── plugin_group_widget.py  # 分组折叠控件
 │   │   └── skill_button.py  # SkillButton 按钮组件
 │   ├── work_area/           # 工作区
 │   │   └── work_area.py
@@ -395,13 +404,16 @@ InstructionX/
 │       ├── __init__.py
 │       ├── about_dialog.py      # 关于对话框
 │       ├── license_dialog.py    # 开源许可对话框
+│       ├── close_confirm_dialog.py  # 关闭确认对话框（退出/最小化到托盘/取消）
 │       ├── llm_settings/        # LLM 设置对话框包（两栏：列表 + 详情，自动保存语义）
+│       ├── plugin_management_dialog.py  # 插件管理对话框（安装/升级/降级/卸载 + 分组与排序）
 │       ├── plugin_order_dialog.py  # 插件排序对话框
 │       └── github_plugin_install_dialog.py  # GitHub 插件安装对话框
 │
 ├── workers/                  # 预留：多进程工作池
 │
-├── plugin/                   # 官方插件（通过 GitHub 安装器获取，不再捆绑）
+├── plugin/                   # 官方插件安装目录（.gitignore 忽略 plugin/*/，git 仅跟踪 __init__.py；
+│                             #   插件内容经 GitHub 安装器获取，本地开发副本中另有若干官方/示例插件）
 │
 ├── custom_plugin/            # 第三方插件（通过 GitHub 安装器获取，不再捆绑）
 │
@@ -411,11 +423,14 @@ InstructionX/
 │   ├── data.db-shm           # WAL 共享内存索引（运行时自动生成）
 │   ├── tasks.json
 │   ├── llm_usage.json
+│   ├── conversations.json    # LLM 会话持久化
 │   └── assets/
 │       └── plugins/          # 插件资源文件
 │
 ├── config/                   # 配置目录
 │   ├── plugin_order.json
+│   ├── plugin_groups.json    # 用户自定义插件分组
+│   ├── plugin_registry.json  # 已安装插件注册表（版本/来源/安装时间）
 │   ├── llm_providers.json
 │   ├── llm_models_cache.json
 │   └── mcp_config.json      # MCP 协议配置
@@ -423,7 +438,6 @@ InstructionX/
 ├── utils/                    # 工具类
 │   ├── logging_tools.py     # 日志管理
 │   ├── i_logger.py         # ILogger 接口
-│   ├── font_map.py         # 字体映射
 │   ├── image_utils.py      # 图片工具（load_image_as_base64）
 │   └── thread_utils.py     # 工作线程 → UI 线程封送
 │
@@ -452,6 +466,8 @@ flowchart TD
     K --> L[等待用户交互]
 ```
 
+> **托盘与退出**：`main.py` 通过 `setQuitOnLastWindowClosed(False)` 切断「最后一个窗口关闭即退出」的隐式链路，退出时机完全由代码显式控制。主窗口 `closeEvent` 拦截全部关闭路径（自绘叉号 / Alt+F4 / 任务栏关闭），每次弹出 `CloseConfirmDialog` 询问「退出程序 / 最小化到托盘 / 取消」；托盘菜单「退出」与 Windows 注销/关机（`commitDataRequest` 守卫置 `_force_quit`）静默直退。`application.exec()` 返回后依次执行 `BackgroundTaskManager.shutdown()` 与 LLM 用量记录冲刷（`UsageRecordStore.flush()`）。详见 [系统托盘](../ui/system-tray.md)。
+
 ---
 
 ## 7. 关键技术特性
@@ -479,7 +495,7 @@ class PluginManager:
         PluginManager._initialized = True
 ```
 
-**类型 B：`__new__` + `threading.Lock` 双重检查锁定（DataProvider、BackgroundTaskManager、LLMProvider、TaskStorage、LoggerManager）**
+**类型 B：`__new__` + `threading.Lock` 双重检查锁定（DataProvider、BackgroundTaskManager、LLMProvider、LLMConfig、UsageRecordStore、TaskStorage、LoggerManager）**
 
 ```python
 class DataProvider:
@@ -511,7 +527,7 @@ def get_mcp_manager() -> "MCPManager":
 
 ### 7.2 线程安全
 
-- DataProvider 使用 `_file_lock`（`RLock`）保护数据库访问与缓存 + `_subscription_lock`（`Lock`）保护订阅表（`core/data/data_provider.py:81-82`）
+- DataProvider 使用 `_file_lock`（`RLock`）保护数据库访问与缓存 + `_subscription_lock`（`Lock`）保护订阅表（`core/data/data_provider.py:83-84`）
 - BackgroundTaskManager 使用线程池
 
 ### 7.3 原子写入

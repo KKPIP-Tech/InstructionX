@@ -142,7 +142,7 @@ flowchart TD
 
     subgraph TR [ToolRegistry]
         LOCALTOOLS[本地插件工具]
-        MCPTOOLS["外部 MCP 工具\\nmcp:server_id:name"]
+        MCPTOOLS["外部 MCP 工具\\nmcp__server_id__name"]
     end
 
     subgraph LLM [LLM]
@@ -159,7 +159,7 @@ flowchart TD
 
     subgraph 调用外部工具
         CALL[LLM 返回 tool_calls]
-        INVOKE[mcp:server_id:tool]
+        INVOKE[mcp__server_id__tool]
         EXEC[ClientSession.call_tool]
         OUT[返回结果给 LLM]
     end
@@ -211,11 +211,11 @@ graph TB
 
 ### 5.1 概述
 
-MCP Server 模式将 InstructionX 的**所有插件 API** 自动暴露为 MCP 工具，外部 MCP Client（如 Claude Code）可以通过标准 MCP 协议调用这些工具。
+MCP Server 模式将 InstructionX 的**插件 API** 自动暴露为 MCP 工具，外部 MCP Client（如 Claude Code）可以通过标准 MCP 协议调用这些工具。默认暴露全部插件，也可通过 `MCPServerConfig.exposed_plugins` 白名单限制暴露范围（见 §5.3）。
 
-**工具来源**: `PluginManager._api_registry` 中通过 `service_api` 注册的所有插件方法。
+**工具来源**: `PluginManager._api_registry` 中通过 `service_api` 注册的所有插件方法（受 `exposed_plugins` 白名单过滤，`None` 表示全部暴露；见 `core/mcp/bridge.py` 的 `MCPBridge`）。
 
-**工具命名**: `{plugin_id}.{method_name}`（与 `get_all_function_tools()` 格式一致）。
+**工具命名**: `sanitize_tool_name(f"{plugin_id}__{method_name}")`（双下划线分隔，与 `get_all_function_tools()` 格式一致；`MCPBridge` 仅对旧的 `{plugin_id}.{method_name}` 点分格式做向后兼容解析）。
 
 **传输方式**: 支持 stdio 和 streamable-http 两种方式。
 
@@ -247,11 +247,24 @@ mcp.start_server(transport="streamable-http")
         "host": "127.0.0.1",
         "port": 8765,
         "transport": "stdio",
-        "enabled": true
+        "enabled": true,
+        "auth_token": null,
+        "exposed_plugins": null,
+        "allowed_hosts": null
     },
     "remote_servers": []
 }
 ```
+
+**字段说明**：
+
+| 字段 | 说明 |
+|------|------|
+| `auth_token` | HTTP 模式下的 Bearer 认证令牌；`null` 表示不启用认证（仅建议在本机回环地址下使用）。配置文件中以 `b64:` 前缀的 Base64 混淆格式存储（防瞥视，非加密），兼容旧版明文值 |
+| `exposed_plugins` | 允许暴露为 MCP 工具的插件 ID 白名单；`null` 表示暴露全部插件（默认，向后兼容） |
+| `allowed_hosts` | 允许的 HTTP Host 头白名单（保留项，暂未强制校验） |
+
+**HTTP 模式 Bearer Token 鉴权**：`transport` 为 `streamable-http` 且配置了 `auth_token` 时，`MCPHostServer` 会通过内置的 `_BearerAuthMiddleware`（见 `core/mcp/server.py`）校验每个 HTTP/WebSocket 请求的 `Authorization: Bearer <token>` 头，校验失败返回 401（WebSocket 以 4401 关闭）；比较使用 `hmac.compare_digest` 防止时序侧信道。`auth_token` 仅允许 ASCII 可见字符。若需将 MCP Server 暴露到本机回环以外的地址，务必配置 `auth_token` 启用鉴权。
 
 ### 5.4 与现有 Function Calling 的关系
 
@@ -274,7 +287,7 @@ mcp.start_server(transport="streamable-http")
 
 MCP Client 模式允许 InstructionX 连接到外部 MCP Server，将它们的工具注册到本地 ToolRegistry。LLM 在对话时可以直接调用这些外部工具，整个过程对插件代码透明。
 
-**外部工具命名**: `mcp:{server_id}:{tool_name}`（带命名空间前缀，避免与本地工具冲突）。
+**外部工具命名**: `mcp__{server_id}__{tool_name}`（经 `sanitize_tool_name` 净化，带命名空间前缀，避免与本地工具冲突；双下划线分隔以满足 OpenAI function 命名规范 `^[a-zA-Z0-9_-]{1,64}$`，见 `core/mcp/client.py` 的 `_create_connection` 方法）。
 
 **连接方式**: 支持 stdio 和 streamable-http 两种方式。
 
@@ -332,7 +345,7 @@ print(servers)  # ['filesystem', 'github']
 
 # 列出指定 Server 上的工具（带命名空间前缀）
 tools = mcp.list_remote_tools("filesystem")
-print(tools)  # ['mcp:filesystem:read_file', 'mcp:filesystem:write_file', ...]
+print(tools)  # ['mcp__filesystem__read_file', 'mcp__filesystem__write_file', ...]
 ```
 
 ### 6.5 LLM 调用外部 MCP 工具
@@ -346,10 +359,15 @@ executor = svc.get_tool_executor()
 messages = [
     {"role": "user", "content": "读取 /tmp/test.txt 的内容"}
 ]
-# LLM 会自动判断是否需要调用 mcp:filesystem:read_file 工具
-final_msgs, tool_results, final = executor.chat_with_tools(
+# LLM 会自动判断是否需要调用 mcp__filesystem__read_file 工具
+result = executor.chat_with_tools(
     messages, provider="minimax", max_turns=5
 )
+# 返回 ToolChatResult 对象，包含完整对话记录与工具执行结果
+print(result.final_text)      # 最终文本
+print(result.messages)        # 完整消息记录
+print(result.tool_results)    # 各轮工具调用结果
+print(result.final_response)  # 最终 ChatResponse
 ```
 
 ---
@@ -462,6 +480,9 @@ config = MCPServerConfig(
     port=8765,
     transport="stdio",        # "stdio" 或 "streamable-http"
     enabled=True,
+    auth_token=None,          # HTTP 模式 Bearer 认证令牌，None 不启用认证
+    exposed_plugins=None,     # 插件 ID 白名单，None 暴露全部插件
+    allowed_hosts=None,       # HTTP Host 头白名单（保留项，暂未强制校验）
 )
 ```
 
@@ -490,7 +511,10 @@ config = MCPRemoteServerConfig(
     name="GitHub",
     # transport 默认为 "streamable-http"，可省略
     url="http://localhost:3000/mcp",
-    auth_token="Bearer xxx",
+    # auth_token 填裸令牌即可：框架构造请求头时会自动拼接
+    # "Authorization: Bearer <令牌>"（core/mcp/client.py 连接 streamable-http 时），
+    # 若写成 "Bearer xxx" 会发出 "Bearer Bearer xxx"
+    auth_token="xxx",
 )
 ```
 
@@ -548,7 +572,7 @@ mcp.shutdown()  # 停止 Server + 断开所有 Client 连接
 | `start_server(transport?)` | 启动 MCP Server（"stdio" 或 "streamable-http"，默认使用配置值） |
 | `stop_server()` | 停止 MCP Server |
 | `is_server_running()` | 返回 Server 是否运行中 |
-| `get_server_url()` | 返回 HTTP Server 地址（仅 HTTP 模式有效） |
+| `get_server_url()` | 返回 Server 的 HTTP 地址 `http://{host}:{port}`（只要 Server 已初始化即返回，不看传输模式；Server 未初始化时返回空串） |
 | `get_server()` | 返回 MCPHostServer 实例（可能为 None） |
 | `get_server_config()` | 返回当前 Server 配置 |
 | `update_server_config(config)` | 更新 Server 配置并持久化 |
