@@ -214,7 +214,8 @@ flowchart TD
     N --> P[设置回调]
     O --> P
     P --> Q[连接 skill_clicked 信号]
-    Q --> R[应用容器样式 _update_container_style]
+    Q --> PW[预热蓝图 GL 视口 _prewarm_blueprint_viewport]
+    PW --> R[应用容器样式 _update_container_style]
     R --> R2[Qt 阴影效果 QGraphicsDropShadowEffect]
     R2 --> R3[setMouseTracking 开启鼠标追踪]
     R3 --> R4[托盘状态变量 + _setup_tray 接线]
@@ -261,6 +262,9 @@ def __init__(self):
 
     # 创建主布局
     self._create_main_layout()
+
+    # 预热蓝图 GL 视口（须在窗口 show() 之前，见下文说明）
+    self._prewarm_blueprint_viewport()
 
     # 应用容器样式
     self._update_container_style()
@@ -321,6 +325,8 @@ def _create_main_layout(self) -> None:
     # 连接信号
     self.skills_panel.skill_clicked.connect(self._on_skill_clicked)
 ```
+
+> **蓝图 GL 视口预热**（`_prewarm_blueprint_viewport`）：UIKit 蓝图画布的绘制视口在 GL 可用时基于 `QOpenGLWidget`；若其在顶层窗口**可见之后**才加入窗口树，Qt 会重建顶层原生窗口句柄，表现为整个窗口短暂关闭后重开一次（Qt 固有行为，见 UIKit USAGE.md §8.6）。插件的蓝图画布均在主窗口显示后才创建，因此主窗口在构造阶段预创建一个隐藏画布并长期持有（`self._blueprint_prewarm_canvas`），让顶层原生句柄首次创建时即按「含 GL 子控件」的方式建立，后续插件画布加入时不再触发重建。软件渲染回退环境（无 GL / offscreen）自动跳过；预热失败仅记录 WARNING 日志，不影响启动。
 
 ---
 

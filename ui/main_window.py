@@ -42,6 +42,8 @@ from core.llm.llm_provider import get_llm_provider
 from utils.logging_tools import LoggerManager, get_name
 from ui.uikit_theme import apply_uikit_theme, current_theme_mode
 from InstructionX_UIKit import T
+from InstructionX_UIKit.blueprint import BlueprintCanvas, BlueprintGraph
+from InstructionX_UIKit.blueprint.viewport import gl_available
 
 
 # ===================================================================
@@ -141,6 +143,9 @@ class InstructionXMainWindow(QMainWindow):
 
         # 创建主布局内容
         self._create_main_layout()
+
+        # 预热蓝图 GL 视口（须在窗口 show() 之前，见该方法 docstring）
+        self._prewarm_blueprint_viewport()
 
         # 应用容器样式
         self._update_container_style()
@@ -274,6 +279,29 @@ class InstructionXMainWindow(QMainWindow):
 
         # 连接技能点击信号
         self.skills_panel.skill_clicked.connect(self._on_skill_clicked)
+
+    def _prewarm_blueprint_viewport(self) -> None:
+        """预创建蓝图画布以预热 GL 视口，规避顶层窗口原生句柄重建闪烁。
+
+        UIKit 蓝图画布的绘制视口在 GL 可用时基于 ``QOpenGLWidget``；若其
+        在顶层窗口**可见之后**才加入窗口树，Qt 会重建顶层原生窗口句柄，
+        表现为整个窗口短暂关闭后重开一次（Qt 固有行为，见 UIKit
+        USAGE.md §8.6）。插件的蓝图画布均在主窗口显示后才创建，因此在
+        构造阶段预创建一个隐藏画布并长期持有，让顶层原生句柄首次创建时
+        即按「含 GL 子控件」的方式建立，后续插件画布加入时不再触发重建。
+
+        软件渲染回退环境（无 GL / offscreen）不存在该问题，直接跳过；
+        预热失败不影响主窗口启动，仅记录 WARNING 日志。
+        """
+        if not gl_available():
+            return
+        try:
+            # 长期持有引用，防止被 GC 回收后失去预热效果
+            self._blueprint_prewarm_canvas = BlueprintCanvas(
+                BlueprintGraph(), self._container)
+            self._blueprint_prewarm_canvas.hide()
+        except Exception as e:  # 预热失败不阻断启动，仅降级为旧行为
+            self._logger.warning(get_name(), f"蓝图 GL 视口预热失败（不影响使用）: {e}")
 
     def _on_skill_clicked(self, plugin):
         """
