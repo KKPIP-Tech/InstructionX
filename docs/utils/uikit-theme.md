@@ -14,7 +14,7 @@
 
 | 文件 | 说明 |
 |------|------|
-| `ui/InstructionX_UIKit/` | PySide6 组件库（独立仓库 KKPIP-Tech/InstructionX_UIKit 的同步副本，版本 alpha-v1.0.0），主项目不修改库内文件 |
+| `ui/InstructionX_UIKit/` | PySide6 组件库（独立仓库 KKPIP-Tech/InstructionX_UIKit 的同步副本，版本 alpha-v1.0.1），主项目不修改库内文件 |
 | `ui/uikit_bootstrap.py` | sys.path 引导，导入即生效，使 UIKit 以顶层包可导入 |
 | `ui/uikit_theme.py` | 全局主题入口：`apply_uikit_theme()` / `current_theme_mode()` + 排除区兼容附录 |
 
@@ -36,7 +36,7 @@
 ui/InstructionX_UIKit/
 ├── __init__.py          # 包入口：re-export ThemeManager/T/build_qss/set_property/apply_shadow、
 │                        #   LIGHT/DARK/TokenState/FONT_FAMILY/MONO_FAMILY/Breakpoint/DURATION/EASING、
-│                        #   get_icon/ICON_NAMES；__version__ = "alpha-v1.0.0"
+│                        #   get_icon/ICON_NAMES；__version__ = "alpha-v1.0.1"
 ├── tokens.py            # 设计令牌：LIGHT / DARK 两套令牌字典 + TokenState 状态机
 ├── theme.py             # ThemeManager 单例 + T() + build_qss() 全局 QSS + set_property + apply_shadow
 ├── icons.py             # 图标（get_icon / ICON_NAMES）

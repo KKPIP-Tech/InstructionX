@@ -273,8 +273,9 @@ ui/                         # 界面层
   uikit_theme.py            # 全局主题入口：apply_uikit_theme(app, light/dark/auto) +
                             #   current_theme_mode() + 排除区（标题栏/技能面板/工作区）兼容 QSS 附录
   InstructionX_UIKit/       # PySide6 组件库（独立仓库 KKPIP-Tech/InstructionX_UIKit 的同步副本，
-                            #   alpha-v1.0.0：tokens/theme 主题系统 + 57 组件 + 12 布局 + 52 动画 +
-                            #   原生图表引擎 + 蓝图节点图；主项目不修改库内文件）
+                            #   alpha-v1.0.1：tokens/theme 主题系统 + 57 组件 + 12 布局 + 52 动画 +
+                            #   原生图表引擎 + 蓝图节点图（含 GL/软件双绘制视口 viewport.py）；
+                            #   主项目不修改库内文件）
   skills_panel/             # 插件技能面板（含 plugin_group_widget.py 分组折叠控件：
                             #   文件夹形式收起、点击行内向右展开、展开区区分背景）
   work_area/                # 插件 Widget 宿主区（切换插件时缓存 UI 状态）
