@@ -13,12 +13,13 @@ from PySide6.QtWidgets import (
     QMainWindow, QWidget,
     QVBoxLayout,
     QDialog, QLabel,
-    QApplication, QGraphicsDropShadowEffect
+    QApplication, QGraphicsBlurEffect, QGraphicsScene
 )
 from PySide6.QtGui import (
-    QAction, QCursor, QMouseEvent, QColor, QCloseEvent, QIcon, QSessionManager
+    QAction, QCursor, QMouseEvent, QColor, QCloseEvent, QIcon, QSessionManager,
+    QImage, QPainter, QPixmap
 )
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QRectF
 
 # ===================================================================
 # 自定义工具
@@ -60,10 +61,78 @@ CONTAINER_MARGIN_TOP = 0
 CONTAINER_MARGIN_RIGHT = 8
 CONTAINER_MARGIN_BOTTOM = 8
 
-# 窗口阴影效果参数
+# 窗口阴影参数（预渲染位图 + 9 宫格绘制，不使用 QGraphicsDropShadowEffect）
 SHADOW_BLUR_RADIUS = 20
 SHADOW_OFFSET_X = 0
 SHADOW_OFFSET_Y = 4
+SHADOW_COLOR_ALPHA = 80
+# 阴影源位图中心圆角矩形的边长（仅供 9 宫格拉伸，与最终窗口尺寸无关）
+SHADOW_SOURCE_CONTENT = 64
+# 主容器圆角半径（窗口化状态）
+WINDOW_CORNER_RADIUS = 8
+
+
+def _render_shadow_pixmap() -> QPixmap:
+    """预渲染窗口阴影源位图（启动后首次绘制时执行一次）。
+
+    阴影形状与主容器一致（圆角矩形），颜色/模糊半径沿用原
+    QGraphicsDropShadowEffect 的参数；源位图尺寸固定，绘制时按目标
+    矩形做 9 宫格拉伸，因此任意窗口尺寸下都无逐帧渲染开销。
+    """
+    margin = SHADOW_BLUR_RADIUS
+    content = SHADOW_SOURCE_CONTENT
+    # 圆角矩形（容器形状）作为阴影实体
+    base = QImage(content, content, QImage.Format.Format_ARGB32_Premultiplied)
+    base.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(base)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    painter.setPen(Qt.PenStyle.NoPen)
+    painter.setBrush(QColor(0, 0, 0, SHADOW_COLOR_ALPHA))
+    painter.drawRoundedRect(
+        QRectF(0, 0, content, content), WINDOW_CORNER_RADIUS, WINDOW_CORNER_RADIUS)
+    painter.end()
+    # QGraphicsBlurEffect 与原阴影效果使用同一模糊内核，观感一致
+    scene = QGraphicsScene()
+    item = scene.addPixmap(QPixmap.fromImage(base))
+    item.setPos(margin, margin)
+    blur = QGraphicsBlurEffect()
+    blur.setBlurRadius(SHADOW_BLUR_RADIUS)
+    item.setGraphicsEffect(blur)
+    side = content + 2 * margin
+    shadow = QImage(side, side, QImage.Format.Format_ARGB32_Premultiplied)
+    shadow.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(shadow)
+    scene.render(painter, QRectF(0, 0, side, side), QRectF(0, 0, side, side))
+    painter.end()
+    return QPixmap.fromImage(shadow)
+
+
+def _draw_shadow_tiles(painter: QPainter, pixmap: QPixmap,
+                       target: "QRectF", tile: int) -> None:
+    """把阴影源位图按 9 宫格拉伸绘制到目标矩形（中心区域被容器覆盖，跳过）。
+
+    Args:
+        painter: 目标绘制画笔
+        pixmap: ``_render_shadow_pixmap`` 预渲染的阴影源位图
+        target: 阴影整体目标矩形（窗口坐标，含模糊外扩与偏移）
+        tile: 角块边长（源位图中不拉伸的角部尺寸）
+    """
+    side = pixmap.width()
+    xs = (0.0, float(tile), float(side - tile), float(side))
+    xt = (float(target.left()), float(target.left() + tile),
+          float(target.right() - tile + 1), float(target.right() + 1))
+    ys = (0.0, float(tile), float(side - tile), float(side))
+    yt = (float(target.top()), float(target.top() + tile),
+          float(target.bottom() - tile + 1), float(target.bottom() + 1))
+    for row in range(3):
+        for col in range(3):
+            if row == 1 and col == 1:
+                continue
+            src = QRectF(xs[col], ys[row],
+                         xs[col + 1] - xs[col], ys[row + 1] - ys[row])
+            dst = QRectF(xt[col], yt[row],
+                         xt[col + 1] - xt[col], yt[row + 1] - yt[row])
+            painter.drawPixmap(dst, pixmap, src)
 
 # 技能面板高度限制
 SKILLS_PANEL_MAX_HEIGHT = 135
@@ -150,15 +219,13 @@ class InstructionXMainWindow(QMainWindow):
         # 应用容器样式
         self._update_container_style()
 
-        # 创建 Qt 阴影效果（替代 DWM 原生阴影，避免 WM_NCCALCSIZE 坐标错位）
-        # 性能取舍：QGraphicsDropShadowEffect 需对整个容器做离屏渲染，
-        # 低端机器上略有开销；但可彻底规避 DWM 方案的坐标错位问题，
-        # 且 blurRadius 控制在 20 以限制渲染成本。
-        self._shadow_effect = QGraphicsDropShadowEffect(self)
-        self._shadow_effect.setBlurRadius(SHADOW_BLUR_RADIUS)
-        self._shadow_effect.setColor(QColor(0, 0, 0, 80))
-        self._shadow_effect.setOffset(SHADOW_OFFSET_X, SHADOW_OFFSET_Y)
-        self._container.setGraphicsEffect(self._shadow_effect)
+        # 窗口阴影：预渲染位图 + 9 宫格绘制（见 paintEvent）。
+        # 不用 QGraphicsDropShadowEffect：它会把整个容器子树的绘制重定向到
+        # 离屏缓存，而 QOpenGLWidget（蓝图 GL 视口）的帧更新无法触发效果源
+        # 缓存失效，窗口化模式下画布会长期呈现旧帧（拖拽时画面卡死，最大化
+        # 时因阴影被禁用而不复发）；也不用 DWM 原生阴影（WM_NCCALCSIZE 方案
+        # 曾导致 Qt 与 Windows 坐标系错位）。
+        self._shadow_pixmap = None  # 惰性渲染，首次 paintEvent 时生成
 
         # 边缘 resize 相关变量
         self._resize_margin = 8  # 边缘检测区域宽度
@@ -495,40 +562,63 @@ class InstructionXMainWindow(QMainWindow):
         border_color = T("color.border")
 
         if self.isMaximized() or self.isFullScreen():
-            # 最大化/全屏时移除圆角和阴影
+            # 最大化/全屏时移除圆角（阴影由 paintEvent 按窗口状态跳过）
             self._container.setStyleSheet(f"""
                 QWidget#mainContainer {{
                     background-color: {window_bg};
                     border-radius: 0px;
                 }}
             """)
-            if hasattr(self, '_shadow_effect') and self._shadow_effect:
-                self._shadow_effect.setEnabled(False)
         else:
-            # 还原时显示圆角和阴影
+            # 还原时显示圆角
             self._container.setStyleSheet(f"""
                 QWidget#mainContainer {{
                     background-color: {window_bg};
-                    border-radius: 8px;
+                    border-radius: {WINDOW_CORNER_RADIUS}px;
                     border: 1px solid {border_color};
                 }}
             """)
-            if hasattr(self, '_shadow_effect') and self._shadow_effect:
-                self._shadow_effect.setEnabled(True)
 
     def nativeEvent(self, eventType, message):
         """
         保留原生事件接口，当前不拦截任何消息。
         先前拦截 WM_NCCALCSIZE 会导致 Qt 与 Windows 坐标系错位，
-        阴影改用 QGraphicsDropShadowEffect 实现。
+        阴影改用预渲染位图 9 宫格绘制（见 paintEvent）。
         """
         return super().nativeEvent(eventType, message)
 
+    def paintEvent(self, event) -> None:  # noqa: N802
+        """窗口化状态下先绘制窗口阴影，再交给基类绘制。
+
+        阴影为预渲染位图的 9 宫格拉伸，常数时间完成，不参与子控件的
+        逐帧重绘；最大化/全屏时跳过（与原阴影效果的启停行为一致）。
+        """
+        if not self.isMaximized() and not self.isFullScreen():
+            self._paint_window_shadow()
+        super().paintEvent(event)
+
+    def _paint_window_shadow(self) -> None:
+        """在容器外圈绘制 9 宫格拉伸的预渲染阴影（超出窗口部分自然裁剪）。"""
+        if self._shadow_pixmap is None:
+            self._shadow_pixmap = _render_shadow_pixmap()
+        tile = SHADOW_BLUR_RADIUS + SHADOW_SOURCE_CONTENT // 2
+        target = QRectF(self._container.geometry().adjusted(
+            -SHADOW_BLUR_RADIUS, -SHADOW_BLUR_RADIUS,
+            SHADOW_BLUR_RADIUS, SHADOW_BLUR_RADIUS,
+        ).translated(SHADOW_OFFSET_X, SHADOW_OFFSET_Y))
+        # 布局未完成时目标矩形可能小于角块，跳过避免反向拉伸
+        if target.width() < 2 * tile or target.height() < 2 * tile:
+            return
+        painter = QPainter(self)
+        _draw_shadow_tiles(painter, self._shadow_pixmap, target, tile)
+        painter.end()
+
     def changeEvent(self, event):
-        """监听窗口状态变化，更新标题栏按钮和阴影"""
+        """监听窗口状态变化，更新标题栏按钮和容器圆角"""
         if event.type() == event.Type.WindowStateChange:
             self._title_bar.set_maximized(self.isMaximized() or self.isFullScreen())
-            # 容器圆角/阴影样式统一由 _update_container_style 处理，避免重复代码
+            # 容器圆角样式统一由 _update_container_style 处理，避免重复代码；
+            # 阴影由 paintEvent 按窗口状态自动启停
             self._update_container_style()
         super().changeEvent(event)
 

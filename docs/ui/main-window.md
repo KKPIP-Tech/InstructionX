@@ -216,7 +216,7 @@ flowchart TD
     P --> Q[连接 skill_clicked 信号]
     Q --> PW[预热蓝图 GL 视口 _prewarm_blueprint_viewport]
     PW --> R[应用容器样式 _update_container_style]
-    R --> R2[Qt 阴影效果 QGraphicsDropShadowEffect]
+    R --> R2[阴影位图惰性缓存置位 _shadow_pixmap=None]
     R2 --> R3[setMouseTracking 开启鼠标追踪]
     R3 --> R4[托盘状态变量 + _setup_tray 接线]
     R4 --> S[完成]
@@ -269,12 +269,12 @@ def __init__(self):
     # 应用容器样式
     self._update_container_style()
 
-    # 创建 Qt 阴影效果（替代 DWM 原生阴影，避免 WM_NCCALCSIZE 坐标错位）
-    self._shadow_effect = QGraphicsDropShadowEffect(self)
-    self._shadow_effect.setBlurRadius(20)
-    self._shadow_effect.setColor(QColor(0, 0, 0, 80))
-    self._shadow_effect.setOffset(0, 4)
-    self._container.setGraphicsEffect(self._shadow_effect)
+    # 窗口阴影：预渲染位图 + 9 宫格绘制（paintEvent 中），此处只做惰性缓存置位。
+    # 不用 QGraphicsDropShadowEffect：它会把容器子树重定向到离屏缓存，
+    # QOpenGLWidget（蓝图 GL 视口）的帧更新无法触发效果源缓存失效，
+    # 窗口化模式下画布会长期呈现旧帧（拖拽卡死）；
+    # 也不用 DWM 原生阴影（WM_NCCALCSIZE 方案曾导致 Qt 与 Windows 坐标系错位）。
+    self._shadow_pixmap = None  # 惰性渲染，首次 paintEvent 时生成
 
     # 边缘 resize 相关变量
     self._resize_margin = 8
@@ -565,15 +565,17 @@ def _on_github_plugin_installed(self, results):
 主窗口通过 `changeEvent` 监听 `WindowStateChange` 事件，同步更新：
 
 - **最大化/还原按钮图标**: 最大化按钮为 `IconButton`（`ui/title_bar.py`），图标由 QPainter 自绘而非文字符号；`set_maximized()` 内部调用 `set_icon_type("restore" / "maximize")` 切换图标
-- **容器圆角与阴影**: 最大化/全屏时移除圆角（`border-radius: 0px`）并停用阴影，还原时恢复 8px 圆角并启用阴影；圆角与阴影的启停统一由 `_update_container_style()` 处理
+- **容器圆角与阴影**: 最大化/全屏时移除圆角（`border-radius: 0px`）且不绘制阴影，还原时恢复 8px 圆角并恢复阴影；圆角由 `_update_container_style()` 处理，阴影的启停由 `paintEvent` 按窗口状态控制
+- **阴影实现（重要）**: 窗口阴影使用**预渲染位图 + 9 宫格拉伸绘制**（`_render_shadow_pixmap()` 首次 `paintEvent` 时生成一次，`_draw_shadow_tiles()` 常数时间绘制），**不使用 `QGraphicsDropShadowEffect`**——它会把整个容器子树的绘制重定向到离屏缓存，而 `QOpenGLWidget`（蓝图 GL 视口）的帧更新无法触发效果源缓存失效，导致窗口化模式下画布长期呈现旧帧（拖拽时画面卡死；最大化时因阴影被禁用而不复发）
 - **主题自适应**: 使用 UIKit 设计令牌 `T()` 获取当前主题颜色动态设置背景色和边框色
 
 ```python
 def changeEvent(self, event):
-    """监听窗口状态变化，更新标题栏按钮和阴影"""
+    """监听窗口状态变化，更新标题栏按钮和容器圆角"""
     if event.type() == event.Type.WindowStateChange:
         self._title_bar.set_maximized(self.isMaximized() or self.isFullScreen())
-        # 容器圆角/阴影样式统一由 _update_container_style 处理，避免重复代码
+        # 容器圆角样式统一由 _update_container_style 处理，避免重复代码；
+        # 阴影由 paintEvent 按窗口状态自动启停
         self._update_container_style()
     super().changeEvent(event)
 ```
