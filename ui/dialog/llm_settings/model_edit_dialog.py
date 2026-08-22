@@ -27,7 +27,7 @@ from PySide6.QtWidgets import (
 
 from core.i18n import tr
 from core.llm.model_schema import (
-    ALL_CAPABILITIES, CAPABILITY_LABELS, get_disabled_capabilities,
+    ALL_CAPABILITIES, capability_label, get_disabled_capabilities,
     infer_model_group, normalize_model_entry,
 )
 
@@ -114,7 +114,7 @@ class _CapabilityTag(QToolButton):
         """
         super().__init__(parent)
         self.capability_key = capability
-        self.setText(CAPABILITY_LABELS.get(capability, capability))
+        self.setText(capability_label(capability))
         self.setCheckable(True)
         self.setChecked(checked)
         self.setCursor(Qt.CursorShape.PointingHandCursor)

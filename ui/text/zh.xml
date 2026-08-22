@@ -514,4 +514,14 @@
   <group name="work_area">
       <text key="placeholder">点击上方技能按钮，在此处显示插件功能</text>
   </group>
+
+  <!-- LLM 模型能力标签（core/llm/model_schema.py 的 capability_label()） -->
+  <group name="model_capability">
+    <text key="vision">视觉</text>
+    <text key="web">联网搜索</text>
+    <text key="reasoning">推理</text>
+    <text key="tools">工具调用</text>
+    <text key="embedding">嵌入</text>
+    <text key="rerank">重排序</text>
+  </group>
 </texts>
