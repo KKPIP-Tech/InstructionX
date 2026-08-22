@@ -19,7 +19,7 @@ from core.plugin.github_plugin_installer import (
     GitHubPluginInstaller, InstallResult, RepoInspectionResult, PluginInfo
 )
 from core.plugin.manager import get_plugin_manager
-from core.i18n import tr
+from core.i18n import get_language_manager, resolve_i18n_field, tr
 from utils.logging_tools import LoggerManager, get_name
 from InstructionX_UIKit import T, set_property
 from InstructionX_UIKit.components import (
@@ -40,6 +40,15 @@ def _info_result_dialog(parent, title: str, text: str) -> None:
         show_cancel=False)
     dialog.set_text(text)
     dialog.exec()
+
+
+def _resolve_field(value) -> str:
+    """将可多语言字段（字符串或 {语言代码: 文案} 字典）解析为当前语言文案
+
+    对话框为瞬时窗口（transient）：展示时按当前语言解析一次，
+    语言切换后重新打开对话框即生效，不做实时刷新。
+    """
+    return resolve_i18n_field(value, get_language_manager().current_language())
 
 
 class GitHubFetchWorker(QThread):
@@ -113,8 +122,9 @@ class PluginInfoWidget(QWidget):
         layout.setSpacing(5)
         layout.setContentsMargins(5, 5, 5, 5)
 
-        # 插件名称和版本
-        header = QLabel(f"<b>{self.plugin_info.name}</b> (v{self.plugin_info.version})")
+        # 插件名称和版本（name 允许多语言字典形式，按当前语言解析后显示）
+        header = QLabel(
+            f"<b>{_resolve_field(self.plugin_info.name)}</b> (v{self.plugin_info.version})")
         header.setFont(QFont("", 10, QFont.Weight.Bold))
         layout.addWidget(header)
 
@@ -123,9 +133,9 @@ class PluginInfoWidget(QWidget):
         set_property(id_label, "role", "secondary")
         layout.addWidget(id_label)
 
-        # 描述
+        # 描述（description 允许多语言字典形式，按当前语言解析后显示）
         if self.plugin_info.description:
-            desc_label = QLabel(self.plugin_info.description)
+            desc_label = QLabel(_resolve_field(self.plugin_info.description))
             desc_label.setWordWrap(True)
             layout.addWidget(desc_label)
 
@@ -392,13 +402,20 @@ class GitHubPluginInstallDialog(QDialog):
         self.plugin_checkboxes: List[CheckBox] = []
 
         for plugin_info in plugins:
-            checkbox = CheckBox(f"{plugin_info.name} (v{plugin_info.version})", checked=True)
+            # name/description 允许多语言字典形式，按当前语言解析后显示
+            checkbox = CheckBox(
+                f"{_resolve_field(plugin_info.name)} (v{plugin_info.version})",
+                checked=True)
             checkbox.setProperty("plugin_path", plugin_info.path)
             checkbox.setProperty("plugin_id", plugin_info.plugin_id)
 
             # 添加详细信息
-            details = QLabel(
-                f"  {plugin_info.description or tr(_TR_GROUP, 'plugin.no_description')}")
+            details_text = (
+                _resolve_field(plugin_info.description)
+                if plugin_info.description
+                else tr(_TR_GROUP, "plugin.no_description")
+            )
+            details = QLabel(f"  {details_text}")
             set_property(details, "role", "secondary")
             details.setWordWrap(True)
 
