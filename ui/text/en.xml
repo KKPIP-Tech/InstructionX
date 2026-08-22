@@ -379,6 +379,15 @@ Interfaces using this font will fall back to a system font after uninstallation.
       <text key="group_editor.message.select_group_first">Please select a group in the list on the left first</text>
       <text key="group_editor.message.select_target_group">Please select the target group in the list on the left first</text>
       <text key="group_editor.message.select_plugin_to_add">Please select the plugin to add in "Ungrouped Plugins"</text>
+
+      <!-- 每插件语言自定义（详情面板语言行 + 插件语言对话框） -->
+      <text key="button.language">Language…</text>
+      <text key="detail.language">Language: {language}</text>
+      <text key="language.none">No multilingual support</text>
+      <text key="language.follow_framework">Follow Framework ({language})</text>
+      <text key="language.unavailable_tooltip">This plugin does not provide multilingual support</text>
+      <text key="language.dialog_title">Language for {name}</text>
+      <text key="language.follow_option">Follow Framework (Default)</text>
   </group>
 
   <group name="main_window">

@@ -380,6 +380,15 @@
       <text key="group_editor.message.select_group_first">请先在左侧列表中选中一个分组</text>
       <text key="group_editor.message.select_target_group">请先在左侧列表中选中目标分组</text>
       <text key="group_editor.message.select_plugin_to_add">请在「未分组插件」中选中要加入的插件</text>
+
+      <!-- 每插件语言自定义（详情面板语言行 + 插件语言对话框） -->
+      <text key="button.language">语言…</text>
+      <text key="detail.language">语言: {language}</text>
+      <text key="language.none">未提供多语言</text>
+      <text key="language.follow_framework">跟随框架（{language}）</text>
+      <text key="language.unavailable_tooltip">该插件未提供多语言支持</text>
+      <text key="language.dialog_title">{name} 的语言</text>
+      <text key="language.follow_option">跟随框架（默认）</text>
   </group>
 
   <group name="main_window">

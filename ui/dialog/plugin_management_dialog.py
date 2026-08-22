@@ -18,7 +18,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtGui import QColor, QFont
 
-from core.i18n import tr
+from core.i18n import get_language_manager, tr
 from core.plugin.manager import PluginManager
 from core.plugin.github_plugin_installer import (
     GitHubPluginInstaller, InstallResult, ReleaseInfo,
@@ -29,6 +29,7 @@ from core.plugin.plugin_groups import (
 )
 from core.plugin.plugin_version import PluginVersion
 from ui.dialog.github_plugin_install_dialog import GitHubPluginInstallDialog
+from ui.dialog.plugin_language_dialog import PluginLanguageDialog
 from utils.logging_tools import LoggerManager, get_name
 from InstructionX_UIKit import T
 from InstructionX_UIKit.components import (
@@ -751,7 +752,9 @@ class PluginManagementDialog(QDialog):
         self.detail_version = QLabel("")
         self.detail_source = QLabel("")
         self.detail_source.setWordWrap(True)
-        for label in (self.detail_name, self.detail_version, self.detail_source):
+        self.detail_language = QLabel("")
+        for label in (self.detail_name, self.detail_version,
+                      self.detail_source, self.detail_language):
             layout.addWidget(label)
         layout.addSpacing(10)
 
@@ -761,9 +764,18 @@ class PluginManagementDialog(QDialog):
         self.uninstall_btn = Button(tr(_I18N_GROUP, "button.uninstall"),
                                     variant="danger")
         self.uninstall_btn.clicked.connect(self._on_uninstall)
+        self.language_btn = Button(tr(_I18N_GROUP, "button.language"),
+                                   variant="default")
+        self.language_btn.clicked.connect(self._on_language_settings)
         layout.addWidget(self.update_btn)
         layout.addWidget(self.uninstall_btn)
+        layout.addWidget(self.language_btn)
         layout.addStretch()
+
+        # 插件有效语言变化时刷新语言行；接收方为 self（QObject），
+        # 对话框销毁时 Qt 自动断开连接，无需手动 disconnect
+        get_language_manager().plugin_language_changed.connect(
+            self._on_plugin_language_changed)
         return panel
 
     def _build_groups_tab(self) -> QWidget:
@@ -826,6 +838,7 @@ class PluginManagementDialog(QDialog):
             self.detail_name.setText(tr(_I18N_GROUP, "detail.no_selection"))
             self.detail_version.setText("")
             self.detail_source.setText("")
+            self._update_language_row(None)
             return
         uuid = item.data(Qt.ItemDataRole.UserRole)
         record = self.pm.registry.get(uuid) or {}
@@ -836,6 +849,57 @@ class PluginManagementDialog(QDialog):
             _I18N_GROUP, "detail.version", version=record.get('version', unknown)))
         source = record.get("source_url") or record.get("source_type", unknown)
         self.detail_source.setText(tr(_I18N_GROUP, "detail.source", source=source))
+        self._update_language_row(uuid)
+
+    # ==================== 每插件语言自定义 ====================
+
+    def _update_language_row(self, uuid: Optional[str]) -> None:
+        """刷新详情面板的语言行与「语言…」按钮状态
+
+        Args:
+            uuid: 当前选中插件的 UUID；None 表示未选中插件
+        """
+        lm = get_language_manager()
+        if uuid is None:
+            self.detail_language.setText("")
+            self.language_btn.setEnabled(False)
+            self.language_btn.setToolTip("")
+            return
+        has_catalog = lm.plugin_has_catalog(uuid)
+        self.language_btn.setEnabled(has_catalog)
+        self.language_btn.setToolTip(
+            "" if has_catalog else tr(_I18N_GROUP, "language.unavailable_tooltip"))
+        self.detail_language.setText(tr(
+            _I18N_GROUP, "detail.language", language=self._language_status_text(uuid)))
+
+    def _language_status_text(self, uuid: str) -> str:
+        """计算语言行的状态文本：未提供多语言 / 覆盖语言名 / 跟随框架（框架语言名）"""
+        lm = get_language_manager()
+        if not lm.plugin_has_catalog(uuid):
+            return tr(_I18N_GROUP, "language.none")
+        override = lm.plugin_language_override(uuid)
+        if override is not None:
+            # 插件语言代码框架未必有对应显示名，取不到时回退为代码本身（可接受）
+            return lm.language_display_name(override)
+        framework_name = lm.language_display_name(lm.current_language())
+        return tr(_I18N_GROUP, "language.follow_framework", language=framework_name)
+
+    def _on_language_settings(self) -> None:
+        """打开选中插件的语言设置对话框，确认后刷新语言行"""
+        uuid = self._selected_plugin_id()
+        if uuid is None:
+            Message.info(self, tr(_I18N_GROUP, "message.select_plugin_first"))
+            return
+        plugin = self.pm.get_plugin_by_id(uuid)
+        name = plugin.plugin_name if plugin else uuid
+        dialog = PluginLanguageDialog(uuid, name, self)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            self._update_language_row(uuid)
+
+    def _on_plugin_language_changed(self, plugin_id: str, _language: str) -> None:
+        """插件有效语言变化：若正显示该插件则刷新语言行"""
+        if plugin_id == self._selected_plugin_id():
+            self._update_language_row(plugin_id)
 
     # ==================== 安装 / 升级 / 降级 ====================
 
