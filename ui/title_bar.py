@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, QPoint
 from PySide6.QtGui import QMouseEvent, QPainter, QColor, QPen, QAction, QCursor
 
+from core.i18n import tr, get_language_manager
 from InstructionX_UIKit import T
 
 
@@ -104,6 +105,19 @@ class CustomTitleBar(QWidget):
         self.setMouseTracking(True)
         self._setup_ui()
 
+        # 首次填充文案，并跟随语言切换重设（Qt 对象销毁时自动断开连接）
+        self._retranslate_ui()
+        get_language_manager().language_changed.connect(self._retranslate_ui)
+
+    def _retranslate_ui(self) -> None:
+        """集中重设标题栏用户可见文案（窗口控制按钮 tooltip 与无障碍名称）"""
+        self._btn_min.setToolTip(tr("title_bar", "tooltip.minimize"))
+        self._btn_min.setAccessibleName(tr("title_bar", "accessibility.minimize"))
+        self._btn_max.setToolTip(tr("title_bar", "tooltip.maximize_restore"))
+        self._btn_max.setAccessibleName(tr("title_bar", "accessibility.maximize"))
+        self._btn_close.setToolTip(tr("common", "close"))
+        self._btn_close.setAccessibleName(tr("title_bar", "accessibility.close"))
+
     def _setup_ui(self):
         """构建 UI 结构"""
         layout = QHBoxLayout(self)
@@ -169,8 +183,6 @@ class CustomTitleBar(QWidget):
         self._btn_min = IconButton('minimize', self)
         self._btn_min.setFixedSize(w, h)
         self._btn_min.setObjectName("btnMinimize")
-        self._btn_min.setToolTip("最小化")
-        self._btn_min.setAccessibleName("最小化")
         self._btn_min.clicked.connect(self._parent_window.showMinimized)
         controls_layout.addWidget(self._btn_min)
 
@@ -178,8 +190,6 @@ class CustomTitleBar(QWidget):
         self._btn_max = IconButton('maximize', self)
         self._btn_max.setFixedSize(w, h)
         self._btn_max.setObjectName("btnMaximize")
-        self._btn_max.setToolTip("最大化/还原")
-        self._btn_max.setAccessibleName("最大化")
         self._btn_max.clicked.connect(self._toggle_maximize)
         controls_layout.addWidget(self._btn_max)
 
@@ -187,8 +197,6 @@ class CustomTitleBar(QWidget):
         self._btn_close = IconButton('close', self)
         self._btn_close.setFixedSize(w, h)
         self._btn_close.setObjectName("btnClose")
-        self._btn_close.setToolTip("关闭")
-        self._btn_close.setAccessibleName("关闭")
         self._btn_close.clicked.connect(self._parent_window.close)
         controls_layout.addWidget(self._btn_close)
 
@@ -313,30 +321,30 @@ class CustomTitleBar(QWidget):
         
         is_max = self._parent_window.isMaximized()
         
-        restore_action = QAction("还原(R)", self)
+        restore_action = QAction(tr("title_bar", "context_menu.restore"), self)
         restore_action.setEnabled(is_max)
         restore_action.triggered.connect(self._parent_window.showNormal)
         menu.addAction(restore_action)
-        
-        move_action = QAction("移动(M)", self)
+
+        move_action = QAction(tr("title_bar", "context_menu.move"), self)
         move_action.setEnabled(not is_max)
         # 移动功能：进入拖动模式，随后移动鼠标即可移动窗口，单击结束
         move_action.triggered.connect(self._start_system_move)
         menu.addAction(move_action)
         # 注：原“大小(S)”菜单项从未实现（窗口边缘拖拽已提供 resize 能力），已移除
         menu.addSeparator()
-        
-        minimize_action = QAction("最小化(N)", self)
+
+        minimize_action = QAction(tr("title_bar", "context_menu.minimize"), self)
         minimize_action.triggered.connect(self._parent_window.showMinimized)
         menu.addAction(minimize_action)
-        
-        maximize_action = QAction("最大化(X)", self)
+
+        maximize_action = QAction(tr("title_bar", "context_menu.maximize"), self)
         maximize_action.setEnabled(not is_max)
         maximize_action.triggered.connect(self._parent_window.showMaximized)
         menu.addAction(maximize_action)
         menu.addSeparator()
-        
-        close_action = QAction("关闭(C)", self)
+
+        close_action = QAction(tr("title_bar", "context_menu.close"), self)
         close_action.triggered.connect(self._parent_window.close)
         menu.addAction(close_action)
         

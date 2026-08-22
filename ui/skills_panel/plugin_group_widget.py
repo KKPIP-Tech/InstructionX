@@ -15,6 +15,7 @@ from PySide6.QtCore import Signal, Qt, QSize
 from PySide6.QtGui import QIcon, QPixmap, QPainter, QFont
 
 from core.plugin.plugin_groups import PluginGroup
+from core.i18n import tr, get_language_manager
 from utils.logging_tools import LoggerManager, get_name
 from InstructionX_UIKit import T
 from .skill_button import SkillButton
@@ -81,6 +82,15 @@ class PluginGroupWidget(QWidget):
         self._logger = LoggerManager()
         self._init_ui(plugins, button_factory)
 
+        # 语言切换时重设分组按钮 tooltip（Qt 对象销毁时自动断开连接）
+        get_language_manager().language_changed.connect(self._retranslate_ui)
+
+    def _retranslate_ui(self) -> None:
+        """语言切换时重设分组按钮描述与 tooltip（分组名本身为用户数据，不翻译）"""
+        description = tr("skills_panel", "group.tooltip", name=self.group.name)
+        self.folder_btn.skill_description = description
+        self.folder_btn.setToolTip(f"{self.group.name}\n{description}")
+
     def _init_ui(self, plugins: list, button_factory: Callable) -> None:
         """构建界面：分组按钮 + 展开容器"""
         layout = QHBoxLayout(self)
@@ -92,7 +102,7 @@ class PluginGroupWidget(QWidget):
         self.folder_btn = SkillButton(
             _render_group_icon(self.group.icon_key),
             self.group.name,
-            f"分组：{self.group.name}（点击展开/收起）",
+            tr("skills_panel", "group.tooltip", name=self.group.name),
             self,
         )
         self.folder_btn.setObjectName("skillGroupButton")
