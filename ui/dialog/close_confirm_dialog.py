@@ -22,18 +22,11 @@ from PySide6.QtWidgets import (
 
 # ===================================================================
 # 本地
+from core.i18n import tr
 from InstructionX_UIKit import set_property
 
-# ===================================================================
-# 文案常量
-DIALOG_TITLE = "关闭确认"
-MESSAGE_TEXT = (
-    "您希望退出程序，还是最小化到系统托盘继续运行？\n"
-    "托盘运行期间插件与后台任务将继续工作。"
-)
-BUTTON_EXIT_TEXT = "退出程序"
-BUTTON_MINIMIZE_TEXT = "最小化到托盘"
-BUTTON_CANCEL_TEXT = "取消"
+# 对话框文案均经 i18n 子系统取词（分组 dialog_close_confirm），
+# 在使用处调用 tr()，不做模块级固化，保证语言切换后新建实例即为新语言
 
 # ===================================================================
 # 布局常量
@@ -66,7 +59,7 @@ class CloseConfirmDialog(QDialog):
         """
         super().__init__(parent)
         self._choice = CloseChoice.CANCEL
-        self.setWindowTitle(DIALOG_TITLE)
+        self.setWindowTitle(tr("dialog_close_confirm", "title"))
         self.setWindowModality(Qt.WindowModality.WindowModal)
         self.setMinimumWidth(DIALOG_MIN_WIDTH)
         self._init_ui()
@@ -79,7 +72,7 @@ class CloseConfirmDialog(QDialog):
         )
         layout.setSpacing(CONTENT_SPACING)
 
-        message_label = QLabel(MESSAGE_TEXT)
+        message_label = QLabel(tr("dialog_close_confirm", "message"))
         message_label.setWordWrap(True)
         layout.addWidget(message_label)
 
@@ -87,17 +80,17 @@ class CloseConfirmDialog(QDialog):
         button_layout.setSpacing(BUTTON_SPACING)
         button_layout.addStretch()
 
-        exit_button = QPushButton(BUTTON_EXIT_TEXT)
+        exit_button = QPushButton(tr("dialog_close_confirm", "button.exit"))
         set_property(exit_button, "variant", "primary")
         exit_button.setDefault(True)
         exit_button.clicked.connect(self._on_exit_clicked)
         button_layout.addWidget(exit_button)
 
-        minimize_button = QPushButton(BUTTON_MINIMIZE_TEXT)
+        minimize_button = QPushButton(tr("dialog_close_confirm", "button.minimize_to_tray"))
         minimize_button.clicked.connect(self._on_minimize_clicked)
         button_layout.addWidget(minimize_button)
 
-        cancel_button = QPushButton(BUTTON_CANCEL_TEXT)
+        cancel_button = QPushButton(tr("common", "cancel"))
         cancel_button.clicked.connect(self.reject)
         button_layout.addWidget(cancel_button)
 
