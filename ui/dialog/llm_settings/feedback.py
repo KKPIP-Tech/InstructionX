@@ -12,6 +12,8 @@ from PySide6.QtWidgets import QDialog
 
 from InstructionX_UIKit.components import Dialog, Message
 
+from core.i18n import tr
+
 
 def confirm(parent, title: str, text: str) -> bool:
     """阻塞式确认对话框，用户点「确定」返回 True"""
@@ -22,7 +24,10 @@ def confirm(parent, title: str, text: str) -> bool:
 
 def notice(parent, title: str, text: str) -> None:
     """阻塞式结果告知对话框（仅「知道了」按钮）"""
-    dialog = Dialog(parent, title=title, ok_text="知道了", show_cancel=False)
+    dialog = Dialog(
+        parent, title=title,
+        ok_text=tr("dialog_llm_settings", "feedback.notice_ok"),
+        show_cancel=False)
     dialog.set_text(text)
     dialog.exec()
 

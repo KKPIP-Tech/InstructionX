@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
     QSizePolicy, QToolButton, QVBoxLayout, QWidget,
 )
 
+from core.i18n import tr
 from core.llm.model_schema import (
     CAPABILITY_EMBEDDING, CAPABILITY_RERANK, CAPABILITY_VISION,
 )
@@ -37,7 +38,7 @@ from .constants import (
     LIST_ITEM_MARGIN_H, LIST_ITEM_NAME_ELIDE_WIDTH, LIST_ITEM_SPACING,
     MODEL_ROW_HEIGHT, MODEL_ROW_MARGIN_LEFT, MODEL_ROW_MARGIN_RIGHT,
     MODEL_ROW_SPACING, MODEL_SWITCH_HEIGHT, MODEL_SWITCH_WIDTH,
-    MODEL_TYPE_CHAT, MODEL_TYPE_EMBEDDING, MODEL_TYPE_LABELS,
+    MODEL_TYPE_CHAT, MODEL_TYPE_EMBEDDING, MODEL_TYPE_I18N_KEYS,
     MODEL_TYPE_RERANK, MODEL_TYPE_VISION, ROW_DELETE_BUTTON_SIZE,
     SWITCH_ANIM_DURATION_MS, SWITCH_HEIGHT, SWITCH_WIDTH,
 )
@@ -190,6 +191,21 @@ def make_field_label(text: str) -> QLabel:
     font.setPixelSize(12)
     label.setFont(font)
     return label
+
+
+def model_type_label(type_key: str) -> str:
+    """取模型主类型的展示文案（按当前语言实时取词，不做模块级固化）
+
+    Args:
+        type_key: 主类型键（chat / vision / embedding / rerank）
+
+    Returns:
+        str: 类型展示文案；未登记的类型键回退原始键名
+    """
+    i18n_key = MODEL_TYPE_I18N_KEYS.get(type_key)
+    if i18n_key is None:
+        return type_key
+    return tr("dialog_llm_settings", i18n_key)
 
 
 # ---------------------------------------------------------------------------
@@ -422,7 +438,8 @@ class ProviderItemWidget(QWidget):
                                  QSizePolicy.Policy.Preferred)
         layout.addWidget(self._name, 1)
         self.switch = SwitchButton(enabled)
-        self.switch.setToolTip("启用 / 停用该提供商")
+        self.switch.setToolTip(
+            tr("dialog_llm_settings", "widget.provider_switch.tooltip"))
         self.switch.toggled.connect(
             lambda on: self.toggled.emit(self.provider_id, on))
         layout.addWidget(self.switch, 0, Qt.AlignmentFlag.AlignVCenter)
@@ -586,13 +603,14 @@ class ModelRow(QWidget):
         self._badge_color = self._resolve_badge_color(
             _theme_module.current_theme())
         self._badge = make_badge(
-            MODEL_TYPE_LABELS.get(self._type_key, self._type_key),
+            model_type_label(self._type_key),
             self._badge_color)
         layout.addWidget(self._badge)
         self.switch = SwitchButton(
             bool(self.entry.get("enabled", True)),
             size=QSize(MODEL_SWITCH_WIDTH, MODEL_SWITCH_HEIGHT))
-        self.switch.setToolTip("启用 / 停用该模型")
+        self.switch.setToolTip(
+            tr("dialog_llm_settings", "widget.model_switch.tooltip"))
         self.switch.toggled.connect(self._on_switch_toggled)
         layout.addWidget(self.switch)
         layout.addWidget(self._build_delete_button())
@@ -603,7 +621,8 @@ class ModelRow(QWidget):
         delete_btn.setObjectName("RowDeleteBtn")
         delete_btn.setText("✕")
         delete_btn.setFixedSize(ROW_DELETE_BUTTON_SIZE, ROW_DELETE_BUTTON_SIZE)
-        delete_btn.setToolTip("删除该模型")
+        delete_btn.setToolTip(
+            tr("dialog_llm_settings", "widget.model_row.delete_tooltip"))
         delete_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         delete_btn.clicked.connect(lambda: self.sig_delete.emit(self.entry))
         return delete_btn
@@ -710,7 +729,7 @@ class _BaseFormDialog(QDialog):
         """
         row = QHBoxLayout()
         row.addStretch(1)
-        cancel = QPushButton("取消")
+        cancel = QPushButton(tr("common", "cancel"))
         cancel.setFixedHeight(FORM_BUTTON_HEIGHT)
         cancel.clicked.connect(self.reject)
         self._ok = QPushButton(ok_text)

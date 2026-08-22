@@ -22,16 +22,21 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from core.i18n import tr
+
 from .constants import (
     EMPTY_HINT_MARGIN_BOTTOM, FIELD_BLOCK_GAP, FIELD_GAP,
     GROUP_CAPTION_MARGIN_BOTTOM, GROUP_CAPTION_MARGIN_LEFT,
     GROUP_CAPTION_MARGIN_TOP, MANAGE_BAR_MARGIN_H, MANAGE_BAR_MARGIN_V,
-    MANAGE_BAR_SPACING, MANAGE_DELETE_BUTTON_HEIGHT, MODEL_TYPE_GROUPS,
+    MANAGE_BAR_SPACING, MANAGE_DELETE_BUTTON_HEIGHT, MODEL_TYPE_KEYS,
     MODELS_HEADER_BUTTON_HEIGHT, MODELS_REFRESH_BUTTON_WIDTH,
 )
 from .theme import Theme
 from .feedback import confirm as _confirm_dialog
-from .widgets import ModelRow, _model_primary_type, make_hairline, make_section_label
+from .widgets import (
+    ModelRow, _model_primary_type, make_hairline, make_section_label,
+    model_type_label,
+)
 
 
 class ModelSection(QWidget):
@@ -88,7 +93,8 @@ class ModelSection(QWidget):
         header = QHBoxLayout()
         header.setContentsMargins(0, 0, 0, 0)
         header.setSpacing(FIELD_GAP)
-        header.addWidget(make_section_label("模型"))
+        self._section_label = make_section_label("")
+        header.addWidget(self._section_label)
         self._count_label = QLabel("")
         self._count_label.setObjectName("CountLabel")
         header.addWidget(self._count_label, 0, Qt.AlignmentFlag.AlignBottom)
@@ -108,14 +114,13 @@ class ModelSection(QWidget):
         self._refresh_btn = QPushButton("↻", self)
         self._refresh_btn.setFixedSize(
             MODELS_REFRESH_BUTTON_WIDTH, MODELS_HEADER_BUTTON_HEIGHT)
-        self._refresh_btn.setToolTip("从 API 获取最新模型列表")
         self._refresh_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._refresh_btn.clicked.connect(self._on_refresh_clicked)
         return self._refresh_btn
 
     def _build_add_button(self) -> QPushButton:
         """构建「＋ 添加」按钮（仅外发信号，编辑对话框由主壳接入）"""
-        self._add_model_btn = QPushButton("＋ 添加", self)
+        self._add_model_btn = QPushButton("", self)
         self._add_model_btn.setFixedHeight(MODELS_HEADER_BUTTON_HEIGHT)
         self._add_model_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._add_model_btn.clicked.connect(self.sig_add_requested.emit)
@@ -123,25 +128,23 @@ class ModelSection(QWidget):
 
     def _build_health_button(self) -> QPushButton:
         """构建「⚡ 检查」幽灵按钮（打开健康检查对话框，仅外发信号）"""
-        self._health_btn = QPushButton("⚡ 检查", self)
+        self._health_btn = QPushButton("", self)
         self._health_btn.setFixedHeight(MODELS_HEADER_BUTTON_HEIGHT)
-        self._health_btn.setToolTip("逐个探测模型可用性")
         self._health_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._health_btn.clicked.connect(self.sig_health_check_requested.emit)
         return self._health_btn
 
     def _build_sync_button(self) -> QPushButton:
         """构建「⇅ 同步」幽灵按钮（打开模型同步对话框，仅外发信号）"""
-        self._sync_btn = QPushButton("⇅ 同步", self)
+        self._sync_btn = QPushButton("", self)
         self._sync_btn.setFixedHeight(MODELS_HEADER_BUTTON_HEIGHT)
-        self._sync_btn.setToolTip("与远端模型列表对比管理")
         self._sync_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._sync_btn.clicked.connect(self.sig_sync_requested.emit)
         return self._sync_btn
 
     def _build_manage_button(self) -> QPushButton:
         """构建「管理」切换按钮（进入/退出批量管理模式）"""
-        self._manage_btn = QPushButton("管理", self)
+        self._manage_btn = QPushButton("", self)
         self._manage_btn.setCheckable(True)
         self._manage_btn.setFixedHeight(MODELS_HEADER_BUTTON_HEIGHT)
         self._manage_btn.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -158,19 +161,51 @@ class ModelSection(QWidget):
             MANAGE_BAR_MARGIN_H, MANAGE_BAR_MARGIN_V,
             MANAGE_BAR_MARGIN_H, MANAGE_BAR_MARGIN_V)
         manage_row.setSpacing(MANAGE_BAR_SPACING)
-        self._select_all = QCheckBox("全选", self._manage_bar)
+        self._select_all = QCheckBox("", self._manage_bar)
         self._select_all.setTristate(True)
         self._select_all.clicked.connect(self._on_select_all_clicked)
         manage_row.addWidget(self._select_all)
         manage_row.addStretch(1)
-        delete_selected = QPushButton("删除选中", self._manage_bar)
-        delete_selected.setProperty("danger", True)
-        delete_selected.setFixedHeight(MANAGE_DELETE_BUTTON_HEIGHT)
-        delete_selected.setCursor(Qt.CursorShape.PointingHandCursor)
-        delete_selected.clicked.connect(self._on_delete_selected)
-        manage_row.addWidget(delete_selected)
+        self._delete_selected_btn = QPushButton("", self._manage_bar)
+        self._delete_selected_btn.setProperty("danger", True)
+        self._delete_selected_btn.setFixedHeight(MANAGE_DELETE_BUTTON_HEIGHT)
+        self._delete_selected_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._delete_selected_btn.clicked.connect(self._on_delete_selected)
+        manage_row.addWidget(self._delete_selected_btn)
         self._manage_bar.setVisible(False)
         return self._manage_bar
+
+    # ==================== 文案 ====================
+
+    def _retranslate_ui(self) -> None:
+        """按当前语言重设全部文案并重建分组列表（语言切换时调用）
+
+        分组标题 / 空态提示 / 行内徽章与 tooltip 随 rebuild 重建刷新；
+        计数与刷新状态为瞬态文案，随下一次 rebuild / 操作重设。
+        """
+        self._section_label.setText(
+            tr("dialog_llm_settings", "model.section.title"))
+        self._refresh_btn.setToolTip(
+            tr("dialog_llm_settings", "model.section.refresh_tooltip"))
+        self._add_model_btn.setText(
+            tr("dialog_llm_settings", "model.section.add"))
+        self._health_btn.setText(
+            tr("dialog_llm_settings", "model.section.health"))
+        self._health_btn.setToolTip(
+            tr("dialog_llm_settings", "model.section.health_tooltip"))
+        self._sync_btn.setText(
+            tr("dialog_llm_settings", "model.section.sync"))
+        self._sync_btn.setToolTip(
+            tr("dialog_llm_settings", "model.section.sync_tooltip"))
+        self._manage_btn.setText(tr(
+            "dialog_llm_settings",
+            "model.section.manage_done" if self._manage_mode
+            else "model.section.manage"))
+        self._select_all.setText(
+            tr("dialog_llm_settings", "model.section.select_all"))
+        self._delete_selected_btn.setText(
+            tr("dialog_llm_settings", "model.section.delete_selected"))
+        self.rebuild(self._entries)
 
     # ==================== 渲染 ====================
 
@@ -189,7 +224,9 @@ class ModelSection(QWidget):
                 item.widget().deleteLater()
         self._rows.clear()
         self._entries = entries
-        self._count_label.setText(f"（{len(entries)}）" if entries else "")
+        self._count_label.setText(
+            tr("dialog_llm_settings", "model.section.count",
+               count=len(entries)) if entries else "")
         if not entries:
             self._add_empty_hint()
         else:
@@ -198,7 +235,7 @@ class ModelSection(QWidget):
 
     def _add_empty_hint(self) -> None:
         """渲染模型空态提示"""
-        empty = QLabel("暂无模型，点击右上角「＋ 添加」")
+        empty = QLabel(tr("dialog_llm_settings", "model.section.empty_hint"))
         empty.setObjectName("EmptyHint")
         empty.setContentsMargins(
             GROUP_CAPTION_MARGIN_LEFT, GROUP_CAPTION_MARGIN_TOP, 0,
@@ -207,12 +244,14 @@ class ModelSection(QWidget):
 
     def _add_model_groups(self) -> None:
         """按主类型分组渲染 ModelRow（对话/视觉/嵌入/重排序，行间 hairline）"""
-        for type_key, type_label in MODEL_TYPE_GROUPS:
+        for type_key in MODEL_TYPE_KEYS:
             group = [e for e in self._entries
                      if _model_primary_type(e) == type_key]
             if not group:
                 continue
-            self._add_group_caption(f"{type_label} · {len(group)}")
+            self._add_group_caption(tr(
+                "dialog_llm_settings", "model.group_caption",
+                label=model_type_label(type_key), count=len(group)))
             for index, entry in enumerate(group):
                 if index > 0:
                     self._groups_layout.addWidget(make_hairline())
@@ -269,13 +308,15 @@ class ModelSection(QWidget):
         self._manage_btn.setChecked(False)
         self._manage_btn.blockSignals(False)
         self._manage_mode = False
-        self._manage_btn.setText("管理")
+        self._manage_btn.setText(tr("dialog_llm_settings", "model.section.manage"))
         self._manage_bar.setVisible(False)
 
     def _on_manage_toggled(self, on: bool) -> None:
         """管理模式切换：显示勾选框与工具条"""
         self._manage_mode = on
-        self._manage_btn.setText("完成" if on else "管理")
+        self._manage_btn.setText(tr(
+            "dialog_llm_settings",
+            "model.section.manage_done" if on else "model.section.manage"))
         self._manage_bar.setVisible(on)
         for row in self._rows:
             row.set_manage_mode(on)
@@ -308,7 +349,7 @@ class ModelSection(QWidget):
     # ==================== 删除（确认后外发） ====================
 
     def _confirm_delete(self, message: str) -> bool:
-        """弹出中文删除确认框
+        """弹出删除确认框
 
         Args:
             message: 确认文案
@@ -316,24 +357,28 @@ class ModelSection(QWidget):
         Returns:
             bool: 用户是否确认删除
         """
-        return _confirm_dialog(self, "删除模型", message)
+        return _confirm_dialog(
+            self, tr("dialog_llm_settings", "model.delete.title"), message)
 
     def _on_delete_row(self, entry: Dict[str, Any]) -> None:
-        """单条删除：中文确认后外发模型 id 列表"""
+        """单条删除：确认后外发模型 id 列表"""
         model_id = str(entry.get("id", ""))
         if not model_id:
             return
-        if self._confirm_delete(f"确定删除模型「{model_id}」吗？"):
+        if self._confirm_delete(tr(
+                "dialog_llm_settings", "model.delete.message", id=model_id)):
             self.sig_delete_confirmed.emit([model_id])
 
     def _on_delete_selected(self) -> None:
-        """删除选中：中文确认后外发勾选模型 id 列表"""
+        """删除选中：确认后外发勾选模型 id 列表"""
         doomed = [str(row.entry.get("id", "")) for row in self._rows
                   if row.is_checked()]
         doomed = [model_id for model_id in doomed if model_id]
         if not doomed:
             return
-        if self._confirm_delete(f"确定删除选中的 {len(doomed)} 个模型吗？"):
+        if self._confirm_delete(tr(
+                "dialog_llm_settings", "model.delete.message_multi",
+                count=len(doomed))):
             self.sig_delete_confirmed.emit(doomed)
 
     # ==================== 主题 ====================

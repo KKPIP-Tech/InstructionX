@@ -151,18 +151,21 @@ MODEL_TYPE_VISION = "vision"
 MODEL_TYPE_EMBEDDING = "embedding"
 MODEL_TYPE_RERANK = "rerank"
 
-# 模型类型分组（分组顺序即展示顺序）
-MODEL_TYPE_GROUPS: Tuple[Tuple[str, str], ...] = (
-    (MODEL_TYPE_CHAT, "对话"),
-    (MODEL_TYPE_VISION, "视觉"),
-    (MODEL_TYPE_EMBEDDING, "嵌入"),
-    (MODEL_TYPE_RERANK, "重排序"),
+# 模型类型键（分组顺序即展示顺序）；展示文案不在此固化，
+# 经 widgets.model_type_label() 按当前语言取词（dialog_llm_settings 分组）
+MODEL_TYPE_KEYS: Tuple[str, ...] = (
+    MODEL_TYPE_CHAT,
+    MODEL_TYPE_VISION,
+    MODEL_TYPE_EMBEDDING,
+    MODEL_TYPE_RERANK,
 )
-# 类型键 -> 中文标签
-MODEL_TYPE_LABELS: Dict[str, str] = dict(MODEL_TYPE_GROUPS)
-
-# 自定义实例（无关联预设）的类型徽章文案
-CUSTOM_PROVIDER_TYPE_LABEL = "自定义"
+# 类型键 -> i18n 键（dialog_llm_settings 分组内）
+MODEL_TYPE_I18N_KEYS: Dict[str, str] = {
+    MODEL_TYPE_CHAT: "model.type.chat",
+    MODEL_TYPE_VISION: "model.type.vision",
+    MODEL_TYPE_EMBEDDING: "model.type.embedding",
+    MODEL_TYPE_RERANK: "model.type.rerank",
+}
 
 # ==================== 时间与超时 ====================
 
