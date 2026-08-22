@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtGui import QColor, QFont
 
+from core.i18n import tr
 from core.plugin.manager import PluginManager
 from core.plugin.github_plugin_installer import (
     GitHubPluginInstaller, InstallResult, ReleaseInfo,
@@ -37,6 +38,9 @@ from InstructionX_UIKit.components import (
 # 模块级日志器（LoggerManager 为单例）
 _logger = LoggerManager()
 
+# 本对话框的 i18n 分组名（键定义见 ui/text/zh.xml 的同名分组）
+_I18N_GROUP = "dialog_plugin_management"
+
 
 def _confirm(parent, title: str, text: str) -> bool:
     """阻塞式确认对话框（UIKit Dialog，替代 QMessageBox.question）"""
@@ -47,7 +51,8 @@ def _confirm(parent, title: str, text: str) -> bool:
 
 def _notice(parent, title: str, text: str) -> None:
     """阻塞式结果告知对话框（UIKit Dialog，替代 QMessageBox.information/warning）"""
-    dialog = Dialog(parent, title=title, ok_text="知道了", show_cancel=False)
+    dialog = Dialog(parent, title=title, ok_text=tr(_I18N_GROUP, "button.acknowledge"),
+                    show_cancel=False)
     dialog.set_text(text)
     dialog.exec()
 
@@ -115,6 +120,29 @@ def _version_relation(current: str, candidate: str) -> str:
     return "重装"
 
 
+# 版本关系内部标识 → i18n 键：_version_relation 的返回值兼作逻辑比较标识
+# （如 relation == "降级"），仅在展示边界经本映射翻译，避免影响逻辑判断
+_VERSION_RELATION_TEXT_KEYS = {
+    "升级": "version_relation.upgrade",
+    "降级": "version_relation.downgrade",
+    "重装": "version_relation.reinstall",
+    "未知": "label.unknown",
+}
+
+
+def _version_relation_text(relation: str) -> str:
+    """版本关系内部标识 → 当前语言显示文案
+
+    Args:
+        relation: _version_relation 返回的内部标识
+
+    Returns:
+        当前语言下的显示文案；未识别的标识回退「未知」
+    """
+    key = _VERSION_RELATION_TEXT_KEYS.get(relation, "label.unknown")
+    return tr(_I18N_GROUP, key)
+
+
 class _Worker(QThread):
     """通用后台任务线程（网络下载/安装等耗时操作不阻塞 UI）"""
 
@@ -149,20 +177,27 @@ class VersionSelectDialog(QDialog):
         super().__init__(parent)
         self.selected: Optional[ReleaseInfo] = None
         self._releases = releases
-        self.setWindowTitle(f"选择版本 - {plugin_name}")
+        self.setWindowTitle(tr(_I18N_GROUP, "version_select.title", name=plugin_name))
         self.setMinimumSize(460, 360)
         self._init_ui(plugin_name, current_version)
 
     def _init_ui(self, plugin_name: str, current_version: str) -> None:
         """构建界面"""
         layout = QVBoxLayout(self)
-        layout.addWidget(QLabel(f"当前版本: {current_version or '未知'}"))
+        unknown = tr(_I18N_GROUP, "label.unknown")
+        layout.addWidget(QLabel(tr(
+            _I18N_GROUP, "version_select.current_version",
+            version=current_version or unknown)))
 
         self.list_widget = QListWidget()
         for rel in self._releases:
             relation = _version_relation(current_version, rel.version)
-            version_text = rel.version or "未知版本"
-            item = QListWidgetItem(f"{rel.tag}  —  {version_text}（{relation}）")
+            version_text = rel.version or tr(
+                _I18N_GROUP, "version_select.unknown_version")
+            item = QListWidgetItem(tr(
+                _I18N_GROUP, "version_select.item_format",
+                tag=rel.tag, version=version_text,
+                relation=_version_relation_text(relation)))
             if relation == "降级":
                 item.setForeground(QColor(T("color.warning")))
             self.list_widget.addItem(item)
@@ -172,9 +207,10 @@ class VersionSelectDialog(QDialog):
 
         btn_layout = QHBoxLayout()
         btn_layout.addStretch()
-        cancel_btn = Button("取消", variant="default")
+        cancel_btn = Button(tr("common", "cancel"), variant="default")
         cancel_btn.clicked.connect(self.reject)
-        ok_btn = Button("安装所选版本", variant="primary")
+        ok_btn = Button(tr(_I18N_GROUP, "version_select.button.install_selected"),
+                        variant="primary")
         ok_btn.setDefault(True)
         ok_btn.clicked.connect(self._on_accept)
         btn_layout.addWidget(cancel_btn)
@@ -185,7 +221,8 @@ class VersionSelectDialog(QDialog):
         """确认选择"""
         row = self.list_widget.currentRow()
         if row < 0:
-            Message.warning(self, "请选择要安装的版本")
+            Message.warning(
+                self, tr(_I18N_GROUP, "version_select.message.no_selection"))
             return
         self.selected = self._releases[row]
         self.accept()
@@ -226,7 +263,8 @@ class GroupEditorWidget(QWidget):
         self.panel_list = QListWidget()
         self.panel_list.currentRowChanged.connect(self._on_panel_selection)
         layout.addLayout(self._build_column(
-            "面板顺序（分组 / 插件）", self.panel_list, self._panel_buttons()
+            tr(_I18N_GROUP, "group_editor.panel_column_title"),
+            self.panel_list, self._panel_buttons()
         ))
 
         layout.addWidget(self._build_shuttle_box(), stretch=1)
@@ -249,7 +287,7 @@ class GroupEditorWidget(QWidget):
 
         self.available_list = QListWidget()
         available_column = QVBoxLayout()
-        available_label = QLabel("未分组插件")
+        available_label = QLabel(tr(_I18N_GROUP, "group_editor.available_label"))
         available_column.addWidget(available_label)
         available_column.addWidget(self.available_list, stretch=1)
         shuttle_layout.addLayout(available_column, stretch=1)
@@ -258,8 +296,10 @@ class GroupEditorWidget(QWidget):
         btn_column.addStretch()
         for text, handler in (("→", self._on_assign_member),
                               ("←", self._on_remove_member),
-                              ("上移", lambda: self._move_member(-1)),
-                              ("下移", lambda: self._move_member(1))):
+                              (tr(_I18N_GROUP, "button.move_up"),
+                               lambda: self._move_member(-1)),
+                              (tr(_I18N_GROUP, "button.move_down"),
+                               lambda: self._move_member(1))):
             btn = Button(text, variant="default", size="sm")
             btn.setFixedWidth(56)
             btn.clicked.connect(handler)
@@ -269,7 +309,7 @@ class GroupEditorWidget(QWidget):
 
         self.member_list = QListWidget()
         member_column = QVBoxLayout()
-        member_label = QLabel("组内插件")
+        member_label = QLabel(tr(_I18N_GROUP, "group_editor.member_label"))
         member_column.addWidget(member_label)
         member_column.addWidget(self.member_list, stretch=1)
         shuttle_layout.addLayout(member_column, stretch=1)
@@ -293,10 +333,14 @@ class GroupEditorWidget(QWidget):
     def _panel_buttons(self) -> List[Button]:
         """面板顺序列表的操作按钮"""
         specs = [
-            ("新建分组", self._on_new_group), ("重命名", self._on_rename_group),
-            ("设置图标", self._on_group_icon), ("删除分组", self._on_delete_group),
-            ("上移", lambda: self._move_panel_item(-1)),
-            ("下移", lambda: self._move_panel_item(1)),
+            (tr(_I18N_GROUP, "button.new_group"), self._on_new_group),
+            (tr(_I18N_GROUP, "button.rename"), self._on_rename_group),
+            (tr(_I18N_GROUP, "button.set_icon"), self._on_group_icon),
+            (tr(_I18N_GROUP, "button.delete_group"), self._on_delete_group),
+            (tr(_I18N_GROUP, "button.move_up"),
+             lambda: self._move_panel_item(-1)),
+            (tr(_I18N_GROUP, "button.move_down"),
+             lambda: self._move_panel_item(1)),
         ]
         return [self._make_button(text, handler) for text, handler in specs]
 
@@ -377,9 +421,11 @@ class GroupEditorWidget(QWidget):
             group = self._find_group(item_id)
             if group:
                 return f"{group.icon_key} {group.name}"
-            return f"(已失效分组) {item_id[:8]}"
+            return tr(_I18N_GROUP, "group_editor.invalid_group", id=item_id[:8])
         plugin = self.pm.get_plugin_by_id(item_id)
-        return plugin.plugin_name if plugin else f"(已移除) {item_id[:8]}"
+        if plugin:
+            return plugin.plugin_name
+        return tr(_I18N_GROUP, "group_editor.removed_plugin", id=item_id[:8])
 
     def _refresh_members(self) -> None:
         """刷新当前选中分组的组内插件列表"""
@@ -389,7 +435,8 @@ class GroupEditorWidget(QWidget):
             return
         for uuid in group.plugins:
             plugin = self.pm.get_plugin_by_id(uuid)
-            name = plugin.plugin_name if plugin else f"(已移除) {uuid[:8]}"
+            name = plugin.plugin_name if plugin else tr(
+                _I18N_GROUP, "group_editor.removed_plugin", id=uuid[:8])
             item = QListWidgetItem(name)
             item.setData(Qt.ItemDataRole.UserRole, uuid)
             self.member_list.addItem(item)
@@ -401,7 +448,8 @@ class GroupEditorWidget(QWidget):
             if item_type != ITEM_TYPE_PLUGIN:
                 continue
             plugin = self.pm.get_plugin_by_id(item_id)
-            name = plugin.plugin_name if plugin else f"(已移除) {item_id[:8]}"
+            name = plugin.plugin_name if plugin else tr(
+                _I18N_GROUP, "group_editor.removed_plugin", id=item_id[:8])
             item = QListWidgetItem(name)
             item.setData(Qt.ItemDataRole.UserRole, item_id)
             self.available_list.addItem(item)
@@ -416,7 +464,9 @@ class GroupEditorWidget(QWidget):
         self.shuttle_box.setVisible(group is not None)
         if group is None:
             return
-        self.group_title.setText(f"组内配置：{group.icon_key} {group.name}")
+        self.group_title.setText(tr(
+            _I18N_GROUP, "group_editor.shuttle_title",
+            icon=group.icon_key, name=group.name))
         self._refresh_available()
         self._refresh_members()
 
@@ -456,7 +506,9 @@ class GroupEditorWidget(QWidget):
 
     def _on_new_group(self) -> None:
         """新建分组（追加到面板顺序末尾）"""
-        name, ok = _prompt_text(self, "新建分组", "分组名称:")
+        name, ok = _prompt_text(
+            self, tr(_I18N_GROUP, "group_editor.prompt.new_group_title"),
+            tr(_I18N_GROUP, "group_editor.prompt.group_name_label"))
         if ok and name.strip():
             group = PluginGroup.new(name.strip())
             self.groups.append(group)
@@ -469,7 +521,10 @@ class GroupEditorWidget(QWidget):
         group = self._selected_group_item()
         if group is None:
             return
-        name, ok = _prompt_text(self, "重命名分组", "分组名称:", text=group.name)
+        name, ok = _prompt_text(
+            self, tr(_I18N_GROUP, "group_editor.prompt.rename_group_title"),
+            tr(_I18N_GROUP, "group_editor.prompt.group_name_label"),
+            text=group.name)
         if ok and name.strip():
             group.name = name.strip()
             self._refresh_after_group_change(group)
@@ -482,7 +537,9 @@ class GroupEditorWidget(QWidget):
         current = GROUP_ICON_CHOICES.index(group.icon_key) \
             if group.icon_key in GROUP_ICON_CHOICES else 0
         icon, ok = _prompt_item(
-            self, "设置图标", "选择分组图标:", GROUP_ICON_CHOICES, current
+            self, tr(_I18N_GROUP, "group_editor.prompt.set_icon_title"),
+            tr(_I18N_GROUP, "group_editor.prompt.select_icon_label"),
+            GROUP_ICON_CHOICES, current
         )
         if ok and icon:
             group.icon_key = icon
@@ -492,7 +549,8 @@ class GroupEditorWidget(QWidget):
         """获取面板列表中选中的分组（选中插件时提示并返回 None）"""
         selected = self._selected_panel_item()
         if selected is None or selected[1] != ITEM_TYPE_GROUP:
-            Message.info(self, "请先在左侧列表中选中一个分组")
+            Message.info(
+                self, tr(_I18N_GROUP, "group_editor.message.select_group_first"))
             return None
         return self._find_group(selected[2])
 
@@ -500,7 +558,8 @@ class GroupEditorWidget(QWidget):
         """删除选中分组（组内插件变为未分组，插入到分组原位置）"""
         selected = self._selected_panel_item()
         if selected is None or selected[1] != ITEM_TYPE_GROUP:
-            Message.info(self, "请先在左侧列表中选中一个分组")
+            Message.info(
+                self, tr(_I18N_GROUP, "group_editor.message.select_group_first"))
             return
         row, _type, group_id = selected
         group = self._find_group(group_id)
@@ -532,10 +591,12 @@ class GroupEditorWidget(QWidget):
         group = self._current_group()
         item = self.available_list.currentItem()
         if group is None:
-            Message.info(self, "请先在左侧列表中选中目标分组")
+            Message.info(
+                self, tr(_I18N_GROUP, "group_editor.message.select_target_group"))
             return
         if item is None:
-            Message.info(self, "请在「未分组插件」中选中要加入的插件")
+            Message.info(
+                self, tr(_I18N_GROUP, "group_editor.message.select_plugin_to_add"))
             return
         uuid = item.data(Qt.ItemDataRole.UserRole)
         if uuid not in group.plugins:
@@ -587,7 +648,9 @@ class GroupEditorWidget(QWidget):
         """分组名称/图标变更后刷新面板列表与穿梭框标题"""
         self._refresh_panel_list()
         if self._current_group() is group:
-            self.group_title.setText(f"组内配置：{group.icon_key} {group.name}")
+            self.group_title.setText(tr(
+            _I18N_GROUP, "group_editor.shuttle_title",
+            icon=group.icon_key, name=group.name))
 
     # ==================== 提交 ====================
 
@@ -608,8 +671,8 @@ class PluginManagementDialog(QDialog):
 
     plugins_changed = Signal()
 
-    # (scope, 显示名)
-    SCOPES = (("official", "官方插件"), ("thirdparty", "第三方插件"))
+    # (scope, 显示名 i18n 键) —— 使用时经 tr() 取词，避免类定义期固化语言
+    SCOPES = (("official", "scope.official"), ("thirdparty", "scope.thirdparty"))
 
     def __init__(self, plugin_manager: PluginManager, parent=None):
         """初始化插件管理对话框
@@ -624,7 +687,7 @@ class PluginManagementDialog(QDialog):
         self._worker: Optional[_Worker] = None
         self._plugin_lists: Dict[str, QListWidget] = {}
         self._group_editors: Dict[str, GroupEditorWidget] = {}
-        self.setWindowTitle("插件管理")
+        self.setWindowTitle(tr(_I18N_GROUP, "title.dialog"))
         self.setMinimumSize(860, 560)
         self._init_ui()
         self.reload_plugin_lists()
@@ -635,11 +698,11 @@ class PluginManagementDialog(QDialog):
         """构建界面：管理页 + 分组排序页 + 底部按钮"""
         layout = QVBoxLayout(self)
         self.tabs = QTabWidget()
-        self.tabs.addTab(self._build_manage_tab(), "插件管理")
-        self.tabs.addTab(self._build_groups_tab(), "分组与排序")
+        self.tabs.addTab(self._build_manage_tab(), tr(_I18N_GROUP, "tab.manage"))
+        self.tabs.addTab(self._build_groups_tab(), tr(_I18N_GROUP, "tab.groups"))
         layout.addWidget(self.tabs, stretch=1)
 
-        close_btn = Button("关闭", variant="default")
+        close_btn = Button(tr("common", "close"), variant="default")
         close_btn.setFixedWidth(100)
         close_btn.clicked.connect(self.accept)
         bottom = QHBoxLayout()
@@ -653,9 +716,10 @@ class PluginManagementDialog(QDialog):
         layout = QVBoxLayout(tab)
 
         toolbar = QHBoxLayout()
-        for text, handler in (("从 GitHub 安装插件…", self._on_install_github),
-                              ("安装本地插件包…", self._on_install_zip),
-                              ("刷新", self._on_refresh)):
+        for text, handler in (
+                (tr(_I18N_GROUP, "button.install_github"), self._on_install_github),
+                (tr(_I18N_GROUP, "button.install_zip"), self._on_install_zip),
+                (tr("common", "refresh"), self._on_refresh)):
             btn = Button(text, variant="default")
             btn.clicked.connect(handler)
             toolbar.addWidget(btn)
@@ -664,13 +728,13 @@ class PluginManagementDialog(QDialog):
 
         body = QHBoxLayout()
         self.scope_tabs = QTabWidget()
-        for scope, title in self.SCOPES:
+        for scope, title_key in self.SCOPES:
             list_widget = QListWidget()
             list_widget.currentItemChanged.connect(
                 lambda item, _prev, s=scope: self._on_plugin_selected(s, item)
             )
             self._plugin_lists[scope] = list_widget
-            self.scope_tabs.addTab(list_widget, title)
+            self.scope_tabs.addTab(list_widget, tr(_I18N_GROUP, title_key))
         body.addWidget(self.scope_tabs, stretch=2)
         body.addWidget(self._build_detail_panel(), stretch=1)
         layout.addLayout(body, stretch=1)
@@ -682,7 +746,7 @@ class PluginManagementDialog(QDialog):
         panel.setFrameShape(QFrame.Shape.StyledPanel)
         layout = QVBoxLayout(panel)
 
-        self.detail_name = QLabel("未选择插件")
+        self.detail_name = QLabel(tr(_I18N_GROUP, "detail.no_selection"))
         self.detail_name.setWordWrap(True)
         self.detail_version = QLabel("")
         self.detail_source = QLabel("")
@@ -691,9 +755,11 @@ class PluginManagementDialog(QDialog):
             layout.addWidget(label)
         layout.addSpacing(10)
 
-        self.update_btn = Button("检查更新 / 升级 / 降级…", variant="default")
+        self.update_btn = Button(tr(_I18N_GROUP, "button.check_updates"),
+                                 variant="default")
         self.update_btn.clicked.connect(self._on_check_updates)
-        self.uninstall_btn = Button("卸载…", variant="danger")
+        self.uninstall_btn = Button(tr(_I18N_GROUP, "button.uninstall"),
+                                    variant="danger")
         self.uninstall_btn.clicked.connect(self._on_uninstall)
         layout.addWidget(self.update_btn)
         layout.addWidget(self.uninstall_btn)
@@ -705,17 +771,17 @@ class PluginManagementDialog(QDialog):
         tab = QWidget()
         layout = QVBoxLayout(tab)
         self.group_scope_tabs = QTabWidget()
-        for scope, title in self.SCOPES:
+        for scope, title_key in self.SCOPES:
             editor = GroupEditorWidget(self.pm, scope)
             self._group_editors[scope] = editor
-            self.group_scope_tabs.addTab(editor, title)
+            self.group_scope_tabs.addTab(editor, tr(_I18N_GROUP, title_key))
         layout.addWidget(self.group_scope_tabs, stretch=1)
 
         btn_layout = QHBoxLayout()
         btn_layout.addStretch()
-        reset_btn = Button("重置", variant="default")
+        reset_btn = Button(tr(_I18N_GROUP, "button.reset"), variant="default")
         reset_btn.clicked.connect(self._on_groups_reset)
-        save_btn = Button("保存分组与排序", variant="primary")
+        save_btn = Button(tr(_I18N_GROUP, "button.save_groups"), variant="primary")
         save_btn.clicked.connect(self._on_groups_save)
         btn_layout.addWidget(reset_btn)
         btn_layout.addWidget(save_btn)
@@ -757,16 +823,19 @@ class PluginManagementDialog(QDialog):
     def _on_plugin_selected(self, scope: str, item: Optional[QListWidgetItem]) -> None:
         """插件选中变化时刷新详情面板"""
         if item is None:
-            self.detail_name.setText("未选择插件")
+            self.detail_name.setText(tr(_I18N_GROUP, "detail.no_selection"))
             self.detail_version.setText("")
             self.detail_source.setText("")
             return
         uuid = item.data(Qt.ItemDataRole.UserRole)
         record = self.pm.registry.get(uuid) or {}
-        self.detail_name.setText(f"名称: {record.get('name', item.text())}")
-        self.detail_version.setText(f"版本: {record.get('version', '未知')}")
-        source = record.get("source_url") or record.get("source_type", "未知")
-        self.detail_source.setText(f"来源: {source}")
+        unknown = tr(_I18N_GROUP, "label.unknown")
+        self.detail_name.setText(tr(
+            _I18N_GROUP, "detail.name", name=record.get('name', item.text())))
+        self.detail_version.setText(tr(
+            _I18N_GROUP, "detail.version", version=record.get('version', unknown)))
+        source = record.get("source_url") or record.get("source_type", unknown)
+        self.detail_source.setText(tr(_I18N_GROUP, "detail.source", source=source))
 
     # ==================== 安装 / 升级 / 降级 ====================
 
@@ -779,7 +848,8 @@ class PluginManagementDialog(QDialog):
     def _on_install_zip(self) -> None:
         """选择本地插件包并安装"""
         zip_path, _selected = QFileDialog.getOpenFileName(
-            self, "选择插件包", "", "Zip 文件 (*.zip)"
+            self, tr(_I18N_GROUP, "title.select_zip"), "",
+            tr(_I18N_GROUP, "file_dialog.zip_filter")
         )
         if not zip_path:
             return
@@ -792,14 +862,11 @@ class PluginManagementDialog(QDialog):
         """检查选中插件的可用版本（GitHub Release）"""
         uuid = self._selected_plugin_id()
         if uuid is None:
-            Message.info(self, "请先选择插件")
+            Message.info(self, tr(_I18N_GROUP, "message.select_plugin_first"))
             return
         record = self.pm.registry.get(uuid)
         if not record or record.get("source_type") != "github" or not record.get("source_url"):
-            Message.info(
-                self,
-                "该插件没有记录 GitHub 来源，无法检查更新。\n可使用「安装本地插件包」手动升级/降级。"
-            )
+            Message.info(self, tr(_I18N_GROUP, "message.no_github_source"))
             return
 
         source_path = record.get("source_path", "")
@@ -813,7 +880,7 @@ class PluginManagementDialog(QDialog):
     def _on_versions_fetched(self, uuid: str, releases: List[ReleaseInfo]) -> None:
         """版本列表获取完成，弹出选择对话框"""
         if not releases:
-            Message.info(self, "未获取到该仓库的 Release 版本")
+            Message.info(self, tr(_I18N_GROUP, "message.no_releases"))
             return
         record = self.pm.registry.get(uuid) or {}
         current = record.get("version", "")
@@ -827,16 +894,19 @@ class PluginManagementDialog(QDialog):
         """确认后安装选定的 Release 版本"""
         current = record.get("version", "")
         relation = _version_relation(current, release.version)
-        text = (f"将{relation}插件「{record.get('name', '')}」\n"
-                f"当前版本: {current or '未知'}\n目标版本: {release.version or release.tag}")
+        text = tr(_I18N_GROUP, "message.install_confirm",
+                  relation=_version_relation_text(relation),
+                  name=record.get('name', ''),
+                  current=current or tr(_I18N_GROUP, "label.unknown"),
+                  target=release.version or release.tag)
         if relation == "降级":
-            text += "\n\n警告：降级可能导致数据不兼容或配置丢失！"
-        if not _confirm(self, "确认安装", text):
+            text += tr(_I18N_GROUP, "message.downgrade_warning")
+        if not _confirm(self, tr(_I18N_GROUP, "title.confirm_install"), text):
             return
 
         parsed = self.installer.parse_github_url(record["source_url"])
         if not parsed:
-            Message.warning(self, "来源仓库 URL 无效")
+            Message.warning(self, tr(_I18N_GROUP, "message.invalid_source_url"))
             return
         owner, repo = parsed
         target_dir = (self.pm.official_plugin_dir if record.get("scope") == "official"
@@ -852,11 +922,16 @@ class PluginManagementDialog(QDialog):
         """安装/升级/降级完成，展示结果并刷新"""
         success = [r for r in results if r.success]
         failed = [r for r in results if not r.success]
-        details = "\n".join(f"  - {r.plugin_name or r.plugin_id}: {r.message}" for r in results)
+        details = "\n".join(
+            tr(_I18N_GROUP, "message.result_item",
+               name=r.plugin_name or r.plugin_id, message=r.message)
+            for r in results)
         if failed:
-            _notice(self, "安装结果", f"部分失败：\n{details}")
+            _notice(self, tr(_I18N_GROUP, "title.install_result"),
+                    tr(_I18N_GROUP, "message.result_partial", details=details))
         else:
-            _notice(self, "安装结果", f"全部成功：\n{details}")
+            _notice(self, tr(_I18N_GROUP, "title.install_result"),
+                    tr(_I18N_GROUP, "message.result_all_success", details=details))
         if success:
             self._refresh_after_change()
 
@@ -866,22 +941,22 @@ class PluginManagementDialog(QDialog):
         """卸载选中插件"""
         uuid = self._selected_plugin_id()
         if uuid is None:
-            Message.info(self, "请先选择插件")
+            Message.info(self, tr(_I18N_GROUP, "message.select_plugin_first"))
             return
         record = self.pm.registry.get(uuid) or {}
         name = record.get("name", uuid)
         scope = record.get("scope", "")
 
-        text = f"确定卸载插件「{name}」？"
+        text = tr(_I18N_GROUP, "message.uninstall_confirm", name=name)
         if scope == "official":
-            text += "\n\n该插件属于官方插件，卸载后需重新安装才能恢复。"
+            text += tr(_I18N_GROUP, "message.uninstall_official_warning")
         # UIKit Dialog + 自定义内容（替代 QMessageBox + setCheckBox）
-        dialog = Dialog(self, title="确认卸载")
+        dialog = Dialog(self, title=tr(_I18N_GROUP, "title.confirm_uninstall"))
         content = QWidget()
         lay = QVBoxLayout(content)
         lay.setContentsMargins(0, 0, 0, 0)
         lay.addWidget(QLabel(text))
-        checkbox = CheckBox("同时删除插件数据（不可恢复）")
+        checkbox = CheckBox(tr(_I18N_GROUP, "message.uninstall_delete_data"))
         lay.addWidget(checkbox)
         dialog.set_content(content)
         if dialog.exec() != QDialog.DialogCode.Accepted:
@@ -889,12 +964,14 @@ class PluginManagementDialog(QDialog):
 
         result = self.pm.uninstall_plugin(uuid, remove_data=checkbox.isChecked())
         if not result["success"]:
-            _notice(self, "卸载失败", result["message"])
+            _notice(self, tr(_I18N_GROUP, "title.uninstall_failed"),
+                    result["message"])
             return
         message = result["message"]
         if result["warnings"]:
-            message += "\n\n警告：\n" + "\n".join(result["warnings"])
-        _notice(self, "卸载完成", message)
+            message += tr(_I18N_GROUP, "message.uninstall_warnings",
+                          warnings="\n".join(result["warnings"]))
+        _notice(self, tr(_I18N_GROUP, "title.uninstall_done"), message)
         self._refresh_after_change()
 
     # ==================== 分组与排序保存 ====================
@@ -904,11 +981,12 @@ class PluginManagementDialog(QDialog):
         for scope, _title in self.SCOPES:
             editor = self._group_editors[scope]
             if not self.pm.save_groups(scope, editor.groups, editor.collect_panel_order()):
-                _notice(self, "保存失败", "无法保存分组配置，请检查权限和磁盘空间。")
+                _notice(self, tr(_I18N_GROUP, "title.save_failed"),
+                        tr(_I18N_GROUP, "message.save_groups_failed"))
                 return
         _logger.info(get_name(), "插件分组与排序已保存")
         self.plugins_changed.emit()
-        Message.success(self, "分组与排序已保存")
+        Message.success(self, tr(_I18N_GROUP, "message.groups_saved"))
 
     def _on_groups_reset(self) -> None:
         """放弃工作副本，重新加载分组配置"""
@@ -937,7 +1015,7 @@ class PluginManagementDialog(QDialog):
             on_success: 成功回调（UI 线程执行）
         """
         if self._worker is not None and self._worker.isRunning():
-            Message.info(self, "正在执行其他操作，请稍候")
+            Message.info(self, tr(_I18N_GROUP, "message.operation_busy"))
             return
         self.setEnabled(False)
         self._worker = _Worker(fn, self)
@@ -949,4 +1027,4 @@ class PluginManagementDialog(QDialog):
     def _on_background_error(self, error: str) -> None:
         """后台任务异常"""
         _logger.error(get_name(), f"插件管理后台操作失败: {error}")
-        _notice(self, "操作失败", error)
+        _notice(self, tr(_I18N_GROUP, "title.operation_failed"), error)
