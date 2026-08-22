@@ -13,6 +13,7 @@ from PySide6.QtCore import QDate, QRectF, Qt, Signal
 from PySide6.QtGui import QColor, QFont, QFontMetricsF, QPainter
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QVBoxLayout
 
+from core.i18n import get_language_manager, tr
 from core.llm.types import UsageRecord
 from InstructionX_UIKit import T, set_property
 from InstructionX_UIKit.charts import (
@@ -99,16 +100,21 @@ class _CalendarMonthLabels:
 register_series("calendarHeatmap", _CalendarHeatmapRenderer)
 register_component("monthLabels", _CalendarMonthLabels)
 
-# ===== 时间范围选项 =====
-RANGE_OPTIONS = ("近半年", "近一年", "自定义")
-RANGE_DAY_SPANS = (182, 365)  # 与 RANGE_OPTIONS 前两项一一对应
+# ===== 时间范围选项（i18n 键，显示文案在取词时解析） =====
+RANGE_OPTION_KEYS = ("range.half_year", "range.year", "range.custom")
+RANGE_DAY_SPANS = (182, 365)  # 与 RANGE_OPTION_KEYS 前两项一一对应
 DEFAULT_RANGE_INDEX = 1  # 默认「近一年」
 CUSTOM_RANGE_INDEX = 2
 
-# ===== 趋势指标选项 =====
-METRIC_OPTIONS = ("请求数", "输入 Token", "输出 Token")
-# 与 METRIC_OPTIONS 一一对应；None 表示按请求条数计数，否则为 UsageRecord 字段名
+# ===== 趋势指标选项（i18n 键，显示文案在取词时解析） =====
+METRIC_OPTION_KEYS = ("metric.requests", "metric.input_tokens", "metric.output_tokens")
+# 与 METRIC_OPTION_KEYS 一一对应；None 表示按请求条数计数，否则为 UsageRecord 字段名
 METRIC_FIELDS: Tuple[Optional[str], ...] = (None, "input_tokens", "output_tokens")
+
+
+def _resolve_texts(keys: Tuple[str, ...]) -> List[str]:
+    """按当前语言解析一组 i18n 键的显示文案"""
+    return [tr("usage_panel", key) for key in keys]
 
 # ===== 图表显示常量 =====
 CHART_MIN_HEIGHT = 60
@@ -159,22 +165,26 @@ class TrendPanel(QFrame):
         self._status_label = QLabel()
         set_property(self._status_label, "role", "secondary")
         layout.addWidget(self._status_label)
+        # 最近一次状态文本参数（语言切换时按原值重排文案）
+        self._last_status: Optional[Tuple[str, str, int]] = None
 
         self._connect_signals()
+        self._retranslate_ui()
+        get_language_manager().language_changed.connect(self._retranslate_ui)
         self._on_range_changed(DEFAULT_RANGE_INDEX)
         self._update_fixed_height()
 
     # ------------------------------------------------------------------ UI
 
     def _build_header(self) -> QHBoxLayout:
-        """面板标题行"""
+        """面板标题行（文案由 ``_retranslate_ui`` 统一设置）"""
         header = QHBoxLayout()
-        title = QLabel("用量趋势")
+        self._title_label = QLabel()
         font = QFont()
         font.setPixelSize(T("font.title.sm"))
         font.setWeight(QFont.Weight.DemiBold)
-        title.setFont(font)
-        header.addWidget(title)
+        self._title_label.setFont(font)
+        header.addWidget(self._title_label)
         header.addStretch()
         return header
 
@@ -183,29 +193,24 @@ class TrendPanel(QFrame):
         toolbar = QHBoxLayout()
         toolbar.setSpacing(8)
 
-        self._range_combo = ComboBox(items=RANGE_OPTIONS)
-        self._range_combo.setAccessibleName("时间范围选择")
+        self._range_combo = ComboBox(items=_resolve_texts(RANGE_OPTION_KEYS))
         self._range_combo.setCurrentIndex(DEFAULT_RANGE_INDEX)
         toolbar.addWidget(self._range_combo)
 
         today = date.today()
         self._start_edit = self._make_date_edit(today - timedelta(days=RANGE_DAY_SPANS[1] - 1))
-        self._start_edit.setAccessibleName("起始日期")
         self._end_edit = self._make_date_edit(today)
-        self._end_edit.setAccessibleName("结束日期")
-        to_label = QLabel("至")
-        set_property(to_label, "role", "secondary")
-        self._apply_btn = Button("应用", variant="default")
-        self._apply_btn.setAccessibleName("应用自定义日期范围")
+        self._to_label = QLabel()
+        set_property(self._to_label, "role", "secondary")
+        self._apply_btn = Button("", variant="default")
 
         toolbar.addWidget(self._start_edit)
-        toolbar.addWidget(to_label)
+        toolbar.addWidget(self._to_label)
         toolbar.addWidget(self._end_edit)
         toolbar.addWidget(self._apply_btn)
         toolbar.addStretch()
 
-        self._metric_combo = ComboBox(items=METRIC_OPTIONS)
-        self._metric_combo.setAccessibleName("趋势指标切换")
+        self._metric_combo = ComboBox(items=_resolve_texts(METRIC_OPTION_KEYS))
         toolbar.addWidget(self._metric_combo)
         return toolbar
 
@@ -225,6 +230,38 @@ class TrendPanel(QFrame):
         self._range_combo.currentIndexChanged.connect(self._on_range_changed)
         self._apply_btn.clicked.connect(self._on_apply_clicked)
         self._metric_combo.currentIndexChanged.connect(self._on_metric_changed)
+
+    def _retranslate_ui(self) -> None:
+        """按当前语言重设面板全部用户可见文案（语言切换时自动触发）"""
+        self._title_label.setText(tr("usage_panel", "trend.title"))
+        self._reset_combo_items(self._range_combo, _resolve_texts(RANGE_OPTION_KEYS))
+        self._range_combo.setAccessibleName(tr("usage_panel", "a11y.range_combo"))
+        self._start_edit.setAccessibleName(tr("usage_panel", "a11y.start_date"))
+        self._end_edit.setAccessibleName(tr("usage_panel", "a11y.end_date"))
+        self._to_label.setText(tr("usage_panel", "range.to"))
+        self._apply_btn.setText(tr("usage_panel", "range.apply"))
+        self._apply_btn.setAccessibleName(tr("usage_panel", "a11y.apply_range"))
+        self._reset_combo_items(self._metric_combo, _resolve_texts(METRIC_OPTION_KEYS))
+        self._metric_combo.setAccessibleName(tr("usage_panel", "a11y.metric_combo"))
+        self._set_status_text()
+
+    @staticmethod
+    def _reset_combo_items(combo: ComboBox, items: List[str]) -> None:
+        """重建下拉项并保留当前索引（语言切换仅更新文案，选中项不变）"""
+        index = combo.currentIndex()
+        combo.blockSignals(True)
+        combo.clear()
+        combo.addItems(items)
+        combo.setCurrentIndex(index if 0 <= index < len(items) else 0)
+        combo.blockSignals(False)
+
+    def _set_status_text(self) -> None:
+        """按当前语言重设区间状态文本（未刷新过数据时保持为空）"""
+        if self._last_status is None:
+            return
+        start, end, days = self._last_status
+        self._status_label.setText(
+            tr("usage_panel", "trend.status", start=start, end=end, days=days))
 
     # ------------------------------------------------------------- 公共接口
 
@@ -262,9 +299,8 @@ class TrendPanel(QFrame):
         self._render_series(points, metric_idx)
         self._update_fixed_height()
         days = (end_dt.date() - start_dt.date()).days + 1
-        self._status_label.setText(
-            f"{start_dt.date().isoformat()} ~ {end_dt.date().isoformat()} · 共 {days} 天"
-        )
+        self._last_status = (start_dt.date().isoformat(), end_dt.date().isoformat(), days)
+        self._set_status_text()
 
     # ------------------------------------------------------------- 自适应高度
 
@@ -342,7 +378,7 @@ class TrendPanel(QFrame):
             "monthLabels": {},
             "series": [{
                 "type": "calendarHeatmap",
-                "name": METRIC_OPTIONS[metric_idx],
+                "name": tr("usage_panel", METRIC_OPTION_KEYS[metric_idx]),
                 "coordinateSystem": "calendar",
                 "data": [[d.isoformat(), v] for d, v in points],
             }],

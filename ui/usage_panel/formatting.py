@@ -8,6 +8,8 @@
 from datetime import datetime, tzinfo
 from typing import Tuple
 
+from core.i18n import tr
+
 # ===== 数值缩写阈值 =====
 THOUSAND = 1_000
 MILLION = 1_000_000
@@ -81,9 +83,9 @@ def pick_token_scale(max_value: float) -> Tuple[float, str]:
         Tuple[float, str]: (缩放倍率, 单位后缀)，如 (1000000.0, "（百万）")
     """
     if max_value >= MILLION:
-        return float(MILLION), "（百万）"
+        return float(MILLION), tr("usage_panel", "chart.axis.million")
     if max_value >= THOUSAND:
-        return float(THOUSAND), "（千）"
+        return float(THOUSAND), tr("usage_panel", "chart.axis.thousand")
     return 1.0, ""
 
 
