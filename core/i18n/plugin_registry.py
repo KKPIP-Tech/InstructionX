@@ -108,6 +108,17 @@ class PluginTextRegistry:
         entry = self._entries.get(plugin_id)
         return entry.declared_default if entry else None
 
+    def set_declared_default(self, plugin_id: str, language: Optional[str]) -> None:
+        """登记插件声明的默认语言；注册表条目不存在时忽略
+
+        Args:
+            plugin_id: 插件 UUID
+            language: 插件声明的默认语言代码
+        """
+        entry = self._entries.get(plugin_id)
+        if entry is not None:
+            entry.declared_default = language
+
     def catalog_of(self, plugin_id: str, language: str) -> Optional[TextCatalog]:
         """取插件指定语言的文案目录（惰性加载）
 

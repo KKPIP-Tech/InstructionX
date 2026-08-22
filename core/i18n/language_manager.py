@@ -243,6 +243,25 @@ class LanguageManager(QObject):
         """插件提供的语言代码列表；未提供语言包返回空表"""
         return self._registry.languages_of(plugin_id)
 
+    def plugin_has_catalog(self, plugin_id: str) -> bool:
+        """插件是否提供了语言包（text/ 目录且含至少一个语言文件）"""
+        return self._registry.has_catalog(plugin_id)
+
+    def plugin_language_override(self, plugin_id: str) -> Optional[str]:
+        """插件当前的语言覆盖；未设置返回 None（跟随框架）"""
+        return self._load_overrides().get(plugin_id)
+
+    def set_plugin_declared_default(self, plugin_id: str, language: Optional[str]) -> None:
+        """登记插件声明的默认语言（IPluginInfo.default_language）
+
+        由 PluginManager 在加载插件元信息后调用；注册表条目不存在时忽略。
+
+        Args:
+            plugin_id: 插件 UUID
+            language: 插件声明的默认语言代码；None 表示跟随框架默认语言
+        """
+        self._registry.set_declared_default(plugin_id, language)
+
     def effective_plugin_language(self, plugin_id: str) -> str:
         """解析插件有效语言：用户覆盖 → 框架当前语言 → 插件默认语言
 
