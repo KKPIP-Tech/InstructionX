@@ -172,6 +172,24 @@ class LanguageManager(QObject):
         """框架可用的语言代码列表（扫描 ui/text/*.xml 文件名）"""
         return self._catalogs.available_languages()
 
+    def language_display_name(self, code: str) -> str:
+        """取语言的用户可读显示名（语言选择对话框等场景使用）
+
+        显示名取自该语言文件 ``common`` 分组的 ``language.self_name`` 键
+        （各语言的自称，如 zh 的「简体中文」）。
+
+        Args:
+            code: 语言代码
+
+        Returns:
+            语言显示名；语言文件缺失/损坏（负缓存）或键缺失时
+            返回语言代码本身作为兜底
+        """
+        catalog = self._catalogs.get(code)
+        if catalog is None:
+            return code
+        return catalog.get("common", "language.self_name") or code
+
     def set_language(self, code: str) -> bool:
         """切换框架当前语言（实时生效）
 

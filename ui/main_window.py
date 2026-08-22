@@ -29,6 +29,7 @@ from ui.dialog.about_dialog import AboutDialog
 from ui.dialog.license_dialog import LicenseDialog
 from ui.dialog.font_manager_dialog import FontManagerDialog
 from ui.dialog.github_plugin_install_dialog import GitHubPluginInstallDialog
+from ui.dialog.language_dialog import LanguageDialog
 from ui.dialog.llm_settings import LLMSettingsDialog
 from ui.work_area.work_area import WorkArea
 from ui.title_bar import CustomTitleBar
@@ -280,6 +281,11 @@ class InstructionXMainWindow(QMainWindow):
         self._menu_theme_action.triggered.connect(self._cycle_theme)
         self._menu_edit.addAction(self._menu_theme_action)
 
+        # 界面语言
+        self._action_language = QAction(self)
+        self._action_language.triggered.connect(self._open_language_dialog)
+        self._menu_edit.addAction(self._action_language)
+
         # 分隔线
         self._menu_edit.addSeparator()
 
@@ -318,6 +324,7 @@ class InstructionXMainWindow(QMainWindow):
             tr("main_window", "menu.edit.font_management"))
         self._menu_theme_action.setToolTip(
             tr("main_window", "menu.edit.toggle_theme.tooltip"))
+        self._action_language.setText(tr("main_window", "menu.edit.language"))
         self._action_github_install.setText(
             tr("main_window", "menu.edit.install_from_github"))
         self._action_github_install.setStatusTip(
@@ -437,6 +444,11 @@ class InstructionXMainWindow(QMainWindow):
     def _open_font_manager_dialog(self):
         """打开字体管理对话框（安装/卸载/预览）"""
         dialog = FontManagerDialog(self)
+        dialog.exec()
+
+    def _open_language_dialog(self):
+        """打开界面语言选择对话框（确定后实时切换语言）"""
+        dialog = LanguageDialog(self)
         dialog.exec()
 
     def _on_plugins_changed(self):

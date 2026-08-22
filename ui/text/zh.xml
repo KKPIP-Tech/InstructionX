@@ -389,6 +389,7 @@
       <text key="menu.edit.toggle_theme">切换主题</text>
       <text key="menu.edit.toggle_theme.tooltip">浅色 → 深色 → 跟随系统</text>
       <text key="menu.edit.toggle_theme.current">切换主题 ({label})</text>
+      <text key="menu.edit.language">界面语言...</text>
       <text key="menu.edit.install_from_github">从 GitHub 安装插件...</text>
       <text key="menu.edit.install_from_github.status_tip">从 GitHub 仓库安装插件</text>
       <text key="menu.ai">AI</text>
@@ -523,5 +524,9 @@
     <text key="tools">工具调用</text>
     <text key="embedding">嵌入</text>
     <text key="rerank">重排序</text>
+  </group>
+  <group name="dialog_language">
+      <text key="title">界面语言</text>
+      <text key="note">语言切换实时生效。各插件可在「插件管理」中单独设置语言，未设置时跟随此处选择。</text>
   </group>
 </texts>
