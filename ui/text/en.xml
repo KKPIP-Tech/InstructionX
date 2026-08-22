@@ -397,7 +397,7 @@ Interfaces using this font will fall back to a system font after uninstallation.
       <text key="menu.edit.toggle_theme">Toggle Theme</text>
       <text key="menu.edit.toggle_theme.tooltip">Light → Dark → Follow System</text>
       <text key="menu.edit.toggle_theme.current">Toggle Theme ({label})</text>
-      <text key="menu.edit.language">Interface Language...</text>
+      <text key="menu.edit.language">Language</text>
       <text key="menu.edit.install_from_github">Install Plugin from GitHub...</text>
       <text key="menu.edit.install_from_github.status_tip">Install plugins from a GitHub repository</text>
       <text key="menu.ai">AI</text>

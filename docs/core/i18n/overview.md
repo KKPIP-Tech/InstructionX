@@ -350,7 +350,7 @@ class MyPlugin(IPlugin):
 
 ### 8.1 LanguageDialog 界面语言对话框
 
-`ui/dialog/language_dialog.py`，主窗口「编辑 → 界面语言...」打开（菜单项位于「切换主题」之后）。列出框架全部可用语言（`LanguageManager.available_languages()`），每行显示「语言自称 (语言代码)」，当前语言默认选中；确定后经 `set_language()` **实时切换**（触发 `language_changed`，各界面重取词），无需重启；取消不改动当前语言。
+`ui/dialog/language_dialog.py`，主窗口「编辑 → 语言」打开（菜单项位于「切换主题」之后）。列出框架全部可用语言（`LanguageManager.available_languages()`），每行显示「语言自称 (语言代码)」，当前语言默认选中；确定后经 `set_language()` **实时切换**（触发 `language_changed`，各界面重取词），无需重启；取消不改动当前语言。
 
 ### 8.2 PluginLanguageDialog 插件语言对话框
 

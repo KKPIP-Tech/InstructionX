@@ -307,7 +307,7 @@ ui/                         # 界面层
     plugin_management_dialog.py  # 插件管理对话框：安装/升级/降级/卸载 + 分组与排序
                                  #   （替代原 plugin_order_dialog 的菜单入口）；
                                  #   详情面板含「语言…」按钮与语言状态行（无语言包置灰）
-    language_dialog.py        # 界面语言选择对话框（编辑菜单「界面语言...」打开，
+    language_dialog.py        # 界面语言选择对话框（编辑菜单「语言」打开，
                               #   选中即 LanguageManager.set_language 实时切换）
     plugin_language_dialog.py # 插件语言选择对话框（「跟随框架（默认）」+ 插件实际提供的语言，
                               #   经 set_plugin_language 持久化每插件语言覆盖）
