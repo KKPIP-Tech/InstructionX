@@ -3,6 +3,7 @@
 验证链路：XML 解析容错 → 语言代码解析（区域子标签回退）→ 框架取词
 （命中/键级回退/组级回退/ERROR_TEXT/占位符）→ 语言切换与持久化 →
 插件语言包注册、有效语言三级优先级、覆盖持久化、热卸载注销 →
+插件取词门面（PluginI18nFacade）与声明默认语言登记 →
 损坏配置备份重建。
 
 运行：.venv\\Scripts\\python.exe scripts/smoke_i18n.py
@@ -24,7 +25,9 @@ from core.i18n import (
     load_catalog,
     resolve_language_code,
 )
+from core.i18n.facade import PluginI18nFacade
 from core.i18n.language_manager import LanguageManager
+from core.interfaces.i_localization import ILocalizationFacade
 
 # 冒烟临时目录（temp/ 下，用完清理）
 _SMOKE_DIR = Path(__file__).resolve().parent.parent / "temp" / "i18n_smoke"
@@ -219,6 +222,29 @@ def scenario_plugins(dirs: dict) -> None:
     check("清除覆盖发射信号", manager.set_plugin_language("uuid-a", None)
           and fired == [("uuid-a", "en")])
     check("清除覆盖后跟随框架", manager.effective_plugin_language("uuid-a") == "en")
+
+    # 插件侧取词门面（PluginI18nFacade 绑定 plugin_id，全部委托 manager）
+    facade_a = PluginI18nFacade("uuid-a", manager)
+    check("门面取词与 plugin_tr 一致",
+          facade_a.tr("main", "title") == manager.plugin_tr("uuid-a", "main", "title"))
+    check("门面 has_catalog 为 True", facade_a.has_catalog())
+    check("门面可用语言正确", facade_a.available_languages() == ["en", "zh"])
+    check("门面有效语言正确", facade_a.current_language() == "en")
+    facade_b = PluginI18nFacade("uuid-b", manager)
+    check("无语言包插件门面取词优雅降级返回键名",
+          facade_b.tr("main", "title") == "title" and not facade_b.has_catalog())
+
+    # ILocalizationFacade 为抽象接口，不能直接实例化
+    try:
+        ILocalizationFacade()  # type: ignore[abstract]
+        instantiable = True
+    except TypeError:
+        instantiable = False
+    check("ILocalizationFacade 不可直接实例化", not instantiable)
+
+    # 插件声明的默认语言登记（PluginManager 读取 IPluginInfo.default_language 后调用）
+    manager.set_plugin_declared_default("uuid-a", "ja")
+    check("声明默认语言登记生效", manager._registry.declared_default_of("uuid-a") == "ja")
 
     manager.unregister_plugin_texts("uuid-a")
     check("热卸载注销注册表", manager.plugin_available_languages("uuid-a") == [])

@@ -20,6 +20,7 @@ if TYPE_CHECKING:
     from core.mcp.manager import MCPManager
     from core.mcp.client import MCPClientManager
     from core.font import FontManager
+    from .i_localization import ILocalizationFacade
 
 
 @dataclass
@@ -30,7 +31,8 @@ class PluginServices:
     框架在创建插件实例时会自动注入。
     插件开发者应通过 services.llm_facade 访问 LLM 能力，
     通过 services.mcp_manager 管理 MCP Server，
-    通过 services.mcp_client 连接外部 MCP Server。
+    通过 services.mcp_client 连接外部 MCP Server，
+    通过 services.localization 访问多语言取词门面。
 
     用法：
 
@@ -57,3 +59,5 @@ class PluginServices:
     mcp_client: Optional["MCPClientManager"] = field(default=None)
     # 字体管理器（安装/卸载/回退解析），无降级保护、始终注入
     font_manager: Optional["FontManager"] = field(default=None)
+    # 多语言取词门面（绑定插件 UUID），无降级保护、始终注入
+    localization: Optional["ILocalizationFacade"] = field(default=None)

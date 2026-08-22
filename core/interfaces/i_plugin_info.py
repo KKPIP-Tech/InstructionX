@@ -92,3 +92,13 @@ class IPluginInfo(ABC):
     def tags(self) -> Optional[list[str]]:
         """插件标签"""
         return None
+
+    @property
+    def default_language(self) -> Optional[str]:
+        """插件默认语言（ISO 639-1 语言代码，对应 text/<代码>.xml 文件名）
+
+        插件取词时有效语言缺失的键会回退到本语言；返回 None（默认实现）
+        表示跟随框架默认语言。插件声明了本属性但未提供对应语言文件时，
+        按框架默认语言回退。
+        """
+        return None
