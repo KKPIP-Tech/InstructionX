@@ -77,7 +77,7 @@ InstructionX 框架代码与用户插件代码是**两个独立的 git 仓库**�
 ```
 InstructionX/
 └── plugin/ 或 custom_plugin/         # ← 开发者的插件仓库（你的工作区域）
-    ├── IXRepo.json                   # 插件集描述文件（仅插件集需要）
+    ├── IXRepo.json                   # 插件仓库索引描述文件（所有插件仓库必需，含单插件仓库）
     ├── plugin-a/                     # ← 插件 A（每个插件都是一级子目录）
     │   ├── IXPlugin.json
     │   ├── __init__.py
@@ -85,6 +85,7 @@ InstructionX/
     │   ├── service.py                # 接口层（**必需**），位于插件根目录，仅对外暴露 API
     │   ├── information.py            # 插件元数据（**必需**），继承 IPluginInfo
     │   ├── config/                   # 配置文件目录（**必需**），禁止魔法数
+    │   ├── text/                     # 语言包目录（**必需**），见「插件多语言（i18n）」一章
     │   ├── ui/
     │   ├── function/
     │   ├── icons/
@@ -136,9 +137,9 @@ InstructionX/
 | `keywords` | 否 | 字符串数组，检索标签 |
 | `dependencies` | 否 | 对象，格式 `{"包名": "版本约束"}`，如 `{"requests": ">=2.25.0"}`；版本约束遵循 PEP 440。框架 DependencyManager 在启动时检查并自动安装这些依赖。**只声明插件真实 import 的第三方包**，禁止声明未使用的包，禁止把标准库写进来 |
 
-#### IXRepo.json（插件集描述文件，仅插件集需要）
+#### IXRepo.json（插件仓库索引描述文件，所有插件仓库必需）
 
-位于插件仓库根部（`plugin/` 或 `custom_plugin/` 下），顶层为 `plugins` 数组：
+位于插件仓库根部（`plugin/` 或 `custom_plugin/` 下），顶层为 `plugins` 数组。**单插件仓库同样必须提供 IXRepo.json**——此时 `plugins` 数组只列出一个插件子目录：
 
 ```json
 {
@@ -161,8 +162,9 @@ InstructionX/
 
 将插件发布到 GitHub 供他人一键安装时，描述文件的放置与安装目录规则如下：
 
-- **单插件仓库**：仓库根目录直接放置 `IXPlugin.json` 与插件文件（安装器会将整个仓库作为一个插件安装）；
+- **单插件仓库**：仓库根目录放置 `IXRepo.json`（`plugins` 数组只列出一个插件子目录），插件文件位于该子目录内（含 `IXPlugin.json`）。即单插件仓库同样需要 `IXRepo.json`，只是索引中仅含一个插件；
 - **插件集仓库**：仓库根目录放置 `IXRepo.json`，各插件子目录各自放置 `IXPlugin.json`；
+- **兼容性说明**：安装器仍兼容旧式扁平单插件仓库（仓库根目录直接放置 `IXPlugin.json`、无 `IXRepo.json`，安装器会将整个仓库作为一个插件安装），但新建插件仓库一律采用「根目录 `IXRepo.json` + 插件子目录」形态；
 - **安装目录**：`KKPIP-Tech` 组织仓库 → `plugin/`（官方），其他所有来源 → `custom_plugin/`（第三方），与开发模式一一对应；
 - 框架同时支持**本地 zip 安装**（zip 包内必须包含 `IXPlugin.json`）；GitHub 安装与 Release 更新检查可经环境变量 `INSTRUCTIONX_GITHUB_TOKEN` 鉴权（提升限流阈值、访问私有仓库）。
 
@@ -172,10 +174,111 @@ InstructionX/
 - `version` 缺少类型前缀（如写成 `1.0.0`）或类型拼写不在五种闭集之内；
 - `IXRepo.json` 中的 `path` 与磁盘实际目录名不一致（含大小写差异）；
 - `IXRepo.json` 中的 `id` 与子目录内 `IXPlugin.json` 的 `id` 不一致；
-- 在插件集仓库根目录同时放置 `IXPlugin.json`（根目录只能是 `IXRepo.json`）；
+- 在仓库根目录同时放置 `IXPlugin.json` 与 `IXRepo.json`（规范形态下根目录只有 `IXRepo.json`，`IXPlugin.json` 位于各插件子目录内）；
 - `dependencies` 声明了未实际使用的包，或把 Python 标准库写进依赖；
 - 发布后修改 `id`，导致老用户无法升级；
 - 描述文件名大小写错误（如 `ixplugin.json`）。
+
+## 插件多语言（i18n）
+
+框架提供多语言子系统（`core/i18n`，详见 `docs/core/i18n/overview.md`）。插件**必须**提供 `text/` 语言包目录以支持多语言；框架对未提供语言包的存量插件保持兼容（优雅降级、行为与旧版本一致），但新开发插件不提供 `text/` 目录即不符合本规范。
+
+### 语言包目录约定
+
+在插件目录下创建 `text/`，**一个语言一个 XML 文件**，文件名（不含扩展名）即语言代码（ISO 639-1，可带区域子标签如 `zh-CN`/`zh-TW`）：
+
+```
+my-plugin/
+├── entrance.py
+├── information.py
+├── service.py
+└── text/
+    ├── zh.xml          # 默认语言文件（必须完整，见下）
+    └── en.xml
+```
+
+文件内以 `<group>` 划分分组、`<text key="...">` 为条目；占位符仅支持命名式 `{name}`（`str.format` 兼容，禁止 `{0}` 位置式）：
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<texts language="zh">
+  <group name="main">
+    <text key="title">我的插件</text>
+    <text key="welcome">你好，{name}</text>
+  </group>
+</texts>
+```
+
+**各语言文件的 group 名与键名必须保持一致**（键集允许不完全相同——其他语言缺键时运行时回退默认语言）。框架加载插件时自动扫描 `text/*.xml` 完成注册，**插件无需任何登记代码**；热卸载时自动注销。
+
+### 默认语言完整性与 ERROR_TEXT 行为
+
+- 插件取词回退链为「插件有效语言 → 插件默认语言 → `ERROR_TEXT`」；
+- **插件默认语言文件必须覆盖全部键**——它是回退终点，缺失时界面直接显示 `ERROR_TEXT`（不静默、不抛异常），这是有意设计以便发现问题；
+- 其他语言允许缺键（自动回退，记 WARNING 日志）；
+- 可运行框架脚本 `scripts/check_i18n_completeness.py` 校验语言文件完整性。
+
+### 取词：services.localization
+
+框架经 `PluginServices.localization` 注入绑定本插件 UUID 的取词门面（`PluginI18nFacade`，实现 `ILocalizationFacade`），始终注入、无需判空之外的降级处理：
+
+```python
+from core.interfaces import PluginServices
+from core.plugin.plugin_interface import IPlugin
+
+
+class MyPlugin(IPlugin):
+    def __init__(self, services: PluginServices | None = None):
+        super().__init__()
+        self._i18n = services.localization if services else None
+
+    def _create_widget(self, parent=None, data_provider=None):
+        title = self._i18n.tr("main", "title")                 # 按分组/键取词
+        hint = self._i18n.tr("main", "welcome", name="User")   # 命名占位符
+        langs = self._i18n.available_languages()               # 本插件提供的语言列表
+        ...
+```
+
+插件未提供语言包时 `tr()` 优雅降级，直接返回键名本身（记 DEBUG 日志）。
+
+### 声明插件默认语言（可选）
+
+`IPluginInfo` 提供具体 property `default_language`（默认实现返回 `None` = 跟随框架默认语言 `zh`）。插件以其他语言为母语时可声明：
+
+```python
+class MyPluginInfo(IPluginInfo):
+    @property
+    def default_language(self) -> Optional[str]:
+        return "en"   # 对应 text/en.xml；未提供该文件时按框架默认语言回退
+```
+
+### 语言切换后的 UI 刷新约定
+
+框架**不替插件重绘 UI**。需要跟随语言切换的插件 Widget，自行 connect `LanguageManager` 信号并重取词（框架语言变化 `language_changed(str)`；本插件语言覆盖变化 `plugin_language_changed(str, str)`，注意比对插件 UUID）：
+
+```python
+from core.i18n import get_language_manager
+
+# 在 _create_widget 中：
+get_language_manager().language_changed.connect(self._retranslate_ui)
+get_language_manager().plugin_language_changed.connect(self._on_plugin_language_changed)
+```
+
+用户可在「插件管理」对话框详情面板经「语言…」按钮为单个插件设置语言覆盖（「跟随框架（默认）」或插件实际提供的语言），实时生效并持久化。
+
+### IXPlugin.json 的 name / description 多语言字段
+
+发布描述文件中 `name` 与 `description` 除纯字符串（旧形式，所有语言同一文案）外，支持字典形式：
+
+```json
+{
+  "id": "my-plugin",
+  "name": {"zh": "我的插件", "en": "My Plugin"},
+  "description": {"zh": "一个强大的插件", "en": "A powerful plugin"}
+}
+```
+
+安装与展示时框架按「目标语言（支持区域子标签解析，如 `zh-TW` 命中 `zh`）→ 默认语言 → 字典第一个值」解析；空字典/非法类型按兜底处理并记 WARNING。
 
 ## 编码与开发流程
 
@@ -206,6 +309,7 @@ InstructionX/
 - 日志：`docs/core/interfaces/ilogger.md`、`docs/utils/logging-tools.md`
 - 插件机制：`docs/core/plugin-system/` 下的 plugin-identity、plugin-version、plugin-icon、plugin-config-manager、plugin-dependency-manager、plugin-installer
 - 第三方插件：`docs/plugins/thirdparty-plugins.md`（第三方开发者必读）
+- 多语言：`docs/core/i18n/overview.md`（插件语言包与 `services.localization` 取词）
 - UI：`docs/ui/`（work-area、skills-panel、skill-button、dialogs、main-window）
 
 **参考（深入时）**：

@@ -14,20 +14,30 @@
 - 边：hover 加粗、点击选中、running 路径 flowing 虚线动画；
 - 序列化：``to_dict`` / ``from_dict``（含节点位置与画布 zoom/offset）。
 
-节点为真实子控件（``NodeWidget``），边与临时线由画布统一自绘。
+节点为真实子控件（``NodeWidget``，挂在内部绘制视口之下）；边、临时线、
+网格、选中发光由视口统一自绘——GL 可用时视口为 ``QOpenGLWidget``
+（GPU 加速），否则为普通 ``QWidget`` 软件回退（见 ``viewport.py``，
+可用 ``UIKIT_BLUEPRINT_GL=off`` 强制软件路径）。
 """
 
-from PySide6.QtCore import QEvent, QPoint, QPointF, QRect, QRectF, Qt, QTimer, Signal
-from PySide6.QtGui import QColor, QPainter, QPainterPath, QPen
+from PySide6.QtCore import QEvent, QPoint, QPointF, QRect, QRectF, QSizeF, Qt, QTimer, Signal
+from PySide6.QtGui import QBrush, QColor, QPainter, QPainterPath, QPen, QPixmap
 from PySide6.QtWidgets import QWidget
 
 from ..theme import T, ThemeManager
-from .edge_widget import EdgeWidget, TempWire
+from .edge_widget import (
+    EdgeWidget,
+    TempWire,
+    _cached_color,
+    _cached_pen,
+    bezier_path,
+)
 from .execution import ExecutionController
 from .menu import NodeContextMenu, NodeCreationMenu
 from .model import BlueprintGraph, BlueprintNode, PinDirection, types_compatible
-from .node_widget import NodeWidget, PinHandle, safe_slot
+from .node_widget import NodeWidget, PinHandle
 from .registry import NodeRegistry
+from .viewport import create_viewport
 
 __all__ = ["BlueprintCanvas"]
 
@@ -37,6 +47,8 @@ ZOOM_MIN, ZOOM_MAX = 0.25, 2.5
 MAGNET_R = 22.0
 #: 右键抬起判定为点击的位移阈值（px）
 CLICK_TOL = 4.0
+#: 背景网格点半径（视图像素）
+GRID_DOT_R = 1.3
 
 
 class BlueprintCanvas(QWidget):
@@ -54,6 +66,13 @@ class BlueprintCanvas(QWidget):
         edge_created(object): 新边建立（``Edge``，含菜单自动连接产生的）。
         edge_removed(str): 边被移除（边 id）。
         selection_changed(list): 选中节点 id 列表变化。
+
+    交互注记：``body_builder`` 注入的节点体容器被画布整体置为鼠标透明
+    （``WA_TransparentForMouseEvents``），保证节点体区域按下仍能拖动
+    节点 / 框选，代价是体内部件不接收鼠标事件。需要可交互节点体的
+    开发者可自行清除该属性（``canvas.node_widget(id)._body.setAttribute(
+    Qt.WA_TransparentForMouseEvents, False)``，此后该区域不再触发节点
+    拖动），或在外部面板编辑 ``node.properties``（demo 蓝图页做法）。
 
     示例::
 
@@ -81,6 +100,10 @@ class BlueprintCanvas(QWidget):
         self._selected_nodes = []
         self._selected_edges = []
 
+        # 网格平铺纹理缓存（键：间距档位 / 颜色 / DPR）
+        self._grid_tile_cache = None
+        self._grid_tile_key = None
+
         # 交互状态
         self._panning = False
         self._pan_start = QPointF()
@@ -96,10 +119,20 @@ class BlueprintCanvas(QWidget):
         self._wire_src = None      # (node_id, Pin)
         self._wire_target = None   # (node_id, Pin)
         self._pending_wire = None  # 菜单创建后自动连接用
+        # 视图手势（平移 / 滚轮缩放）中跳过的节点几何落位待补偿标记
+        self._gesture_deferred = False
 
         self._flow_timer = QTimer(self)
         self._flow_timer.setInterval(50)
         self._flow_timer.timeout.connect(self._tick_flow)
+
+        # 滚轮缩放手势标记：手势期间 GL 代理节点位图按纹理缩放（不重建
+        # 缓存），手势结束 150ms 后触发一次全量重建恢复清晰
+        self._zooming = False
+        self._zoom_settle = QTimer(self)
+        self._zoom_settle.setSingleShot(True)
+        self._zoom_settle.setInterval(150)
+        self._zoom_settle.timeout.connect(self._end_zoom_gesture)
 
         self._execution = ExecutionController(self)
 
@@ -108,12 +141,19 @@ class BlueprintCanvas(QWidget):
         self.setMinimumSize(320, 240)
         self.setAttribute(Qt.WA_OpaquePaintEvent, True)
 
+        # 绘制视口：GL 可用时为 QOpenGLWidget（GPU 加速），否则软件回退；
+        # 与画布 1:1 重合（resizeEvent 同步几何），节点控件挂在其下。
+        self._viewport = create_viewport(self)
+        self._viewport.setGeometry(self.rect())
+        self._viewport.show()
+
         graph.node_added.connect(self._on_node_added)
         graph.node_removed.connect(self._on_node_removed)
         graph.edge_added.connect(self._on_edge_added)
         graph.edge_removed.connect(self._on_edge_removed)
-        ThemeManager.instance().theme_changed.connect(
-            safe_slot(lambda *_: self._retheme()))
+        # 绑定方法连接：receiver（本画布）销毁时 PySide 自动断连，
+        # 单例信号上不会残留死对象包装（lambda 连接无法自动清理）
+        ThemeManager.instance().theme_changed.connect(self._retheme)
 
         for node in graph.nodes():
             self._on_node_added(node)
@@ -153,13 +193,22 @@ class BlueprintCanvas(QWidget):
         self._zoom = z
         self._offset = QPointF(self.width() / 2, self.height() / 2) - center_scene * z
         self._update_view()
+        # 程序化连续缩放同样按手势处理：期间节点缓存位图拉伸显示，
+        # 停顿 150ms 后统一重建（避免每帧全量离屏重渲染）
+        self._zooming = True
+        self._zoom_settle.start()
 
     def zoom(self) -> float:
         """当前缩放系数。"""
         return self._zoom
 
     def center_on(self, node_id: str) -> None:
-        """把视图中心对准某节点（缩放不变）。"""
+        """把视图中心对准某节点（缩放不变）。
+
+        先结算遗留的视图手势（若位移 / 缩放手势被提前打断未结算，
+        节点仍冻结于手势位图代理，直接落位会按新视图拉伸冻结位图）。
+        """
+        self._settle_view_gesture()
         node = self.graph.node(node_id)
         if node is None:
             return
@@ -168,25 +217,32 @@ class BlueprintCanvas(QWidget):
         self._update_view()
 
     def fit_view(self) -> None:
-        """适应视图：全部节点居中可见（含边距，缩放夹在合法范围）。"""
+        """适应视图：全部节点居中可见（含边距，缩放夹在合法范围）。
+
+        复用 ``set_zoom`` 的手势防抖路径：缩放可能大幅变化，先置缩放
+        手势标记（节点缓存位图按纹理拉伸显示，停顿 150ms 后统一按
+        最终缩放重建），避免大量节点时单帧同步重建全部位图卡顿。
+        """
+        self._settle_view_gesture()
         nodes = self.graph.nodes()
         if not nodes:
             self._zoom = 1.0
             self._offset = QPointF(0.0, 0.0)
-            self._update_view()
-            return
-        rect = None
-        for node in nodes:
-            r = QRectF(node.pos, node.size)
-            rect = r if rect is None else rect.united(r)
-        margin = 60.0
-        rect = rect.adjusted(-margin, -margin, margin, margin)
-        vw, vh = max(1, self.width()), max(1, self.height())
-        z = min(vw / max(rect.width(), 1.0), vh / max(rect.height(), 1.0))
-        self._zoom = max(ZOOM_MIN, min(ZOOM_MAX, z))
-        self._offset = (QPointF(vw / 2, vh / 2)
-                        - rect.center() * self._zoom)
+        else:
+            rect = None
+            for node in nodes:
+                r = QRectF(node.pos, node.size)
+                rect = r if rect is None else rect.united(r)
+            margin = 60.0
+            rect = rect.adjusted(-margin, -margin, margin, margin)
+            vw, vh = max(1, self.width()), max(1, self.height())
+            z = min(vw / max(rect.width(), 1.0), vh / max(rect.height(), 1.0))
+            self._zoom = max(ZOOM_MIN, min(ZOOM_MAX, z))
+            self._offset = (QPointF(vw / 2, vh / 2)
+                            - rect.center() * self._zoom)
         self._update_view()
+        self._zooming = True
+        self._zoom_settle.start()
 
     def execution(self) -> ExecutionController:
         """返回运行指示控制器（画布持有唯一实例）。"""
@@ -246,6 +302,7 @@ class BlueprintCanvas(QWidget):
 
     def from_dict(self, data: dict) -> None:
         """从 ``to_dict`` 结果恢复：重建节点 / 边并还原 zoom 与 offset。"""
+        self._settle_view_gesture()
         self.clear_selection()
         self.graph.clear()
         gdata = data.get("graph", data)
@@ -266,7 +323,7 @@ class BlueprintCanvas(QWidget):
     # 图信号 → 界面同步
     # ------------------------------------------------------------------
     def _on_node_added(self, node: BlueprintNode) -> None:
-        widget = NodeWidget(node, self, owner=self._owner)
+        widget = NodeWidget(node, self._viewport, owner=self._owner)
         widget.installEventFilter(self)
         for pin in node.inputs + node.outputs:
             handle = widget.pin_widget(pin.id, pin.direction)
@@ -310,8 +367,12 @@ class BlueprintCanvas(QWidget):
         node_widget.apply_view(self.scene_to_view(node_widget.node.pos), self._zoom)
 
     def _retheme(self) -> None:
+        self._settle_view_gesture()
         for widget in self._node_widgets.values():
             widget.refresh_theme()
+        # 边基础色按引脚类型惰性缓存，主题切换后须失效重建（实时取色）
+        for ew in self._edge_widgets.values():
+            ew.invalidate_color()
         self._update_view()
 
     def _update_view(self) -> None:
@@ -320,6 +381,35 @@ class BlueprintCanvas(QWidget):
             if node is not None:
                 widget.apply_view(self.scene_to_view(node.pos), self._zoom)
         self.update()
+
+    def _view_changed(self, gesture: bool = False) -> None:
+        """视图变换（zoom / offset 变化）后的界面同步。
+
+        ``gesture=True``（平移拖拽 / 滚轮缩放进行中）且视口支持节点位图
+        代理时：跳过**全部**节点的逐帧几何落位，仅重绘视口——节点由视口
+        按场景坐标实时绘制缓存位图，视觉不受控件几何滞后影响。带可见
+        自定义体的节点在手势开始时被临时切换为位图代理
+        （``NodeWidget.begin_gesture_proxy``）：实测 GL 视口上逐帧对
+        真实子控件树做落位 + 重绘的合成开销极高（最大化窗口 11 节点
+        约 76ms/帧，切换后约 15ms/帧）。被跳过的几何与真实控件在手势
+        结束时由 ``_settle_view_gesture`` 统一补偿恢复。
+        """
+        if gesture and getattr(self._viewport, "supports_node_proxy", False):
+            if not self._gesture_deferred:
+                for widget in self._node_widgets.values():
+                    widget.begin_gesture_proxy()
+            self._gesture_deferred = True
+            self.update()
+            return
+        self._update_view()
+
+    def _settle_view_gesture(self) -> None:
+        """视图手势结束（平移释放 / 缩放防抖到点）：恢复真实控件并补偿几何落位。"""
+        if self._gesture_deferred:
+            self._gesture_deferred = False
+            for widget in self._node_widgets.values():
+                widget.end_gesture_proxy()
+            self._update_view()
 
     # ------------------------------------------------------------------
     # 选择
@@ -420,8 +510,15 @@ class BlueprintCanvas(QWidget):
                     self._drag_to(view_pos)
                     return True
                 if self._rpress is not None and event.buttons() & Qt.RightButton:
-                    if (QPointF(view_pos) - self._rpress[0]).manhattanLength() > CLICK_TOL:
+                    # 节点上右键拖拽平移：与空画布右键拖拽行为一致
+                    # （位移阈值判拖 / 换光标 / 同步 offset / 手势防抖）
+                    start, _target = self._rpress
+                    if (QPointF(view_pos) - start).manhattanLength() > CLICK_TOL:
                         self._rpan = True
+                        self.setCursor(Qt.ClosedHandCursor)
+                    if self._rpan:
+                        self._offset = self._offset_start + (QPointF(view_pos) - self._pan_start)
+                        self._view_changed(gesture=True)
                     return True
             if etype == QEvent.MouseButtonRelease:
                 view_pos = self.view_pos_of_event(obj, event)
@@ -430,8 +527,14 @@ class BlueprintCanvas(QWidget):
                     return True
                 if event.button() == Qt.RightButton and self._rpress is not None:
                     target_node = self._rpress[1]
+                    was_pan = self._rpan
                     self._rpress = None
-                    if not self._rpan and target_node is obj:
+                    self._rpan = False
+                    if was_pan:
+                        # 平移结束：恢复光标并结算手势（补偿节点几何落位）
+                        self.unsetCursor()
+                        self._settle_view_gesture()
+                    elif target_node is obj:
                         self._open_node_menu(obj, event.globalPosition().toPoint())
                     return True
         return False
@@ -459,15 +562,40 @@ class BlueprintCanvas(QWidget):
         if not self._drag_moved and delta.manhattanLength() * self._zoom < 2.0:
             return
         self._drag_moved = True
+        defer = bool(getattr(self._viewport, "supports_node_proxy", False))
+        # 受影响边（两端任一在被拖节点上）的旧包围盒仅软件模式的局部
+        # 重绘需要；GL 代理模式整幅重绘，跳过该统计开销
+        affected = []
+        old_rects = []
+        if not defer:
+            for nid in starts:
+                for e in self.graph.edges_of(nid):
+                    ew = self._edge_widgets.get(e.id)
+                    if ew is not None and ew not in affected:
+                        affected.append(ew)
+                        old_rects.append(ew.bounding_rect())
         for nid, start_pos in starts.items():
             node = self.graph.node(nid)
             if node is None:
                 continue
             node.pos = start_pos + delta
             w = self._node_widgets.get(nid)
-            if w is not None:
+            if w is not None and defer:
+                # 带可见自定义体的被拖节点同样切换手势位图代理（幂等）：
+                # 逐帧 apply_view 对真实子控件树做几何落位 + 重绘叠加
+                # GL 合成开销极高（实测单节点拖动约 140ms/帧）；
+                # 代理位图由视口按场景坐标实时绘制，视觉无滞后
+                w.begin_gesture_proxy()
+            # 位图代理节点由视口按场景坐标实时绘制，拖动期间无需逐帧落位
+            if w is not None and not (defer and w.uses_proxy()):
                 w.apply_view(self.scene_to_view(node.pos), self._zoom)
-        self.update()
+        if defer:
+            self._gesture_deferred = True
+            self.update()
+        else:
+            # 局部重绘：边的新旧包围盒即可（节点控件自行随几何移动重绘）
+            self._update_scene_rects(
+                old_rects + [ew.bounding_rect() for ew in affected])
 
     def _end_drag(self) -> None:
         start_view, starts = self._drag
@@ -478,6 +606,8 @@ class BlueprintCanvas(QWidget):
                 if node is not None:
                     self.node_moved.emit(nid, QPointF(node.pos))
         self._drag_moved = False
+        # 拖动中跳过的代理节点几何落位补偿（引脚热区恢复精确）
+        self._settle_view_gesture()
 
     # ------------------------------------------------------------------
     # 连线（引脚拖拽）
@@ -486,14 +616,27 @@ class BlueprintCanvas(QWidget):
         pin = handle.pin
         node = handle.node_widget.node
         start = node.pos + handle.logical_center()
-        self._wire = TempWire(start, pin.data_type,
-                              from_output=pin.direction is PinDirection.Output,
-                              parent=self)
+        self._wire = TempWire(start, pin.data_type, parent=self)
         self._wire_src = (node.id, pin)
         self._wire_target = None
-        self.update()
+        self._update_scene_rects([self._wire_scene_rect(self._wire)])
+
+    def _wire_scene_rect(self, wire: TempWire) -> QRectF:
+        """临时线（含端点小圆点与描边余量）的场景包围盒。"""
+        r = bezier_path(wire.start, wire.end).boundingRect()
+        return r.adjusted(-12.0, -12.0, 12.0, 12.0)
+
+    def _wire_ring_rect(self, target) -> QRectF:
+        """磁吸高亮圈的场景包围盒（无目标时返回空矩形）。"""
+        if target is None:
+            return QRectF()
+        nid, pin = target
+        c = self.pin_scene_pos(nid, pin.id, pin.direction)
+        return QRectF(c - QPointF(12.0, 12.0), QSizeF(24.0, 24.0))
 
     def _update_wire(self, view_pos: QPointF) -> None:
+        old_rects = [self._wire_scene_rect(self._wire),
+                     self._wire_ring_rect(self._wire_target)]
         scene_pt = self.view_to_scene(view_pos)
         self._wire.set_end(scene_pt)
         self._wire_target = self._find_compatible_pin(scene_pt)
@@ -501,18 +644,26 @@ class BlueprintCanvas(QWidget):
         if self._wire_target is not None:
             nid, pin = self._wire_target
             self._wire.set_end(self.pin_scene_pos(nid, pin.id, pin.direction))
-        self.update()
+        self._update_scene_rects(
+            old_rects + [self._wire_scene_rect(self._wire),
+                         self._wire_ring_rect(self._wire_target)])
 
     def _find_compatible_pin(self, scene_pt: QPointF):
-        """在磁吸半径内找最近的兼容引脚（方向相反 + 类型兼容 + 非本节点）。"""
+        """在磁吸半径内找最近的兼容引脚（方向相反 + 类型兼容 + 非本节点）。
+
+        先用节点场景矩形对探测半径做粗筛，跳过远处节点的逐引脚计算。
+        """
         src_nid, src_pin = self._wire_src
         want_dir = (PinDirection.Input if src_pin.direction is PinDirection.Output
                     else PinDirection.Output)
         radius = MAGNET_R / self._zoom
+        probe = QRectF(scene_pt, scene_pt).adjusted(-radius, -radius, radius, radius)
         best = None
         best_d = radius
         for nid, widget in self._node_widgets.items():
             if nid == src_nid:
+                continue
+            if not probe.intersects(QRectF(widget.node.pos, widget.node.size)):
                 continue
             pins = widget.node.inputs if want_dir is PinDirection.Input else widget.node.outputs
             for pin in pins:
@@ -533,9 +684,12 @@ class BlueprintCanvas(QWidget):
         src_nid, src_pin = self._wire_src
         target = self._find_compatible_pin(self.view_to_scene(view_pos))
         wire, self._wire, self._wire_src, self._wire_target = self._wire, None, None, None
+        dirty = []
         if wire is not None:
+            dirty.append(self._wire_scene_rect(wire))
             wire.deleteLater()
         if target is not None:
+            dirty.append(self._wire_ring_rect(target))
             tgt_nid, tgt_pin = target
             if src_pin.direction is PinDirection.Output:
                 self.graph.add_edge(src_nid, src_pin.id, tgt_nid, tgt_pin.id)
@@ -551,7 +705,8 @@ class BlueprintCanvas(QWidget):
             menu.type_chosen.connect(self._create_node_for_wire)
             menu.popup_at(self.mapToGlobal(QPoint(int(view_pos.x()), int(view_pos.y()))),
                           compatible=(want_dir, src_pin.data_type))
-        self.update()
+        if dirty:
+            self._update_scene_rects(dirty)
 
     def _create_node_for_wire(self, type_name: str) -> None:
         """拖线松开菜单回调：创建节点并自动连接对应引脚。"""
@@ -615,7 +770,7 @@ class BlueprintCanvas(QWidget):
             return
         if self._panning:
             self._offset = self._offset_start + (pos - self._pan_start)
-            self._update_view()
+            self._view_changed(gesture=True)
             return
         if self._rpress is not None and event.buttons() & Qt.RightButton:
             start, _target = self._rpress
@@ -624,11 +779,14 @@ class BlueprintCanvas(QWidget):
                 self.setCursor(Qt.ClosedHandCursor)
             if self._rpan:
                 self._offset = self._offset_start + (pos - self._pan_start)
-                self._update_view()
+                self._view_changed(gesture=True)
             return
         if self._band is not None:
+            old_rect = QRectF(self._band[0], self._band[1]).normalized()
             self._band = (self._band[0], pos)
-            self.update()
+            new_rect = QRectF(self._band[0], self._band[1]).normalized()
+            dirty = old_rect.united(new_rect).adjusted(-3.0, -3.0, 3.0, 3.0)
+            self.update(dirty.toAlignedRect().intersected(self.rect()))
             return
         self._update_edge_hover(self.view_to_scene(pos))
         super().mouseMoveEvent(event)
@@ -641,11 +799,13 @@ class BlueprintCanvas(QWidget):
         if event.button() == Qt.MiddleButton and self._panning:
             self._panning = False
             self.unsetCursor()
+            self._settle_view_gesture()
             return
         if event.button() == Qt.LeftButton:
             if self._panning:
                 self._panning = False
                 self.unsetCursor()
+                self._settle_view_gesture()
                 return
             if self._band is not None:
                 self._finish_band()
@@ -657,6 +817,7 @@ class BlueprintCanvas(QWidget):
             if was_pan:
                 self._panning = False
                 self.unsetCursor()
+                self._settle_view_gesture()
             else:
                 scene_pt = self.view_to_scene(pos)
                 menu = NodeCreationMenu(self, owner=self._owner)
@@ -677,8 +838,16 @@ class BlueprintCanvas(QWidget):
         cursor = QPointF(event.position())
         self._offset = cursor - (cursor - self._offset) * (new_zoom / self._zoom)
         self._zoom = new_zoom
-        self._update_view()
+        self._view_changed(gesture=True)
+        self._zooming = True
+        self._zoom_settle.start()
         event.accept()
+
+    def _end_zoom_gesture(self) -> None:
+        """滚轮缩放手势结束：补偿几何落位并触发节点缓存按最终缩放重建。"""
+        self._zooming = False
+        self._settle_view_gesture()
+        self.update()
 
     def keyPressEvent(self, event) -> None:
         if event.key() == Qt.Key_Space and not event.isAutoRepeat():
@@ -695,6 +864,10 @@ class BlueprintCanvas(QWidget):
             if self._panning:
                 self._panning = False
                 self.unsetCursor()
+                # 空格提前松开也必须完整结算（与左键松开路径一致）：
+                # 否则手势期跳过的节点几何落位永不补偿，节点冻结于
+                # 手势位图代理、引脚视觉与热区错位
+                self._settle_view_gesture()
             return
         super().keyReleaseEvent(event)
 
@@ -739,14 +912,14 @@ class BlueprintCanvas(QWidget):
 
     def _update_edge_hover(self, scene_pt: QPointF) -> None:
         hit = self._edge_at(scene_pt)
-        changed = False
+        rects = []
         for eid, ew in self._edge_widgets.items():
             want = eid == hit
             if ew.hovered != want:
                 ew.hovered = want
-                changed = True
-        if changed:
-            self.update()
+                rects.append(ew.bounding_rect())
+        if rects:
+            self._update_scene_rects(rects)
 
     # -- 节点右键菜单 ------------------------------------------------------
     def _open_node_menu(self, widget: NodeWidget, global_pos: QPoint) -> None:
@@ -780,66 +953,181 @@ class BlueprintCanvas(QWidget):
 
     def _tick_flow(self) -> None:
         any_flowing = False
+        rects = []
         for ew in self._edge_widgets.values():
             if ew.flowing:
                 ew.advance_dash()
+                rects.append(ew.bounding_rect())
                 any_flowing = True
         if not any_flowing:
             self._flow_timer.stop()
-        self.update()
+            return
+        # 仅重绘流动边的包围盒（原实现为全画布重绘）
+        self._update_scene_rects(rects)
 
     # ------------------------------------------------------------------
-    # 绘制
+    # 绘制（由内部视口承载，见 viewport.py）
     # ------------------------------------------------------------------
     def paintEvent(self, _event) -> None:
+        # 画布本体被视口 1:1 覆盖；此处仅在视口尚未就位时兜底填底。
         p = QPainter(self)
-        p.setRenderHint(QPainter.Antialiasing)
+        p.fillRect(self.rect(), QColor(str(T("color.bg.base"))))
+        p.end()
+
+    def resizeEvent(self, event) -> None:
+        """视口几何同步：始终与画布 1:1 重合。"""
+        vp = getattr(self, "_viewport", None)
+        if vp is not None:
+            vp.setGeometry(self.rect())
+        super().resizeEvent(event)
+
+    def update(self, *args) -> None:
+        """重绘请求转发到内部绘制视口（保持外部 ``canvas.update()`` 习惯）。
+
+        Qt 内部对画布自身的 C++ 级 update 不受影响（画布只兜底填底）。
+        """
+        vp = getattr(self, "_viewport", None)
+        if vp is not None:
+            vp.update(*args)
+        else:
+            super().update(*args)
+
+    def _paint_contents(self, p: QPainter, dirty_view: QRect = None) -> None:
+        """画布全部自绘内容：背景 / 网格 / 选中发光 / 边 / 临时线 / 框选。
+
+        参数:
+            p: 目标画笔（控件坐标系，调用方已开抗锯齿）。
+            dirty_view: 局部重绘脏矩形（控件坐标）；``None`` 表示整幅。
+                边按包围盒与脏矩形求交做视口裁剪。
+        """
         p.fillRect(self.rect(), QColor(str(T("color.bg.base"))))
         self._draw_grid(p)
+        self._draw_selection_glow(p)
+        if dirty_view is not None and not dirty_view.isNull():
+            tl = self.view_to_scene(QPointF(dirty_view.topLeft()))
+            br = self.view_to_scene(QPointF(dirty_view.bottomRight()))
+        else:
+            tl = self.view_to_scene(QPointF(0.0, 0.0))
+            br = self.view_to_scene(QPointF(self.width(), self.height()))
+        dirty_scene = QRectF(tl, br).normalized()
         p.save()
         p.translate(self._offset)
         p.scale(self._zoom, self._zoom)
         for ew in self._edge_widgets.values():
+            if not ew.bounding_rect().intersects(dirty_scene):
+                continue
             ew.draw(p)
         if self._wire is not None:
             self._wire.draw(p)
             if self._wire_target is not None:
                 nid, pin = self._wire_target
                 c = self.pin_scene_pos(nid, pin.id, pin.direction)
-                pen = QPen(QColor(str(T("color.primary"))), 2.0)
-                p.setPen(pen)
+                p.setPen(_cached_pen(_cached_color(str(T("color.primary"))), 2.0))
                 p.setBrush(Qt.NoBrush)
                 p.drawEllipse(c, 9.0, 9.0)
         p.restore()
         if self._band is not None:
             rect = QRectF(self._band[0], self._band[1]).normalized()
-            fill = QColor(str(T("color.primary")))
+            # _cached_color 返回副本，setAlpha 原地修改不影响缓存条目
+            fill = _cached_color(str(T("color.primary")))
             fill.setAlpha(28)
-            border = QColor(str(T("color.primary")))
+            border = _cached_color(str(T("color.primary")))
             border.setAlpha(140)
             p.setPen(QPen(border, 1.2))
             p.setBrush(fill)
             p.drawRect(rect)
-        p.end()
+
+    def _update_scene_rects(self, scene_rects) -> None:
+        """按场景坐标矩形列表请求局部重绘（换算视图坐标并合并求并集）。"""
+        rect = None
+        for r in scene_rects:
+            if r is None or r.isNull():
+                continue
+            vr = QRectF(self.scene_to_view(r.topLeft()),
+                        self.scene_to_view(r.bottomRight())).normalized()
+            vr = vr.adjusted(-2.0, -2.0, 2.0, 2.0)
+            rect = vr if rect is None else rect.united(vr)
+        if rect is not None:
+            self.update(rect.toAlignedRect().intersected(self.rect()))
+
+    def _draw_selection_glow(self, p: QPainter) -> None:
+        """选中节点的 shadow.md 外发光（画布层自绘，替代 QGraphicsEffect）。
+
+        以多层递增外扩的圆角描边逼近高斯模糊：透明度由近及远递减。
+        绘制顺序在网格之上、边与节点之下（与节点控件下方投影视觉等价）。
+        """
+        if not self._selected_nodes:
+            return
+        spec = ThemeManager.instance().tokens["shadow.md"]
+        r, g, b, a = spec["color"]
+        blur = float(spec["blur"])
+        ox, oy = spec["offset"]
+        steps = max(3, int(blur / 2))
+        base_radius = float(T("radius.lg")) * self._zoom
+        p.setBrush(Qt.NoBrush)
+        for nid in self._selected_nodes:
+            node = self.graph.node(nid)
+            if node is None:
+                continue
+            tl = self.scene_to_view(node.pos)
+            rect = QRectF(tl, QSizeF(node.size.width() * self._zoom,
+                                     node.size.height() * self._zoom))
+            rect.translate(float(ox), float(oy))
+            for i in range(steps):
+                t = (i + 0.5) / steps
+                grow = t * blur * 0.75
+                alpha = int(a * (1.0 - t) * 0.9)
+                if alpha <= 0:
+                    continue
+                pen = QPen(QColor(r, g, b, alpha), max(1.0, blur / steps + 0.5))
+                p.setPen(pen)
+                rr = rect.adjusted(-grow, -grow, grow, grow)
+                rad = base_radius + grow
+                p.drawRoundedRect(rr, rad, rad)
+
+    # ------------------------------------------------------------------
+    # 网格（平铺纹理缓存）
+    # ------------------------------------------------------------------
+    def _grid_tile(self, step_px: float) -> QPixmap:
+        """网格平铺块（按 间距档位 / 颜色 / DPR 缓存）。
+
+        块内四角各绘 1/4 圆点，平铺拼接后每个网格交叉点合成完整圆点，
+        替代逐点 ``drawEllipse`` 的双层循环（4K 下约 1.4 万次/帧）。
+        """
+        dpr = self.devicePixelRatioF()
+        si = max(2, int(round(step_px)))
+        color = QColor(str(T("color.border")))
+        key = (si, color.rgba(), dpr)
+        if self._grid_tile_key == key and self._grid_tile_cache is not None:
+            return self._grid_tile_cache
+        pm = QPixmap(max(1, int(si * dpr + 0.5)), max(1, int(si * dpr + 0.5)))
+        pm.setDevicePixelRatio(dpr)
+        pm.fill(Qt.transparent)
+        tp = QPainter(pm)
+        tp.setRenderHint(QPainter.Antialiasing)
+        tp.setPen(Qt.NoPen)
+        tp.setBrush(color)
+        side = pm.width() / dpr
+        for cx, cy in ((0.0, 0.0), (side, 0.0), (0.0, side), (side, side)):
+            tp.drawEllipse(QPointF(cx, cy), GRID_DOT_R, GRID_DOT_R)
+        tp.end()
+        self._grid_tile_key = key
+        self._grid_tile_cache = pm
+        return pm
 
     def _draw_grid(self, p: QPainter) -> None:
-        """点阵网格：间距随缩放自适应（屏幕间距保持在 18–72px 之间）。"""
+        """点阵网格：间距随缩放自适应（屏幕间距保持在 18–72px 之间）。
+
+        以缓存平铺纹理一次性铺满（brush 原点跟随 offset 相位）。
+        """
         step = 24.0
         while step * self._zoom < 18.0:
             step *= 2.0
         while step * self._zoom > 72.0:
             step /= 2.0
-        color = QColor(str(T("color.border")))
+        tile = self._grid_tile(step * self._zoom)
+        side = tile.width() / tile.devicePixelRatioF()
         p.setPen(Qt.NoPen)
-        p.setBrush(color)
-        w, h = self.width(), self.height()
-        x0 = self._offset.x() % (step * self._zoom)
-        y0 = self._offset.y() % (step * self._zoom)
-        r = 1.3
-        y = y0
-        while y <= h:
-            x = x0
-            while x <= w:
-                p.drawEllipse(QPointF(x, y), r, r)
-                x += step * self._zoom
-            y += step * self._zoom
+        p.setBrush(QBrush(tile))
+        p.setBrushOrigin(QPointF(self._offset.x() % side, self._offset.y() % side))
+        p.drawRect(self.rect())

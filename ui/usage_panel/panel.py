@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QFrame, QHBoxLayout, QLabel, QScrollArea, QVBoxLayout, QWidget,
 )
 
+from core.i18n import get_language_manager, tr
 from core.llm.types import UsageRecord
 from core.llm.usage_record_store import get_usage_record_store
 from utils.logging_tools import LoggerManager, get_name
@@ -32,14 +33,14 @@ _logger = LoggerManager()
 PAGE_SIZE = 50
 INITIAL_REFRESH_DELAY_MS = 100
 
-# ===== KPI 卡片定义：(卡片ID, 标题, get_total_stats 键, 格式化函数) =====
+# ===== KPI 卡片定义：(卡片ID, 标题 i18n 键, get_total_stats 键, 格式化函数) =====
 KPI_DEFINITIONS: Tuple[Tuple[str, str, str, Callable[[float], str]], ...] = (
-    ("total_requests", "总请求数", "total_requests", fmt_int),
-    ("total_input", "输入 Token", "total_input_tokens", fmt_tokens),
-    ("total_output", "输出 Token", "total_output_tokens", fmt_tokens),
-    ("total_tokens", "总 Token", "total_tokens", fmt_tokens),
-    ("cache_hit_rate", "缓存命中率", "cache_hit_rate", fmt_percent),
-    ("avg_duration", "平均耗时", "avg_duration_ms", fmt_latency),
+    ("total_requests", "kpi.total_requests", "total_requests", fmt_int),
+    ("total_input", "kpi.input_tokens", "total_input_tokens", fmt_tokens),
+    ("total_output", "kpi.output_tokens", "total_output_tokens", fmt_tokens),
+    ("total_tokens", "kpi.total_tokens", "total_tokens", fmt_tokens),
+    ("cache_hit_rate", "kpi.cache_hit_rate", "cache_hit_rate", fmt_percent),
+    ("avg_duration", "kpi.avg_duration", "avg_duration_ms", fmt_latency),
 )
 
 
@@ -64,6 +65,8 @@ class UsagePanel(QWidget):
 
         self._init_ui()
         self._connect_signals()
+        self._retranslate_ui()
+        get_language_manager().language_changed.connect(self._retranslate_ui)
         QTimer.singleShot(INITIAL_REFRESH_DELAY_MS, self.refresh_data)
 
     # ------------------------------------------------------------------ UI
@@ -99,32 +102,38 @@ class UsagePanel(QWidget):
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.addWidget(scroll_area)
 
-    @staticmethod
-    def _build_header() -> QHBoxLayout:
-        """顶部标题行（主标题 + 副标题）"""
+    def _build_header(self) -> QHBoxLayout:
+        """顶部标题行（主标题 + 副标题）；文案由 ``_retranslate_ui`` 统一设置"""
         header = QHBoxLayout()
         title_box = QVBoxLayout()
         title_box.setSpacing(2)
-        title = QLabel("AI 用量面板")
+        self._title_label = QLabel()
         title_font = QFont()
         title_font.setPixelSize(T("font.title.lg"))
         title_font.setBold(True)
-        title.setFont(title_font)
-        subtitle = QLabel("LLM API Usage Overview")
-        set_property(subtitle, "role", "secondary")
-        title_box.addWidget(title)
-        title_box.addWidget(subtitle)
+        self._title_label.setFont(title_font)
+        self._subtitle_label = QLabel()
+        set_property(self._subtitle_label, "role", "secondary")
+        title_box.addWidget(self._title_label)
+        title_box.addWidget(self._subtitle_label)
         header.addLayout(title_box)
         header.addStretch()
         return header
+
+    def _retranslate_ui(self) -> None:
+        """按当前语言重设本面板文案（标题行 + 各 KPI 卡片标题）"""
+        self._title_label.setText(tr("usage_panel", "header.title"))
+        self._subtitle_label.setText(tr("usage_panel", "header.subtitle"))
+        for card_id, title_key, _stats_key, _formatter in KPI_DEFINITIONS:
+            self._kpi_cards[card_id].set_title(tr("usage_panel", title_key))
 
     def _build_kpi_row(self, parent: QWidget) -> QHBoxLayout:
         """KPI 卡片行（6 张卡片等宽排列）"""
         row = QHBoxLayout()
         row.setSpacing(12)
         self._kpi_cards: Dict[str, KpiCard] = {}
-        for card_id, title, _stats_key, _formatter in KPI_DEFINITIONS:
-            card = KpiCard(title, parent)
+        for card_id, title_key, _stats_key, _formatter in KPI_DEFINITIONS:
+            card = KpiCard(tr("usage_panel", title_key), parent)
             self._kpi_cards[card_id] = card
             row.addWidget(card, stretch=1)
         return row
@@ -152,7 +161,7 @@ class UsagePanel(QWidget):
             self.data_refreshed.emit()
         except Exception as e:
             _logger.error(get_name(), f"刷新用量数据失败: {e}")
-            Message.warning(self, f"刷新用量数据失败:\n{str(e)}")
+            Message.warning(self, tr("usage_panel", "error.refresh_data", error=str(e)))
 
     def _refresh_kpis(self) -> None:
         """刷新 KPI 卡片数值与上一等长周期的同比"""
@@ -255,4 +264,4 @@ class UsagePanel(QWidget):
             self._trend_panel.update_series(self._query_filtered_records())
         except Exception as e:
             _logger.error(get_name(), f"刷新用量趋势图失败: {e}")
-            Message.warning(self, f"刷新用量趋势图失败:\n{str(e)}")
+            Message.warning(self, tr("usage_panel", "error.refresh_trend", error=str(e)))

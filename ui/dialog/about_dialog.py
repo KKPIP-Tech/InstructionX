@@ -11,6 +11,10 @@ from PySide6.QtGui import QPixmap, QFont
 from InstructionX_UIKit import T, set_property
 
 from core.version import get_instructionx_version_display
+from core.i18n import tr
+
+# i18n 文案分组名
+_TR_GROUP = "dialog_about"
 
 
 def _get_logo_path():
@@ -38,7 +42,7 @@ class AboutDialog(QDialog):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("关于")
+        self.setWindowTitle(tr(_TR_GROUP, "window.title"))
         # 使用最小尺寸而非固定尺寸，保证高 DPI/大字体下内容不被裁切
         self.setMinimumSize(400, 350)
         self.resize(400, 350)
@@ -67,7 +71,7 @@ class AboutDialog(QDialog):
             scaled = pixmap.scaled(128, 128, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
             logo_label.setPixmap(scaled)
         else:
-            logo_label.setText("Logo")
+            logo_label.setText(tr(_TR_GROUP, "logo.placeholder"))
             set_property(logo_label, "role", "tertiary")
 
         # 用水平布局让 Logo 居中
@@ -84,13 +88,11 @@ class AboutDialog(QDialog):
         layout.addWidget(_token_label(get_instructionx_version_display(), "font.sm"))
 
         # 版权信息
-        layout.addWidget(_token_label("© 2025-2026 dakuang 版权所有，保留所有权利。", "font.xs"))
+        layout.addWidget(_token_label(tr(_TR_GROUP, "copyright"), "font.xs"))
 
         # 专有软件声明（中文摘要 + 英文法律声明）
         proprietary_label = _token_label(
-            "本软件为专有软件，商业使用超过阈值需获得授权。\n"
-            "Proprietary software.\n"
-            "Commercial use requires authorization if thresholds are exceeded.",
+            tr(_TR_GROUP, "statement"),
             "font.xs",
         )
         proprietary_label.setWordWrap(True)

@@ -29,6 +29,7 @@ from PySide6.QtWidgets import (
     QPushButton, QStackedWidget, QVBoxLayout, QWidget,
 )
 
+from core.i18n import tr
 from core.llm.catalog import (
     CUSTOM_ADAPTER, PROVIDER_PRESETS, ProviderPreset, get_provider_preset,
 )
@@ -52,13 +53,6 @@ MODE_EDIT = "edit"      # 编辑既有实例
 
 # 预设类型列表项的 preset_id 数据角色（None 表示「自定义 OpenAI 兼容服务」项）
 _ROLE_PRESET_ID = Qt.ItemDataRole.UserRole
-
-# 自定义类型项的展示文案
-_CUSTOM_CHOICE_TITLE = "自定义 OpenAI 兼容服务"
-_CUSTOM_CHOICE_SUBTITLE = "接入任意 OpenAI 兼容协议的模型服务"
-
-# 自定义实例的默认名称
-_CUSTOM_DEFAULT_NAME = "自定义服务"
 
 
 def generate_instance_id(
@@ -108,10 +102,10 @@ def _base_url_subtitle(url: str) -> str:
         url: 预设默认 Base URL
 
     Returns:
-        str: 域名；无法解析时回退原始串，空串回退「自定义接入」
+        str: 域名；无法解析时回退原始串，空串回退「自定义接入」文案
     """
     if not url:
-        return "自定义接入"
+        return tr("dialog_llm_settings", "editor.custom_subtitle_fallback")
     host = urlparse(url).netloc
     return host or url
 
@@ -140,7 +134,9 @@ class ProviderEditorDialog(_BaseFormDialog):
             instance_id: MODE_EDIT 模式下被编辑的实例 id
             parent: 父控件
         """
-        title = "编辑提供商" if mode == MODE_EDIT else "添加提供商"
+        title = (tr("dialog_llm_settings", "editor.title_edit")
+                 if mode == MODE_EDIT
+                 else tr("dialog_llm_settings", "editor.title_create"))
         super().__init__(title, parent)
         self._mode = mode
         self._instance_id = instance_id
@@ -182,7 +178,8 @@ class ProviderEditorDialog(_BaseFormDialog):
         layout = QVBoxLayout(page)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(FORM_FIELD_GAP)
-        layout.addWidget(make_field_label("选择模型服务类型"))
+        layout.addWidget(make_field_label(
+            tr("dialog_llm_settings", "editor.type_page.label")))
         self._type_list = QListWidget(page)
         self._type_list.setIconSize(QSize(PRESET_ICON_SIZE, PRESET_ICON_SIZE))
         color = QColor(_theme_module.current_theme().fg_secondary)
@@ -191,12 +188,15 @@ class ProviderEditorDialog(_BaseFormDialog):
                 preset.preset_id, preset.display_name,
                 _base_url_subtitle(preset.default_base_url), color))
         self._type_list.addItem(self._make_type_item(
-            None, _CUSTOM_CHOICE_TITLE, _CUSTOM_CHOICE_SUBTITLE, color))
+            None,
+            tr("dialog_llm_settings", "editor.custom_choice.title"),
+            tr("dialog_llm_settings", "editor.custom_choice.subtitle"),
+            color))
         self._type_list.itemClicked.connect(self._on_type_chosen)
         layout.addWidget(self._type_list, 1)
         cancel_row = QHBoxLayout()
         cancel_row.addStretch(1)
-        cancel_btn = QPushButton("取消", page)
+        cancel_btn = QPushButton(tr("common", "cancel"), page)
         cancel_btn.setFixedHeight(FORM_BUTTON_HEIGHT)
         cancel_btn.clicked.connect(self.reject)
         cancel_row.addWidget(cancel_btn)
@@ -245,7 +245,8 @@ class ProviderEditorDialog(_BaseFormDialog):
         layout.setSpacing(FORM_DIALOG_SPACING)
         self._form_hint = make_field_label("")
         layout.addWidget(self._form_hint)
-        self.name_edit = self._build_form_field(layout, "名称", "")
+        self.name_edit = self._build_form_field(
+            layout, tr("dialog_llm_settings", "editor.field.name"), "")
         self.base_url_edit = self._build_form_field(
             layout, "Base URL", "https://...")
         self._key_label, self.api_key_edit = self._build_key_field(layout)
@@ -285,7 +286,7 @@ class ProviderEditorDialog(_BaseFormDialog):
         Returns:
             Tuple[QLabel, QLineEdit]: 标签与输入框控件
         """
-        label = make_field_label("API Key")
+        label = make_field_label(tr("dialog_llm_settings", "editor.field.api_key"))
         layout.addWidget(label)
         edit = QLineEdit(self)
         edit.setFixedHeight(FORM_INPUT_HEIGHT)
@@ -299,16 +300,16 @@ class ProviderEditorDialog(_BaseFormDialog):
         """构建底部按钮栏（[返回] + 取消 + 确定；返回仅 MODE_CREATE）"""
         row = QHBoxLayout()
         if self._mode == MODE_CREATE:
-            back_btn = QPushButton("返回", self)
+            back_btn = QPushButton(tr("common", "back"), self)
             back_btn.setFixedHeight(FORM_BUTTON_HEIGHT)
             back_btn.clicked.connect(
                 lambda: self._stack.setCurrentWidget(self._type_page))
             row.addWidget(back_btn)
         row.addStretch(1)
-        cancel_btn = QPushButton("取消", self)
+        cancel_btn = QPushButton(tr("common", "cancel"), self)
         cancel_btn.setFixedHeight(FORM_BUTTON_HEIGHT)
         cancel_btn.clicked.connect(self.reject)
-        ok_btn = QPushButton("确定", self)
+        ok_btn = QPushButton(tr("common", "ok"), self)
         ok_btn.setFixedHeight(FORM_BUTTON_HEIGHT)
         ok_btn.setProperty("accent", True)
         ok_btn.setDefault(True)
@@ -322,30 +323,45 @@ class ProviderEditorDialog(_BaseFormDialog):
     def _apply_form_prefill(self) -> None:
         """按所选类型预填表单（名称 / Base URL / API Key 标签）"""
         auth_optional = bool(self._preset and self._preset.auth_optional)
-        self._key_label.setText("API Key（可选）" if auth_optional else "API Key")
+        self._key_label.setText(tr(
+            "dialog_llm_settings",
+            "editor.field.api_key_optional" if auth_optional
+            else "editor.field.api_key"))
         if self._preset is not None:
-            self._form_hint.setText(f"创建 {self._preset.display_name} 实例")
+            self._form_hint.setText(tr(
+                "dialog_llm_settings", "editor.form.hint_create_preset",
+                name=self._preset.display_name))
             self.name_edit.setText(self._preset.display_name)
             self.base_url_edit.setText(self._preset.default_base_url)
             return
-        self._form_hint.setText(f"创建{_CUSTOM_CHOICE_TITLE}实例")
-        self.name_edit.setText(_CUSTOM_DEFAULT_NAME)
+        self._form_hint.setText(tr(
+            "dialog_llm_settings", "editor.form.hint_create_custom",
+            type_name=tr("dialog_llm_settings", "editor.custom_choice.title")))
+        self.name_edit.setText(
+            tr("dialog_llm_settings", "editor.custom_default_name"))
         self.base_url_edit.setText("")
 
     def _prefill_edit_form(self) -> None:
         """edit 模式：从既有配置回填表单（API Key 不回显，留空不修改）"""
         cfg = get_llm_config().get_provider(self._instance_id or "")
         if cfg is None:
-            self._form_hint.setText("实例不存在")
+            self._form_hint.setText(
+                tr("dialog_llm_settings", "editor.form.hint_missing"))
             return
         self._preset = (
             get_provider_preset(cfg.preset_id) if cfg.preset_id else None)
         auth_optional = bool(self._preset and self._preset.auth_optional)
-        self._key_label.setText("API Key（可选）" if auth_optional else "API Key")
-        self._form_hint.setText(f"编辑实例（适配器：{cfg.adapter}）")
+        self._key_label.setText(tr(
+            "dialog_llm_settings",
+            "editor.field.api_key_optional" if auth_optional
+            else "editor.field.api_key"))
+        self._form_hint.setText(tr(
+            "dialog_llm_settings", "editor.form.hint_edit",
+            adapter=cfg.adapter))
         self.name_edit.setText(cfg.name)
         self.base_url_edit.setText(cfg.base_url)
-        self.api_key_edit.setPlaceholderText("留空则不修改")
+        self.api_key_edit.setPlaceholderText(
+            tr("dialog_llm_settings", "editor.field.api_key_keep_placeholder"))
 
     # ==================== 确认与落盘 ====================
 
@@ -355,10 +371,12 @@ class ProviderEditorDialog(_BaseFormDialog):
         base_url = self.base_url_edit.text().strip()
         api_key = self.api_key_edit.text().strip()
         if not name:
-            self._warn("校验失败", "请输入实例名称。")
+            self._warn(tr("dialog_llm_settings", "editor.warn.validation_title"),
+                       tr("dialog_llm_settings", "editor.warn.name_required"))
             return
         if self._mode == MODE_CREATE and self._custom and not base_url:
-            self._warn("校验失败", "自定义 OpenAI 兼容服务必须填写 Base URL。")
+            self._warn(tr("dialog_llm_settings", "editor.warn.validation_title"),
+                       tr("dialog_llm_settings", "editor.warn.base_url_required"))
             return
         if self._mode == MODE_EDIT:
             if not self._save_edit(name, base_url, api_key):
@@ -394,7 +412,8 @@ class ProviderEditorDialog(_BaseFormDialog):
         config = get_llm_config()
         cfg = config.get_provider(self._instance_id or "")
         if cfg is None:
-            self._warn("保存失败", "要编辑的实例不存在，可能已被删除。")
+            self._warn(tr("dialog_llm_settings", "editor.warn.save_failed_title"),
+                       tr("dialog_llm_settings", "editor.warn.instance_missing"))
             return False
         cfg.name = name
         cfg.base_url = base_url
@@ -405,5 +424,5 @@ class ProviderEditorDialog(_BaseFormDialog):
         return True
 
     def _warn(self, title: str, message: str) -> None:
-        """弹出中文警告轻提示（UIKit Message，标题并入文案）"""
+        """弹出警告轻提示（UIKit Message，标题并入文案）"""
         _warn_toast(self, f"{title}：{message}")

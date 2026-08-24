@@ -53,6 +53,9 @@ docs/
 │   ├── font-manager/               # 字体子系统
 │   │   └── overview.md             # FontManager 概述（安装/卸载/预览/系统回退）
 │   │
+│   ├── i18n/                      # 多语言子系统
+│   │   └── overview.md             # LanguageManager 概述（语言文件约定/回退链/插件集成）
+│   │
 │   ├── llm-provider/                # LLM 提供者
 │   │   ├── overview.md              # LLM Provider 概述
 │   │   ├── api-reference.md         # LLM Provider API 参考
@@ -110,13 +113,14 @@ docs/
 13. **[LLM Provider API 参考](core/llm-provider/api-reference.md)** - LLM API
 14. **[MCP 协议模块](core/mcp/overview.md)** - MCP 协议支持（Server + Client）
 15. **[LLM 集成指南](plugins/llm-integration-guide.md)** - 在插件中使用 LLM 服务
-16. **[主窗口](ui/main-window.md)** - 界面组件详解
-17. **[API 完整参考](api/full-reference.md)** - 所有 API 索引
+16. **[多语言子系统概述](core/i18n/overview.md)** - i18n 取词、语言切换与插件语言包
+17. **[主窗口](ui/main-window.md)** - 界面组件详解
+18. **[API 完整参考](api/full-reference.md)** - 所有 API 索引
 
 ### 插件参考
 
-18. **[插件文档](plugins/index.md)** - 所有插件总览
-19. **[第三方插件](plugins/thirdparty-plugins.md)** - 第三方插件说明
+19. **[插件文档](plugins/index.md)** - 所有插件总览
+20. **[第三方插件](plugins/thirdparty-plugins.md)** - 第三方插件说明
 
 ---
 
@@ -133,6 +137,7 @@ docs/
 - **LLMPluginService** - LLM 插件服务层（对话管理、工具调用、多模态，插件开发者入口）
 - **MCPManager** - MCP 协议协调器（Server 模式暴露插件工具，Client 模式消费外部 MCP Server 工具）
 - **FontManager** - 字体管理器（字体安装/卸载、注册表持久化、系统字体回退，通过 get_font_manager() 获取）
+- **LanguageManager** - 语言管理器（框架/插件文案取词、语言实时切换、每插件语言覆盖，通过 get_language_manager() 获取）
 
 ### 插件系统
 
@@ -191,6 +196,9 @@ from core.llm import Conversation, ToolResult, UsageStats
 
 # MCP 协议
 from core.mcp import get_mcp_manager, MCPManager
+
+# 多语言（i18n）
+from core.i18n import get_language_manager, tr
 
 # 抽象接口层（推荐通过接口而非直接依赖实现）
 from core.interfaces import (

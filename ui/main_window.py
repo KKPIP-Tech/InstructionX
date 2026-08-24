@@ -13,12 +13,13 @@ from PySide6.QtWidgets import (
     QMainWindow, QWidget,
     QVBoxLayout,
     QDialog, QLabel,
-    QApplication, QGraphicsDropShadowEffect
+    QApplication, QGraphicsBlurEffect, QGraphicsScene
 )
 from PySide6.QtGui import (
-    QAction, QCursor, QMouseEvent, QColor, QCloseEvent, QIcon, QSessionManager
+    QAction, QCursor, QMouseEvent, QColor, QCloseEvent, QIcon, QSessionManager,
+    QImage, QPainter, QPixmap
 )
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QRectF
 
 # ===================================================================
 # 自定义工具
@@ -28,6 +29,7 @@ from ui.dialog.about_dialog import AboutDialog
 from ui.dialog.license_dialog import LicenseDialog
 from ui.dialog.font_manager_dialog import FontManagerDialog
 from ui.dialog.github_plugin_install_dialog import GitHubPluginInstallDialog
+from ui.dialog.language_dialog import LanguageDialog
 from ui.dialog.llm_settings import LLMSettingsDialog
 from ui.work_area.work_area import WorkArea
 from ui.title_bar import CustomTitleBar
@@ -39,9 +41,12 @@ from core.data.data_provider import DataProvider, DataNamespace
 from core.interfaces import IPlugin, TaskStatus
 from core.task.background_task import BackgroundTaskManager
 from core.llm.llm_provider import get_llm_provider
+from core.i18n import tr, get_language_manager
 from utils.logging_tools import LoggerManager, get_name
 from ui.uikit_theme import apply_uikit_theme, current_theme_mode
 from InstructionX_UIKit import T
+from InstructionX_UIKit.blueprint import BlueprintCanvas, BlueprintGraph
+from InstructionX_UIKit.blueprint.viewport import gl_available
 
 
 # ===================================================================
@@ -58,10 +63,78 @@ CONTAINER_MARGIN_TOP = 0
 CONTAINER_MARGIN_RIGHT = 8
 CONTAINER_MARGIN_BOTTOM = 8
 
-# 窗口阴影效果参数
+# 窗口阴影参数（预渲染位图 + 9 宫格绘制，不使用 QGraphicsDropShadowEffect）
 SHADOW_BLUR_RADIUS = 20
 SHADOW_OFFSET_X = 0
 SHADOW_OFFSET_Y = 4
+SHADOW_COLOR_ALPHA = 80
+# 阴影源位图中心圆角矩形的边长（仅供 9 宫格拉伸，与最终窗口尺寸无关）
+SHADOW_SOURCE_CONTENT = 64
+# 主容器圆角半径（窗口化状态）
+WINDOW_CORNER_RADIUS = 8
+
+
+def _render_shadow_pixmap() -> QPixmap:
+    """预渲染窗口阴影源位图（启动后首次绘制时执行一次）。
+
+    阴影形状与主容器一致（圆角矩形），颜色/模糊半径沿用原
+    QGraphicsDropShadowEffect 的参数；源位图尺寸固定，绘制时按目标
+    矩形做 9 宫格拉伸，因此任意窗口尺寸下都无逐帧渲染开销。
+    """
+    margin = SHADOW_BLUR_RADIUS
+    content = SHADOW_SOURCE_CONTENT
+    # 圆角矩形（容器形状）作为阴影实体
+    base = QImage(content, content, QImage.Format.Format_ARGB32_Premultiplied)
+    base.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(base)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    painter.setPen(Qt.PenStyle.NoPen)
+    painter.setBrush(QColor(0, 0, 0, SHADOW_COLOR_ALPHA))
+    painter.drawRoundedRect(
+        QRectF(0, 0, content, content), WINDOW_CORNER_RADIUS, WINDOW_CORNER_RADIUS)
+    painter.end()
+    # QGraphicsBlurEffect 与原阴影效果使用同一模糊内核，观感一致
+    scene = QGraphicsScene()
+    item = scene.addPixmap(QPixmap.fromImage(base))
+    item.setPos(margin, margin)
+    blur = QGraphicsBlurEffect()
+    blur.setBlurRadius(SHADOW_BLUR_RADIUS)
+    item.setGraphicsEffect(blur)
+    side = content + 2 * margin
+    shadow = QImage(side, side, QImage.Format.Format_ARGB32_Premultiplied)
+    shadow.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(shadow)
+    scene.render(painter, QRectF(0, 0, side, side), QRectF(0, 0, side, side))
+    painter.end()
+    return QPixmap.fromImage(shadow)
+
+
+def _draw_shadow_tiles(painter: QPainter, pixmap: QPixmap,
+                       target: "QRectF", tile: int) -> None:
+    """把阴影源位图按 9 宫格拉伸绘制到目标矩形（中心区域被容器覆盖，跳过）。
+
+    Args:
+        painter: 目标绘制画笔
+        pixmap: ``_render_shadow_pixmap`` 预渲染的阴影源位图
+        target: 阴影整体目标矩形（窗口坐标，含模糊外扩与偏移）
+        tile: 角块边长（源位图中不拉伸的角部尺寸）
+    """
+    side = pixmap.width()
+    xs = (0.0, float(tile), float(side - tile), float(side))
+    xt = (float(target.left()), float(target.left() + tile),
+          float(target.right() - tile + 1), float(target.right() + 1))
+    ys = (0.0, float(tile), float(side - tile), float(side))
+    yt = (float(target.top()), float(target.top() + tile),
+          float(target.bottom() - tile + 1), float(target.bottom() + 1))
+    for row in range(3):
+        for col in range(3):
+            if row == 1 and col == 1:
+                continue
+            src = QRectF(xs[col], ys[row],
+                         xs[col + 1] - xs[col], ys[row + 1] - ys[row])
+            dst = QRectF(xt[col], yt[row],
+                         xt[col + 1] - xt[col], yt[row + 1] - yt[row])
+            painter.drawPixmap(dst, pixmap, src)
 
 # 技能面板高度限制
 SKILLS_PANEL_MAX_HEIGHT = 135
@@ -74,9 +147,6 @@ THEME_SETTING_KEY = "theme"
 # 托盘图标路径（基于本文件位置推导，与 main.py 中窗口图标同一推导方式，
 # 避免相对 CWD 失效）
 TRAY_ICON_FILE = Path(__file__).resolve().parent / "logo.ico"
-
-# 任务所属插件无法解析时的兜底显示名
-UNKNOWN_PLUGIN_NAME = "未知插件"
 
 
 class InstructionXMainWindow(QMainWindow):
@@ -142,18 +212,19 @@ class InstructionXMainWindow(QMainWindow):
         # 创建主布局内容
         self._create_main_layout()
 
+        # 预热蓝图 GL 视口（须在窗口 show() 之前，见该方法 docstring）
+        self._prewarm_blueprint_viewport()
+
         # 应用容器样式
         self._update_container_style()
 
-        # 创建 Qt 阴影效果（替代 DWM 原生阴影，避免 WM_NCCALCSIZE 坐标错位）
-        # 性能取舍：QGraphicsDropShadowEffect 需对整个容器做离屏渲染，
-        # 低端机器上略有开销；但可彻底规避 DWM 方案的坐标错位问题，
-        # 且 blurRadius 控制在 20 以限制渲染成本。
-        self._shadow_effect = QGraphicsDropShadowEffect(self)
-        self._shadow_effect.setBlurRadius(SHADOW_BLUR_RADIUS)
-        self._shadow_effect.setColor(QColor(0, 0, 0, 80))
-        self._shadow_effect.setOffset(SHADOW_OFFSET_X, SHADOW_OFFSET_Y)
-        self._container.setGraphicsEffect(self._shadow_effect)
+        # 窗口阴影：预渲染位图 + 9 宫格绘制（见 paintEvent）。
+        # 不用 QGraphicsDropShadowEffect：它会把整个容器子树的绘制重定向到
+        # 离屏缓存，而 QOpenGLWidget（蓝图 GL 视口）的帧更新无法触发效果源
+        # 缓存失效，窗口化模式下画布会长期呈现旧帧（拖拽时画面卡死，最大化
+        # 时因阴影被禁用而不复发）；也不用 DWM 原生阴影（WM_NCCALCSIZE 方案
+        # 曾导致 Qt 与 Windows 坐标系错位）。
+        self._shadow_pixmap = None  # 惰性渲染，首次 paintEvent 时生成
 
         # 边缘 resize 相关变量
         self._resize_margin = 8  # 边缘检测区域宽度
@@ -172,6 +243,9 @@ class InstructionXMainWindow(QMainWindow):
         # 创建系统托盘管理器并接线
         self._setup_tray()
 
+        # 语言切换时集中重设主窗口文案（Qt 对象销毁时自动断开连接）
+        get_language_manager().language_changed.connect(self._retranslate_ui)
+
     # ===============================================================
     # GUI 界面
     def _create_menus(self) -> None:
@@ -188,35 +262,37 @@ class InstructionXMainWindow(QMainWindow):
         self._title_bar.set_menu_bar(menu_bar)
 
         # -------------------------------------------------
-        # 编辑
-        menu_edit = menu_bar.addMenu("编辑")
+        # 编辑（文案统一由 _retranslate_ui 设置，此处只建结构）
+        self._menu_edit = menu_bar.addMenu("")
 
         # 插件管理（安装/升级/卸载/分组/排序）
-        menu_edit_plugin_manage_action = QAction("插件管理...", self)
-        menu_edit_plugin_manage_action.setShortcut("Ctrl+P")
-        menu_edit_plugin_manage_action.triggered.connect(self._open_plugin_management_dialog)
-        menu_edit.addAction(menu_edit_plugin_manage_action)
+        self._action_plugin_manage = QAction(self)
+        self._action_plugin_manage.setShortcut("Ctrl+P")
+        self._action_plugin_manage.triggered.connect(self._open_plugin_management_dialog)
+        self._menu_edit.addAction(self._action_plugin_manage)
 
         # 字体管理（安装/卸载/预览）
-        menu_edit_font_manage_action = QAction("字体管理...", self)
-        menu_edit_font_manage_action.triggered.connect(self._open_font_manager_dialog)
-        menu_edit.addAction(menu_edit_font_manage_action)
+        self._action_font_manage = QAction(self)
+        self._action_font_manage.triggered.connect(self._open_font_manager_dialog)
+        self._menu_edit.addAction(self._action_font_manage)
 
         # 主题切换
-        self._menu_theme_action = QAction("切换主题", self)
-        self._menu_theme_action.setToolTip("浅色 → 深色 → 跟随系统")
+        self._menu_theme_action = QAction(self)
         self._menu_theme_action.triggered.connect(self._cycle_theme)
-        menu_edit.addAction(self._menu_theme_action)
-        self._update_theme_action_text()
+        self._menu_edit.addAction(self._menu_theme_action)
+
+        # 界面语言
+        self._action_language = QAction(self)
+        self._action_language.triggered.connect(self._open_language_dialog)
+        self._menu_edit.addAction(self._action_language)
 
         # 分隔线
-        menu_edit.addSeparator()
+        self._menu_edit.addSeparator()
 
         # 从 GitHub 安装插件
-        menu_edit_github_install_action = QAction("从 GitHub 安装插件...", self)
-        menu_edit_github_install_action.setStatusTip("从 GitHub 仓库安装插件")
-        menu_edit_github_install_action.triggered.connect(self._open_github_plugin_install_dialog)
-        menu_edit.addAction(menu_edit_github_install_action)
+        self._action_github_install = QAction(self)
+        self._action_github_install.triggered.connect(self._open_github_plugin_install_dialog)
+        self._menu_edit.addAction(self._action_github_install)
 
         # -------------------------------------------------
         # AI 菜单
@@ -224,17 +300,42 @@ class InstructionXMainWindow(QMainWindow):
 
         # -------------------------------------------------
         # 帮助
-        menu_help = menu_bar.addMenu("帮助")
+        self._menu_help = menu_bar.addMenu("")
 
         # 关于软件
-        menu_help_about_action = QAction("关于", self)
-        menu_help_about_action.triggered.connect(self._open_about_dialog)
-        menu_help.addAction(menu_help_about_action)
+        self._action_about = QAction(self)
+        self._action_about.triggered.connect(self._open_about_dialog)
+        self._menu_help.addAction(self._action_about)
 
         # 开源组件许可
-        menu_help_license_action = QAction("开源组件许可", self)
-        menu_help_license_action.triggered.connect(self._open_license_dialog)
-        menu_help.addAction(menu_help_license_action)
+        self._action_license = QAction(self)
+        self._action_license.triggered.connect(self._open_license_dialog)
+        self._menu_help.addAction(self._action_license)
+
+        # 首次填充全部菜单文案（语言切换时由 language_changed 触发重设）
+        self._retranslate_ui()
+
+    def _retranslate_ui(self) -> None:
+        """集中重设主窗口全部用户可见文案（初始化末尾与语言切换时调用）"""
+        self._menu_edit.setTitle(tr("main_window", "menu.edit"))
+        self._action_plugin_manage.setText(
+            tr("main_window", "menu.edit.plugin_management"))
+        self._action_font_manage.setText(
+            tr("main_window", "menu.edit.font_management"))
+        self._menu_theme_action.setToolTip(
+            tr("main_window", "menu.edit.toggle_theme.tooltip"))
+        self._action_language.setText(tr("main_window", "menu.edit.language"))
+        self._action_github_install.setText(
+            tr("main_window", "menu.edit.install_from_github"))
+        self._action_github_install.setStatusTip(
+            tr("main_window", "menu.edit.install_from_github.status_tip"))
+        self._ai_menu.setTitle(tr("main_window", "menu.ai"))
+        self._action_llm_settings.setText(tr("main_window", "menu.ai.llm_settings"))
+        self._action_usage.setText(tr("main_window", "menu.ai.usage"))
+        self._menu_help.setTitle(tr("main_window", "menu.help"))
+        self._action_about.setText(tr("main_window", "menu.help.about"))
+        self._action_license.setText(tr("main_window", "menu.help.licenses"))
+        self._update_theme_action_text()
 
 
     def _create_main_layout(self) -> None:
@@ -275,6 +376,29 @@ class InstructionXMainWindow(QMainWindow):
         # 连接技能点击信号
         self.skills_panel.skill_clicked.connect(self._on_skill_clicked)
 
+    def _prewarm_blueprint_viewport(self) -> None:
+        """预创建蓝图画布以预热 GL 视口，规避顶层窗口原生句柄重建闪烁。
+
+        UIKit 蓝图画布的绘制视口在 GL 可用时基于 ``QOpenGLWidget``；若其
+        在顶层窗口**可见之后**才加入窗口树，Qt 会重建顶层原生窗口句柄，
+        表现为整个窗口短暂关闭后重开一次（Qt 固有行为，见 UIKit
+        USAGE.md §8.6）。插件的蓝图画布均在主窗口显示后才创建，因此在
+        构造阶段预创建一个隐藏画布并长期持有，让顶层原生句柄首次创建时
+        即按「含 GL 子控件」的方式建立，后续插件画布加入时不再触发重建。
+
+        软件渲染回退环境（无 GL / offscreen）不存在该问题，直接跳过；
+        预热失败不影响主窗口启动，仅记录 WARNING 日志。
+        """
+        if not gl_available():
+            return
+        try:
+            # 长期持有引用，防止被 GC 回收后失去预热效果
+            self._blueprint_prewarm_canvas = BlueprintCanvas(
+                BlueprintGraph(), self._container)
+            self._blueprint_prewarm_canvas.hide()
+        except Exception as e:  # 预热失败不阻断启动，仅降级为旧行为
+            self._logger.warning(get_name(), f"蓝图 GL 视口预热失败（不影响使用）: {e}")
+
     def _on_skill_clicked(self, plugin):
         """
         处理技能按钮点击事件
@@ -299,13 +423,13 @@ class InstructionXMainWindow(QMainWindow):
             # 如果插件 widget 创建失败，显示错误信息，并附带“重试”链接
             # （保持向工作区添加 QLabel 的接口约定，重试通过链接触发）
             error_label = QLabel(
-                f"无法加载插件：{plugin.plugin_name}　<a href='retry'>点击重试</a>"
+                tr("main_window", "work_area.load_error", name=plugin.plugin_name)
             )
             error_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
             error_label.setProperty("error", "true")
             error_label.style().unpolish(error_label)
             error_label.style().polish(error_label)
-            error_label.setToolTip("加载失败，点击“点击重试”重新加载插件")
+            error_label.setToolTip(tr("main_window", "work_area.load_error.tooltip"))
             error_label.linkActivated.connect(
                 lambda _link, p=plugin: self._on_skill_clicked(p)
             )
@@ -320,6 +444,11 @@ class InstructionXMainWindow(QMainWindow):
     def _open_font_manager_dialog(self):
         """打开字体管理对话框（安装/卸载/预览）"""
         dialog = FontManagerDialog(self)
+        dialog.exec()
+
+    def _open_language_dialog(self):
+        """打开界面语言选择对话框（确定后实时切换语言）"""
+        dialog = LanguageDialog(self)
         dialog.exec()
 
     def _on_plugins_changed(self):
@@ -399,9 +528,13 @@ class InstructionXMainWindow(QMainWindow):
 
     def _update_theme_action_text(self):
         """更新主题菜单项文字，显示当前主题"""
-        theme_labels = {'light': '浅色', 'dark': '深色', 'auto': '跟随系统'}
-        label = theme_labels.get(self._current_theme, '跟随系统')
-        self._menu_theme_action.setText(f"切换主题 ({label})")
+        theme_label_keys = {
+            'light': 'theme.light', 'dark': 'theme.dark', 'auto': 'theme.auto',
+        }
+        label = tr("main_window",
+                   theme_label_keys.get(self._current_theme, 'theme.auto'))
+        self._menu_theme_action.setText(
+            tr("main_window", "menu.edit.toggle_theme.current", label=label))
 
     def _cycle_theme(self):
         """循环切换主题：浅色 → 深色 → 跟随系统"""
@@ -432,7 +565,7 @@ class InstructionXMainWindow(QMainWindow):
     def _open_usage_panel(self):
         """打开用量查询面板对话框"""
         dialog = QDialog(self)
-        dialog.setWindowTitle("用量查询")
+        dialog.setWindowTitle(tr("main_window", "dialog.usage.title"))
         dialog.setMinimumSize(900, 600)
         # 尺寸对齐用量面板 Demo 的设计密度（1100×760）
         dialog.resize(1100, 760)
@@ -447,19 +580,19 @@ class InstructionXMainWindow(QMainWindow):
     # ===============================================================
 
     def _create_ai_menu(self, menu_bar):
-        """创建 AI 菜单"""
-        self._ai_menu = menu_bar.addMenu("AI")
+        """创建 AI 菜单（文案统一由 _retranslate_ui 设置）"""
+        self._ai_menu = menu_bar.addMenu("")
 
         # LLM 设置
-        settings_action = QAction("LLM 设置...", self)
-        settings_action.setShortcut("Ctrl+L")
-        settings_action.triggered.connect(self._open_llm_settings_dialog)
-        self._ai_menu.addAction(settings_action)
+        self._action_llm_settings = QAction(self)
+        self._action_llm_settings.setShortcut("Ctrl+L")
+        self._action_llm_settings.triggered.connect(self._open_llm_settings_dialog)
+        self._ai_menu.addAction(self._action_llm_settings)
 
         # 用量查询
-        usage_action = QAction("用量查询", self)
-        usage_action.triggered.connect(self._open_usage_panel)
-        self._ai_menu.addAction(usage_action)
+        self._action_usage = QAction(self)
+        self._action_usage.triggered.connect(self._open_usage_panel)
+        self._ai_menu.addAction(self._action_usage)
 
     def _update_container_style(self):
         """更新容器样式（圆角/最大化状态），适配当前主题"""
@@ -467,40 +600,63 @@ class InstructionXMainWindow(QMainWindow):
         border_color = T("color.border")
 
         if self.isMaximized() or self.isFullScreen():
-            # 最大化/全屏时移除圆角和阴影
+            # 最大化/全屏时移除圆角（阴影由 paintEvent 按窗口状态跳过）
             self._container.setStyleSheet(f"""
                 QWidget#mainContainer {{
                     background-color: {window_bg};
                     border-radius: 0px;
                 }}
             """)
-            if hasattr(self, '_shadow_effect') and self._shadow_effect:
-                self._shadow_effect.setEnabled(False)
         else:
-            # 还原时显示圆角和阴影
+            # 还原时显示圆角
             self._container.setStyleSheet(f"""
                 QWidget#mainContainer {{
                     background-color: {window_bg};
-                    border-radius: 8px;
+                    border-radius: {WINDOW_CORNER_RADIUS}px;
                     border: 1px solid {border_color};
                 }}
             """)
-            if hasattr(self, '_shadow_effect') and self._shadow_effect:
-                self._shadow_effect.setEnabled(True)
 
     def nativeEvent(self, eventType, message):
         """
         保留原生事件接口，当前不拦截任何消息。
         先前拦截 WM_NCCALCSIZE 会导致 Qt 与 Windows 坐标系错位，
-        阴影改用 QGraphicsDropShadowEffect 实现。
+        阴影改用预渲染位图 9 宫格绘制（见 paintEvent）。
         """
         return super().nativeEvent(eventType, message)
 
+    def paintEvent(self, event) -> None:  # noqa: N802
+        """窗口化状态下先绘制窗口阴影，再交给基类绘制。
+
+        阴影为预渲染位图的 9 宫格拉伸，常数时间完成，不参与子控件的
+        逐帧重绘；最大化/全屏时跳过（与原阴影效果的启停行为一致）。
+        """
+        if not self.isMaximized() and not self.isFullScreen():
+            self._paint_window_shadow()
+        super().paintEvent(event)
+
+    def _paint_window_shadow(self) -> None:
+        """在容器外圈绘制 9 宫格拉伸的预渲染阴影（超出窗口部分自然裁剪）。"""
+        if self._shadow_pixmap is None:
+            self._shadow_pixmap = _render_shadow_pixmap()
+        tile = SHADOW_BLUR_RADIUS + SHADOW_SOURCE_CONTENT // 2
+        target = QRectF(self._container.geometry().adjusted(
+            -SHADOW_BLUR_RADIUS, -SHADOW_BLUR_RADIUS,
+            SHADOW_BLUR_RADIUS, SHADOW_BLUR_RADIUS,
+        ).translated(SHADOW_OFFSET_X, SHADOW_OFFSET_Y))
+        # 布局未完成时目标矩形可能小于角块，跳过避免反向拉伸
+        if target.width() < 2 * tile or target.height() < 2 * tile:
+            return
+        painter = QPainter(self)
+        _draw_shadow_tiles(painter, self._shadow_pixmap, target, tile)
+        painter.end()
+
     def changeEvent(self, event):
-        """监听窗口状态变化，更新标题栏按钮和阴影"""
+        """监听窗口状态变化，更新标题栏按钮和容器圆角"""
         if event.type() == event.Type.WindowStateChange:
             self._title_bar.set_maximized(self.isMaximized() or self.isFullScreen())
-            # 容器圆角/阴影样式统一由 _update_container_style 处理，避免重复代码
+            # 容器圆角样式统一由 _update_container_style 处理，避免重复代码；
+            # 阴影由 paintEvent 按窗口状态自动启停
             self._update_container_style()
         super().changeEvent(event)
 
@@ -848,4 +1004,4 @@ class InstructionXMainWindow(QMainWindow):
         plugin = self.plugin_manager.get_plugin_by_id(plugin_id)
         if plugin is not None:
             return plugin.plugin_name
-        return plugin_id if plugin_id else UNKNOWN_PLUGIN_NAME
+        return plugin_id if plugin_id else tr("main_window", "tray.unknown_plugin")

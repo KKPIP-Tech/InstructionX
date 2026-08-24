@@ -13,11 +13,12 @@ import tempfile
 import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List, Optional, Tuple, Dict, Any
+from typing import List, Optional, Tuple, Dict, Any, Union
 from urllib.parse import urlparse
 
 import requests
 
+from core.i18n import DEFAULT_LANGUAGE, I18nSettingsStore, resolve_i18n_field
 from utils.logging_tools import LoggerManager, get_name
 from .dependency_manager import DependencyManager
 # 无循环依赖（manager 不反向依赖本模块），置顶导入
@@ -50,14 +51,22 @@ class InstallResult:
         return InstallResult(success=False, message=message)
 
 
+# 可多语言字段的原始形式：纯字符串（旧形式）或 {语言代码: 文案} 字典（§10.4b）
+I18nFieldValue = Union[str, Dict[str, str]]
+
+
 @dataclass
 class PluginInfo:
-    """插件信息（从描述文件读取）"""
+    """插件信息（从描述文件读取）
+
+    name/description 保留描述文件中的原始形式（纯字符串或多语言字典），
+    不做语言解析——解析发生在展示层（安装对话框），避免丢失其他语言文案。
+    """
     plugin_id: str
-    name: str
+    name: I18nFieldValue
     version: str
     main: str
-    description: Optional[str] = None
+    description: Optional[I18nFieldValue] = None
     author: Optional[str] = None
     homepage: Optional[str] = None
     keywords: List[str] = field(default_factory=list)
@@ -134,6 +143,18 @@ class GitHubPluginInstaller:
         if owner.lower() == self.KKPIP_TECH_ORG.lower():
             return official_dir, "官方插件目录 (plugin/)"
         return thirdparty_dir, "第三方插件目录 (custom_plugin/)"
+
+    def _current_language(self) -> str:
+        """读取框架当前语言（纯 Python 配置读取，可在安装工作线程安全调用）
+
+        读取失败时回退默认语言，不阻断安装流程。
+        """
+        try:
+            settings = I18nSettingsStore().load_framework_settings()
+            return settings.get("current_language") or DEFAULT_LANGUAGE
+        except Exception as e:
+            self._logger.warning(get_name(), f"读取当前语言失败，按默认语言解析: {e}")
+            return DEFAULT_LANGUAGE
 
     def parse_github_url(self, url: str) -> Optional[Tuple[str, str]]:
         """
@@ -270,7 +291,7 @@ class GitHubPluginInstaller:
         return RepoInspectionResult.single(plugin_info)
 
     def _parse_plugin_descriptor(self, desc: Dict[str, Any], path: str) -> PluginInfo:
-        """解析插件描述文件"""
+        """解析插件描述文件（name/description 保留原始形式，可为多语言字典）"""
         return PluginInfo(
             plugin_id=desc.get("id", ""),
             name=desc.get("name", "Unknown"),
@@ -634,7 +655,12 @@ class GitHubPluginInstaller:
 
             # 获取插件 ID 和名称
             actual_plugin_id = descriptor.get("id", plugin_id)
-            plugin_name = descriptor.get("name", "Unknown")
+            # name 允许 {语言代码: 文案} 字典形式（§10.4b）：注册表持久化与
+            # InstallResult 需要字符串，这里解析为当前语言文案
+            # （当前语言缺失时内部回退默认语言/字典首值）；
+            # 目录名、版本比较等环节只使用 id/version，不受字典形式影响
+            plugin_name = resolve_i18n_field(
+                descriptor.get("name", "Unknown"), self._current_language())
             new_version = descriptor.get("version", "release.0.0.0")
 
             # 检测与已安装版本的关系（新装/升级/降级/重装）

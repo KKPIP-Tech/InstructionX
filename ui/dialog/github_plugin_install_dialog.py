@@ -19,6 +19,7 @@ from core.plugin.github_plugin_installer import (
     GitHubPluginInstaller, InstallResult, RepoInspectionResult, PluginInfo
 )
 from core.plugin.manager import get_plugin_manager
+from core.i18n import get_language_manager, resolve_i18n_field, tr
 from utils.logging_tools import LoggerManager, get_name
 from InstructionX_UIKit import T, set_property
 from InstructionX_UIKit.components import (
@@ -28,12 +29,26 @@ from InstructionX_UIKit.components import (
 # 模块级日志器（LoggerManager 为单例）
 _logger = LoggerManager()
 
+# i18n 文案分组名
+_TR_GROUP = "dialog_github_install"
+
 
 def _info_result_dialog(parent, title: str, text: str) -> None:
     """阻塞式结果告知对话框（UIKit Dialog，替代原 QMessageBox）"""
-    dialog = Dialog(parent, title=title, ok_text="知道了", show_cancel=False)
+    dialog = Dialog(
+        parent, title=title, ok_text=tr(_TR_GROUP, "result.ok_got_it"),
+        show_cancel=False)
     dialog.set_text(text)
     dialog.exec()
+
+
+def _resolve_field(value) -> str:
+    """将可多语言字段（字符串或 {语言代码: 文案} 字典）解析为当前语言文案
+
+    对话框为瞬时窗口（transient）：展示时按当前语言解析一次，
+    语言切换后重新打开对话框即生效，不做实时刷新。
+    """
+    return resolve_i18n_field(value, get_language_manager().current_language())
 
 
 class GitHubFetchWorker(QThread):
@@ -107,8 +122,9 @@ class PluginInfoWidget(QWidget):
         layout.setSpacing(5)
         layout.setContentsMargins(5, 5, 5, 5)
 
-        # 插件名称和版本
-        header = QLabel(f"<b>{self.plugin_info.name}</b> (v{self.plugin_info.version})")
+        # 插件名称和版本（name 允许多语言字典形式，按当前语言解析后显示）
+        header = QLabel(
+            f"<b>{_resolve_field(self.plugin_info.name)}</b> (v{self.plugin_info.version})")
         header.setFont(QFont("", 10, QFont.Weight.Bold))
         layout.addWidget(header)
 
@@ -117,15 +133,15 @@ class PluginInfoWidget(QWidget):
         set_property(id_label, "role", "secondary")
         layout.addWidget(id_label)
 
-        # 描述
+        # 描述（description 允许多语言字典形式，按当前语言解析后显示）
         if self.plugin_info.description:
-            desc_label = QLabel(self.plugin_info.description)
+            desc_label = QLabel(_resolve_field(self.plugin_info.description))
             desc_label.setWordWrap(True)
             layout.addWidget(desc_label)
 
         # 作者
         if self.plugin_info.author:
-            author_label = QLabel(f"作者: {self.plugin_info.author}")
+            author_label = QLabel(tr(_TR_GROUP, "info.author", author=self.plugin_info.author))
             set_property(author_label, "role", "secondary")
             layout.addWidget(author_label)
 
@@ -135,7 +151,7 @@ class PluginInfoWidget(QWidget):
                 f"{k}{v}" if v else k
                 for k, v in self.plugin_info.dependencies.items()
             )
-            deps_label = QLabel(f"依赖: {deps_text}")
+            deps_label = QLabel(tr(_TR_GROUP, "info.deps", deps=deps_text))
             deps_label.setStyleSheet(f"color: {T('color.primary')};")
             deps_label.setWordWrap(True)
             layout.addWidget(deps_label)
@@ -173,7 +189,7 @@ class GitHubPluginInstallDialog(QDialog):
 
     def _init_ui(self):
         """初始化界面"""
-        self.setWindowTitle("从 GitHub 安装插件")
+        self.setWindowTitle(tr(_TR_GROUP, "window.title"))
         self.setMinimumSize(600, 450)
         self.setModal(True)
 
@@ -187,8 +203,8 @@ class GitHubPluginInstallDialog(QDialog):
         url_label = QLabel("GitHub URL:")
         url_label.setFixedWidth(80)
         self.url_input = LineEdit(
-            placeholder="https://github.com/owner/repo 或 git@github.com:owner/repo.git")
-        self.check_btn = Button("检查", variant="primary")
+            placeholder=tr(_TR_GROUP, "url.placeholder"))
+        self.check_btn = Button(tr(_TR_GROUP, "button.check"), variant="primary")
         self.check_btn.setFixedWidth(80)
         self.check_btn.clicked.connect(self._on_check_repo)
 
@@ -209,7 +225,7 @@ class GitHubPluginInstallDialog(QDialog):
         main_layout.addWidget(self.info_stack, 1)
 
         # 空状态页面
-        self.empty_widget = QLabel("点击「检查」按钮分析 GitHub 仓库")
+        self.empty_widget = QLabel(tr(_TR_GROUP, "page.empty_hint"))
         self.empty_widget.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.empty_widget.setStyleSheet(
             f"color: {T('color.text.secondary')};"
@@ -234,7 +250,7 @@ class GitHubPluginInstallDialog(QDialog):
         self.info_stack.addWidget(self.multi_plugin_widget)
 
         # 无效仓库页面
-        self.invalid_widget = QLabel("该仓库不包含有效的插件描述文件")
+        self.invalid_widget = QLabel(tr(_TR_GROUP, "page.invalid_hint"))
         self.invalid_widget.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.invalid_widget.setStyleSheet(
             f"color: {T('color.danger')}; border: 1px solid {T('color.danger')}; padding: 50px;"
@@ -262,11 +278,11 @@ class GitHubPluginInstallDialog(QDialog):
         btn_layout = QHBoxLayout()
         btn_layout.addStretch()
 
-        self.cancel_btn = Button("取消", variant="default")
+        self.cancel_btn = Button(tr("common", "cancel"), variant="default")
         self.cancel_btn.setFixedWidth(100)
         self.cancel_btn.clicked.connect(self.reject)
 
-        self.install_btn = Button("安装", variant="primary")
+        self.install_btn = Button(tr(_TR_GROUP, "button.install"), variant="primary")
         self.install_btn.setFixedWidth(100)
         self.install_btn.setEnabled(False)
         self.install_btn.clicked.connect(self._on_install)
@@ -292,11 +308,11 @@ class GitHubPluginInstallDialog(QDialog):
         """检查仓库按钮点击"""
         url = self.url_input.text().strip()
         if not url:
-            self.status_label.setText("请输入 GitHub 仓库 URL")
+            self.status_label.setText(tr(_TR_GROUP, "status.url_required"))
             return
 
         self.check_btn.setEnabled(False)
-        self.status_label.setText("正在检查仓库...")
+        self.status_label.setText(tr(_TR_GROUP, "status.checking"))
         # 重置状态文案颜色，避免残留上次检查的成功绿/失败红
         self.status_label.setStyleSheet(
             f"color: {T('color.text.secondary')};"
@@ -315,7 +331,8 @@ class GitHubPluginInstallDialog(QDialog):
 
         if result.repo_type == "invalid":
             self.repo_result = None
-            self.status_label.setText(result.error_message or "仓库无效")
+            self.status_label.setText(
+                result.error_message or tr(_TR_GROUP, "status.repo_invalid"))
             self._set_info_page("invalid")
             self.install_btn.setEnabled(False)
             self.install_dir_label.setVisible(False)
@@ -329,26 +346,28 @@ class GitHubPluginInstallDialog(QDialog):
         if parsed:
             owner, _ = parsed
             if owner == GitHubPluginInstaller.KKPIP_TECH_ORG:
-                dir_desc = "官方插件目录 (plugin/)"
+                dir_desc = tr(_TR_GROUP, "dir.official")
                 self._auto_install_dir = "official"
             else:
-                dir_desc = "第三方插件目录 (custom_plugin/)"
+                dir_desc = tr(_TR_GROUP, "dir.thirdparty")
                 self._auto_install_dir = "thirdparty"
         else:
-            dir_desc = "第三方插件目录 (custom_plugin/)"
+            dir_desc = tr(_TR_GROUP, "dir.thirdparty")
             self._auto_install_dir = "thirdparty"
 
-        self.install_dir_label.setText(f"将安装到: {dir_desc}")
+        self.install_dir_label.setText(
+            tr(_TR_GROUP, "dir.will_install_to", dir_desc=dir_desc))
         self.install_dir_label.setVisible(True)
 
         if result.repo_type == "single":
             self._show_single_plugin(result.plugins[0])
             self._set_info_page("single")
-            self.status_label.setText("单插件仓库 - 确认信息后点击「安装」")
+            self.status_label.setText(tr(_TR_GROUP, "status.single_repo"))
         elif result.repo_type == "multi":
             self._show_multi_plugins(result.plugins)
             self._set_info_page("multi")
-            self.status_label.setText(f"多插件仓库 - 选择要安装的插件 (共 {len(result.plugins)} 个)")
+            self.status_label.setText(
+                tr(_TR_GROUP, "status.multi_repo", count=len(result.plugins)))
 
         self.install_btn.setEnabled(True)
 
@@ -357,7 +376,7 @@ class GitHubPluginInstallDialog(QDialog):
         self.check_btn.setEnabled(True)
         self.fetch_worker = None
         _logger.error(get_name(), f"检查 GitHub 仓库失败: {error}")
-        self.status_label.setText(f"错误: {error}")
+        self.status_label.setText(tr(_TR_GROUP, "status.error", error=error))
         self._set_info_page("empty")
 
     def _show_single_plugin(self, plugin_info: PluginInfo):
@@ -383,12 +402,20 @@ class GitHubPluginInstallDialog(QDialog):
         self.plugin_checkboxes: List[CheckBox] = []
 
         for plugin_info in plugins:
-            checkbox = CheckBox(f"{plugin_info.name} (v{plugin_info.version})", checked=True)
+            # name/description 允许多语言字典形式，按当前语言解析后显示
+            checkbox = CheckBox(
+                f"{_resolve_field(plugin_info.name)} (v{plugin_info.version})",
+                checked=True)
             checkbox.setProperty("plugin_path", plugin_info.path)
             checkbox.setProperty("plugin_id", plugin_info.plugin_id)
 
             # 添加详细信息
-            details = QLabel(f"  {plugin_info.description or '无描述'}")
+            details_text = (
+                _resolve_field(plugin_info.description)
+                if plugin_info.description
+                else tr(_TR_GROUP, "plugin.no_description")
+            )
+            details = QLabel(f"  {details_text}")
             set_property(details, "role", "secondary")
             details.setWordWrap(True)
 
@@ -406,9 +433,9 @@ class GitHubPluginInstallDialog(QDialog):
 
         # 全选/取消全选
         select_layout = QHBoxLayout()
-        select_all_btn = Button("全选", variant="default", size="sm")
+        select_all_btn = Button(tr(_TR_GROUP, "button.select_all"), variant="default", size="sm")
         select_all_btn.clicked.connect(self._select_all)
-        deselect_all_btn = Button("取消全选", variant="default", size="sm")
+        deselect_all_btn = Button(tr(_TR_GROUP, "button.deselect_all"), variant="default", size="sm")
         deselect_all_btn.clicked.connect(self._deselect_all)
 
         select_layout.addStretch()
@@ -449,7 +476,7 @@ class GitHubPluginInstallDialog(QDialog):
                         selected_plugins.append(plugin_path)
 
             if not selected_plugins:
-                Message.warning(self, "请选择要安装的插件")
+                Message.warning(self, tr(_TR_GROUP, "message.select_plugins"))
                 return
 
         # 禁用按钮，开始安装
@@ -457,7 +484,7 @@ class GitHubPluginInstallDialog(QDialog):
         self.cancel_btn.setEnabled(False)
         self.check_btn.setEnabled(False)
         self.progress_bar.setVisible(True)
-        self.status_label.setText("正在安装...")
+        self.status_label.setText(tr(_TR_GROUP, "status.installing"))
 
         self.install_worker = GitHubInstallWorker(
             self.installer, url, selected_plugins, install_dir
@@ -479,11 +506,13 @@ class GitHubPluginInstallDialog(QDialog):
         fail_count = len(results) - success_count
 
         if fail_count == 0:
-            self.status_label.setText(f"安装成功！已安装 {success_count} 个插件")
+            self.status_label.setText(
+                tr(_TR_GROUP, "status.install_success", count=success_count))
             self.status_label.setStyleSheet(f"color: {T('color.success')};")
         else:
             self.status_label.setText(
-                f"安装完成：{success_count} 个成功，{fail_count} 个失败"
+                tr(_TR_GROUP, "status.install_partial",
+                   success_count=success_count, fail_count=fail_count)
             )
             self.status_label.setStyleSheet(f"color: {T('color.warning')};")
 
@@ -494,8 +523,11 @@ class GitHubPluginInstallDialog(QDialog):
         )
         _info_result_dialog(
             self,
-            "安装结果",
-            f"安装{'全部成功' if fail_count == 0 else '部分完成'}：\n{details}"
+            tr(_TR_GROUP, "result.title"),
+            tr(_TR_GROUP, "result.summary",
+               outcome=tr(_TR_GROUP, "result.all_success")
+               if fail_count == 0 else tr(_TR_GROUP, "result.partial"),
+               details=details)
         )
 
         # 发送信号
@@ -512,11 +544,11 @@ class GitHubPluginInstallDialog(QDialog):
         self.install_btn.setEnabled(True)
         self.cancel_btn.setEnabled(True)
         self.check_btn.setEnabled(True)
-        self.status_label.setText(f"安装失败: {error}")
+        self.status_label.setText(tr(_TR_GROUP, "status.install_failed", error=error))
         self.status_label.setStyleSheet(f"color: {T('color.danger')};")
 
         _logger.error(get_name(), f"从 GitHub 安装插件失败: {error}")
-        _info_result_dialog(self, "安装失败", error)
+        _info_result_dialog(self, tr(_TR_GROUP, "result.failed_title"), error)
 
     def _on_install_progress(self, msg: str):
         """安装进度更新"""

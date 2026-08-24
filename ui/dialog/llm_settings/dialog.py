@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
     QDialog, QLabel, QSplitter, QStackedWidget, QVBoxLayout, QWidget,
 )
 
+from core.i18n import get_language_manager, tr
 from core.llm.config import get_llm_config
 
 from .constants import (
@@ -30,15 +31,12 @@ from .provider_list_panel import ProviderListPanel
 from .theme import apply_dialog_theme
 from .widgets import install_focus_halo
 
-# 占位页空态文案
-_PLACEHOLDER_TEXT = "暂无提供商\n点击左下角「＋ 添加提供商」开始使用"
-
 
 class LLMSettingsDialog(QDialog):
     """LLM 设置主对话框
 
     左栏列表与右栏详情联动；上次选中的实例经 QSettings（组织
-    LumenThread / 应用 InstructionX-CE）记忆并在下次打开时恢复。
+    KKPIP-Tech / 应用 InstructionX-CE）记忆并在下次打开时恢复。
     """
 
     def __init__(self, parent: Optional[QWidget] = None):
@@ -48,7 +46,6 @@ class LLMSettingsDialog(QDialog):
             parent: 父控件
         """
         super().__init__(parent)
-        self.setWindowTitle("LLM 设置")
         self.setMinimumSize(DIALOG_MIN_WIDTH, DIALOG_MIN_HEIGHT)
         self.resize(DIALOG_DEFAULT_WIDTH, DIALOG_DEFAULT_HEIGHT)
         self._settings = QSettings(QSETTINGS_ORG_NAME, QSETTINGS_APP_NAME)
@@ -59,6 +56,10 @@ class LLMSettingsDialog(QDialog):
         self._restore_selection()
         apply_dialog_theme(self)
         install_focus_halo(self)
+        # 语言切换实时跟随：Qt 对象销毁时自动断开连接
+        self._retranslate_ui()
+        get_language_manager().language_changed.connect(
+            lambda _code: self._retranslate_ui())
 
     # ==================== 界面构建 ====================
 
@@ -83,16 +84,24 @@ class LLMSettingsDialog(QDialog):
         layout.addWidget(splitter)
 
     def _build_placeholder(self) -> QWidget:
-        """构建空态占位页（无提供商时显示）"""
+        """构建空态占位页（无提供商时显示；文案由 _retranslate_ui 设置）"""
         widget = QWidget(self)
         widget.setObjectName("PlaceholderPage")
         widget.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         page_layout = QVBoxLayout(widget)
-        label = QLabel(_PLACEHOLDER_TEXT, widget)
-        label.setObjectName("PlaceholderText")
-        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        page_layout.addWidget(label)
+        self._placeholder_label = QLabel(widget)
+        self._placeholder_label.setObjectName("PlaceholderText")
+        self._placeholder_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        page_layout.addWidget(self._placeholder_label)
         return widget
+
+    # ==================== 文案 ====================
+
+    def _retranslate_ui(self) -> None:
+        """按当前语言重设全部文案（初始化末尾与语言切换时调用）"""
+        self.setWindowTitle(tr("dialog_llm_settings", "dialog.title"))
+        self._placeholder_label.setText(
+            tr("dialog_llm_settings", "dialog.placeholder"))
 
     # ==================== 信号接线 ====================
 
