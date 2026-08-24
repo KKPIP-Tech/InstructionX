@@ -77,7 +77,7 @@ InstructionX 框架代码与用户插件代码是**两个独立的 git 仓库**�
 ```
 InstructionX/
 └── plugin/ 或 custom_plugin/         # ← 开发者的插件仓库（你的工作区域）
-    ├── IXRepo.json                   # 插件集描述文件（仅插件集需要）
+    ├── IXRepo.json                   # 插件仓库索引描述文件（所有插件仓库必需，含单插件仓库）
     ├── plugin-a/                     # ← 插件 A（每个插件都是一级子目录）
     │   ├── IXPlugin.json
     │   ├── __init__.py
@@ -137,9 +137,9 @@ InstructionX/
 | `keywords` | 否 | 字符串数组，检索标签 |
 | `dependencies` | 否 | 对象，格式 `{"包名": "版本约束"}`，如 `{"requests": ">=2.25.0"}`；版本约束遵循 PEP 440。框架 DependencyManager 在启动时检查并自动安装这些依赖。**只声明插件真实 import 的第三方包**，禁止声明未使用的包，禁止把标准库写进来 |
 
-#### IXRepo.json（插件集描述文件，仅插件集需要）
+#### IXRepo.json（插件仓库索引描述文件，所有插件仓库必需）
 
-位于插件仓库根部（`plugin/` 或 `custom_plugin/` 下），顶层为 `plugins` 数组：
+位于插件仓库根部（`plugin/` 或 `custom_plugin/` 下），顶层为 `plugins` 数组。**单插件仓库同样必须提供 IXRepo.json**——此时 `plugins` 数组只列出一个插件子目录：
 
 ```json
 {
@@ -162,8 +162,9 @@ InstructionX/
 
 将插件发布到 GitHub 供他人一键安装时，描述文件的放置与安装目录规则如下：
 
-- **单插件仓库**：仓库根目录直接放置 `IXPlugin.json` 与插件文件（安装器会将整个仓库作为一个插件安装）；
+- **单插件仓库**：仓库根目录放置 `IXRepo.json`（`plugins` 数组只列出一个插件子目录），插件文件位于该子目录内（含 `IXPlugin.json`）。即单插件仓库同样需要 `IXRepo.json`，只是索引中仅含一个插件；
 - **插件集仓库**：仓库根目录放置 `IXRepo.json`，各插件子目录各自放置 `IXPlugin.json`；
+- **兼容性说明**：安装器仍兼容旧式扁平单插件仓库（仓库根目录直接放置 `IXPlugin.json`、无 `IXRepo.json`，安装器会将整个仓库作为一个插件安装），但新建插件仓库一律采用「根目录 `IXRepo.json` + 插件子目录」形态；
 - **安装目录**：`KKPIP-Tech` 组织仓库 → `plugin/`（官方），其他所有来源 → `custom_plugin/`（第三方），与开发模式一一对应；
 - 框架同时支持**本地 zip 安装**（zip 包内必须包含 `IXPlugin.json`）；GitHub 安装与 Release 更新检查可经环境变量 `INSTRUCTIONX_GITHUB_TOKEN` 鉴权（提升限流阈值、访问私有仓库）。
 
@@ -173,7 +174,7 @@ InstructionX/
 - `version` 缺少类型前缀（如写成 `1.0.0`）或类型拼写不在五种闭集之内；
 - `IXRepo.json` 中的 `path` 与磁盘实际目录名不一致（含大小写差异）；
 - `IXRepo.json` 中的 `id` 与子目录内 `IXPlugin.json` 的 `id` 不一致；
-- 在插件集仓库根目录同时放置 `IXPlugin.json`（根目录只能是 `IXRepo.json`）；
+- 在仓库根目录同时放置 `IXPlugin.json` 与 `IXRepo.json`（规范形态下根目录只有 `IXRepo.json`，`IXPlugin.json` 位于各插件子目录内）；
 - `dependencies` 声明了未实际使用的包，或把 Python 标准库写进依赖；
 - 发布后修改 `id`，导致老用户无法升级；
 - 描述文件名大小写错误（如 `ixplugin.json`）。

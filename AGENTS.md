@@ -354,7 +354,7 @@ config/ data/ logs/         # 运行时生成：配置、数据、日志
   - **`ui/` 中不写业务逻辑**：槽函数不超过 5 行，委托给 `service.py` / `function/`
   - **所有 import 必须放在文件顶部**（PEP 8 顺序：标准库/第三方/本地），禁止函数级 import（包括为规避循环导入）
   - 无魔法数字
-- GitHub 安装描述文件：`IXPlugin.json`（单插件仓库，文件名大小写敏感）、`IXRepo.json`（多插件仓库）；KKPIP-Tech 组织下的插件自动归类为官方插件。
+- GitHub 安装描述文件：`IXPlugin.json`（每个插件必需，位于插件子目录，文件名大小写敏感）、`IXRepo.json`（插件仓库索引，所有插件仓库必需，含单插件仓库）；KKPIP-Tech 组织下的插件自动归类为官方插件。
 - 详细文档：`docs/core/plugin-system/plugin-development.md`、`docs/plugins/llm-integration-guide.md`。
 - 参考示例：`plugin/framework-api-demo/`、`plugin/llm-chat/`。
 
