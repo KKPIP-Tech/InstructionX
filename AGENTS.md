@@ -349,7 +349,7 @@ config/ data/ logs/         # 运行时生成：配置、数据、日志
   - `information.py`：定义 `IPluginInfo` 子类（版本用 `PluginVersion.from_string("release.x.y.z")`、`service_api` 工具描述等）；提供 `service_api` + `service.py`（类名以 `Service` 结尾）时，框架**自动注册跨插件 API 并同步为 MCP 工具**（不自动进入 LLM ToolRegistry，LLM 直接调用需插件实现 `IPlugin.llm_tools` 或自行注册）
   - `service.py`：插件服务/公开 API 层
   - `config/`：插件配置目录
-  - `text/`：插件语言包目录（**可选**，`<语言代码>.xml` 一个语言一个文件；提供后框架自动扫描注册并经 `PluginServices.localization` 供插件取词，不提供则行为不变）
+  - `text/`：插件语言包目录（**必需**，`<语言代码>.xml` 一个语言一个文件；框架加载时自动扫描注册并经 `PluginServices.localization` 供插件取词；对未提供语言包的存量插件保持兼容、行为不变）
 - 硬性规则（见根目录 `AGENTS-for-PLUGIN-DEV.md`，注意该文件是面向插件开发代理的规范）：
   - **`ui/` 中不写业务逻辑**：槽函数不超过 5 行，委托给 `service.py` / `function/`
   - **所有 import 必须放在文件顶部**（PEP 8 顺序：标准库/第三方/本地），禁止函数级 import（包括为规避循环导入）
