@@ -4,7 +4,7 @@
 PySide6>=6.10
 requests>=2.32
 aiohttp>=3.11
-mcp>=1.0.0
+mcp>=1.28.1,<2
 orjson>=3.11.0,<4
 matplotlib>=3.10
 packaging>=23.0
