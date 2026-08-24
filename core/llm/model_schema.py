@@ -32,6 +32,8 @@
 
 from typing import Any, Dict, List, Optional, Tuple
 
+from core.i18n import tr
+
 
 # ==================== 能力闭集常量 ====================
 
@@ -58,7 +60,8 @@ ALL_CAPABILITIES: Tuple[str, ...] = (
     CAPABILITY_RERANK,
 )
 
-# 能力值 → 中文标签
+# 能力值 → 中文标签（默认语言文案，向后兼容保留；
+# 新代码请使用 capability_label() 按当前语言取词）
 CAPABILITY_LABELS: Dict[str, str] = {
     CAPABILITY_VISION: "视觉",
     CAPABILITY_WEB_SEARCH: "联网搜索",
@@ -67,6 +70,23 @@ CAPABILITY_LABELS: Dict[str, str] = {
     CAPABILITY_EMBEDDING: "嵌入",
     CAPABILITY_RERANK: "重排序",
 }
+
+# 能力标签的 i18n 分组名（ui/text/<语言>.xml 中的 <group>）
+_CAPABILITY_I18N_GROUP = "model_capability"
+
+
+def capability_label(capability: str) -> str:
+    """按当前界面语言返回能力标签
+
+    Args:
+        capability: 能力键（ALL_CAPABILITIES 闭集内）
+
+    Returns:
+        本地化能力标签；未知能力键原样返回（保持既有兜底行为）
+    """
+    if capability not in CAPABILITY_LABELS:
+        return capability
+    return tr(_CAPABILITY_I18N_GROUP, capability)
 
 # ==================== 能力互斥规则 ====================
 

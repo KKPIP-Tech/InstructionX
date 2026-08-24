@@ -18,7 +18,7 @@
 由主壳接模型编辑对话框。
 """
 
-from typing import Any, Callable, Dict, List, Optional, Set
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 from PySide6.QtCore import Qt, QUrl, Signal
 from PySide6.QtGui import QColor, QDesktopServices, QFont
@@ -27,6 +27,7 @@ from PySide6.QtWidgets import (
     QPushButton, QScrollArea, QToolButton, QVBoxLayout, QWidget,
 )
 
+from core.i18n import get_language_manager, tr
 from core.llm.catalog import PRESET_MODELS, ProviderPreset, get_provider_preset
 from core.llm.config import ProviderConfig, get_llm_config
 from core.llm.llm_provider import get_llm_provider
@@ -39,7 +40,7 @@ from . import theme as _theme_module
 from .constants import (
     CHECK_BUTTON_HEIGHT, CHECK_BUTTON_WIDTH, CHECK_STATUS_TOP_GAP,
     CONTENT_MARGIN_BOTTOM, CONTENT_MARGIN_H, CONTENT_MARGIN_TOP,
-    CUSTOM_PROVIDER_TYPE_LABEL, DEFAULT_MODEL_LABEL_WIDTH,
+    DEFAULT_MODEL_LABEL_WIDTH,
     DEFAULT_MODEL_ROW_GAP, EYE_BUTTON_SIZE, FIELD_BLOCK_GAP, FIELD_GAP,
     HEADER_ICON_PX, HEADER_MARGIN_BOTTOM, HEADER_MARGIN_H,
     HEADER_MARGIN_RIGHT, HEADER_MARGIN_TOP, HEADER_NAME_FONT_PX,
@@ -108,18 +109,22 @@ class ProviderDetailPanel(QWidget):
         self._entries: List[Dict[str, Any]] = []
         self._status_kind: Optional[str] = None
         self._init_ui()
+        # 语言切换实时跟随（Qt 对象销毁自动断开）
+        self._retranslate_ui()
+        get_language_manager().language_changed.connect(
+            lambda _code: self._retranslate_ui())
 
     # ==================== 界面构建 ====================
 
     def _init_ui(self) -> None:
-        """构建头部 + 主体（滚动分区）+ 停用遮罩"""
+        """构建头部 + 主体（滚动分区）+ 停用遮罩（文案由 _retranslate_ui 设置）"""
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
         root.addWidget(self._build_header())
         root.addWidget(make_hairline())
         root.addWidget(self._build_body(), 1)
-        self._overlay = QLabel("该提供商已停用\n开启右上角开关后进行配置", self)
+        self._overlay = QLabel("", self)
         self._overlay.setObjectName("OverlayLabel")
         self._overlay.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._overlay.hide()
@@ -145,22 +150,21 @@ class ProviderDetailPanel(QWidget):
         header.addWidget(self._type_badge)
         header.addStretch(1)
         self._master_switch = SwitchButton()
-        self._master_switch.setToolTip("启用 / 停用该提供商")
         self._master_switch.toggled.connect(self._on_master_toggled)
         header.addWidget(self._master_switch, 0, Qt.AlignmentFlag.AlignVCenter)
         header.addWidget(self._build_more_button())
         return header_widget
 
     def _build_more_button(self) -> QToolButton:
-        """构建「更多」菜单按钮（重命名 / 删除提供商）"""
+        """构建「更多」菜单按钮（重命名 / 删除提供商；文案由 _retranslate_ui 设置）"""
         more_btn = QToolButton(self)
         more_btn.setText("⋮")
         more_btn.setFixedSize(MORE_BUTTON_SIZE, MORE_BUTTON_SIZE)
         more_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         menu = QMenu(more_btn)
-        menu.addAction("重命名", self._on_rename)
-        delete_action = menu.addAction("删除提供商", self._on_delete_provider)
-        delete_action.setProperty("danger", True)
+        self._rename_action = menu.addAction("", self._on_rename)
+        self._delete_action = menu.addAction("", self._on_delete_provider)
+        self._delete_action.setProperty("danger", True)
         # 手动弹出菜单：避免 InstantPopup 模式下样式绘制的小箭头
         more_btn.clicked.connect(
             lambda: menu.exec(more_btn.mapToGlobal(more_btn.rect().bottomLeft())))
@@ -204,14 +208,15 @@ class ProviderDetailPanel(QWidget):
 
     def _build_api_section(self, parent_layout: QVBoxLayout) -> None:
         """构建 API 配置区：密钥（眼睛/检测/状态）+ 地址（重置）"""
-        parent_layout.addWidget(make_section_label("API 配置"))
+        self._api_section_label = make_section_label("")
+        parent_layout.addWidget(self._api_section_label)
         parent_layout.addSpacing(SECTION_CONTENT_GAP)
         key_label_row = QHBoxLayout()
-        key_label_row.addWidget(make_field_label("API 密钥"))
+        self._key_field_label = make_field_label("")
+        key_label_row.addWidget(self._key_field_label)
         key_label_row.addStretch(1)
         self._key_link_btn = QToolButton(self)
         self._key_link_btn.setObjectName("KeyLinkButton")
-        self._key_link_btn.setText("获取密钥")
         self._key_link_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._key_link_btn.clicked.connect(self._on_open_key_url)
         key_label_row.addWidget(self._key_link_btn)
@@ -223,7 +228,8 @@ class ProviderDetailPanel(QWidget):
         self._check_status.setObjectName("CheckStatus")
         parent_layout.addWidget(self._check_status)
         parent_layout.addSpacing(FIELD_BLOCK_GAP)
-        parent_layout.addWidget(make_field_label("API 地址"))
+        self._host_field_label = make_field_label("")
+        parent_layout.addWidget(self._host_field_label)
         parent_layout.addSpacing(FIELD_GAP)
         parent_layout.addLayout(self._build_host_row())
 
@@ -242,11 +248,10 @@ class ProviderDetailPanel(QWidget):
         self._eye_btn.setCheckable(True)
         self._eye_btn.setFixedSize(EYE_BUTTON_SIZE, EYE_BUTTON_SIZE)
         self._eye_btn.setIcon(make_eye_icon(False))
-        self._eye_btn.setToolTip("显示 / 隐藏密钥")
         self._eye_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._eye_btn.toggled.connect(self._on_eye_toggled)
         key_row.addWidget(self._eye_btn, 0, Qt.AlignmentFlag.AlignVCenter)
-        self._check_btn = QPushButton("检测", self)
+        self._check_btn = QPushButton("", self)
         self._check_btn.setProperty("accent", True)
         self._check_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._check_btn.setFixedSize(CHECK_BUTTON_WIDTH, CHECK_BUTTON_HEIGHT)
@@ -262,10 +267,9 @@ class ProviderDetailPanel(QWidget):
         self._host_edit.setFixedHeight(INPUT_HEIGHT)
         self._host_edit.editingFinished.connect(self._on_host_edited)
         host_row.addWidget(self._host_edit, 1)
-        self._reset_btn = QPushButton("重置", self)
+        self._reset_btn = QPushButton("", self)
         self._reset_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._reset_btn.setFixedSize(RESET_BUTTON_WIDTH, RESET_BUTTON_HEIGHT)
-        self._reset_btn.setToolTip("恢复默认 API 地址")
         self._reset_btn.clicked.connect(self._on_host_reset)
         host_row.addWidget(self._reset_btn, 0, Qt.AlignmentFlag.AlignVCenter)
         return host_row
@@ -293,25 +297,27 @@ class ProviderDetailPanel(QWidget):
 
     def _build_default_model_section(self, parent_layout: QVBoxLayout) -> None:
         """构建默认模型区：对话/Embedding 模型下拉 + 启用 Embedding 开关"""
-        parent_layout.addWidget(make_section_label("默认模型"))
+        self._default_section_label = make_section_label("")
+        parent_layout.addWidget(self._default_section_label)
         parent_layout.addSpacing(SECTION_CONTENT_GAP)
         self._chat_combo = self._make_model_combo(self._on_chat_model_chosen)
-        parent_layout.addLayout(
-            self._make_combo_row("对话模型", self._chat_combo))
+        self._chat_model_label, chat_row = self._make_combo_row(self._chat_combo)
+        parent_layout.addLayout(chat_row)
         parent_layout.addSpacing(DEFAULT_MODEL_ROW_GAP)
         self._embedding_combo = self._make_model_combo(
             self._on_embedding_model_chosen)
-        parent_layout.addLayout(
-            self._make_combo_row("Embedding 模型", self._embedding_combo))
-        parent_layout.addSpacing(DEFAULT_MODEL_ROW_GAP)
-        embedding_row = QHBoxLayout()
-        embedding_row.addWidget(make_field_label("启用 Embedding"))
-        embedding_row.addStretch(1)
-        self._embedding_switch = SwitchButton()
-        self._embedding_switch.setToolTip("启用 / 停用该提供商的嵌入功能")
-        self._embedding_switch.toggled.connect(self._on_embedding_toggled)
-        embedding_row.addWidget(self._embedding_switch)
+        self._embedding_model_label, embedding_row = self._make_combo_row(
+            self._embedding_combo)
         parent_layout.addLayout(embedding_row)
+        parent_layout.addSpacing(DEFAULT_MODEL_ROW_GAP)
+        embedding_row2 = QHBoxLayout()
+        self._embedding_enable_label = make_field_label("")
+        embedding_row2.addWidget(self._embedding_enable_label)
+        embedding_row2.addStretch(1)
+        self._embedding_switch = SwitchButton()
+        self._embedding_switch.toggled.connect(self._on_embedding_toggled)
+        embedding_row2.addWidget(self._embedding_switch)
+        parent_layout.addLayout(embedding_row2)
 
     def _make_model_combo(self, handler: Callable[[int], None]) -> QComboBox:
         """构建默认模型下拉框（activated 仅由用户操作触发）
@@ -326,15 +332,68 @@ class ProviderDetailPanel(QWidget):
         combo.activated.connect(handler)
         return combo
 
-    def _make_combo_row(self, label_text: str, combo: QComboBox) -> QHBoxLayout:
-        """构建「标签 + 下拉框」行"""
+    def _make_combo_row(self, combo: QComboBox) -> Tuple[QLabel, QHBoxLayout]:
+        """构建「标签 + 下拉框」行（标签文案由 _retranslate_ui 设置）
+
+        Returns:
+            Tuple[QLabel, QHBoxLayout]: 字段标签与行布局
+        """
         row = QHBoxLayout()
         row.setSpacing(FIELD_GAP)
-        label = make_field_label(label_text)
+        label = make_field_label("")
         label.setFixedWidth(DEFAULT_MODEL_LABEL_WIDTH)
         row.addWidget(label)
         row.addWidget(combo, 1)
-        return row
+        return label, row
+
+    # ==================== 文案 ====================
+
+    def _retranslate_ui(self) -> None:
+        """按当前语言重设全部文案（初始化末尾与语言切换时调用）
+
+        占位符/类型徽章/默认模型下拉随实例数据重设；进行中的检测
+        按钮保持「检测中…」语义，仅空闲态恢复「检测」。
+        """
+        self._overlay.setText(
+            tr("dialog_llm_settings", "detail.overlay_disabled"))
+        self._master_switch.setToolTip(
+            tr("dialog_llm_settings", "widget.provider_switch.tooltip"))
+        self._rename_action.setText(
+            tr("dialog_llm_settings", "detail.menu.rename"))
+        self._delete_action.setText(
+            tr("dialog_llm_settings", "detail.menu.delete_provider"))
+        self._api_section_label.setText(
+            tr("dialog_llm_settings", "detail.section.api_config"))
+        self._key_field_label.setText(
+            tr("dialog_llm_settings", "detail.field.api_key"))
+        self._host_field_label.setText(
+            tr("dialog_llm_settings", "detail.field.api_host"))
+        self._key_link_btn.setText(
+            tr("dialog_llm_settings", "detail.key_link"))
+        self._eye_btn.setToolTip(
+            tr("dialog_llm_settings", "detail.eye_tooltip"))
+        if self._check_worker is None:
+            self._check_btn.setText(
+                tr("dialog_llm_settings", "detail.check.button"))
+        self._reset_btn.setText(
+            tr("dialog_llm_settings", "detail.reset_button"))
+        self._reset_btn.setToolTip(
+            tr("dialog_llm_settings", "detail.reset_tooltip"))
+        self._default_section_label.setText(
+            tr("dialog_llm_settings", "detail.section.default_model"))
+        self._chat_model_label.setText(
+            tr("dialog_llm_settings", "detail.default_model.chat"))
+        self._embedding_model_label.setText(
+            tr("dialog_llm_settings", "detail.default_model.embedding"))
+        self._embedding_enable_label.setText(
+            tr("dialog_llm_settings", "detail.default_model.embedding_enable"))
+        self._embedding_switch.setToolTip(tr(
+            "dialog_llm_settings",
+            "detail.default_model.embedding_switch_tooltip"))
+        self._update_placeholders()
+        self._rebuild_type_badge(self._current_config())
+        self._refresh_default_model_combos()
+        self._model_section._retranslate_ui()
 
     # ==================== 实例加载 ====================
 
@@ -386,19 +445,18 @@ class ProviderDetailPanel(QWidget):
             self._type_badge.setVisible(False)
             return
         self._type_badge.setVisible(True)
-        text = self._preset.display_name if self._preset else CUSTOM_PROVIDER_TYPE_LABEL
+        text = (self._preset.display_name if self._preset
+                else tr("dialog_llm_settings", "detail.badge.custom"))
         color = t.provider_type_colors.get(cfg.adapter, t.accent)
         self._type_badge.setText(text)
         self._type_badge.setStyleSheet(_badge_style(color))
 
     def _populate_api(self, cfg: Optional[ProviderConfig]) -> None:
         """按实例配置填充 API 配置区（密钥/地址/链接/状态）"""
-        auth_optional = bool(self._preset and self._preset.auth_optional)
         self._key_edit.blockSignals(True)
         self._key_edit.setText(cfg.api_key if cfg else "")
         self._key_edit.blockSignals(False)
-        self._key_edit.setPlaceholderText(
-            "sk-...（可选）" if auth_optional else "sk-...")
+        self._update_placeholders()
         self._key_edit.setEchoMode(QLineEdit.EchoMode.Password)
         self._eye_btn.blockSignals(True)
         self._eye_btn.setChecked(False)
@@ -410,9 +468,19 @@ class ProviderDetailPanel(QWidget):
         self._host_edit.blockSignals(True)
         self._host_edit.setText(cfg.base_url if cfg else "")
         self._host_edit.blockSignals(False)
-        self._host_edit.setPlaceholderText(default_url or "https://...")
         self._reset_btn.setVisible(bool(default_url))
         self._reset_check_ui()
+
+    def _update_placeholders(self) -> None:
+        """按预设与当前语言重设密钥/地址输入框占位提示"""
+        auth_optional = bool(self._preset and self._preset.auth_optional)
+        self._key_edit.setPlaceholderText(tr(
+            "dialog_llm_settings",
+            "detail.key_placeholder_optional" if auth_optional
+            else "detail.key_placeholder"))
+        default_url = self._preset.default_base_url if self._preset else ""
+        self._host_edit.setPlaceholderText(
+            default_url or tr("dialog_llm_settings", "detail.host_placeholder"))
 
     def _apply_enabled_state(self, enabled: bool) -> None:
         """按总开关状态切换主体可用性与停用遮罩
@@ -463,12 +531,14 @@ class ProviderDetailPanel(QWidget):
         self._apply_enabled_state(on)
 
     def _on_rename(self) -> None:
-        """更多菜单-重命名：中文输入弹窗，非空且变化时落盘"""
+        """更多菜单-重命名：输入弹窗，非空且变化时落盘"""
         cfg = self._current_config()
         if cfg is None:
             return
         name, ok = QInputDialog.getText(
-            self, "重命名提供商", "名称：", QLineEdit.EchoMode.Normal, cfg.name)
+            self, tr("dialog_llm_settings", "detail.rename.title"),
+            tr("dialog_llm_settings", "detail.rename.label"),
+            QLineEdit.EchoMode.Normal, cfg.name)
         name = name.strip()
         if not ok or not name or name == cfg.name:
             return
@@ -476,13 +546,14 @@ class ProviderDetailPanel(QWidget):
         self._name_label.setText(name)
 
     def _on_delete_provider(self) -> None:
-        """更多菜单-删除提供商：中文确认后删除配置"""
+        """更多菜单-删除提供商：确认后删除配置"""
         cfg = self._current_config()
         if cfg is None or not self._instance_id:
             return
         if not _confirm_dialog(
-                self, "删除提供商",
-                f"确定删除「{cfg.name}」及其全部模型配置吗？"):
+                self, tr("dialog_llm_settings", "detail.menu.delete_provider"),
+                tr("dialog_llm_settings", "detail.delete_provider.message",
+                   name=cfg.name)):
             return
         self.shutdown_workers()
         # remove_provider 会同步触发配置变更通知，列表重载后可能立即
@@ -539,7 +610,7 @@ class ProviderDetailPanel(QWidget):
     def _reset_check_ui(self) -> None:
         """重置检测按钮与状态文案"""
         self._check_btn.setEnabled(True)
-        self._check_btn.setText("检测")
+        self._check_btn.setText(tr("dialog_llm_settings", "detail.check.button"))
         self._status_kind = None
         self._check_status.setText("")
 
@@ -575,8 +646,11 @@ class ProviderDetailPanel(QWidget):
         if not self._persist(apply):
             return
         self._check_btn.setEnabled(False)
-        self._check_btn.setText("检测中…")
-        self._set_check_status("正在检测连接…", _STATUS_MUTED)
+        self._check_btn.setText(
+            tr("dialog_llm_settings", "detail.check.button_busy"))
+        self._set_check_status(
+            tr("dialog_llm_settings", "detail.check.status_checking"),
+            _STATUS_MUTED)
         worker = ConnectionCheckWorker(self._instance_id, parent=self)
         worker.checked.connect(self._on_check_finished)
         self._check_worker = worker
@@ -597,11 +671,16 @@ class ProviderDetailPanel(QWidget):
             return
         self._check_worker = None
         self._check_btn.setEnabled(True)
-        self._check_btn.setText("检测")
+        self._check_btn.setText(tr("dialog_llm_settings", "detail.check.button"))
         if not ok:
-            self._set_check_status(f"✗ 连接失败：{error or '未知错误'}", _STATUS_ERR)
+            self._set_check_status(
+                tr("dialog_llm_settings", "detail.check.status_fail",
+                   error=error or tr("dialog_llm_settings", "misc.unknown_error")),
+                _STATUS_ERR)
             return
-        self._set_check_status(f"✓ 连接正常 · {count} 个模型", _STATUS_OK)
+        self._set_check_status(
+            tr("dialog_llm_settings", "detail.check.status_ok", count=count),
+            _STATUS_OK)
         cfg = self._current_config()
         if cfg is not None and not cfg.enabled_chat:
             self._persist_and_notify(
@@ -618,7 +697,8 @@ class ProviderDetailPanel(QWidget):
         if not self._instance_id or self._fetch_worker is not None:
             return
         self._model_section.set_refresh_busy(True)
-        self._model_section.set_refresh_status("正在获取模型列表…")
+        self._model_section.set_refresh_status(
+            tr("dialog_llm_settings", "detail.refresh.status_busy"))
         worker = FetchModelsWorker(self._instance_id, parent=self)
         worker.succeeded.connect(self._on_fetch_succeeded)
         worker.failed.connect(self._on_fetch_failed)
@@ -636,7 +716,9 @@ class ProviderDetailPanel(QWidget):
             return
         self._fetch_worker = None
         self._model_section.set_refresh_busy(False)
-        self._model_section.set_refresh_status(f"✓ 已更新 · {len(models)} 个模型")
+        self._model_section.set_refresh_status(
+            tr("dialog_llm_settings", "detail.refresh.status_updated",
+               count=len(models)))
         self.rebuild_models()
 
     def _on_fetch_failed(self, instance_id: str, error: str) -> None:
@@ -654,8 +736,9 @@ class ProviderDetailPanel(QWidget):
         _logger.warning(
             get_name(), f"获取模型列表失败: {instance_id} ({error})")
         _notice_dialog(
-            self, "获取模型列表失败",
-            f"无法从 API 获取最新模型列表：\n{error or '未知错误'}")
+            self, tr("dialog_llm_settings", "detail.refresh.fail_title"),
+            tr("dialog_llm_settings", "detail.refresh.fail_message",
+               error=error or tr("dialog_llm_settings", "misc.unknown_error")))
 
     # ------------------------------------------------------------------
     # 「⚡ 检查」/ 「⇅ 同步」对话框
@@ -666,7 +749,8 @@ class ProviderDetailPanel(QWidget):
         if not self._instance_id:
             return
         if not self._entries:
-            _info_toast(self, "暂无可检查的模型，请先添加模型或刷新模型列表。")
+            _info_toast(
+                self, tr("dialog_llm_settings", "detail.health.no_models"))
             return
         cfg = self._current_config()
         name = cfg.name if cfg else self._instance_id
@@ -858,7 +942,9 @@ class ProviderDetailPanel(QWidget):
         """
         combo.blockSignals(True)
         combo.clear()
-        combo.addItem("（未设置）", _NO_MODEL_DATA)
+        combo.addItem(
+            tr("dialog_llm_settings", "detail.default_model.unset"),
+            _NO_MODEL_DATA)
         items = list(options)
         if current and current not in items:
             items.append(current)

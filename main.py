@@ -26,6 +26,10 @@ from core.task import BackgroundTaskManager
 # LLM 用量记录（退出时冲刷待写数据）
 from core.llm.usage_record_store import get_usage_record_store
 
+# ===================================================================
+# i18n（界面语言）
+from core.i18n import get_language_manager
+
 
 def main():
     # 创建应用实例
@@ -41,6 +45,10 @@ def main():
     
     # 设置 UIKit 全局主题（auto：自动检测系统主题）
     apply_uikit_theme(application)
+
+    # 提前初始化语言管理器：加载当前语言配置与语言文件缓存，
+    # 确保主窗口构造期间全部 tr() 取词就绪（与主题初始化平级）
+    get_language_manager()
 
     # 初始化日志管理器
     logger = LoggerManager()

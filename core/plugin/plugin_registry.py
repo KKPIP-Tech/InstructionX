@@ -13,6 +13,8 @@ from typing import Dict, List, Optional, Tuple
 
 from utils.logging_tools import LoggerManager, get_name
 
+from core.i18n import DEFAULT_LANGUAGE, resolve_i18n_field
+
 
 class PluginRegistry:
     """
@@ -204,7 +206,10 @@ class PluginRegistry:
             return None
         return {
             "descriptor_id": desc.get("id", plugin_dir.name),
-            "name": desc.get("name", plugin_dir.name),
+            # name 支持多语言字典形式（IXPlugin.json schema 扩展）；
+            # 注册表持久化需要字符串，此处按框架默认语言解析（回填场景无用户语言上下文）
+            "name": resolve_i18n_field(
+                desc.get("name", plugin_dir.name), DEFAULT_LANGUAGE) or plugin_dir.name,
             "scope": scope,
             "version": desc.get("version", "release.0.0.0"),
             "installed_at": datetime.now(timezone.utc).isoformat(),

@@ -13,6 +13,7 @@
 - MCP 协议双向支持（内置 MCP Server 暴露插件 API；MCP Client 连接外部 MCP Server）
 - SQLite WAL 数据持久化层（DataProvider）、后台任务系统（BackgroundTaskManager）
 - InstructionX_UIKit 主题与组件体系（`ui/InstructionX_UIKit` 组件库：设计令牌 + light/dark/auto 全局主题，57 组件 + 原生图表引擎）、字体管理器（`core/font` 子系统：字体安装/卸载/预览/系统字体回退，框架不自带字体）
+- 多国语言（i18n）支持（`core/i18n` 子系统：XML 语言文件 + 回退链取词、界面语言实时切换、每插件语言覆盖；日志文案保持中文不国际化）
 
 - 应用标识：`InstructionX - CE`（组织名 `LumenThread`），当前版本 **Alpha 1.0.4**
 - **版本号单一来源为 `core/version.py` 的 `VERSION` 常量**（pyproject 通过 AST 静态读取，修改版本只改这里）
@@ -72,7 +73,8 @@ python -m pytest test/ -q --tb=short -p no:cacheprovider
 - **注意**：`test/` 下当前仅保留 `test/core/data/test_data_provider.py` 一个有效测试文件（其余旧测试已在重构中删除，残留的 `__pycache__` 是过期产物，不要参考）。现有测试约定：中文 docstring、`tmp_path` fixture、测试单例类时需重置 `XxxManager._instance = None`。
 - UI 测试不配置 offscreen 平台，CI 跑在 `windows-latest` 上使用真实 GUI。
 - 项目还有一类**独立验证脚本**（非 pytest，放在 `scripts/`，用 `.venv\Scripts\python.exe scripts\<name>.py` 直接运行）：
-  - `smoke_*.py`：核心链路无网冒烟测试（LLM、task、utils、插件管理：安装/升级/降级/卸载/分组）
+  - `smoke_*.py`：核心链路无网冒烟测试（LLM、task、utils、i18n、插件管理：安装/升级/降级/卸载/分组）
+  - `check_i18n_completeness.py`：语言文件完整性校验（默认语言必须覆盖源码全部 `tr()` 调用，缺键 exit 1；其他语言缺键/孤立键 WARNING；支持 `--text-dir`/`--src-dir`/`--plugin-root`）
   - `screenshot_*.py`：对话框截图对比脚本（输出到 `scripts/screenshots/`）
   - `_mcp_smoke*.py`：真实 MCP SDK 冒烟测试
   - `demo_*.py`：功能演示脚本
@@ -266,6 +268,20 @@ core/
     manager.py              # FontManager 单例：字体安装/卸载（复制到 data/fonts/）、
                             #   注册表持久化（data/fonts/fonts.json 原子写，惰性恢复）、
                             #   QFontDatabase 应用级注册（进程内生效）、系统字体回退解析
+  i18n/                     # 多语言子系统（语言文件：框架 ui/text/<语言代码>.xml，
+                            #   插件 <插件目录>/text/<语言代码>.xml，一个语言一个 XML 文件）
+    catalog.py / loader.py  # TextCatalog 数据模型 + XML 解析与目录级惰性缓存（CatalogCache）
+    fallback.py             # 回退解析：语言代码解析（zh-TW→zh）、取词回退链、ERROR_TEXT 常量
+    settings_store.py       # I18nSettingsStore：config/i18n.json + config/plugin_languages.json
+                            #   （均 schema v1，原子写，损坏备份 .json.corrupt.bak 重建）；
+                            #   DEFAULT_LANGUAGE="zh"（开发者设定，用户不可改）
+    plugin_registry.py      # PluginTextRegistry：插件语言包自动注册表（扫 text/*.xml）
+    facade.py               # PluginI18nFacade：绑定插件 UUID 的取词门面（ILocalizationFacade 实现，
+                            #   经 PluginServices.localization 注入）
+    ixplugin_i18n.py        # resolve_i18n_field：IXPlugin.json name/description 多语言字段解析
+    language_manager.py     # LanguageManager 单例（QObject）：tr() 取词（当前语言→默认语言→ERROR_TEXT）、
+                            #   set_language 实时切换（language_changed 信号）、每插件语言覆盖三级解析；
+                            #   __init__.py 按 PEP-562 惰性导出（避免拉起 PySide6）
 ui/                         # 界面层
   main_window.py / title_bar.py / usage_panel/
   uikit_bootstrap.py        # UIKit 导入引导（main.py 首个业务 import：扩展 sys.path 使
@@ -279,6 +295,8 @@ ui/                         # 界面层
   skills_panel/             # 插件技能面板（含 plugin_group_widget.py 分组折叠控件：
                             #   文件夹形式收起、点击行内向右展开、展开区区分背景）
   work_area/                # 插件 Widget 宿主区（切换插件时缓存 UI 状态）
+  text/                     # 框架语言文件目录（<语言代码>.xml：zh.xml 默认语言必须完整，
+                            #   文件内 <group> 分组 + <text key> 条目，占位符仅命名式 {name}）
   tray/                     # 系统托盘子系统：TrayIconManager 门面（四项菜单：显示主窗口/
                             #   正在运行的插件/后台正在运行的任务/退出，两个状态子菜单
                             #   aboutToShow 动态重建）+ TrayBackend 平台后端注册表/工厂
@@ -287,7 +305,12 @@ ui/                         # 界面层
     close_confirm_dialog.py    # 关闭确认对话框：退出程序/最小化到托盘/取消 三按钮，
                                #   每次关闭必问（无记忆选项），Esc/叉号等价于取消
     plugin_management_dialog.py  # 插件管理对话框：安装/升级/降级/卸载 + 分组与排序
-                                 #   （替代原 plugin_order_dialog 的菜单入口）
+                                 #   （替代原 plugin_order_dialog 的菜单入口）；
+                                 #   详情面板含「语言…」按钮与语言状态行（无语言包置灰）
+    language_dialog.py        # 界面语言选择对话框（编辑菜单「语言」打开，
+                              #   选中即 LanguageManager.set_language 实时切换）
+    plugin_language_dialog.py # 插件语言选择对话框（「跟随框架（默认）」+ 插件实际提供的语言，
+                              #   经 set_plugin_language 持久化每插件语言覆盖）
     llm_settings/           # LLM 设置对话框包：dialog 主壳 + provider_list_panel/provider_detail_panel/
                             #   model_section/provider_editor_dialog/model_edit_dialog/
                             #   health_check_dialog/sync_models_dialog + workers/theme/icons/widgets/
@@ -308,7 +331,7 @@ config/ data/ logs/         # 运行时生成：配置、数据、日志
 
 ### 核心设计约定
 
-- **单例模式**：`PluginManager`、`DataProvider`、`BackgroundTaskManager`、`LLMProvider`、`LLMConfig`、`LLMPluginService`、`MCPManager`、`FontManager`、`LoggerManager` 均为单例（`XxxManager._instance`，部分提供 `get_xxx()` 访问器；`LLMPluginService` 为模块级 `_instance`）。测试中重置单例要清 `_instance`。
+- **单例模式**：`PluginManager`、`DataProvider`、`BackgroundTaskManager`、`LLMProvider`、`LLMConfig`、`LLMPluginService`、`MCPManager`、`FontManager`、`LanguageManager`、`LoggerManager` 均为单例（`XxxManager._instance`，部分提供 `get_xxx()` 访问器；`LLMPluginService` 为模块级 `_instance`）。测试中重置单例要清 `_instance`。
 - **接口与实现分离**：共享类型统一定义在 `core/interfaces/`，其他模块从这里 re-export，避免循环导入。
 - **关闭行为约定**：`main.py` 已 `setQuitOnLastWindowClosed(False)`，「关窗即退出」的隐式链路被切断，退出时机完全由代码显式控制（`QApplication.quit()`）；主窗口 `closeEvent` 统一拦截全部关闭路径（自绘叉子 / 标题栏右键 / Alt+F4 / 任务栏右键关闭），每次弹出 `CloseConfirmDialog` 询问「退出程序 / 最小化到托盘 / 取消」（无记忆选项）；托盘菜单「退出」与 Windows 注销/关机（`commitDataRequest` 回调置 `_force_quit`）走静默直退，不弹窗、不阻塞系统关机。
 - 后台任务回调在**工作线程**执行，更新 UI 必须通过 `utils/thread_utils.py` 封送到 UI 线程。
@@ -323,6 +346,7 @@ config/ data/ logs/         # 运行时生成：配置、数据、日志
   - `information.py`：定义 `IPluginInfo` 子类（版本用 `PluginVersion.from_string("release.x.y.z")`、`service_api` 工具描述等）；提供 `service_api` + `service.py`（类名以 `Service` 结尾）时，框架**自动注册跨插件 API 并同步为 MCP 工具**（不自动进入 LLM ToolRegistry，LLM 直接调用需插件实现 `IPlugin.llm_tools` 或自行注册）
   - `service.py`：插件服务/公开 API 层
   - `config/`：插件配置目录
+  - `text/`：插件语言包目录（**可选**，`<语言代码>.xml` 一个语言一个文件；提供后框架自动扫描注册并经 `PluginServices.localization` 供插件取词，不提供则行为不变）
 - 硬性规则（见根目录 `AGENTS-for-PLUGIN-DEV.md`，注意该文件是面向插件开发代理的规范）：
   - **`ui/` 中不写业务逻辑**：槽函数不超过 5 行，委托给 `service.py` / `function/`
   - **所有 import 必须放在文件顶部**（PEP 8 顺序：标准库/第三方/本地），禁止函数级 import（包括为规避循环导入）
@@ -341,6 +365,8 @@ config/ data/ logs/         # 运行时生成：配置、数据、日志
 | `config/plugin_order.json` | 插件显示顺序（未分组插件之间的顺序） |
 | `config/plugin_groups.json` | 用户自定义分组（schema v2：official/thirdparty 各自含 groups 分组数组 + order 面板统一顺序（分组与未分组插件混排）；v1 自动迁移） |
 | `config/plugin_registry.json` | 已安装插件注册表（schema v1：顶层显式 `version: 1`（`PluginRegistry.SCHEMA_VERSION`），插件条目含版本/来源/安装时间，升级降级与更新检查依据；启动时自动回填） |
+| `config/i18n.json` | 框架语言设置（schema v1：`default_language` 开发者设定用户不可改 + `current_language` 用户选择；原子写，损坏备份 `.json.corrupt.bak` 重建） |
+| `config/plugin_languages.json` | 每插件语言覆盖（schema v1：`overrides` {插件UUID: 语言代码}，无键=跟随框架；卸载插件自动清除） |
 | `data/data.db` | 插件数据（SQLite + WAL；另有 `-wal`/`-shm` 伴生文件） |
 | `data/tasks.json` | 后台任务状态 |
 | `data/llm_usage.json` | LLM 用量记录 |
@@ -381,6 +407,7 @@ config/ data/ logs/         # 运行时生成：配置、数据、日志
 - 数据层：`docs/core/data-provider/`
 - 后台任务：`docs/core/background-task/`
 - 字体子系统：`docs/core/font-manager/overview.md`
+- 多语言（i18n）：`docs/core/i18n/overview.md`
 - LLM：`docs/core/llm-provider/`、`docs/plugins/llm-integration-guide.md`
 - MCP：`docs/core/mcp/overview.md`
 - API 参考：`docs/api/full-reference.md`

@@ -1,0 +1,540 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  InstructionX 框架语言文件（en，English）
+  规则：本文件必须完整覆盖源码中的全部 tr(group, key) 调用；
+  group 名与键名必须与默认语言文件 zh.xml 一致。
+  校验：.venv\Scripts\python.exe scripts/check_i18n_completeness.py
+-->
+<texts language="en">
+  <!-- 通用词：跨模块复用；模块特有文案请放各自分组，勿塞入本组 -->
+  <group name="common">
+    <text key="language.self_name">English</text>
+    <text key="ok">OK</text>
+    <text key="cancel">Cancel</text>
+    <text key="save">Save</text>
+    <text key="close">Close</text>
+    <text key="yes">Yes</text>
+    <text key="no">No</text>
+    <text key="error">Error</text>
+    <text key="warning">Warning</text>
+    <text key="success">Success</text>
+    <text key="confirm">Confirm</text>
+    <text key="delete">Delete</text>
+    <text key="refresh">Refresh</text>
+    <text key="retry">Retry</text>
+    <text key="copy">Copy</text>
+    <text key="open">Open</text>
+    <text key="back">Back</text>
+    <text key="loading">Loading...</text>
+  </group>
+  <group name="dialog_about">
+      <text key="window.title">About</text>
+      <text key="logo.placeholder">Logo</text>
+      <text key="copyright">© 2025-2026 dakuang. All rights reserved.</text>
+      <text key="statement"><![CDATA[This software is proprietary software.
+Commercial use requires authorization if thresholds are exceeded.]]></text>
+  </group>
+
+  <group name="dialog_close_confirm">
+      <text key="title">Close Confirmation</text>
+      <text key="message"><![CDATA[Do you want to exit the program, or minimize it to the system tray and keep it running?
+Plugins and background tasks will continue to work while running in the tray.]]></text>
+      <text key="button.exit">Exit Program</text>
+      <text key="button.minimize_to_tray">Minimize to Tray</text>
+  </group>
+
+  <group name="dialog_font_manager">
+      <text key="title">Font Management</text>
+      <text key="search.placeholder">Search fonts...</text>
+      <text key="group.installed">Installed Fonts</text>
+      <text key="group.system">System Fonts</text>
+      <text key="list.empty_hint">(No fonts installed yet)</text>
+      <text key="preview.sample_text">InstructionX Font Preview 0123 ABCabc</text>
+      <text key="preview.input_placeholder">Enter preview text...</text>
+      <text key="preview.size_label">Size</text>
+      <text key="preview.hint">Select a font on the left to preview</text>
+      <text key="preview.resolved">Current font: {family}</text>
+      <text key="preview.fallback">Font {family} is unavailable; fell back to system font: {resolved}</text>
+      <text key="button.install">Install Fonts...</text>
+      <text key="button.uninstall">Uninstall</text>
+      <text key="install.dialog_title">Select Font Files</text>
+      <text key="install.file_filter">Font Files (*.ttf *.otf *.ttc)</text>
+      <text key="message.install_failed"><![CDATA[Installation failed: {name}
+  {error}]]></text>
+      <text key="message.install_success">Successfully installed {count} font(s)</text>
+      <text key="uninstall.title">Uninstall Font</text>
+      <text key="uninstall.confirm"><![CDATA[Are you sure you want to uninstall the font "{family}"?
+Interfaces using this font will fall back to a system font after uninstallation.]]></text>
+      <text key="uninstall.success">Font "{family}" has been uninstalled</text>
+      <text key="uninstall.failed">Uninstall failed: font {family} not found</text>
+  </group>
+
+  <group name="dialog_github_install">
+      <text key="window.title">Install Plugin from GitHub</text>
+      <text key="url.placeholder">https://github.com/owner/repo or git@github.com:owner/repo.git</text>
+      <text key="button.check">Check</text>
+      <text key="button.install">Install</text>
+      <text key="button.select_all">Select All</text>
+      <text key="button.deselect_all">Deselect All</text>
+      <text key="page.empty_hint">Click the "Check" button to analyze a GitHub repository</text>
+      <text key="page.invalid_hint">This repository does not contain a valid plugin manifest</text>
+      <text key="info.author">Author: {author}</text>
+      <text key="info.deps">Dependencies: {deps}</text>
+      <text key="plugin.no_description">No description</text>
+      <text key="dir.official">Official plugin directory (plugin/)</text>
+      <text key="dir.thirdparty">Third-party plugin directory (custom_plugin/)</text>
+      <text key="dir.will_install_to">Will be installed to: {dir_desc}</text>
+      <text key="status.url_required">Please enter a GitHub repository URL</text>
+      <text key="status.checking">Checking repository...</text>
+      <text key="status.repo_invalid">Invalid repository</text>
+      <text key="status.single_repo">Single-plugin repository - confirm the information and click "Install"</text>
+      <text key="status.multi_repo">Multi-plugin repository - select the plugins to install ({count} in total)</text>
+      <text key="status.error">Error: {error}</text>
+      <text key="status.installing">Installing...</text>
+      <text key="status.install_success">Installation succeeded! Installed {count} plugin(s)</text>
+      <text key="status.install_partial">Installation finished: {success_count} succeeded, {fail_count} failed</text>
+      <text key="status.install_failed">Installation failed: {error}</text>
+      <text key="message.select_plugins">Please select the plugins to install</text>
+      <text key="result.ok_got_it">Got It</text>
+      <text key="result.title">Installation Result</text>
+      <text key="result.failed_title">Installation Failed</text>
+      <text key="result.all_success">succeeded for all plugins</text>
+      <text key="result.partial">partially completed</text>
+      <text key="result.summary"><![CDATA[Installation {outcome}:
+  {details}]]></text>
+  </group>
+
+  <group name="dialog_license">
+      <text key="title">Open Source Licenses</text>
+      <text key="search.placeholder">Search by name...</text>
+      <text key="list.empty">No matching licenses found</text>
+      <text key="category.dependency">Dependencies</text>
+      <text key="detail.version">Version v{version}</text>
+      <text key="detail.read_failed">(Unable to read license file)</text>
+      <text key="detail.file_not_found">(License file not found: {path})</text>
+      <text key="button.copy_all">Copy Full Text</text>
+      <text key="button.copied">Copied!</text>
+      <text key="button.open_folder">Open Folder</text>
+      <text key="message.dir_not_exist">Directory does not exist: {path}</text>
+  </group>
+
+  <group name="dialog_llm_settings">
+    <!-- ============ 主对话框（dialog.py） ============ -->
+    <text key="dialog.title">LLM Settings</text>
+    <text key="dialog.placeholder"><![CDATA[No providers yet
+  Click "+ Add Provider" in the lower-left corner to get started]]></text>
+
+    <!-- ============ 左栏列表面板（provider_list_panel.py） ============ -->
+    <text key="list.section_title">Model Services</text>
+    <text key="list.search_placeholder">Search providers</text>
+    <text key="list.add_button">+ Add Provider</text>
+
+    <!-- ============ 详情面板（provider_detail_panel.py） ============ -->
+    <text key="detail.overlay_disabled"><![CDATA[This provider is disabled
+  Turn on the switch in the upper-right corner to configure it]]></text>
+    <text key="detail.menu.rename">Rename</text>
+    <text key="detail.menu.delete_provider">Delete Provider</text>
+    <text key="detail.delete_provider.message">Are you sure you want to delete "{name}" and all of its model configurations?</text>
+    <text key="detail.section.api_config">API Configuration</text>
+    <text key="detail.section.default_model">Default Models</text>
+    <text key="detail.field.api_key">API Key</text>
+    <text key="detail.field.api_host">API URL</text>
+    <text key="detail.key_link">Get API Key</text>
+    <text key="detail.key_placeholder">sk-...</text>
+    <text key="detail.key_placeholder_optional">sk-... (optional)</text>
+    <text key="detail.host_placeholder">https://...</text>
+    <text key="detail.eye_tooltip">Show / Hide key</text>
+    <text key="detail.check.button">Check</text>
+    <text key="detail.check.button_busy">Checking…</text>
+    <text key="detail.check.status_checking">Checking connection…</text>
+    <text key="detail.check.status_ok">✓ Connected · {count} models</text>
+    <text key="detail.check.status_fail">✗ Connection failed: {error}</text>
+    <text key="detail.reset_button">Reset</text>
+    <text key="detail.reset_tooltip">Restore the default API URL</text>
+    <text key="detail.badge.custom">Custom</text>
+    <text key="detail.rename.title">Rename Provider</text>
+    <text key="detail.rename.label">Name:</text>
+    <text key="detail.default_model.chat">Chat Model</text>
+    <text key="detail.default_model.embedding">Embedding Model</text>
+    <text key="detail.default_model.embedding_enable">Enable Embedding</text>
+    <text key="detail.default_model.embedding_switch_tooltip">Enable / Disable this provider's embedding capability</text>
+    <text key="detail.default_model.unset">(Not set)</text>
+    <text key="detail.refresh.status_busy">Fetching model list…</text>
+    <text key="detail.refresh.status_updated">✓ Updated · {count} models</text>
+    <text key="detail.refresh.fail_title">Failed to Fetch Model List</text>
+    <text key="detail.refresh.fail_message"><![CDATA[Unable to fetch the latest model list from the API:
+  {error}]]></text>
+    <text key="detail.health.no_models">No models to check. Please add a model or refresh the model list first.</text>
+
+    <!-- ============ 通用杂项 ============ -->
+    <text key="misc.unknown_error">Unknown error</text>
+
+    <!-- ============ 模型分区（model_section.py） ============ -->
+    <text key="model.section.title">Models</text>
+    <text key="model.section.count">({count})</text>
+    <text key="model.section.empty_hint">No models yet. Click "+ Add" in the upper-right corner</text>
+    <text key="model.section.add">+ Add</text>
+    <text key="model.section.refresh_tooltip">Fetch the latest model list from the API</text>
+    <text key="model.section.health">⚡ Check</text>
+    <text key="model.section.health_tooltip">Probe model availability one by one</text>
+    <text key="model.section.sync">⇅ Sync</text>
+    <text key="model.section.sync_tooltip">Compare and manage with the remote model list</text>
+    <text key="model.section.manage">Manage</text>
+    <text key="model.section.manage_done">Done</text>
+    <text key="model.section.select_all">Select All</text>
+    <text key="model.section.delete_selected">Delete Selected</text>
+    <text key="model.group_caption">{label} · {count}</text>
+    <text key="model.delete.title">Delete Model</text>
+    <text key="model.delete.message">Are you sure you want to delete the model "{id}"?</text>
+    <text key="model.delete.message_multi">Are you sure you want to delete the {count} selected models?</text>
+    <text key="model.type.chat">Chat</text>
+    <text key="model.type.vision">Vision</text>
+    <text key="model.type.embedding">Embedding</text>
+    <text key="model.type.rerank">Rerank</text>
+
+    <!-- ============ Provider 编辑器（provider_editor_dialog.py） ============ -->
+    <text key="editor.title_create">Add Provider</text>
+    <text key="editor.title_edit">Edit Provider</text>
+    <text key="editor.custom_choice.title">Custom OpenAI-Compatible Service</text>
+    <text key="editor.custom_choice.subtitle">Connect to any model service that follows the OpenAI-compatible protocol</text>
+    <text key="editor.custom_default_name">Custom Service</text>
+    <text key="editor.custom_subtitle_fallback">Custom Integration</text>
+    <text key="editor.type_page.label">Select a model service type</text>
+    <text key="editor.field.name">Name</text>
+    <text key="editor.field.api_key">API Key</text>
+    <text key="editor.field.api_key_optional">API Key (optional)</text>
+    <text key="editor.field.api_key_keep_placeholder">Leave blank to keep unchanged</text>
+    <text key="editor.form.hint_create_preset">Create a {name} instance</text>
+    <text key="editor.form.hint_create_custom">Create a {type_name} instance</text>
+    <text key="editor.form.hint_missing">Instance does not exist</text>
+    <text key="editor.form.hint_edit">Edit instance (adapter: {adapter})</text>
+    <text key="editor.warn.validation_title">Validation Failed</text>
+    <text key="editor.warn.save_failed_title">Save Failed</text>
+    <text key="editor.warn.name_required">Please enter an instance name.</text>
+    <text key="editor.warn.base_url_required">A custom OpenAI-compatible service requires a Base URL.</text>
+    <text key="editor.warn.instance_missing">The instance to edit does not exist; it may have been deleted.</text>
+
+    <!-- ============ 模型编辑对话框（model_edit_dialog.py） ============ -->
+    <text key="model_edit.title_create">Add Model</text>
+    <text key="model_edit.title_edit">Edit Model</text>
+    <text key="model_edit.field.id">Model ID</text>
+    <text key="model_edit.field.id_placeholder">e.g. glm-4-flash</text>
+    <text key="model_edit.field.id_readonly_tooltip">Model ID cannot be modified in edit mode</text>
+    <text key="model_edit.field.name">Display Name</text>
+    <text key="model_edit.field.name_placeholder">Leave blank to use the model ID</text>
+    <text key="model_edit.field.group">Group</text>
+    <text key="model_edit.field.group_placeholder">Leave blank to infer the group from the model ID</text>
+    <text key="model_edit.field.capabilities">Capability Tags</text>
+    <text key="model_edit.field.context_length">Context Length</text>
+    <text key="model_edit.field.context_tooltip">0 means unset; increments of 1K (1024) tokens</text>
+    <text key="model_edit.field.streaming">Supports streaming output</text>
+    <text key="model_edit.field.price">Pricing (per million tokens; 0 means unset)</text>
+    <text key="model_edit.price.input">Input</text>
+    <text key="model_edit.price.output">Output</text>
+    <text key="model_edit.unset">Not set</text>
+    <text key="model_edit.warn.id_required">Please enter a model ID.</text>
+
+    <!-- ============ 健康检查对话框（health_check_dialog.py） ============ -->
+    <text key="health.title">Model Health Check</text>
+    <text key="health.header">Instance "{name}" · {total} models in total</text>
+    <text key="health.empty">No models to check</text>
+    <text key="health.row.waiting">Waiting</text>
+    <text key="health.row.checking">● Checking…</text>
+    <text key="health.row.cancelled">Cancelled</text>
+    <text key="health.row.skipped">⚠ Skipped · {reason}</text>
+    <text key="health.row.not_checked">Not checked</text>
+    <text key="health.row.ok">✓ OK · {latency} ms</text>
+    <text key="health.row.fail">✗ Failed · {error}</text>
+    <text key="health.summary_done">Check completed: {ok} succeeded · {fail} failed · {skip} skipped</text>
+    <text key="health.summary_running">{ok} succeeded · {fail} failed · {skip} skipped · {remaining} remaining</text>
+    <text key="health.summary_cancelled">Cancelled: {ok} succeeded · {fail} failed · {skip} skipped · {unchecked} unchecked</text>
+
+    <!-- ============ 模型同步对话框（sync_models_dialog.py） ============ -->
+    <text key="sync.title">Model Sync</text>
+    <text key="sync.group.new">New</text>
+    <text key="sync.group.existing">Existing</text>
+    <text key="sync.group.invalid">Invalid</text>
+    <text key="sync.group_caption">{label} · {count}</text>
+    <text key="sync.search_placeholder">Search model id</text>
+    <text key="sync.add_selected">Add Selected to List</text>
+    <text key="sync.clean_selected">Clean Up Selected Invalid Models</text>
+    <text key="sync.hint.missing">The provider instance does not exist; unable to sync.</text>
+    <text key="sync.hint.preset_catalog">This provider uses a preset model catalog; no sync needed.</text>
+    <text key="sync.hint.fetch_failed">Failed to fetch the remote model list: {error}. Showing the local list only.</text>
+    <text key="sync.status.fetching">Fetching model list from remote…</text>
+    <text key="sync.status.summary">{total} remote models in total · {new} new · {invalid} invalid</text>
+    <text key="sync.empty">No models</text>
+    <text key="sync.toast.add_none">Please check the new models to add first.</text>
+    <text key="sync.toast.clean_none">Please check the invalid models to clean up first.</text>
+    <text key="sync.toast.added">Added {count} model(s) to the list.</text>
+    <text key="sync.toast.cleaned">Cleaned up {count} invalid model(s).</text>
+
+    <!-- ============ 反馈入口与通用控件（feedback.py / widgets.py） ============ -->
+    <text key="feedback.notice_ok">Got It</text>
+    <text key="widget.provider_switch.tooltip">Enable / Disable this provider</text>
+    <text key="widget.model_switch.tooltip">Enable / Disable this model</text>
+    <text key="widget.model_row.delete_tooltip">Delete this model</text>
+  </group>
+
+  <group name="dialog_plugin_management">
+      <!-- 窗口/对话框标题 -->
+      <text key="title.dialog">Plugin Management</text>
+      <text key="title.confirm_install">Confirm Installation</text>
+      <text key="title.install_result">Installation Result</text>
+      <text key="title.confirm_uninstall">Confirm Uninstall</text>
+      <text key="title.uninstall_failed">Uninstall Failed</text>
+      <text key="title.uninstall_done">Uninstall Completed</text>
+      <text key="title.save_failed">Save Failed</text>
+      <text key="title.operation_failed">Operation Failed</text>
+      <text key="title.select_zip">Select Plugin Package</text>
+
+      <!-- 页签与 scope 分类名 -->
+      <text key="tab.manage">Plugin Management</text>
+      <text key="tab.groups">Groups &amp; Order</text>
+      <text key="scope.official">Official Plugins</text>
+      <text key="scope.thirdparty">Third-Party Plugins</text>
+
+      <!-- 按钮（common 已有的 取消/关闭/刷新 直接复用 common 分组） -->
+      <text key="button.install_github">Install Plugin from GitHub…</text>
+      <text key="button.install_zip">Install Local Plugin Package…</text>
+      <text key="button.check_updates">Check Updates / Upgrade / Downgrade…</text>
+      <text key="button.uninstall">Uninstall…</text>
+      <text key="button.reset">Reset</text>
+      <text key="button.save_groups">Save Groups &amp; Order</text>
+      <text key="button.acknowledge">Got It</text>
+      <text key="button.move_up">Move Up</text>
+      <text key="button.move_down">Move Down</text>
+      <text key="button.new_group">New Group</text>
+      <text key="button.rename">Rename</text>
+      <text key="button.set_icon">Set Icon</text>
+      <text key="button.delete_group">Delete Group</text>
+
+      <!-- 详情面板 -->
+      <text key="detail.no_selection">No plugin selected</text>
+      <text key="detail.name">Name: {name}</text>
+      <text key="detail.version">Version: {version}</text>
+      <text key="detail.source">Source: {source}</text>
+
+      <!-- 通用兜底词（本分组内复用） -->
+      <text key="label.unknown">Unknown</text>
+
+      <!-- 文件选择对话框 -->
+      <text key="file_dialog.zip_filter">Zip Files (*.zip)</text>
+
+      <!-- 提示/结果消息 -->
+      <text key="message.select_plugin_first">Please select a plugin first</text>
+      <text key="message.no_github_source"><![CDATA[No GitHub source is recorded for this plugin; unable to check for updates.
+  You can manually upgrade/downgrade via "Install Local Plugin Package".]]></text>
+      <text key="message.no_releases">No Release versions found for this repository</text>
+      <text key="message.invalid_source_url">Invalid source repository URL</text>
+      <text key="message.install_confirm"><![CDATA[Will {relation} plugin "{name}"
+  Current version: {current}
+  Target version: {target}]]></text>
+      <text key="message.downgrade_warning"><![CDATA[
+
+  Warning: downgrading may cause data incompatibility or configuration loss!]]></text>
+      <text key="message.result_item">  - {name}: {message}</text>
+      <text key="message.result_partial"><![CDATA[Partially failed:
+  {details}]]></text>
+      <text key="message.result_all_success"><![CDATA[All succeeded:
+  {details}]]></text>
+      <text key="message.uninstall_confirm">Are you sure you want to uninstall the plugin "{name}"?</text>
+      <text key="message.uninstall_official_warning"><![CDATA[
+
+  This is an official plugin; you will need to reinstall it to restore it after uninstallation.]]></text>
+      <text key="message.uninstall_delete_data">Also delete plugin data (irreversible)</text>
+      <text key="message.uninstall_warnings"><![CDATA[
+
+  Warnings:
+  {warnings}]]></text>
+      <text key="message.save_groups_failed">Unable to save the group configuration. Please check permissions and disk space.</text>
+      <text key="message.groups_saved">Groups and order saved</text>
+      <text key="message.operation_busy">Another operation is in progress, please wait</text>
+
+      <!-- 版本选择对话框 -->
+      <text key="version_select.title">Select Version - {name}</text>
+      <text key="version_select.current_version">Current version: {version}</text>
+      <text key="version_select.unknown_version">Unknown version</text>
+      <text key="version_select.item_format">{tag}  —  {version} ({relation})</text>
+      <text key="version_select.button.install_selected">Install Selected Version</text>
+      <text key="version_select.message.no_selection">Please select a version to install</text>
+
+      <!-- 版本关系标签（_version_relation 内部标识的显示文案） -->
+      <text key="version_relation.upgrade">upgrade</text>
+      <text key="version_relation.downgrade">downgrade</text>
+      <text key="version_relation.reinstall">reinstall</text>
+
+      <!-- 分组与排序编辑器 -->
+      <text key="group_editor.panel_column_title">Panel Order (Groups / Plugins)</text>
+      <text key="group_editor.available_label">Ungrouped Plugins</text>
+      <text key="group_editor.member_label">Plugins in Group</text>
+      <text key="group_editor.shuttle_title">Group Configuration: {icon} {name}</text>
+      <text key="group_editor.invalid_group">(Invalid group) {id}</text>
+      <text key="group_editor.removed_plugin">(Removed) {id}</text>
+      <text key="group_editor.prompt.new_group_title">New Group</text>
+      <text key="group_editor.prompt.rename_group_title">Rename Group</text>
+      <text key="group_editor.prompt.group_name_label">Group name:</text>
+      <text key="group_editor.prompt.set_icon_title">Set Icon</text>
+      <text key="group_editor.prompt.select_icon_label">Select a group icon:</text>
+      <text key="group_editor.message.select_group_first">Please select a group in the list on the left first</text>
+      <text key="group_editor.message.select_target_group">Please select the target group in the list on the left first</text>
+      <text key="group_editor.message.select_plugin_to_add">Please select the plugin to add in "Ungrouped Plugins"</text>
+
+      <!-- 每插件语言自定义（详情面板语言行 + 插件语言对话框） -->
+      <text key="button.language">Language…</text>
+      <text key="detail.language">Language: {language}</text>
+      <text key="language.none">No multilingual support</text>
+      <text key="language.follow_framework">Follow Framework ({language})</text>
+      <text key="language.unavailable_tooltip">This plugin does not provide multilingual support</text>
+      <text key="language.dialog_title">Language for {name}</text>
+      <text key="language.follow_option">Follow Framework (Default)</text>
+  </group>
+
+  <group name="main_window">
+      <text key="menu.edit">Edit</text>
+      <text key="menu.edit.plugin_management">Plugin Management...</text>
+      <text key="menu.edit.font_management">Font Management...</text>
+      <text key="menu.edit.toggle_theme">Toggle Theme</text>
+      <text key="menu.edit.toggle_theme.tooltip">Light → Dark → Follow System</text>
+      <text key="menu.edit.toggle_theme.current">Toggle Theme ({label})</text>
+      <text key="menu.edit.language">Language</text>
+      <text key="menu.edit.install_from_github">Install Plugin from GitHub...</text>
+      <text key="menu.edit.install_from_github.status_tip">Install plugins from a GitHub repository</text>
+      <text key="menu.ai">AI</text>
+      <text key="menu.ai.llm_settings">LLM Settings...</text>
+      <text key="menu.ai.usage">Usage</text>
+      <text key="menu.help">Help</text>
+      <text key="menu.help.about">About</text>
+      <text key="menu.help.licenses">Open Source Licenses</text>
+      <text key="dialog.usage.title">Usage</text>
+      <text key="work_area.load_error"><![CDATA[Unable to load plugin: {name} <a href='retry'>Click to retry</a>]]></text>
+      <text key="work_area.load_error.tooltip">Loading failed. Click "Click to retry" to reload the plugin</text>
+      <text key="theme.light">Light</text>
+      <text key="theme.dark">Dark</text>
+      <text key="theme.auto">Follow System</text>
+      <text key="tray.unknown_plugin">Unknown Plugin</text>
+  </group>
+
+  <group name="skills_panel">
+      <text key="tab.official">Official Features</text>
+      <text key="tab.thirdparty">Third-Party Features</text>
+      <text key="header.plugin_count">{count} Plugins</text>
+      <text key="group.tooltip">Group: {name} (click to expand/collapse)</text>
+  </group>
+
+  <group name="title_bar">
+      <text key="tooltip.minimize">Minimize</text>
+      <text key="tooltip.maximize_restore">Maximize/Restore</text>
+      <text key="accessibility.minimize">Minimize</text>
+      <text key="accessibility.maximize">Maximize</text>
+      <text key="accessibility.close">Close</text>
+      <text key="context_menu.restore">Restore(R)</text>
+      <text key="context_menu.move">Move(M)</text>
+      <text key="context_menu.minimize">Minimize(N)</text>
+      <text key="context_menu.maximize">Maximize(X)</text>
+      <text key="context_menu.close">Close(C)</text>
+  </group>
+
+  <group name="tray">
+      <text key="tooltip">InstructionX - CE</text>
+      <text key="menu.show_main_window">Show Main Window</text>
+      <text key="menu.running_plugins">Running Plugins</text>
+      <text key="menu.running_tasks">Running Background Tasks</text>
+      <text key="menu.quit">Exit</text>
+      <text key="menu.no_plugins">No loaded plugins</text>
+      <text key="menu.no_tasks">No running tasks</text>
+      <text key="menu.task_entry">{task_name} ({plugin_name})</text>
+      <text key="notify.minimize_title">InstructionX - CE</text>
+      <text key="notify.minimize_message">The application has been minimized to the system tray and continues to run in the background</text>
+  </group>
+
+  <group name="usage_panel">
+      <!-- 面板标题行 -->
+      <text key="header.title">AI Usage Panel</text>
+      <text key="header.subtitle">LLM API Usage Overview</text>
+      <!-- KPI 卡片标题 -->
+      <text key="kpi.total_requests">Total Requests</text>
+      <text key="kpi.input_tokens">Input Tokens</text>
+      <text key="kpi.output_tokens">Output Tokens</text>
+      <text key="kpi.total_tokens">Total Tokens</text>
+      <text key="kpi.cache_hit_rate">Cache Hit Rate</text>
+      <text key="kpi.avg_duration">Avg. Duration</text>
+      <!-- KPI 同比小字 -->
+      <text key="kpi.delta_empty">vs. previous period —</text>
+      <text key="kpi.delta">vs. previous period {pct:+.1f}%</text>
+      <!-- 错误提示弹窗 -->
+      <text key="error.refresh_data"><![CDATA[Failed to refresh usage data:
+  {error}]]></text>
+      <text key="error.refresh_trend"><![CDATA[Failed to refresh the usage trend chart:
+  {error}]]></text>
+      <!-- 筛选工具行 -->
+      <text key="filter.all">All</text>
+      <text key="filter.provider">Provider:</text>
+      <text key="filter.model">Model:</text>
+      <text key="filter.conversation_id">Conversation ID:</text>
+      <text key="filter.conversation_id_placeholder">Enter a conversation ID to filter...</text>
+      <!-- 使用历史面板 -->
+      <text key="table.title">Usage History</text>
+      <text key="table.header.time">Time</text>
+      <text key="table.header.provider">Provider</text>
+      <text key="table.header.model">Model</text>
+      <text key="table.header.input">Input</text>
+      <text key="table.header.output">Output</text>
+      <text key="table.header.total_tokens">Total Tokens</text>
+      <text key="table.header.cache_hit">Cache Hit</text>
+      <text key="table.header.cached_tokens">Cached Tokens</text>
+      <text key="table.header.duration">Duration</text>
+      <text key="table.header.stream">Stream</text>
+      <!-- 分页控件 -->
+      <text key="page.prev">Previous</text>
+      <text key="page.next">Next</text>
+      <text key="page.initial">Page 1</text>
+      <text key="page.info">Page {current} / {total} ({count} items in total)</text>
+      <!-- 历史面板无障碍名称 -->
+      <text key="a11y.provider_filter">Provider filter</text>
+      <text key="a11y.model_filter">Model filter</text>
+      <text key="a11y.conversation_id_input">Conversation ID filter input</text>
+      <text key="a11y.refresh">Refresh usage data</text>
+      <text key="a11y.table">Usage details table</text>
+      <!-- 用量趋势面板 -->
+      <text key="trend.title">Usage Trend</text>
+      <text key="trend.status">{start} ~ {end} · {days} days in total</text>
+      <!-- 图表坐标轴单位后缀（formatting.pick_token_scale） -->
+      <text key="chart.axis.million">(million)</text>
+      <text key="chart.axis.thousand">(thousand)</text>
+      <!-- 时间范围选项 -->
+      <text key="range.half_year">Last 6 Months</text>
+      <text key="range.year">Last Year</text>
+      <text key="range.custom">Custom</text>
+      <text key="range.to">to</text>
+      <text key="range.apply">Apply</text>
+      <!-- 趋势指标选项 -->
+      <text key="metric.requests">Requests</text>
+      <text key="metric.input_tokens">Input Tokens</text>
+      <text key="metric.output_tokens">Output Tokens</text>
+      <!-- 趋势面板无障碍名称 -->
+      <text key="a11y.range_combo">Time range selection</text>
+      <text key="a11y.start_date">Start date</text>
+      <text key="a11y.end_date">End date</text>
+      <text key="a11y.apply_range">Apply custom date range</text>
+      <text key="a11y.metric_combo">Trend metric switch</text>
+  </group>
+
+  <group name="work_area">
+      <text key="placeholder">Click a skill button above to display plugin features here</text>
+  </group>
+
+  <!-- LLM 模型能力标签（core/llm/model_schema.py 的 capability_label()） -->
+  <group name="model_capability">
+    <text key="vision">Vision</text>
+    <text key="web">Web Search</text>
+    <text key="reasoning">Reasoning</text>
+    <text key="tools">Tool Calling</text>
+    <text key="embedding">Embedding</text>
+    <text key="rerank">Rerank</text>
+  </group>
+  <group name="dialog_language">
+      <text key="title">Interface Language</text>
+      <text key="note">Language changes take effect immediately. Each plugin can have its own language configured in "Plugin Management"; if not set, it follows the selection here.</text>
+  </group>
+</texts>

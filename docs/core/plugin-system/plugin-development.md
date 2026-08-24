@@ -14,6 +14,7 @@ my_plugin/                    # 插件文件夹（建议使用英文）
 ├── information.py           # 插件元数据（必需）
 ├── config/                  # 插件配置目录（必需——开发规范要求；
 │                            #   框架层面仅硬校验 entrance.py；配置型数值集中于此，禁止魔法数）
+├── text/                    # 语言包目录（可选）：<语言代码>.xml，一个语言一个文件，见 §6
 ├── function/                # 业务逻辑层（推荐）：承载全部业务实现，禁止依赖 PySide6
 ├── ui/                      # 视图层（推荐）：只做界面渲染与事件分发，禁止业务逻辑
 ├── icons/                   # 图标目录（可选）
@@ -514,10 +515,10 @@ class TextFormattingPlugin(IPlugin):
 | 字段 | 类型 | 必需 | 使用规范 |
 |------|------|------|----------|
 | `id` | string | 是 | 插件唯一标识符，必须匹配正则 `^[a-zA-Z0-9_-]+$`（仅限字母、数字、下划线、短横线），建议 kebab-case。`id` 是升级/降级的匹配依据，**发布后不可变更**，否则框架会视为另一个插件 |
-| `name` | string | 是 | 插件显示名称，允许中文与空格，仅用于界面展示 |
+| `name` | string 或 object | 是 | 插件显示名称，允许中文与空格，仅用于界面展示；支持多语言字典形式 `{"zh": "...", "en": "..."}`（见 §6.4） |
 | `version` | string | 是 | 必须匹配 `^(release|pre-release|beta|alpha|internal)\.\d+\.\d+\.\d+$`（如 `release.1.0.0`）。类型优先级 `release > pre-release > beta > alpha > internal`：稳定发布用 `release`；正式发布前的候选版本用 `pre-release`；公开测试用 `beta`；内部测试用 `alpha`；仅限开发调试、不对外分发用 `internal` |
 | `main` | string | 是 | 插件入口文件路径，固定为 `entrance.py` |
-| `description` | string | 否 | 插件简短描述，展示在安装/管理界面 |
+| `description` | string 或 object | 否 | 插件简短描述，展示在安装/管理界面；支持多语言字典形式（见 §6.4） |
 | `author` | string | 否 | 插件作者/组织名称 |
 | `homepage` | string | 否 | 插件主页 URL（文档、问题反馈页等） |
 | `keywords` | array | 否 | 关键词数组，便于检索与分类 |
@@ -704,9 +705,55 @@ def _on_status_changed(self, publisher_id, key, old_value, new_value):
 
 ---
 
-## 6. 调试技巧
+## 6. 插件多语言（i18n）
 
-### 6.1 打印日志
+框架提供多语言子系统（`core/i18n`），完整机制见 [多语言（i18n）子系统概述](../i18n/overview.md)。插件提供多语言支持是**可选的**——不提供 `text/` 目录的插件行为与旧版本完全一致。
+
+### 6.1 语言包目录
+
+在插件目录下创建 `text/<语言代码>.xml`，**一个语言一个文件**（语言代码为 ISO 639-1，可带区域子标签如 `zh-CN`/`zh-TW`）；文件内以 `<group>` 分组、`<text key="...">` 为条目，占位符仅支持命名式 `{name}`：
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<texts language="zh">
+  <group name="main">
+    <text key="title">我的插件</text>
+    <text key="welcome">你好，{name}</text>
+  </group>
+</texts>
+```
+
+各语言文件的分组与键命名必须一致；其他语言允许缺键（运行时回退），但**插件默认语言文件必须覆盖全部键**——它是回退终点，缺失时界面直接显示 `ERROR_TEXT`（不静默）。框架加载插件时自动扫描注册，插件无需登记代码；可运行 `scripts/check_i18n_completeness.py` 校验完整性。
+
+### 6.2 取词与默认语言声明
+
+经 `PluginServices.localization`（`ILocalizationFacade`，始终注入）取词：
+
+```python
+def __init__(self, services: PluginServices | None = None):
+    super().__init__()
+    self._i18n = services.localization if services else None
+
+def _create_widget(self, parent=None, data_provider=None):
+    title = self._i18n.tr("main", "title")                # 分组/键取词
+    hint = self._i18n.tr("main", "welcome", name="User")  # 命名占位符
+```
+
+插件未提供语言包时 `tr()` 优雅降级返回键名本身。有效语言按「用户语言覆盖 → 框架当前语言 → 插件默认语言」三级解析；插件默认语言经 `IPluginInfo.default_language` 声明（可选，默认 `None` = 跟随框架默认语言 `zh`）。
+
+### 6.3 语言切换刷新约定
+
+框架不替插件重绘 UI。需要跟随语言切换的插件 Widget，自行 connect `LanguageManager` 信号（`language_changed(str)` / `plugin_language_changed(str, str)`）并重取词，详见 [i18n 概述 §7.5](../i18n/overview.md)。
+
+### 6.4 IXPlugin.json 多语言字段
+
+`name` 与 `description` 除纯字符串外支持字典形式 `{"zh": "...", "en": "..."}`，安装与展示时按「目标语言（支持区域子标签解析）→ 默认语言 → 字典第一个值」解析，详见 §4.1 与 [i18n 概述 §7.4](../i18n/overview.md)。
+
+---
+
+## 7. 调试技巧
+
+### 7.1 打印日志
 
 ```python
 def _create_widget(self, parent=None, data_provider=None):
@@ -718,7 +765,7 @@ def _create_widget(self, parent=None, data_provider=None):
     return widget
 ```
 
-### 6.2 测试 API 调用
+### 7.2 测试 API 调用
 
 ```python
 from core.data.data_provider import DataProviderError
@@ -743,8 +790,9 @@ print("结果:", result)
 
 ---
 
-## 7. 相关文档
+## 8. 相关文档
 
+- [多语言（i18n）子系统概述](../i18n/overview.md)
 - [插件开发工程约束基准（AGENTS-for-PLUGIN-DEV.md）](../../../AGENTS-for-PLUGIN-DEV.md)
 - [插件系统概述](overview.md)
 - [IPlugin 接口](iplugin.md)

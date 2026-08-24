@@ -20,18 +20,19 @@ from PySide6.QtWidgets import (
     QScrollArea, QVBoxLayout, QWidget,
 )
 
+from core.i18n import tr
 from core.llm.provider_interface import ModelCheckResult
 
 from . import theme as _theme_module
 from .constants import (
     FORM_BUTTON_HEIGHT, HEALTH_DIALOG_HEIGHT, HEALTH_DIALOG_WIDTH,
     MODEL_ROW_HEIGHT, MODEL_ROW_MARGIN_LEFT, MODEL_ROW_MARGIN_RIGHT,
-    MODEL_ROW_SPACING, MODEL_TYPE_LABELS, STATUS_TEXT_ELIDE_WIDTH,
+    MODEL_ROW_SPACING, STATUS_TEXT_ELIDE_WIDTH,
     SUB_DIALOG_MARGIN, SUB_DIALOG_SPACING, WORKER_STOP_WAIT_MS,
 )
 from .theme import apply_dialog_theme
 from .widgets import (
-    _model_primary_type, install_focus_halo, make_badge,
+    _model_primary_type, install_focus_halo, make_badge, model_type_label,
 )
 from .workers import HealthCheckWorker
 
@@ -63,7 +64,7 @@ class _HealthCheckRow(QWidget):
         layout.addWidget(id_label, 1)
         t = _theme_module.current_theme()
         badge = make_badge(
-            MODEL_TYPE_LABELS.get(type_key, type_key),
+            model_type_label(type_key),
             t.model_type_colors.get(type_key, t.accent))
         layout.addWidget(badge)
         self._status = QLabel("", self)
@@ -84,15 +85,18 @@ class _HealthCheckRow(QWidget):
 
     def set_waiting(self) -> None:
         """置为「等待中」（探测尚未轮到该行）"""
-        self._set_status("等待中", _theme_module.current_theme().fg_muted)
+        self._set_status(tr("dialog_llm_settings", "health.row.waiting"),
+                         _theme_module.current_theme().fg_muted)
 
     def set_checking(self) -> None:
         """置为「检查中」（该行正在探测）"""
-        self._set_status("● 检查中…", _theme_module.current_theme().accent)
+        self._set_status(tr("dialog_llm_settings", "health.row.checking"),
+                         _theme_module.current_theme().accent)
 
     def set_cancelled(self) -> None:
         """置为「已取消」（用户取消时该行尚未探测）"""
-        self._set_status("已取消", _theme_module.current_theme().fg_muted)
+        self._set_status(tr("dialog_llm_settings", "health.row.cancelled"),
+                         _theme_module.current_theme().fg_muted)
 
     def set_result(self, result: ModelCheckResult) -> None:
         """按探测结果更新行状态（跳过 / 正常 / 失败）
@@ -102,17 +106,21 @@ class _HealthCheckRow(QWidget):
         """
         t = _theme_module.current_theme()
         if result.skipped:
-            reason = result.skip_reason or "未探测"
-            self._set_status(f"⚠ 跳过 · {reason}", t.warning, reason)
+            reason = result.skip_reason or tr(
+                "dialog_llm_settings", "health.row.not_checked")
+            self._set_status(tr("dialog_llm_settings", "health.row.skipped",
+                                reason=reason), t.warning, reason)
             return
         if result.ok:
             latency = result.latency_ms or 0.0
-            self._set_status(f"✓ 正常 · {latency:.0f} ms", t.success)
+            self._set_status(tr("dialog_llm_settings", "health.row.ok",
+                                latency=f"{latency:.0f}"), t.success)
             return
-        error = result.error or "未知错误"
+        error = result.error or tr("dialog_llm_settings", "misc.unknown_error")
         short = self._status.fontMetrics().elidedText(
             error, Qt.TextElideMode.ElideRight, STATUS_TEXT_ELIDE_WIDTH)
-        self._set_status(f"✗ 失败 · {short}", t.danger, error)
+        self._set_status(tr("dialog_llm_settings", "health.row.fail",
+                            error=short), t.danger, error)
 
 
 class HealthCheckDialog(QDialog):
@@ -138,7 +146,7 @@ class HealthCheckDialog(QDialog):
             parent: 父控件
         """
         super().__init__(parent)
-        self.setWindowTitle("模型健康检查")
+        self.setWindowTitle(tr("dialog_llm_settings", "health.title"))
         self.setModal(True)
         self.resize(HEALTH_DIALOG_WIDTH, HEALTH_DIALOG_HEIGHT)
         self._instance_id = instance_id
@@ -165,7 +173,8 @@ class HealthCheckDialog(QDialog):
             SUB_DIALOG_MARGIN, SUB_DIALOG_MARGIN,
             SUB_DIALOG_MARGIN, SUB_DIALOG_MARGIN)
         layout.setSpacing(SUB_DIALOG_SPACING)
-        header = QLabel(f"实例「{instance_name}」 · 共 {self._total} 个模型", self)
+        header = QLabel(tr("dialog_llm_settings", "health.header",
+                           name=instance_name, total=self._total), self)
         layout.addWidget(header)
         self._summary = QLabel("", self)
         self._summary.setObjectName("CountLabel")
@@ -178,7 +187,7 @@ class HealthCheckDialog(QDialog):
         layout.addWidget(self._build_scroll_area(), 1)
         button_row = QHBoxLayout()
         button_row.addStretch(1)
-        self._action_btn = QPushButton("取消", self)
+        self._action_btn = QPushButton(tr("common", "cancel"), self)
         self._action_btn.setFixedHeight(FORM_BUTTON_HEIGHT)
         self._action_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._action_btn.clicked.connect(self._on_action_clicked)
@@ -201,7 +210,7 @@ class HealthCheckDialog(QDialog):
             rows_layout.addWidget(row)
             self._rows.append(row)
         if not self._entries:
-            empty = QLabel("暂无可检查的模型", content)
+            empty = QLabel(tr("dialog_llm_settings", "health.empty"), content)
             empty.setObjectName("EmptyHint")
             rows_layout.addWidget(empty)
         rows_layout.addStretch(1)
@@ -213,7 +222,7 @@ class HealthCheckDialog(QDialog):
     def _start(self) -> None:
         """启动逐模型探测（无模型时直接转关闭态）"""
         if not self._entries:
-            self._action_btn.setText("关闭")
+            self._action_btn.setText(tr("common", "close"))
             return
         self._running = True
         self._rows[0].set_checking()
@@ -257,17 +266,18 @@ class HealthCheckDialog(QDialog):
             return
         self._running = False
         self._worker = None
-        self._summary.setText(
-            f"检查完成：成功 {self._ok_count} · 失败 {self._fail_count}"
-            f" · 跳过 {self._skip_count}")
-        self._action_btn.setText("关闭")
+        self._summary.setText(tr(
+            "dialog_llm_settings", "health.summary_done",
+            ok=self._ok_count, fail=self._fail_count, skip=self._skip_count))
+        self._action_btn.setText(tr("common", "close"))
 
     def _update_summary(self) -> None:
         """刷新进行中汇总计数（成功 / 失败 / 跳过 / 剩余）"""
         remaining = self._total - self._done_count
-        self._summary.setText(
-            f"成功 {self._ok_count} · 失败 {self._fail_count}"
-            f" · 跳过 {self._skip_count} · 剩余 {remaining}")
+        self._summary.setText(tr(
+            "dialog_llm_settings", "health.summary_running",
+            ok=self._ok_count, fail=self._fail_count,
+            skip=self._skip_count, remaining=remaining))
 
     # ==================== 取消与关闭 ====================
 
@@ -289,10 +299,11 @@ class HealthCheckDialog(QDialog):
         for row in self._rows[self._done_count:]:
             row.set_cancelled()
         unchecked = self._total - self._done_count
-        self._summary.setText(
-            f"已取消：成功 {self._ok_count} · 失败 {self._fail_count}"
-            f" · 跳过 {self._skip_count} · 未检查 {unchecked}")
-        self._action_btn.setText("关闭")
+        self._summary.setText(tr(
+            "dialog_llm_settings", "health.summary_cancelled",
+            ok=self._ok_count, fail=self._fail_count,
+            skip=self._skip_count, unchecked=unchecked))
+        self._action_btn.setText(tr("common", "close"))
 
     def reject(self) -> None:
         """Esc / 取消路径：先安全终止 Worker 再退出"""

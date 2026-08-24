@@ -1,0 +1,541 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  InstructionX 框架默认语言文件（zh，简体中文）
+  规则：本文件必须完整覆盖源码中的全部 tr(group, key) 调用；
+  其他语言文件（如 en.xml）的 group 名与键名必须与本文件一致。
+  校验：.venv\Scripts\python.exe scripts/check_i18n_completeness.py
+-->
+<texts language="zh">
+  <!-- 通用词：跨模块复用；模块特有文案请放各自分组，勿塞入本组 -->
+  <group name="common">
+    <text key="language.self_name">简体中文</text>
+    <text key="ok">确定</text>
+    <text key="cancel">取消</text>
+    <text key="save">保存</text>
+    <text key="close">关闭</text>
+    <text key="yes">是</text>
+    <text key="no">否</text>
+    <text key="error">错误</text>
+    <text key="warning">警告</text>
+    <text key="success">成功</text>
+    <text key="confirm">确认</text>
+    <text key="delete">删除</text>
+    <text key="refresh">刷新</text>
+    <text key="retry">重试</text>
+    <text key="copy">复制</text>
+    <text key="open">打开</text>
+    <text key="back">返回</text>
+    <text key="loading">加载中...</text>
+  </group>
+  <group name="dialog_about">
+      <text key="window.title">关于</text>
+      <text key="logo.placeholder">Logo</text>
+      <text key="copyright">© 2025-2026 dakuang 版权所有，保留所有权利。</text>
+      <text key="statement"><![CDATA[本软件为专有软件，商业使用超过阈值需获得授权。
+  Proprietary software.
+  Commercial use requires authorization if thresholds are exceeded.]]></text>
+  </group>
+
+  <group name="dialog_close_confirm">
+      <text key="title">关闭确认</text>
+      <text key="message"><![CDATA[您希望退出程序，还是最小化到系统托盘继续运行？
+  托盘运行期间插件与后台任务将继续工作。]]></text>
+      <text key="button.exit">退出程序</text>
+      <text key="button.minimize_to_tray">最小化到托盘</text>
+  </group>
+
+  <group name="dialog_font_manager">
+      <text key="title">字体管理</text>
+      <text key="search.placeholder">搜索字体...</text>
+      <text key="group.installed">已安装字体</text>
+      <text key="group.system">系统字体</text>
+      <text key="list.empty_hint">（尚未安装字体）</text>
+      <text key="preview.sample_text">InstructionX 字体预览 Font Preview 0123 ABCabc</text>
+      <text key="preview.input_placeholder">输入预览文本...</text>
+      <text key="preview.size_label">字号</text>
+      <text key="preview.hint">请选择左侧字体进行预览</text>
+      <text key="preview.resolved">当前字体：{family}</text>
+      <text key="preview.fallback">字体 {family} 不可用，已回退到系统字体：{resolved}</text>
+      <text key="button.install">安装字体...</text>
+      <text key="button.uninstall">卸载</text>
+      <text key="install.dialog_title">选择字体文件</text>
+      <text key="install.file_filter">字体文件 (*.ttf *.otf *.ttc)</text>
+      <text key="message.install_failed"><![CDATA[安装失败：{name}
+  {error}]]></text>
+      <text key="message.install_success">成功安装 {count} 个字体</text>
+      <text key="uninstall.title">卸载字体</text>
+      <text key="uninstall.confirm"><![CDATA[确定卸载字体「{family}」吗？
+  卸载后使用该字体的界面将回退到系统字体。]]></text>
+      <text key="uninstall.success">字体「{family}」已卸载</text>
+      <text key="uninstall.failed">卸载失败：未找到字体 {family}</text>
+  </group>
+
+  <group name="dialog_github_install">
+      <text key="window.title">从 GitHub 安装插件</text>
+      <text key="url.placeholder">https://github.com/owner/repo 或 git@github.com:owner/repo.git</text>
+      <text key="button.check">检查</text>
+      <text key="button.install">安装</text>
+      <text key="button.select_all">全选</text>
+      <text key="button.deselect_all">取消全选</text>
+      <text key="page.empty_hint">点击「检查」按钮分析 GitHub 仓库</text>
+      <text key="page.invalid_hint">该仓库不包含有效的插件描述文件</text>
+      <text key="info.author">作者: {author}</text>
+      <text key="info.deps">依赖: {deps}</text>
+      <text key="plugin.no_description">无描述</text>
+      <text key="dir.official">官方插件目录 (plugin/)</text>
+      <text key="dir.thirdparty">第三方插件目录 (custom_plugin/)</text>
+      <text key="dir.will_install_to">将安装到: {dir_desc}</text>
+      <text key="status.url_required">请输入 GitHub 仓库 URL</text>
+      <text key="status.checking">正在检查仓库...</text>
+      <text key="status.repo_invalid">仓库无效</text>
+      <text key="status.single_repo">单插件仓库 - 确认信息后点击「安装」</text>
+      <text key="status.multi_repo">多插件仓库 - 选择要安装的插件 (共 {count} 个)</text>
+      <text key="status.error">错误: {error}</text>
+      <text key="status.installing">正在安装...</text>
+      <text key="status.install_success">安装成功！已安装 {count} 个插件</text>
+      <text key="status.install_partial">安装完成：{success_count} 个成功，{fail_count} 个失败</text>
+      <text key="status.install_failed">安装失败: {error}</text>
+      <text key="message.select_plugins">请选择要安装的插件</text>
+      <text key="result.ok_got_it">知道了</text>
+      <text key="result.title">安装结果</text>
+      <text key="result.failed_title">安装失败</text>
+      <text key="result.all_success">全部成功</text>
+      <text key="result.partial">部分完成</text>
+      <text key="result.summary"><![CDATA[安装{outcome}：
+  {details}]]></text>
+  </group>
+
+  <group name="dialog_license">
+      <text key="title">开源组件许可</text>
+      <text key="search.placeholder">搜索名称...</text>
+      <text key="list.empty">未找到匹配的许可证</text>
+      <text key="category.dependency">依赖</text>
+      <text key="detail.version">版本 v{version}</text>
+      <text key="detail.read_failed">(无法读取许可文件)</text>
+      <text key="detail.file_not_found">(许可文件未找到: {path})</text>
+      <text key="button.copy_all">复制全文</text>
+      <text key="button.copied">已复制！</text>
+      <text key="button.open_folder">打开文件夹</text>
+      <text key="message.dir_not_exist">目录不存在: {path}</text>
+  </group>
+
+  <group name="dialog_llm_settings">
+    <!-- ============ 主对话框（dialog.py） ============ -->
+    <text key="dialog.title">LLM 设置</text>
+    <text key="dialog.placeholder"><![CDATA[暂无提供商
+  点击左下角「＋ 添加提供商」开始使用]]></text>
+  
+    <!-- ============ 左栏列表面板（provider_list_panel.py） ============ -->
+    <text key="list.section_title">模型服务</text>
+    <text key="list.search_placeholder">搜索提供商</text>
+    <text key="list.add_button">＋ 添加提供商</text>
+  
+    <!-- ============ 详情面板（provider_detail_panel.py） ============ -->
+    <text key="detail.overlay_disabled"><![CDATA[该提供商已停用
+  开启右上角开关后进行配置]]></text>
+    <text key="detail.menu.rename">重命名</text>
+    <text key="detail.menu.delete_provider">删除提供商</text>
+    <text key="detail.delete_provider.message">确定删除「{name}」及其全部模型配置吗？</text>
+    <text key="detail.section.api_config">API 配置</text>
+    <text key="detail.section.default_model">默认模型</text>
+    <text key="detail.field.api_key">API 密钥</text>
+    <text key="detail.field.api_host">API 地址</text>
+    <text key="detail.key_link">获取密钥</text>
+    <text key="detail.key_placeholder">sk-...</text>
+    <text key="detail.key_placeholder_optional">sk-...（可选）</text>
+    <text key="detail.host_placeholder">https://...</text>
+    <text key="detail.eye_tooltip">显示 / 隐藏密钥</text>
+    <text key="detail.check.button">检测</text>
+    <text key="detail.check.button_busy">检测中…</text>
+    <text key="detail.check.status_checking">正在检测连接…</text>
+    <text key="detail.check.status_ok">✓ 连接正常 · {count} 个模型</text>
+    <text key="detail.check.status_fail">✗ 连接失败：{error}</text>
+    <text key="detail.reset_button">重置</text>
+    <text key="detail.reset_tooltip">恢复默认 API 地址</text>
+    <text key="detail.badge.custom">自定义</text>
+    <text key="detail.rename.title">重命名提供商</text>
+    <text key="detail.rename.label">名称：</text>
+    <text key="detail.default_model.chat">对话模型</text>
+    <text key="detail.default_model.embedding">Embedding 模型</text>
+    <text key="detail.default_model.embedding_enable">启用 Embedding</text>
+    <text key="detail.default_model.embedding_switch_tooltip">启用 / 停用该提供商的嵌入功能</text>
+    <text key="detail.default_model.unset">（未设置）</text>
+    <text key="detail.refresh.status_busy">正在获取模型列表…</text>
+    <text key="detail.refresh.status_updated">✓ 已更新 · {count} 个模型</text>
+    <text key="detail.refresh.fail_title">获取模型列表失败</text>
+    <text key="detail.refresh.fail_message"><![CDATA[无法从 API 获取最新模型列表：
+  {error}]]></text>
+    <text key="detail.health.no_models">暂无可检查的模型，请先添加模型或刷新模型列表。</text>
+  
+    <!-- ============ 通用杂项 ============ -->
+    <text key="misc.unknown_error">未知错误</text>
+  
+    <!-- ============ 模型分区（model_section.py） ============ -->
+    <text key="model.section.title">模型</text>
+    <text key="model.section.count">（{count}）</text>
+    <text key="model.section.empty_hint">暂无模型，点击右上角「＋ 添加」</text>
+    <text key="model.section.add">＋ 添加</text>
+    <text key="model.section.refresh_tooltip">从 API 获取最新模型列表</text>
+    <text key="model.section.health">⚡ 检查</text>
+    <text key="model.section.health_tooltip">逐个探测模型可用性</text>
+    <text key="model.section.sync">⇅ 同步</text>
+    <text key="model.section.sync_tooltip">与远端模型列表对比管理</text>
+    <text key="model.section.manage">管理</text>
+    <text key="model.section.manage_done">完成</text>
+    <text key="model.section.select_all">全选</text>
+    <text key="model.section.delete_selected">删除选中</text>
+    <text key="model.group_caption">{label} · {count}</text>
+    <text key="model.delete.title">删除模型</text>
+    <text key="model.delete.message">确定删除模型「{id}」吗？</text>
+    <text key="model.delete.message_multi">确定删除选中的 {count} 个模型吗？</text>
+    <text key="model.type.chat">对话</text>
+    <text key="model.type.vision">视觉</text>
+    <text key="model.type.embedding">嵌入</text>
+    <text key="model.type.rerank">重排序</text>
+  
+    <!-- ============ Provider 编辑器（provider_editor_dialog.py） ============ -->
+    <text key="editor.title_create">添加提供商</text>
+    <text key="editor.title_edit">编辑提供商</text>
+    <text key="editor.custom_choice.title">自定义 OpenAI 兼容服务</text>
+    <text key="editor.custom_choice.subtitle">接入任意 OpenAI 兼容协议的模型服务</text>
+    <text key="editor.custom_default_name">自定义服务</text>
+    <text key="editor.custom_subtitle_fallback">自定义接入</text>
+    <text key="editor.type_page.label">选择模型服务类型</text>
+    <text key="editor.field.name">名称</text>
+    <text key="editor.field.api_key">API Key</text>
+    <text key="editor.field.api_key_optional">API Key（可选）</text>
+    <text key="editor.field.api_key_keep_placeholder">留空则不修改</text>
+    <text key="editor.form.hint_create_preset">创建 {name} 实例</text>
+    <text key="editor.form.hint_create_custom">创建{type_name}实例</text>
+    <text key="editor.form.hint_missing">实例不存在</text>
+    <text key="editor.form.hint_edit">编辑实例（适配器：{adapter}）</text>
+    <text key="editor.warn.validation_title">校验失败</text>
+    <text key="editor.warn.save_failed_title">保存失败</text>
+    <text key="editor.warn.name_required">请输入实例名称。</text>
+    <text key="editor.warn.base_url_required">自定义 OpenAI 兼容服务必须填写 Base URL。</text>
+    <text key="editor.warn.instance_missing">要编辑的实例不存在，可能已被删除。</text>
+  
+    <!-- ============ 模型编辑对话框（model_edit_dialog.py） ============ -->
+    <text key="model_edit.title_create">添加模型</text>
+    <text key="model_edit.title_edit">编辑模型</text>
+    <text key="model_edit.field.id">模型 ID</text>
+    <text key="model_edit.field.id_placeholder">如 glm-4-flash</text>
+    <text key="model_edit.field.id_readonly_tooltip">编辑模式下模型 ID 不可修改</text>
+    <text key="model_edit.field.name">显示名称</text>
+    <text key="model_edit.field.name_placeholder">留空则使用模型 ID</text>
+    <text key="model_edit.field.group">分组</text>
+    <text key="model_edit.field.group_placeholder">留空将按模型 ID 自动推断分组</text>
+    <text key="model_edit.field.capabilities">能力标签</text>
+    <text key="model_edit.field.context_length">上下文长度</text>
+    <text key="model_edit.field.context_tooltip">0 表示未设置；步进为 1K（1024）tokens</text>
+    <text key="model_edit.field.streaming">支持流式输出</text>
+    <text key="model_edit.field.price">定价（每百万 tokens，0 表示未设置）</text>
+    <text key="model_edit.price.input">输入</text>
+    <text key="model_edit.price.output">输出</text>
+    <text key="model_edit.unset">未设置</text>
+    <text key="model_edit.warn.id_required">请输入模型 ID。</text>
+  
+    <!-- ============ 健康检查对话框（health_check_dialog.py） ============ -->
+    <text key="health.title">模型健康检查</text>
+    <text key="health.header">实例「{name}」 · 共 {total} 个模型</text>
+    <text key="health.empty">暂无可检查的模型</text>
+    <text key="health.row.waiting">等待中</text>
+    <text key="health.row.checking">● 检查中…</text>
+    <text key="health.row.cancelled">已取消</text>
+    <text key="health.row.skipped">⚠ 跳过 · {reason}</text>
+    <text key="health.row.not_checked">未探测</text>
+    <text key="health.row.ok">✓ 正常 · {latency} ms</text>
+    <text key="health.row.fail">✗ 失败 · {error}</text>
+    <text key="health.summary_done">检查完成：成功 {ok} · 失败 {fail} · 跳过 {skip}</text>
+    <text key="health.summary_running">成功 {ok} · 失败 {fail} · 跳过 {skip} · 剩余 {remaining}</text>
+    <text key="health.summary_cancelled">已取消：成功 {ok} · 失败 {fail} · 跳过 {skip} · 未检查 {unchecked}</text>
+  
+    <!-- ============ 模型同步对话框（sync_models_dialog.py） ============ -->
+    <text key="sync.title">模型同步</text>
+    <text key="sync.group.new">新增</text>
+    <text key="sync.group.existing">已存在</text>
+    <text key="sync.group.invalid">已失效</text>
+    <text key="sync.group_caption">{label} · {count}</text>
+    <text key="sync.search_placeholder">搜索模型 id</text>
+    <text key="sync.add_selected">添加选中到列表</text>
+    <text key="sync.clean_selected">清理选中失效模型</text>
+    <text key="sync.hint.missing">提供商实例不存在，无法同步。</text>
+    <text key="sync.hint.preset_catalog">该提供商使用预设模型目录，无需同步。</text>
+    <text key="sync.hint.fetch_failed">远端模型列表获取失败：{error}，仅展示本地列表。</text>
+    <text key="sync.status.fetching">正在从远端获取模型列表…</text>
+    <text key="sync.status.summary">远端共 {total} 个模型 · 新增 {new} · 已失效 {invalid}</text>
+    <text key="sync.empty">暂无模型</text>
+    <text key="sync.toast.add_none">请先勾选要添加的新增模型。</text>
+    <text key="sync.toast.clean_none">请先勾选要清理的失效模型。</text>
+    <text key="sync.toast.added">已添加 {count} 个模型到列表。</text>
+    <text key="sync.toast.cleaned">已清理 {count} 个失效模型。</text>
+  
+    <!-- ============ 反馈入口与通用控件（feedback.py / widgets.py） ============ -->
+    <text key="feedback.notice_ok">知道了</text>
+    <text key="widget.provider_switch.tooltip">启用 / 停用该提供商</text>
+    <text key="widget.model_switch.tooltip">启用 / 停用该模型</text>
+    <text key="widget.model_row.delete_tooltip">删除该模型</text>
+  </group>
+
+  <group name="dialog_plugin_management">
+      <!-- 窗口/对话框标题 -->
+      <text key="title.dialog">插件管理</text>
+      <text key="title.confirm_install">确认安装</text>
+      <text key="title.install_result">安装结果</text>
+      <text key="title.confirm_uninstall">确认卸载</text>
+      <text key="title.uninstall_failed">卸载失败</text>
+      <text key="title.uninstall_done">卸载完成</text>
+      <text key="title.save_failed">保存失败</text>
+      <text key="title.operation_failed">操作失败</text>
+      <text key="title.select_zip">选择插件包</text>
+  
+      <!-- 页签与 scope 分类名 -->
+      <text key="tab.manage">插件管理</text>
+      <text key="tab.groups">分组与排序</text>
+      <text key="scope.official">官方插件</text>
+      <text key="scope.thirdparty">第三方插件</text>
+  
+      <!-- 按钮（common 已有的 取消/关闭/刷新 直接复用 common 分组） -->
+      <text key="button.install_github">从 GitHub 安装插件…</text>
+      <text key="button.install_zip">安装本地插件包…</text>
+      <text key="button.check_updates">检查更新 / 升级 / 降级…</text>
+      <text key="button.uninstall">卸载…</text>
+      <text key="button.reset">重置</text>
+      <text key="button.save_groups">保存分组与排序</text>
+      <text key="button.acknowledge">知道了</text>
+      <text key="button.move_up">上移</text>
+      <text key="button.move_down">下移</text>
+      <text key="button.new_group">新建分组</text>
+      <text key="button.rename">重命名</text>
+      <text key="button.set_icon">设置图标</text>
+      <text key="button.delete_group">删除分组</text>
+  
+      <!-- 详情面板 -->
+      <text key="detail.no_selection">未选择插件</text>
+      <text key="detail.name">名称: {name}</text>
+      <text key="detail.version">版本: {version}</text>
+      <text key="detail.source">来源: {source}</text>
+  
+      <!-- 通用兜底词（本分组内复用） -->
+      <text key="label.unknown">未知</text>
+  
+      <!-- 文件选择对话框 -->
+      <text key="file_dialog.zip_filter">Zip 文件 (*.zip)</text>
+  
+      <!-- 提示/结果消息 -->
+      <text key="message.select_plugin_first">请先选择插件</text>
+      <text key="message.no_github_source"><![CDATA[该插件没有记录 GitHub 来源，无法检查更新。
+  可使用「安装本地插件包」手动升级/降级。]]></text>
+      <text key="message.no_releases">未获取到该仓库的 Release 版本</text>
+      <text key="message.invalid_source_url">来源仓库 URL 无效</text>
+      <text key="message.install_confirm"><![CDATA[将{relation}插件「{name}」
+  当前版本: {current}
+  目标版本: {target}]]></text>
+      <text key="message.downgrade_warning"><![CDATA[
+  
+  警告：降级可能导致数据不兼容或配置丢失！]]></text>
+      <text key="message.result_item">  - {name}: {message}</text>
+      <text key="message.result_partial"><![CDATA[部分失败：
+  {details}]]></text>
+      <text key="message.result_all_success"><![CDATA[全部成功：
+  {details}]]></text>
+      <text key="message.uninstall_confirm">确定卸载插件「{name}」？</text>
+      <text key="message.uninstall_official_warning"><![CDATA[
+  
+  该插件属于官方插件，卸载后需重新安装才能恢复。]]></text>
+      <text key="message.uninstall_delete_data">同时删除插件数据（不可恢复）</text>
+      <text key="message.uninstall_warnings"><![CDATA[
+  
+  警告：
+  {warnings}]]></text>
+      <text key="message.save_groups_failed">无法保存分组配置，请检查权限和磁盘空间。</text>
+      <text key="message.groups_saved">分组与排序已保存</text>
+      <text key="message.operation_busy">正在执行其他操作，请稍候</text>
+  
+      <!-- 版本选择对话框 -->
+      <text key="version_select.title">选择版本 - {name}</text>
+      <text key="version_select.current_version">当前版本: {version}</text>
+      <text key="version_select.unknown_version">未知版本</text>
+      <text key="version_select.item_format">{tag}  —  {version}（{relation}）</text>
+      <text key="version_select.button.install_selected">安装所选版本</text>
+      <text key="version_select.message.no_selection">请选择要安装的版本</text>
+  
+      <!-- 版本关系标签（_version_relation 内部标识的显示文案） -->
+      <text key="version_relation.upgrade">升级</text>
+      <text key="version_relation.downgrade">降级</text>
+      <text key="version_relation.reinstall">重装</text>
+  
+      <!-- 分组与排序编辑器 -->
+      <text key="group_editor.panel_column_title">面板顺序（分组 / 插件）</text>
+      <text key="group_editor.available_label">未分组插件</text>
+      <text key="group_editor.member_label">组内插件</text>
+      <text key="group_editor.shuttle_title">组内配置：{icon} {name}</text>
+      <text key="group_editor.invalid_group">(已失效分组) {id}</text>
+      <text key="group_editor.removed_plugin">(已移除) {id}</text>
+      <text key="group_editor.prompt.new_group_title">新建分组</text>
+      <text key="group_editor.prompt.rename_group_title">重命名分组</text>
+      <text key="group_editor.prompt.group_name_label">分组名称:</text>
+      <text key="group_editor.prompt.set_icon_title">设置图标</text>
+      <text key="group_editor.prompt.select_icon_label">选择分组图标:</text>
+      <text key="group_editor.message.select_group_first">请先在左侧列表中选中一个分组</text>
+      <text key="group_editor.message.select_target_group">请先在左侧列表中选中目标分组</text>
+      <text key="group_editor.message.select_plugin_to_add">请在「未分组插件」中选中要加入的插件</text>
+
+      <!-- 每插件语言自定义（详情面板语言行 + 插件语言对话框） -->
+      <text key="button.language">语言…</text>
+      <text key="detail.language">语言: {language}</text>
+      <text key="language.none">未提供多语言</text>
+      <text key="language.follow_framework">跟随框架（{language}）</text>
+      <text key="language.unavailable_tooltip">该插件未提供多语言支持</text>
+      <text key="language.dialog_title">{name} 的语言</text>
+      <text key="language.follow_option">跟随框架（默认）</text>
+  </group>
+
+  <group name="main_window">
+      <text key="menu.edit">编辑</text>
+      <text key="menu.edit.plugin_management">插件管理...</text>
+      <text key="menu.edit.font_management">字体管理...</text>
+      <text key="menu.edit.toggle_theme">切换主题</text>
+      <text key="menu.edit.toggle_theme.tooltip">浅色 → 深色 → 跟随系统</text>
+      <text key="menu.edit.toggle_theme.current">切换主题 ({label})</text>
+      <text key="menu.edit.language">语言</text>
+      <text key="menu.edit.install_from_github">从 GitHub 安装插件...</text>
+      <text key="menu.edit.install_from_github.status_tip">从 GitHub 仓库安装插件</text>
+      <text key="menu.ai">AI</text>
+      <text key="menu.ai.llm_settings">LLM 设置...</text>
+      <text key="menu.ai.usage">用量查询</text>
+      <text key="menu.help">帮助</text>
+      <text key="menu.help.about">关于</text>
+      <text key="menu.help.licenses">开源组件许可</text>
+      <text key="dialog.usage.title">用量查询</text>
+      <text key="work_area.load_error"><![CDATA[无法加载插件：{name}　<a href='retry'>点击重试</a>]]></text>
+      <text key="work_area.load_error.tooltip">加载失败，点击“点击重试”重新加载插件</text>
+      <text key="theme.light">浅色</text>
+      <text key="theme.dark">深色</text>
+      <text key="theme.auto">跟随系统</text>
+      <text key="tray.unknown_plugin">未知插件</text>
+  </group>
+
+  <group name="skills_panel">
+      <text key="tab.official">官方功能</text>
+      <text key="tab.thirdparty">第三方功能</text>
+      <text key="header.plugin_count">{count} Plugins</text>
+      <text key="group.tooltip">分组：{name}（点击展开/收起）</text>
+  </group>
+
+  <group name="title_bar">
+      <text key="tooltip.minimize">最小化</text>
+      <text key="tooltip.maximize_restore">最大化/还原</text>
+      <text key="accessibility.minimize">最小化</text>
+      <text key="accessibility.maximize">最大化</text>
+      <text key="accessibility.close">关闭</text>
+      <text key="context_menu.restore">还原(R)</text>
+      <text key="context_menu.move">移动(M)</text>
+      <text key="context_menu.minimize">最小化(N)</text>
+      <text key="context_menu.maximize">最大化(X)</text>
+      <text key="context_menu.close">关闭(C)</text>
+  </group>
+
+  <group name="tray">
+      <text key="tooltip">InstructionX - CE</text>
+      <text key="menu.show_main_window">显示主窗口</text>
+      <text key="menu.running_plugins">正在运行的插件</text>
+      <text key="menu.running_tasks">后台正在运行的任务</text>
+      <text key="menu.quit">退出</text>
+      <text key="menu.no_plugins">无已加载插件</text>
+      <text key="menu.no_tasks">无运行中的任务</text>
+      <text key="menu.task_entry">{task_name}（{plugin_name}）</text>
+      <text key="notify.minimize_title">InstructionX - CE</text>
+      <text key="notify.minimize_message">程序已最小化到系统托盘，仍在后台继续运行</text>
+  </group>
+
+  <group name="usage_panel">
+      <!-- 面板标题行 -->
+      <text key="header.title">AI 用量面板</text>
+      <text key="header.subtitle">LLM API Usage Overview</text>
+      <!-- KPI 卡片标题 -->
+      <text key="kpi.total_requests">总请求数</text>
+      <text key="kpi.input_tokens">输入 Token</text>
+      <text key="kpi.output_tokens">输出 Token</text>
+      <text key="kpi.total_tokens">总 Token</text>
+      <text key="kpi.cache_hit_rate">缓存命中率</text>
+      <text key="kpi.avg_duration">平均耗时</text>
+      <!-- KPI 同比小字 -->
+      <text key="kpi.delta_empty">较上周期 —</text>
+      <text key="kpi.delta">较上周期 {pct:+.1f}%</text>
+      <!-- 错误提示弹窗 -->
+      <text key="error.refresh_data"><![CDATA[刷新用量数据失败:
+  {error}]]></text>
+      <text key="error.refresh_trend"><![CDATA[刷新用量趋势图失败:
+  {error}]]></text>
+      <!-- 筛选工具行 -->
+      <text key="filter.all">全部</text>
+      <text key="filter.provider">Provider:</text>
+      <text key="filter.model">Model:</text>
+      <text key="filter.conversation_id">对话ID:</text>
+      <text key="filter.conversation_id_placeholder">输入对话ID筛选...</text>
+      <!-- 使用历史面板 -->
+      <text key="table.title">使用历史</text>
+      <text key="table.header.time">时间</text>
+      <text key="table.header.provider">Provider</text>
+      <text key="table.header.model">Model</text>
+      <text key="table.header.input">输入</text>
+      <text key="table.header.output">输出</text>
+      <text key="table.header.total_tokens">总Token</text>
+      <text key="table.header.cache_hit">缓存命中</text>
+      <text key="table.header.cached_tokens">缓存Token</text>
+      <text key="table.header.duration">耗时</text>
+      <text key="table.header.stream">流式</text>
+      <!-- 分页控件 -->
+      <text key="page.prev">上一页</text>
+      <text key="page.next">下一页</text>
+      <text key="page.initial">第 1 页</text>
+      <text key="page.info">第 {current} / {total} 页  (共 {count} 条)</text>
+      <!-- 历史面板无障碍名称 -->
+      <text key="a11y.provider_filter">Provider 筛选</text>
+      <text key="a11y.model_filter">Model 筛选</text>
+      <text key="a11y.conversation_id_input">对话 ID 筛选输入框</text>
+      <text key="a11y.refresh">刷新用量数据</text>
+      <text key="a11y.table">用量明细表格</text>
+      <!-- 用量趋势面板 -->
+      <text key="trend.title">用量趋势</text>
+      <text key="trend.status">{start} ~ {end} · 共 {days} 天</text>
+      <!-- 图表坐标轴单位后缀（formatting.pick_token_scale） -->
+      <text key="chart.axis.million">（百万）</text>
+      <text key="chart.axis.thousand">（千）</text>
+      <!-- 时间范围选项 -->
+      <text key="range.half_year">近半年</text>
+      <text key="range.year">近一年</text>
+      <text key="range.custom">自定义</text>
+      <text key="range.to">至</text>
+      <text key="range.apply">应用</text>
+      <!-- 趋势指标选项 -->
+      <text key="metric.requests">请求数</text>
+      <text key="metric.input_tokens">输入 Token</text>
+      <text key="metric.output_tokens">输出 Token</text>
+      <!-- 趋势面板无障碍名称 -->
+      <text key="a11y.range_combo">时间范围选择</text>
+      <text key="a11y.start_date">起始日期</text>
+      <text key="a11y.end_date">结束日期</text>
+      <text key="a11y.apply_range">应用自定义日期范围</text>
+      <text key="a11y.metric_combo">趋势指标切换</text>
+  </group>
+
+  <group name="work_area">
+      <text key="placeholder">点击上方技能按钮，在此处显示插件功能</text>
+  </group>
+
+  <!-- LLM 模型能力标签（core/llm/model_schema.py 的 capability_label()） -->
+  <group name="model_capability">
+    <text key="vision">视觉</text>
+    <text key="web">联网搜索</text>
+    <text key="reasoning">推理</text>
+    <text key="tools">工具调用</text>
+    <text key="embedding">嵌入</text>
+    <text key="rerank">重排序</text>
+  </group>
+  <group name="dialog_language">
+      <text key="title">界面语言</text>
+      <text key="note">语言切换实时生效。各插件可在「插件管理」中单独设置语言，未设置时跟随此处选择。</text>
+  </group>
+</texts>

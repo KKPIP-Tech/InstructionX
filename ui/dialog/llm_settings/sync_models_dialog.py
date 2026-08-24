@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
     QPushButton, QScrollArea, QVBoxLayout, QWidget,
 )
 
+from core.i18n import tr
 from core.llm.catalog import PRESET_MODELS, get_provider_preset
 from core.llm.config import ProviderConfig, get_llm_config
 from core.llm.provider_interface import ModelInfo
@@ -50,12 +51,17 @@ _GROUP_NEW = "new"
 _GROUP_EXISTING = "existing"
 _GROUP_INVALID = "invalid"
 
-# 分组键 -> 中文徽章文案
-_GROUP_LABELS: Dict[str, str] = {
-    _GROUP_NEW: "新增",
-    _GROUP_EXISTING: "已存在",
-    _GROUP_INVALID: "已失效",
+# 分组键 -> i18n 键（dialog_llm_settings 分组内）
+_GROUP_I18N_KEYS: Dict[str, str] = {
+    _GROUP_NEW: "sync.group.new",
+    _GROUP_EXISTING: "sync.group.existing",
+    _GROUP_INVALID: "sync.group.invalid",
 }
+
+
+def _group_label(group: str) -> str:
+    """取分组的徽章/标题文案（按当前语言实时取词，不做模块级固化）"""
+    return tr("dialog_llm_settings", _GROUP_I18N_KEYS[group])
 
 
 class _SyncRow(QWidget):
@@ -100,7 +106,7 @@ class _SyncRow(QWidget):
         t = _theme_module.current_theme()
         color = {_GROUP_NEW: t.success, _GROUP_EXISTING: t.fg_muted,
                  _GROUP_INVALID: t.danger}[group]
-        layout.addWidget(make_badge(_GROUP_LABELS[group], color))
+        layout.addWidget(make_badge(_group_label(group), color))
 
     def is_checked(self) -> bool:
         """该行是否被勾选（仅新增/已失效行可选）"""
@@ -134,7 +140,7 @@ class SyncModelsDialog(QDialog):
             parent: 父控件
         """
         super().__init__(parent)
-        self.setWindowTitle("模型同步")
+        self.setWindowTitle(tr("dialog_llm_settings", "sync.title"))
         self.setModal(True)
         self.resize(SYNC_DIALOG_WIDTH, SYNC_DIALOG_HEIGHT)
         self._instance_id = instance_id
@@ -166,7 +172,8 @@ class SyncModelsDialog(QDialog):
         self._hint.setVisible(False)
         layout.addWidget(self._hint)
         self._search = QLineEdit(self)
-        self._search.setPlaceholderText("搜索模型 id")
+        self._search.setPlaceholderText(
+            tr("dialog_llm_settings", "sync.search_placeholder"))
         self._search.setClearButtonEnabled(True)
         self._search.setFixedHeight(SEARCH_EDIT_HEIGHT)
         self._search.textChanged.connect(self._apply_filter)
@@ -194,14 +201,16 @@ class SyncModelsDialog(QDialog):
     def _build_buttons(self) -> QHBoxLayout:
         """构建底部按钮行：添加选中 / 清理选中（初始禁用）+ 关闭"""
         row = QHBoxLayout()
-        self._add_btn = QPushButton("添加选中到列表", self)
+        self._add_btn = QPushButton(
+            tr("dialog_llm_settings", "sync.add_selected"), self)
         self._add_btn.setProperty("accent", True)
         self._add_btn.setFixedHeight(FORM_BUTTON_HEIGHT)
         self._add_btn.setEnabled(False)
         self._add_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._add_btn.clicked.connect(self._on_add_selected)
         row.addWidget(self._add_btn)
-        self._clean_btn = QPushButton("清理选中失效模型", self)
+        self._clean_btn = QPushButton(
+            tr("dialog_llm_settings", "sync.clean_selected"), self)
         self._clean_btn.setProperty("danger", True)
         self._clean_btn.setFixedHeight(FORM_BUTTON_HEIGHT)
         self._clean_btn.setEnabled(False)
@@ -209,7 +218,7 @@ class SyncModelsDialog(QDialog):
         self._clean_btn.clicked.connect(self._on_clean_selected)
         row.addWidget(self._clean_btn)
         row.addStretch(1)
-        close_btn = QPushButton("关闭", self)
+        close_btn = QPushButton(tr("common", "close"), self)
         close_btn.setFixedHeight(FORM_BUTTON_HEIGHT)
         close_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         close_btn.clicked.connect(self.accept)
@@ -222,15 +231,17 @@ class SyncModelsDialog(QDialog):
         """开始对比流程：预设目录型直接提示，否则后台强制刷新远端列表"""
         cfg = get_llm_config().get_provider(self._instance_id)
         if cfg is None:
-            self._show_hint("提供商实例不存在，无法同步。", danger=True)
+            self._show_hint(tr("dialog_llm_settings", "sync.hint.missing"),
+                            danger=True)
             self._render_local_only()
             return
         preset = get_provider_preset(cfg.preset_id) if cfg.preset_id else None
         if preset is not None and not preset.models_endpoint_path:
-            self._show_hint("该提供商使用预设模型目录，无需同步。")
+            self._show_hint(
+                tr("dialog_llm_settings", "sync.hint.preset_catalog"))
             self._render_local_only()
             return
-        self._status.setText("正在从远端获取模型列表…")
+        self._status.setText(tr("dialog_llm_settings", "sync.status.fetching"))
         worker = FetchModelsWorker(self._instance_id, parent=self)
         worker.succeeded.connect(self._on_fetch_succeeded)
         worker.failed.connect(self._on_fetch_failed)
@@ -252,9 +263,10 @@ class SyncModelsDialog(QDialog):
         self._invalid_entries = self._find_invalid_entries()
         self._sync_ready = True
         new_count = len(set(self._remote_by_id) - set(self._local_by_id))
-        self._status.setText(
-            f"远端共 {len(self._remote_by_id)} 个模型 · 新增 {new_count}"
-            f" · 已失效 {len(self._invalid_entries)}")
+        self._status.setText(tr(
+            "dialog_llm_settings", "sync.status.summary",
+            total=len(self._remote_by_id), new=new_count,
+            invalid=len(self._invalid_entries)))
         self._rebuild_list()
 
     def _on_fetch_failed(self, instance_id: str, error: str) -> None:
@@ -270,7 +282,8 @@ class SyncModelsDialog(QDialog):
         _logger.warning(
             get_name(), f"模型同步拉取远端失败: {instance_id} ({error})")
         self._show_hint(
-            f"远端模型列表获取失败：{error or '未知错误'}，仅展示本地列表。",
+            tr("dialog_llm_settings", "sync.hint.fetch_failed",
+               error=error or tr("dialog_llm_settings", "misc.unknown_error")),
             danger=True)
         self._status.setText("")
         self._render_local_only()
@@ -316,7 +329,8 @@ class SyncModelsDialog(QDialog):
         t = _theme_module.current_theme()
         color = {_GROUP_NEW: t.success, _GROUP_EXISTING: t.fg_muted,
                  _GROUP_INVALID: t.danger}[group]
-        caption = QLabel(f"{_GROUP_LABELS[group]} · {len(model_ids)}")
+        caption = QLabel(tr("dialog_llm_settings", "sync.group_caption",
+                            label=_group_label(group), count=len(model_ids)))
         caption.setStyleSheet(f"color: {color}; font-size: 12px;")
         caption.setContentsMargins(0, SUB_DIALOG_SPACING, 0, 0)
         self._list_layout.addWidget(caption)
@@ -331,7 +345,7 @@ class SyncModelsDialog(QDialog):
     def _finish_list(self) -> None:
         """列表收尾：空态提示 + 底部拉伸 + 搜索过滤 + 按钮态刷新"""
         if not self._rows:
-            empty = QLabel("暂无模型")
+            empty = QLabel(tr("dialog_llm_settings", "sync.empty"))
             empty.setObjectName("EmptyHint")
             self._list_layout.addWidget(empty)
         self._list_layout.addStretch(1)
@@ -461,7 +475,8 @@ class SyncModelsDialog(QDialog):
         """「添加选中到列表」：勾选的新增模型经规范化写入 custom_models 落盘"""
         ids = self._checked_ids(_GROUP_NEW)
         if not ids:
-            _info_toast(self, "请先勾选要添加的新增模型。")
+            _info_toast(
+                self, tr("dialog_llm_settings", "sync.toast.add_none"))
             return
         added: List[str] = []
 
@@ -482,14 +497,16 @@ class SyncModelsDialog(QDialog):
         for model_id in added:
             self._local_by_id[model_id] = self._build_custom_entry(
                 self._remote_by_id[model_id])
-        _success_toast(self, f"已添加 {len(added)} 个模型到列表。")
+        _success_toast(self, tr("dialog_llm_settings", "sync.toast.added",
+                                count=len(added)))
         self._rebuild_list()
 
     def _on_clean_selected(self) -> None:
         """「清理选中失效模型」：从 custom_models 移除勾选的已失效条目落盘"""
         ids = set(self._checked_ids(_GROUP_INVALID))
         if not ids:
-            _info_toast(self, "请先勾选要清理的失效模型。")
+            _info_toast(
+                self, tr("dialog_llm_settings", "sync.toast.clean_none"))
             return
         removed = 0
 
@@ -506,7 +523,8 @@ class SyncModelsDialog(QDialog):
         self._notify_changed()
         self._invalid_entries = [
             e for e in self._invalid_entries if e.get("id") not in ids]
-        _success_toast(self, f"已清理 {removed} 个失效模型。")
+        _success_toast(self, tr("dialog_llm_settings", "sync.toast.cleaned",
+                                count=removed))
         self._rebuild_list()
 
     # ==================== 关闭与 Worker 回收 ====================

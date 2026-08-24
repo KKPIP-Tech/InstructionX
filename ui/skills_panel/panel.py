@@ -7,6 +7,7 @@ from PySide6.QtCore import Signal, Qt
 
 from PySide6.QtGui import QIcon
 
+from core.i18n import tr, get_language_manager
 from utils.logging_tools import LoggerManager, get_name
 from .skill_button import SkillButton
 from .plugin_group_widget import PluginGroupWidget
@@ -27,6 +28,17 @@ class SkillsPanel(QWidget):
         self._active_button = None  # 当前激活的按钮
         self._logger = LoggerManager()
         self._init_ui()
+
+        # 首次填充文案，并跟随语言切换重设（Qt 对象销毁时自动断开连接）
+        self._retranslate_ui()
+        get_language_manager().language_changed.connect(self._retranslate_ui)
+
+    def _retranslate_ui(self) -> None:
+        """集中重设技能面板用户可见文案（Pill 按钮与计数标签）"""
+        self.official_btn.setText(tr("skills_panel", "tab.official"))
+        self.thirdparty_btn.setText(tr("skills_panel", "tab.thirdparty"))
+        # 计数标签由 _switch_tab 按当前页刷新（模板含 {count} 占位符）
+        self._switch_tab(self.stacked_widget.currentIndex())
 
     def set_plugin_manager(self, plugin_manager):
         """设置插件管理器"""
@@ -52,16 +64,16 @@ class SkillsPanel(QWidget):
         pill_layout.setContentsMargins(2, 2, 2, 2)
         pill_layout.setSpacing(2)
 
-        # 官方功能按钮
-        self.official_btn = QPushButton("官方功能")
+        # 官方功能按钮（文案由 _retranslate_ui 统一设置）
+        self.official_btn = QPushButton()
         self.official_btn.setObjectName("skillsPillButton")
         self.official_btn.setProperty("active", "true")
         # 可访问性：保留默认可聚焦策略，支持键盘 Tab 导航
         self.official_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.official_btn.clicked.connect(lambda: self._switch_tab(0))
 
-        # 第三方功能按钮
-        self.thirdparty_btn = QPushButton("第三方功能")
+        # 第三方功能按钮（文案由 _retranslate_ui 统一设置）
+        self.thirdparty_btn = QPushButton()
         self.thirdparty_btn.setObjectName("skillsPillButton")
         self.thirdparty_btn.setProperty("active", "false")
         # 可访问性：保留默认可聚焦策略，支持键盘 Tab 导航
@@ -75,8 +87,8 @@ class SkillsPanel(QWidget):
         separator = QLabel("|")
         separator.setObjectName("skillsSeparator")
 
-        # 计数标签
-        self.count_label = QLabel("0 Plugins")
+        # 计数标签（初始文案由 _retranslate_ui 经 _switch_tab 设置）
+        self.count_label = QLabel()
         self.count_label.setObjectName("skillsCountLabel")
 
         header_layout.addWidget(pill_container)
@@ -149,7 +161,7 @@ class SkillsPanel(QWidget):
         else:
             target_layout = self.official_layout if is_official else self.thirdparty_layout
             count = target_layout.count()
-        self.count_label.setText(f"{count} Plugins")
+        self.count_label.setText(tr("skills_panel", "header.plugin_count", count=count))
 
     def add_skill_button(self, plugin, is_official: bool):
         """

@@ -1,6 +1,6 @@
 # 对话框组件
 
-> InstructionX 应用程序中使用的八个对话框组件的完整说明
+> InstructionX 应用程序中使用的十个对话框组件的完整说明
 
 ---
 
@@ -161,7 +161,7 @@ dialog.deleteLater()
 
 ### 3.3 功能特性
 
-- **插件管理页**: 官方/第三方两个插件列表 + 右侧详情面板（名称/版本/来源）；工具栏提供「从 GitHub 安装插件…」（内嵌 `GitHubPluginInstallDialog`）、「安装本地插件包…」（本地 zip）、「刷新」；详情面板提供「检查更新 / 升级 / 降级…」（列出 GitHub Release 版本供选择，降级二次确认并警告数据不兼容风险）与「卸载…」（确认弹窗，可选「同时删除插件数据」）
+- **插件管理页**: 官方/第三方两个插件列表 + 右侧详情面板（名称/版本/来源/语言状态行）；工具栏提供「从 GitHub 安装插件…」（内嵌 `GitHubPluginInstallDialog`）、「安装本地插件包…」（本地 zip）、「刷新」；详情面板提供「语言…」（打开 `PluginLanguageDialog` 设置每插件语言覆盖，插件无语言包时置灰并显示 tooltip，见 §10）、「检查更新 / 升级 / 降级…」（列出 GitHub Release 版本供选择，降级二次确认并警告数据不兼容风险）与「卸载…」（确认弹窗，可选「同时删除插件数据」）
 - **分组与排序页**: 官方/第三方各一个 `GroupEditorWidget`——左侧「面板顺序」为分组与未分组插件的统一混排列表（新建/重命名/设置图标/删除分组、上移/下移），右侧穿梭框编辑选中分组的组内成员与组内顺序；「保存分组与排序」统一提交两个 scope，「重置」放弃工作副本重新加载
 - **后台执行**: 下载/安装等耗时操作经 `_Worker`（QThread）后台执行，期间禁用对话框防止并发操作
 - **确认与提示**: 统一使用 UIKit Dialog / Message（模块级 `_confirm` / `_notice` / `_prompt_text` / `_prompt_item` 辅助函数），替代 QMessageBox / QInputDialog
@@ -483,11 +483,80 @@ choice = dialog.selected_choice()
 
 ---
 
-## 9. 相关文档
+## 9. LanguageDialog 界面语言对话框
+
+**文件位置**: `ui/dialog/language_dialog.py`
+
+### 9.1 概述
+
+`LanguageDialog` 是框架界面语言的选择对话框：列出 `LanguageManager.available_languages()` 扫描到的全部可用语言（`ui/text/*.xml`），确定后实时切换、无需重启。底层能力由 `core/i18n` 的 `LanguageManager` 单例提供（详见 [多语言（i18n）子系统概述](../core/i18n/overview.md)）。
+
+### 9.2 窗口属性
+
+| 属性 | 值 |
+|------|------|
+| 窗口类型 | QDialog，WindowModal（父窗口为主窗口） |
+| 最小宽度 | 360 |
+| 打开方式 | 菜单 **编辑 > 语言**（位于「切换主题」之后） |
+| 样式 | 按钮 `variant` 由 UIKit 全局 QSS 驱动，随全局主题自动切换 |
+
+### 9.3 行为语义
+
+- 语言列表每行显示「语言自称 (语言代码)」，自称取自该语言文件 `common/language.self_name` 键；当前语言默认选中；语言代码存入 `UserRole`，确定时据此切换（不解析显示文本）；
+- **确定**：选中语言与当前不同时经 `LanguageManager.set_language()` 实时切换——持久化到 `config/i18n.json` 并发射 `language_changed` 信号，主窗口/标题栏/技能面板/工作区/用量面板/托盘经各自的 `_retranslate_ui()` 重取词；
+- **取消**：`reject()`，不改动当前语言。
+
+### 9.4 使用方式
+
+```python
+from ui.dialog.language_dialog import LanguageDialog
+
+dialog = LanguageDialog(main_window)
+dialog.exec()
+```
+
+---
+
+## 10. PluginLanguageDialog 插件语言对话框
+
+**文件位置**: `ui/dialog/plugin_language_dialog.py`
+
+### 10.1 概述
+
+`PluginLanguageDialog` 为单个插件设置语言覆盖（每插件语言自定义）。由插件管理对话框详情面板的「语言…」按钮打开（插件无语言包时该按钮置灰）。
+
+### 10.2 窗口属性
+
+| 属性 | 值 |
+|------|------|
+| 窗口类型 | QDialog，WindowModal（父窗口通常为插件管理对话框） |
+| 最小宽度 | 360 |
+| 构造参数 | `PluginLanguageDialog(plugin_id, plugin_name, parent)` |
+
+### 10.3 行为语义
+
+- 选项列表第一项固定为「跟随框架（默认）」（`UserRole` 存 None，即清除覆盖），其后仅列出该插件 `text/` 目录实际提供的语言（`LanguageManager.plugin_available_languages()`），显示「语言自称 (语言代码)」；
+- 当前生效项默认选中（按 `plugin_language_override()` 判断）；
+- **确定**：经 `LanguageManager.set_plugin_language()` 持久化覆盖到 `config/plugin_languages.json` 并发射 `plugin_language_changed` 信号，实时生效；插件 Widget 是否跟随刷新由插件自行 connect 信号实现（框架不替插件重绘）；
+- **取消**：`reject()`，不改动现有覆盖。
+
+### 10.4 使用方式
+
+```python
+from ui.dialog.plugin_language_dialog import PluginLanguageDialog
+
+dialog = PluginLanguageDialog(plugin_id, plugin_name, parent)
+dialog.exec()
+```
+
+---
+
+## 11. 相关文档
 
 - [主窗口](main-window.md)
 - [系统托盘与关闭行为](system-tray.md)
 - [技能面板](skills-panel.md)
 - [字体子系统概述](../core/font-manager/overview.md)
+- [多语言（i18n）子系统概述](../core/i18n/overview.md)
 - [插件系统概述](../core/plugin-system/overview.md)
 - [GitHub 插件安装器](../core/plugin-system/plugin-installer.md)
