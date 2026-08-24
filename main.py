@@ -49,7 +49,7 @@ def main():
     
     # 设置应用名称
     application.setApplicationName("InstructionX - CE")
-    application.setOrganizationName("LumenThread")
+    application.setOrganizationName("KKPIP-Tech")
     
     # 设置 UIKit 全局主题（auto：自动检测系统主题）
     apply_uikit_theme(application)

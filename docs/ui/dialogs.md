@@ -61,7 +61,7 @@ dialog.exec()
 - **配置变更联动**：`LLMConfig` 变更订阅驱动左栏刷新；`LLMProvider` 惰性刷新保证运行时实例同步。
 - **主题跟随**：包内自主主题 token 体系（`theme.py` 的 `Theme` dataclass），token 值不再硬编码，而由 `_theme_from_uikit()` 从 UIKit 设计令牌（`T()`）按全局当前模式（`ui.uikit_theme.current_theme_mode()`）实时构建；`apply_dialog_theme()` 为对话框换肤并连接 UIKit `theme_changed` 信号，实现对话框打开期间实时跟随，作用域仅限对话框自身，不触碰 QApplication 全局样式。
 - **统一反馈**：包内 `feedback.py` 提供 `confirm` / `notice` / `info` / `warn` / `success`（基于 UIKit Dialog / Message），替代原 QMessageBox 确认框与轻提示。
-- **记住选中**：上次选中的实例经 QSettings（组织 `LumenThread` / 应用 `InstructionX-CE`）记忆，下次打开时恢复。
+- **记住选中**：上次选中的实例经 QSettings（组织 `KKPIP-Tech` / 应用 `InstructionX-CE`）记忆，下次打开时恢复。
 
 ### 2.2 窗口属性
 

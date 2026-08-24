@@ -18,7 +18,7 @@ DIALOG_DEFAULT_WIDTH = 1050
 DIALOG_DEFAULT_HEIGHT = 700
 
 # QSettings 组织名 / 应用名 / 上次选中实例记忆键
-QSETTINGS_ORG_NAME = "LumenThread"
+QSETTINGS_ORG_NAME = "KKPIP-Tech"
 QSETTINGS_APP_NAME = "InstructionX-CE"
 QSETTINGS_LAST_PROVIDER_KEY = "llm_settings/last_provider"
 

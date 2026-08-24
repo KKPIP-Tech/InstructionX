@@ -36,7 +36,7 @@ class LLMSettingsDialog(QDialog):
     """LLM 设置主对话框
 
     左栏列表与右栏详情联动；上次选中的实例经 QSettings（组织
-    LumenThread / 应用 InstructionX-CE）记忆并在下次打开时恢复。
+    KKPIP-Tech / 应用 InstructionX-CE）记忆并在下次打开时恢复。
     """
 
     def __init__(self, parent: Optional[QWidget] = None):
