@@ -327,6 +327,8 @@ def _create_main_layout(self) -> None:
 ```
 
 > **蓝图 GL 视口预热**（`_prewarm_blueprint_viewport`）：UIKit 蓝图画布的绘制视口在 GL 可用时基于 `QOpenGLWidget`；若其在顶层窗口**可见之后**才加入窗口树，Qt 会重建顶层原生窗口句柄，表现为整个窗口短暂关闭后重开一次（Qt 固有行为，见 UIKit USAGE.md §8.6）。插件的蓝图画布均在主窗口显示后才创建，因此主窗口在构造阶段预创建一个隐藏画布并长期持有（`self._blueprint_prewarm_canvas`），让顶层原生句柄首次创建时即按「含 GL 子控件」的方式建立，后续插件画布加入时不再触发重建。软件渲染回退环境（无 GL / offscreen）自动跳过；预热失败仅记录 WARNING 日志，不影响启动。
+>
+> **图形 API 统一**：与预热配套的启动前置条件是 `main.py` 在 `QApplication` 创建之前调用 `QQuickWindow.setGraphicsApi(QSGRendererInterface.GraphicsApi.OpenGL)`——GL 视口会把顶层窗口合成锁定为 OpenGL，而 UIKit Mermaid 交互查看器（QWebEngineView）基于 Qt Quick RHI（Windows 默认 D3D11），同一顶层窗口混用两种图形 API 会刷 "QQuickWidget: Failed to get a QRhi" 且窗口闪烁，故统一为 OpenGL（与上游 UIKit demo 入口一致）。
 
 ---
 

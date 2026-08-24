@@ -14,7 +14,7 @@
 
 | 文件 | 说明 |
 |------|------|
-| `ui/InstructionX_UIKit/` | PySide6 组件库（独立仓库 KKPIP-Tech/InstructionX_UIKit 的同步副本，版本 alpha-v1.0.1），主项目不修改库内文件 |
+| `ui/InstructionX_UIKit/` | PySide6 组件库（独立仓库 KKPIP-Tech/InstructionX_UIKit 的同步副本，版本 alpha-v1.0.2），主项目不修改库内文件 |
 | `ui/uikit_bootstrap.py` | sys.path 引导，导入即生效，使 UIKit 以顶层包可导入 |
 | `ui/uikit_theme.py` | 全局主题入口：`apply_uikit_theme()` / `current_theme_mode()` + 排除区兼容附录 |
 
@@ -22,7 +22,7 @@
 
 - 浅色/深色/跟随系统三种主题模式（auto 读 Windows 注册表）
 - 设计令牌 `T()` 实时取色，主题切换全局生效
-- 57 个组件、12 布局、动画与原生图表引擎
+- 58 个组件、13 布局、动画与原生图表引擎
 - 排除区兼容附录：为不做 UI 迁移的区域保留原选择器结构，颜色取 UIKit 令牌
 - 对话框与 QMessageBox 已迁移到 UIKit Dialog / Message 组件（仅遗留的 `ui/dialog/plugin_order_dialog.py` 除外，见 §6.1）
 
@@ -36,14 +36,19 @@
 ui/InstructionX_UIKit/
 ├── __init__.py          # 包入口：re-export ThemeManager/T/build_qss/set_property/apply_shadow、
 │                        #   LIGHT/DARK/TokenState/FONT_FAMILY/MONO_FAMILY/Breakpoint/DURATION/EASING、
-│                        #   get_icon/ICON_NAMES；__version__ = "alpha-v1.0.1"
+│                        #   get_icon/ICON_NAMES；__version__ = "alpha-v1.0.2"
 ├── tokens.py            # 设计令牌：LIGHT / DARK 两套令牌字典 + TokenState 状态机
 ├── theme.py             # ThemeManager 单例 + T() + build_qss() 全局 QSS + set_property + apply_shadow
 ├── icons.py             # 图标（get_icon / ICON_NAMES）
-├── components/          # 57 个组件（Button/LineEdit/Dialog/Message/Table/ComboBox/DatePicker 等）
-├── layouts/             # 12 个布局（HolyGrail/SidebarLayout/MasterDetail/CardGrid 等）
+├── components/          # 58 个组件（Button/LineEdit/Dialog/Message/Table/ComboBox/DatePicker/
+│                        #   MarkdownView 等；math_render.py 为 MarkdownView 的 LaTeX 公式渲染中枢，
+│                        #   matplotlib mathtext 异步渲染 + LRU 缓存）
+├── layouts/             # 13 个布局（HolyGrail/SidebarLayout/MasterDetail/CardGrid/
+│                        #   chat_conversation 流式对话布局等）
 ├── anim/                # 动画（属性动画 / 自绘动画）
 ├── charts/              # 原生图表引擎（ChartWidget + set_option，ECharts 风格 option）
+├── mermaid/             # Mermaid 图表渲染（官方 mermaid.js WebEngine 光栅化 + 自绘降级渲染器 +
+│                        #   MermaidView 交互查看器，MarkdownView 内部依赖）
 └── blueprint/           # 蓝图（节点画布）
 ```
 

@@ -10,6 +10,7 @@ import ui.uikit_bootstrap  # noqa: F401
 from PySide6.QtWidgets import QApplication
 from PySide6.QtGui import QIcon
 from PySide6.QtCore import Qt
+from PySide6.QtQuick import QQuickWindow, QSGRendererInterface
 
 # ===================================================================
 # ui
@@ -32,6 +33,13 @@ from core.i18n import get_language_manager
 
 
 def main():
+    # 图形 API 统一（必须在 QApplication 创建之前设置）：
+    # 主窗口预热的蓝图 GL 视口（QOpenGLWidget）会把顶层窗口合成锁定为 OpenGL，
+    # 而 UIKit Mermaid 交互查看器基于 QWebEngineView（Qt Quick RHI，Windows 默认 D3D11）；
+    # 同一顶层窗口混用两种图形 API 会刷 "QQuickWidget: Failed to get a QRhi" 且窗口闪烁，
+    # 因此统一顶层窗口图形 API 为 OpenGL（与上游 UIKit demo 入口一致）。
+    QQuickWindow.setGraphicsApi(QSGRendererInterface.GraphicsApi.OpenGL)
+
     # 创建应用实例
     application = QApplication(sys.argv)
 
