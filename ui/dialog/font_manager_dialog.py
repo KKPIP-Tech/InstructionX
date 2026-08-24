@@ -22,6 +22,7 @@ from InstructionX_UIKit import T, set_property
 from InstructionX_UIKit.components import Button, LineEdit, Message
 
 from core.font import FontInstallError, FontManager, get_font_manager
+from core.i18n import tr
 from utils.logging_tools import LoggerManager, get_name
 
 from ui.dialog.llm_settings import feedback
@@ -29,18 +30,13 @@ from ui.dialog.llm_settings import feedback
 # 模块级日志器（LoggerManager 为单例）
 _logger = LoggerManager()
 
-# 预览区默认示例文本与字号范围
-_DEFAULT_SAMPLE_TEXT = "InstructionX 字体预览 Font Preview 0123 ABCabc"
+# i18n 文案分组名
+_TR_GROUP = "dialog_font_manager"
+
+# 预览区字号范围（示例文本走 i18n：preview.sample_text）
 _PREVIEW_MIN_SIZE = 8
 _PREVIEW_MAX_SIZE = 72
 _PREVIEW_DEFAULT_SIZE = 24
-
-# 列表分组标题（不可选择的分组行）
-_GROUP_INSTALLED = "已安装字体"
-_GROUP_SYSTEM = "系统字体"
-
-# 安装文件对话框的格式过滤
-_FONT_FILE_FILTER = "字体文件 (*.ttf *.otf *.ttc)"
 
 
 class FontManagerDialog(QDialog):
@@ -53,7 +49,7 @@ class FontManagerDialog(QDialog):
 
     def __init__(self, parent=None, font_manager: FontManager = None):
         super().__init__(parent)
-        self.setWindowTitle("字体管理")
+        self.setWindowTitle(tr(_TR_GROUP, "title"))
         self.setMinimumSize(860, 560)
         self.resize(920, 620)
         self.setModal(True)
@@ -94,7 +90,7 @@ class FontManagerDialog(QDialog):
         hl = QHBoxLayout(header)
         hl.setContentsMargins(20, 0, 16, 0)
 
-        title = QLabel("字体管理")
+        title = QLabel(tr(_TR_GROUP, "title"))
         title_font = title.font()
         title_font.setPixelSize(T("font.title.sm"))
         title_font.setBold(True)
@@ -114,7 +110,8 @@ class FontManagerDialog(QDialog):
         ll.setContentsMargins(12, 12, 12, 12)
         ll.setSpacing(10)
 
-        self._search_input = LineEdit(placeholder="搜索字体...", clearable=True)
+        self._search_input = LineEdit(
+            placeholder=tr(_TR_GROUP, "search.placeholder"), clearable=True)
         self._search_input.textChanged.connect(self._on_search)
         ll.addWidget(self._search_input)
 
@@ -132,13 +129,14 @@ class FontManagerDialog(QDialog):
         rl.setContentsMargins(20, 16, 20, 16)
         rl.setSpacing(12)
 
-        self._sample_input = LineEdit(placeholder="输入预览文本...")
-        self._sample_input.setText(_DEFAULT_SAMPLE_TEXT)
+        self._sample_input = LineEdit(
+            placeholder=tr(_TR_GROUP, "preview.input_placeholder"))
+        self._sample_input.setText(tr(_TR_GROUP, "preview.sample_text"))
         self._sample_input.textChanged.connect(self._update_preview)
         rl.addWidget(self._sample_input)
 
         size_row = QHBoxLayout()
-        size_row.addWidget(QLabel("字号"))
+        size_row.addWidget(QLabel(tr(_TR_GROUP, "preview.size_label")))
         self._size_spin = QSpinBox()
         self._size_spin.setRange(_PREVIEW_MIN_SIZE, _PREVIEW_MAX_SIZE)
         self._size_spin.setValue(_PREVIEW_DEFAULT_SIZE)
@@ -148,7 +146,7 @@ class FontManagerDialog(QDialog):
         rl.addLayout(size_row)
 
         # 预览卡片：定制结构，颜色取令牌
-        self._preview_label = QLabel("请选择左侧字体进行预览")
+        self._preview_label = QLabel(tr(_TR_GROUP, "preview.hint"))
         self._preview_label.setAlignment(Qt.AlignCenter)
         self._preview_label.setWordWrap(True)
         self._preview_label.setStyleSheet(f"""
@@ -178,19 +176,19 @@ class FontManagerDialog(QDialog):
         bl.setContentsMargins(20, 0, 20, 0)
         bl.setSpacing(8)
 
-        install_btn = Button("安装字体...", variant="default")
+        install_btn = Button(tr(_TR_GROUP, "button.install"), variant="default")
         install_btn.setCursor(Qt.PointingHandCursor)
         install_btn.clicked.connect(self._on_install)
         bl.addWidget(install_btn)
 
-        self._uninstall_btn = Button("卸载", variant="default")
+        self._uninstall_btn = Button(tr(_TR_GROUP, "button.uninstall"), variant="default")
         self._uninstall_btn.setCursor(Qt.PointingHandCursor)
         self._uninstall_btn.setEnabled(False)
         self._uninstall_btn.clicked.connect(self._on_uninstall)
         bl.addWidget(self._uninstall_btn)
 
         bl.addStretch()
-        close_btn = Button("关闭", variant="primary")
+        close_btn = Button(tr("common", "close"), variant="primary")
         close_btn.setCursor(Qt.PointingHandCursor)
         close_btn.clicked.connect(self.accept)
         bl.addWidget(close_btn, 0, Qt.AlignRight)
@@ -200,15 +198,15 @@ class FontManagerDialog(QDialog):
     def _reload_fonts(self):
         """重建字体列表（已安装分组在前，系统分组在后）"""
         self._list_widget.clear()
-        self._add_group_header(_GROUP_INSTALLED)
+        self._add_group_header(tr(_TR_GROUP, "group.installed"))
 
         installed = self._font_manager.list_fonts()
         for record in installed:
             self._add_font_item(record.family, record.font_id, installed=True)
         if not installed:
-            self._add_hint_item("（尚未安装字体）")
+            self._add_hint_item(tr(_TR_GROUP, "list.empty_hint"))
 
-        self._add_group_header(_GROUP_SYSTEM)
+        self._add_group_header(tr(_TR_GROUP, "group.system"))
         for family in sorted(QFontDatabase.families()):
             self._add_font_item(family, "", installed=False)
 
@@ -255,12 +253,12 @@ class FontManagerDialog(QDialog):
     def _update_preview(self):
         """按当前选中字体刷新预览；不可用时显示回退结果"""
         if not self._selected:
-            self._preview_label.setText("请选择左侧字体进行预览")
+            self._preview_label.setText(tr(_TR_GROUP, "preview.hint"))
             self._resolve_label.setText("")
             return
 
         family = self._selected[0]
-        sample = self._sample_input.text() or _DEFAULT_SAMPLE_TEXT
+        sample = self._sample_input.text() or tr(_TR_GROUP, "preview.sample_text")
         font = self._font_manager.get_font(
             family, point_size=self._size_spin.value())
         self._preview_label.setFont(font)
@@ -268,14 +266,17 @@ class FontManagerDialog(QDialog):
 
         resolved = font.family()
         if resolved == family:
-            self._resolve_label.setText(f"当前字体：{resolved}")
+            self._resolve_label.setText(
+                tr(_TR_GROUP, "preview.resolved", family=resolved))
         else:
-            self._resolve_label.setText(f"字体 {family} 不可用，已回退到系统字体：{resolved}")
+            self._resolve_label.setText(
+                tr(_TR_GROUP, "preview.fallback", family=family, resolved=resolved))
 
     def _on_install(self):
         """选择字体文件并安装；失败弹窗并记日志"""
         paths, _selected_filter = QFileDialog.getOpenFileNames(
-            self, "选择字体文件", "", _FONT_FILE_FILTER)
+            self, tr(_TR_GROUP, "install.dialog_title"), "",
+            tr(_TR_GROUP, "install.file_filter"))
         if not paths:
             return
 
@@ -286,10 +287,13 @@ class FontManagerDialog(QDialog):
                 installed_count += 1
             except FontInstallError as e:
                 _logger.error(get_name(), f"字体安装失败: {path}: {e}")
-                Message.warning(self, f"安装失败：{Path(path).name}\n{e}")
+                Message.warning(
+                    self, tr(_TR_GROUP, "message.install_failed",
+                             name=Path(path).name, error=e))
 
         if installed_count:
-            feedback.success(self, f"成功安装 {installed_count} 个字体")
+            feedback.success(
+                self, tr(_TR_GROUP, "message.install_success", count=installed_count))
             self._reload_fonts()
 
     def _on_uninstall(self):
@@ -298,13 +302,13 @@ class FontManagerDialog(QDialog):
             return
         family, _installed, font_id = self._selected
         confirmed = feedback.confirm(
-            self, "卸载字体",
-            f"确定卸载字体「{family}」吗？\n卸载后使用该字体的界面将回退到系统字体。")
+            self, tr(_TR_GROUP, "uninstall.title"),
+            tr(_TR_GROUP, "uninstall.confirm", family=family))
         if not confirmed:
             return
 
         if self._font_manager.uninstall_font(font_id):
-            feedback.success(self, f"字体「{family}」已卸载")
+            feedback.success(self, tr(_TR_GROUP, "uninstall.success", family=family))
         else:
-            Message.warning(self, f"卸载失败：未找到字体 {family}")
+            Message.warning(self, tr(_TR_GROUP, "uninstall.failed", family=family))
         self._reload_fonts()

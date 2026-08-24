@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
     QPushButton, QVBoxLayout, QWidget,
 )
 
+from core.i18n import get_language_manager, tr
 from core.llm.catalog import get_provider_preset
 from core.llm.config import (
     EVENT_PROVIDERS_CHANGED, ProviderConfig, get_llm_config,
@@ -75,22 +76,25 @@ class ProviderListPanel(QWidget):
         self._init_ui()
         get_llm_config().subscribe(self._on_config_changed)
         self.destroyed.connect(self._on_destroyed)
-        self.reload()
+        # 语言切换实时跟随（Qt 对象销毁自动断开）；_retranslate_ui 内含首次 reload
+        self._retranslate_ui()
+        get_language_manager().language_changed.connect(
+            lambda _code: self._retranslate_ui())
 
     # ==================== 界面构建 ====================
 
     def _init_ui(self) -> None:
-        """构建标题 + 搜索框 + 列表 + 添加按钮"""
+        """构建标题 + 搜索框 + 列表 + 添加按钮（文案由 _retranslate_ui 设置）"""
         layout = QVBoxLayout(self)
         layout.setContentsMargins(
             SIDEBAR_MARGIN_H, SIDEBAR_MARGIN_TOP,
             SIDEBAR_MARGIN_H, SIDEBAR_MARGIN_BOTTOM)
         layout.setSpacing(SIDEBAR_SPACING)
 
-        layout.addWidget(make_section_label("模型服务"))
+        self._section_label = make_section_label("")
+        layout.addWidget(self._section_label)
 
         self.search_edit = QLineEdit(self)
-        self.search_edit.setPlaceholderText("搜索提供商")
         self.search_edit.setClearButtonEnabled(True)
         self.search_edit.setFixedHeight(SEARCH_EDIT_HEIGHT)
         self.search_edit.textChanged.connect(self._apply_filter)
@@ -106,13 +110,27 @@ class ProviderListPanel(QWidget):
 
         bottom = QHBoxLayout()
         bottom.setContentsMargins(0, ADD_PROVIDER_ROW_TOP_MARGIN, 0, 0)
-        self.add_btn = QPushButton("＋ 添加提供商", self)
+        self.add_btn = QPushButton("", self)
         self.add_btn.setObjectName("AddProviderBtn")
         self.add_btn.setFixedHeight(ADD_PROVIDER_BUTTON_HEIGHT)
         self.add_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.add_btn.clicked.connect(self.sig_add.emit)
         bottom.addWidget(self.add_btn, 1)
         layout.addLayout(bottom)
+
+    # ==================== 文案 ====================
+
+    def _retranslate_ui(self) -> None:
+        """按当前语言重设全部文案（初始化末尾与语言切换时调用）
+
+        列表行（ProviderItemWidget 开关 tooltip 等）经 reload 重建刷新。
+        """
+        self._section_label.setText(
+            tr("dialog_llm_settings", "list.section_title"))
+        self.search_edit.setPlaceholderText(
+            tr("dialog_llm_settings", "list.search_placeholder"))
+        self.add_btn.setText(tr("dialog_llm_settings", "list.add_button"))
+        self.reload()
 
     # ==================== 列表加载 ====================
 

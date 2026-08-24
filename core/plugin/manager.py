@@ -29,6 +29,8 @@ from .plugin_groups import PluginGroup, PluginGroupStore
 from core.interfaces.plugin_services import PluginServices
 from core.interfaces.i_llm_service import ILLMService
 from core.font import get_font_manager
+from core.i18n import get_language_manager
+from core.i18n.facade import PluginI18nFacade
 
 # re-export：保持 `core.plugin.manager.sanitize_tool_name` 引用路径兼容
 from .tool_name import sanitize_tool_name  # noqa: F401
@@ -108,11 +110,14 @@ class PluginManager:
         # 日志管理器
         self._logger = LoggerManager()
 
-    def _create_plugin_services(self) -> PluginServices:
+    def _create_plugin_services(self, plugin_id: str) -> PluginServices:
         """创建插件服务依赖注入容器
 
         创建包含所有核心服务的 PluginServices 对象，
         供插件在构造器和 on_plugin_loaded 回调中使用。
+
+        Args:
+            plugin_id: 插件 UUID（用于绑定多语言取词门面）
 
         Returns:
             PluginServices: 服务容器实例
@@ -139,6 +144,7 @@ class PluginManager:
             mcp_manager=self._get_mcp_manager(),
             mcp_client=self._get_mcp_client(),
             font_manager=get_font_manager(),
+            localization=PluginI18nFacade(plugin_id, get_language_manager()),
         )
 
     def _get_mcp_manager(self) -> Any:
@@ -302,8 +308,11 @@ class PluginManager:
             identity = PluginIdentity(plugin_dir)
             plugin_id = identity.load_or_create_id()
 
+            # 注册插件语言包（无 text/ 目录时返回 False，属正常情形，无需分支处理）
+            get_language_manager().register_plugin_texts(plugin_id, plugin_dir)
+
             # 创建插件服务依赖注入容器
-            services = self._create_plugin_services()
+            services = self._create_plugin_services(plugin_id)
 
             # 实例化插件（尝试注入 services）
             sig = inspect.signature(plugin_class)
@@ -385,7 +394,7 @@ class PluginManager:
     def _unload_plugin_instance(self, plugin: IPlugin) -> None:
         """卸载单个插件实例的运行时状态
 
-        依次执行：生命周期回调 → API/MCP 注销 → 缓存 Widget 销毁 → sys.modules 清理。
+        依次执行：生命周期回调 → API/MCP 注销 → 语言包注销 → 缓存 Widget 销毁 → sys.modules 清理。
         各步骤独立容错，单步失败不阻断后续清理。
 
         Args:
@@ -400,6 +409,8 @@ class PluginManager:
         # 2. 注销跨插件 API 并同步移除 MCP 工具
         if plugin_id:
             self.unregister_plugin_api(plugin_id)
+            # 注销插件语言包（清理注册项与语言目录缓存）
+            get_language_manager().unregister_plugin_texts(plugin_id)
         # 3. 销毁缓存的 Widget（必须在 GUI 线程调用，失败仅记录）
         self._destroy_cached_widget(plugin)
         # 4. 清理 sys.modules 中的插件模块，保证重载时拿到新代码
@@ -600,6 +611,8 @@ class PluginManager:
         self._remove_from_order_config(plugin_id)
         self.group_store.remove_plugin(plugin_id)
         self.registry.remove(plugin_id)
+        # 清除插件语言覆盖持久化（None 表示恢复跟随框架）
+        get_language_manager().set_plugin_language(plugin_id, None)
 
         # 6. 可选删除插件持久化数据
         if remove_data:
@@ -862,6 +875,11 @@ class PluginManager:
 
             # 实例化 PluginInfo
             plugin_info = plugin_info_class()
+
+            # 登记插件声明的默认语言（旧插件无 default_language 属性时 getattr 容错跳过）
+            declared_default = getattr(plugin_info, 'default_language', None)
+            if declared_default is not None:
+                get_language_manager().set_plugin_declared_default(plugin_id, declared_default)
 
             # 获取 service_api 方法描述
             api_descriptions = plugin_info.service_api

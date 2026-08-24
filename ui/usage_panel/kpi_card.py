@@ -7,6 +7,7 @@
 
 from PySide6.QtWidgets import QFrame, QLabel, QSizePolicy, QVBoxLayout
 
+from core.i18n import get_language_manager, tr
 from InstructionX_UIKit import T, set_property
 
 # ===== 卡片尺寸 =====
@@ -48,6 +49,9 @@ class KpiCard(QFrame):
             parent: 父控件
         """
         super().__init__(parent)
+        # 最近一次的同比数值（语言切换时按原值重算文案）
+        self._last_current = 0.0
+        self._last_previous = 0.0
         # 固定高度：窗口缩小时由外层滚动区接管，卡片自身不缩水
         self.setFixedHeight(CARD_HEIGHT)
         self.setStyleSheet(
@@ -56,30 +60,44 @@ class KpiCard(QFrame):
             f" border-radius: {T('radius.md')}px; }}"
         )
 
+        self._build_ui(title)
+        self._retranslate_ui()
+        get_language_manager().language_changed.connect(self._retranslate_ui)
+
+    def _build_ui(self, title: str) -> None:
+        """构建卡片内部布局（标题 / 数值 / 同比三行标签）"""
         layout = QVBoxLayout(self)
         layout.setContentsMargins(14, 10, 14, 10)
         layout.setSpacing(4)
 
-        title_label = QLabel(title)
-        set_property(title_label, "role", "secondary")
+        self._title_label = QLabel(title)
+        set_property(self._title_label, "role", "secondary")
 
         self._value_label = QLabel("—")
         self._value_label.setStyleSheet(
             f"font-size: {T('font.display')}px; font-weight: 700;")
 
-        self._delta_label = QLabel("较上周期 —")
+        self._delta_label = QLabel()
         self._trend = TREND_FLAT
         self._apply_trend_color(TREND_FLAT)
 
         # 文本标签水平方向允许压缩（Ignored = 最小宽度为 0），
         # 避免 6 张卡片的文本宽度把整个内容区的最小宽度撑出窗口
-        for label in (title_label, self._value_label, self._delta_label):
+        for label in (self._title_label, self._value_label, self._delta_label):
             label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
 
-        layout.addWidget(title_label)
+        layout.addWidget(self._title_label)
         layout.addWidget(self._value_label)
         layout.addWidget(self._delta_label)
         layout.addStretch()
+
+    def set_title(self, title: str) -> None:
+        """设置指标标题文本（语言切换时由面板重设）
+
+        Args:
+            title: 已按当前语言取词的指标标题
+        """
+        self._title_label.setText(title)
 
     def set_value(self, text: str) -> None:
         """设置指标数值文本
@@ -96,12 +114,18 @@ class KpiCard(QFrame):
             current: 当前周期指标值
             previous: 上一等长周期指标值；<= 0 时视为无数据，显示占位符
         """
+        self._last_current = current
+        self._last_previous = previous
         if previous <= 0:
-            self._apply_delta("较上周期 —", TREND_FLAT)
+            self._apply_delta(tr("usage_panel", "kpi.delta_empty"), TREND_FLAT)
             return
         pct = (current - previous) / previous * _PERCENT_BASE
         trend = TREND_UP if pct >= 0 else TREND_DOWN
-        self._apply_delta(f"较上周期 {pct:+.1f}%", trend)
+        self._apply_delta(tr("usage_panel", "kpi.delta", pct=pct), trend)
+
+    def _retranslate_ui(self) -> None:
+        """按当前语言重设文案（同比小字按最近一次的数值重算；标题由面板重设）"""
+        self.set_delta(self._last_current, self._last_previous)
 
     def _apply_delta(self, text: str, trend: str) -> None:
         """更新同比文本与趋势颜色"""

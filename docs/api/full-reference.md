@@ -99,6 +99,24 @@ from core.mcp import MCPHostServer, MCPClientManager, MCPBridge, MCPServerConnec
 from core.mcp import IMCPTool, IMCPClient
 ```
 
+### 1.6 从 core.i18n 导入
+
+```python
+# 语言管理器（LanguageManager/get_language_manager/tr 为 PEP-562 惰性导出）
+from core.i18n import get_language_manager, LanguageManager, tr
+
+# 数据模型与回退组件（纯 Python，直接导出）
+from core.i18n import (
+    TextCatalog, load_catalog, CatalogCache,
+    ERROR_TEXT, resolve_language_code, lookup_template, format_template,
+    DEFAULT_LANGUAGE, I18nSettingsStore, PluginTextRegistry,
+    resolve_i18n_field,
+)
+
+# 插件多语言取词接口（抽象接口，推荐用于插件开发）
+from core.interfaces import ILocalizationFacade
+```
+
 ---
 
 ## 2. 插件系统 API
@@ -172,6 +190,7 @@ from core.mcp import IMCPTool, IMCPClient
 | `plugin_type_id` | property | 插件类型标识符（必选，用于代码层面识别） |
 | `tags` | property | 标签列表（可选） |
 | `dependencies` | property | 插件依赖项（可选） |
+| `default_language` | property | 插件默认语言（可选，ISO 639-1 代码，对应 `text/<代码>.xml`；默认 `None` = 跟随框架默认语言） |
 
 ---
 
@@ -480,9 +499,66 @@ from core.mcp import IMCPTool, IMCPClient
 
 ---
 
-## 6. 常用代码片段
+## 6. 多语言（i18n）API
 
-### 6.1 获取核心单例
+详细机制（语言文件约定、回退链、UI 入口）：[多语言（i18n）子系统概述](../core/i18n/overview.md)
+
+### 6.1 LanguageManager
+
+**文件**: `core/i18n/language_manager.py`（单例，`get_language_manager()` 访问器；模块级 `tr()` 便捷函数等价于 `get_language_manager().tr(...)`）
+
+| 方法/信号 | 说明 | 返回值 |
+|------|------|--------|
+| `tr(group, key, /, **params)` | 框架文案取词（当前语言 → 默认语言 → `ERROR_TEXT`；`params` 为 `{name}` 命名占位符参数） | str |
+| `current_language()` | 当前生效的语言代码 | str |
+| `default_language()` | 开发者设定的默认语言（`DEFAULT_LANGUAGE = "zh"`，用户不可修改） | str |
+| `available_languages()` | 框架可用语言代码列表（扫描 `ui/text/*.xml`） | List[str] |
+| `language_display_name(code)` | 语言显示名（该语言文件 `common/language.self_name`，缺失时返回代码本身） | str |
+| `set_language(code)` | 切换当前语言（实时生效 + 持久化 + 发射 `language_changed`；不可用语言拒绝） | bool |
+| `register_plugin_texts(plugin_id, plugin_dir, declared_default=None)` | 注册插件语言包（由 PluginManager 调用） | bool |
+| `unregister_plugin_texts(plugin_id)` | 注销插件语言包（热卸载时调用） | None |
+| `plugin_available_languages(plugin_id)` | 插件提供的语言代码列表 | List[str] |
+| `plugin_has_catalog(plugin_id)` | 插件是否提供了语言包 | bool |
+| `plugin_language_override(plugin_id)` | 插件当前语言覆盖（None = 跟随框架） | Optional[str] |
+| `set_plugin_language(plugin_id, code)` | 设置/清除插件语言覆盖（code 为 None 清除；发射 `plugin_language_changed`） | bool |
+| `effective_plugin_language(plugin_id)` | 插件有效语言（用户覆盖 → 框架当前语言 → 插件默认语言） | str |
+| `set_plugin_declared_default(plugin_id, language)` | 登记插件声明的默认语言（由 PluginManager 调用） | None |
+| `plugin_tr(plugin_id, group, key, /, **params)` | 插件文案取词（供 PluginI18nFacade 调用；无语言包时返回键名） | str |
+| `language_changed` | 信号 `Signal(str)`：框架当前语言变化 | — |
+| `plugin_language_changed` | 信号 `Signal(str, str)`：插件有效语言变化（插件 UUID, 新语言） | — |
+
+### 6.2 ILocalizationFacade（插件取词门面）
+
+**文件**: `core/interfaces/i_localization.py`（实现：`core/i18n/facade.py` 的 `PluginI18nFacade`，经 `PluginServices.localization` 注入，绑定插件 UUID）
+
+| 方法 | 说明 | 返回值 |
+|------|------|--------|
+| `tr(group, key, /, **params)` | 取插件文案（有效语言 → 插件默认语言 → `ERROR_TEXT`；无语言包时返回键名本身） | str |
+| `current_language()` | 本插件当前有效语言代码 | str |
+| `available_languages()` | 本插件提供的语言代码列表 | List[str] |
+| `has_catalog()` | 本插件是否提供了语言包 | bool |
+
+### 6.3 底层组件
+
+| 符号 | 文件 | 说明 |
+|------|------|------|
+| `TextCatalog` | `core/i18n/catalog.py` | 单语言文案目录（frozen dataclass）：`has`/`get`/`group_names`/`key_count` |
+| `load_catalog(path)` | `core/i18n/loader.py` | 解析语言 XML 为 TextCatalog；缺失/解析失败返回 None（记 ERROR） |
+| `CatalogCache(text_dir)` | `core/i18n/loader.py` | 目录级惰性加载缓存（`available_languages`/`get` 含负缓存/`invalidate`） |
+| `resolve_language_code(requested, available)` | `core/i18n/fallback.py` | 语言代码解析（精确 → 主语言子码 `zh-TW`→`zh` → None） |
+| `lookup_template(chain, group, key)` | `core/i18n/fallback.py` | 按优先级链查找模板 |
+| `format_template(template, params, context)` | `core/i18n/fallback.py` | `str.format` 容错注入（失败返回原始模板） |
+| `ERROR_TEXT` | `core/i18n/fallback.py` | 默认语言也缺键时的显式错误文案常量 |
+| `I18nSettingsStore` | `core/i18n/settings_store.py` | `config/i18n.json` + `config/plugin_languages.json` 读写（schema v1，原子写，损坏备份重建） |
+| `DEFAULT_LANGUAGE` | `core/i18n/settings_store.py` | 开发者设定的默认语言常量（`"zh"`） |
+| `PluginTextRegistry` | `core/i18n/plugin_registry.py` | 插件语言包注册表（register/unregister/has_catalog/languages_of/catalog_of 等） |
+| `resolve_i18n_field(value, language, default_language=DEFAULT_LANGUAGE)` | `core/i18n/ixplugin_i18n.py` | IXPlugin.json 的 name/description 多语言字段解析（纯字符串原样返回；字典按 目标语言 → 默认语言 → 字典首值） |
+
+---
+
+## 7. 常用代码片段
+
+### 7.1 获取核心单例
 
 ```python
 # 插件管理器
@@ -504,9 +580,12 @@ llm_service = get_llm_plugin_service()
 
 # MCP 管理器
 mcp_manager = get_mcp_manager()
+
+# 语言管理器
+language_manager = get_language_manager()
 ```
 
-### 6.2 创建插件 Widget
+### 7.2 创建插件 Widget
 
 ```python
 # 获取插件
@@ -516,7 +595,7 @@ plugin = plugin_manager.get_plugin_by_id("plugin-uuid")
 widget = plugin.get_widget(parent=parent_widget, data_provider=data_provider)
 ```
 
-### 6.3 数据操作
+### 7.3 数据操作
 
 ```python
 # 存储数据
@@ -536,7 +615,7 @@ value = data_provider.get_plugin_data(
 )
 ```
 
-### 6.4 发布/订阅
+### 7.4 发布/订阅
 
 ```python
 # 订阅
@@ -559,7 +638,7 @@ data_provider.publish(
 )
 ```
 
-### 6.5 跨插件调用
+### 7.5 跨插件调用
 
 ```python
 # 获取目标插件 ID
@@ -575,7 +654,7 @@ result = plugin_manager.call_plugin_method(
 )
 ```
 
-### 6.6 注册后台任务
+### 7.6 注册后台任务
 
 ```python
 # 同步任务（立即在主线程执行）
@@ -607,27 +686,27 @@ task_id = task_manager.register_scheduled_task(
 
 ---
 
-## 7. 抽象接口层 API
+## 8. 抽象接口层 API
 
-### 7.1 概述
+### 8.1 概述
 
 `core/interfaces/` 目录定义了框架的抽象接口层，将插件开发 API 与内部实现解耦。插件应该通过这些接口与核心服务交互，而非直接依赖具体实现。
 
 详细概述：[接口层概述](../core/interfaces/overview.md)
 
-### 7.2 IPlugin（插件接口）
+### 8.2 IPlugin（插件接口）
 
 **文件**: `core/interfaces/i_plugin.py`
 
 与 `core/interfaces/i_plugin.py` 一致（`core/plugin/plugin_interface.py` 保留向后兼容）。
 
-### 7.3 IPluginInfo（插件信息接口）
+### 8.3 IPluginInfo（插件信息接口）
 
 **文件**: `core/interfaces/i_plugin_info.py`
 
 与 `core/interfaces/i_plugin_info.py` 一致（`core/plugin/plugin_info_interface.py` 保留向后兼容）。
 
-### 7.4 IDataProvider（数据提供者接口）
+### 8.4 IDataProvider（数据提供者接口）
 
 **文件**: `core/interfaces/i_data_provider.py`
 
@@ -654,7 +733,7 @@ task_id = task_manager.register_scheduled_task(
 | `get_plugin_info(instance_id)` | 获取指定插件信息 |
 | `reset_all_data()` | 重置所有数据（慎用！） |
 
-### 7.5 ITaskManager（任务管理器接口）
+### 8.5 ITaskManager（任务管理器接口）
 
 **文件**: `core/interfaces/i_task_manager.py`
 
@@ -682,7 +761,7 @@ task_id = task_manager.register_scheduled_task(
 | `clear_completed_tasks(plugin_id)` | 清理已完成任务 |
 | `shutdown()` | 关闭任务管理器，释放所有资源 |
 
-### 7.6 ILLMService（LLM 插件服务接口）
+### 8.6 ILLMService（LLM 插件服务接口）
 
 **文件**: `core/interfaces/i_llm_service.py`（取代已删除的 `i_llm_facade.py`；`LLMPluginService` 显式继承）
 
@@ -713,7 +792,7 @@ task_id = task_manager.register_scheduled_task(
 | `validate_provider(provider)` | 验证 Provider 配置 |
 | `last_stream_response` (property) | 最近一次流式请求的聚合响应 |
 
-### 7.7 PluginServices（插件服务封装）
+### 8.7 PluginServices（插件服务封装）
 
 **文件**: `core/interfaces/plugin_services.py`
 
@@ -730,8 +809,15 @@ task_id = task_manager.register_scheduled_task(
 | `mcp_manager` | `MCPManager` | MCP 管理器实例（可能为 `None`） |
 | `mcp_client` | `MCPClientManager` | MCP 客户端管理器实例（可能为 `None`） |
 | `font_manager` | `FontManager` | 字体管理器实例（`core/font`，始终注入） |
+| `localization` | `ILocalizationFacade` | 多语言取词门面（`core/i18n` 的 `PluginI18nFacade`，绑定插件 UUID，始终注入） |
 
-### 7.8 ILogger（日志接口）
+### 8.8 ILocalizationFacade（插件多语言取词接口）
+
+**文件**: `core/interfaces/i_localization.py`（通过 `core/interfaces/__init__.py` 重导出）
+
+插件多语言取词门面抽象接口，方法表见 §6.2；机制详见 [多语言（i18n）子系统概述](../core/i18n/overview.md)。
+
+### 8.9 ILogger（日志接口）
 
 **文件**: `utils/i_logger.py`（通过 `core/interfaces/__init__.py` 重导出）
 
@@ -749,7 +835,7 @@ task_id = task_manager.register_scheduled_task(
 
 ---
 
-## 8. 相关文档
+## 9. 相关文档
 
 - [文档索引](../README.md)
 - [DataProvider 概述](../core/data-provider/overview.md)
@@ -759,3 +845,4 @@ task_id = task_manager.register_scheduled_task(
 - [LLM Provider 概述](../core/llm-provider/overview.md)
 - [LLM Provider API 参考](../core/llm-provider/api-reference.md)
 - [插件系统概述](../core/plugin-system/overview.md)
+- [多语言（i18n）子系统概述](../core/i18n/overview.md)

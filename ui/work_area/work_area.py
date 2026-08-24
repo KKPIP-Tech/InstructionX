@@ -7,6 +7,8 @@ from typing import Optional
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel, QLayoutItem
 from PySide6.QtCore import Qt
 
+from core.i18n import tr, get_language_manager
+
 
 class WorkArea:
     """
@@ -30,12 +32,24 @@ class WorkArea:
         self.work_layout.setContentsMargins(0, 0, 0, 0)
 
         # 初始显示的占位标签
-        self.work_placeholder = QLabel("点击上方技能按钮，在此处显示插件功能")
+        self.work_placeholder = QLabel(tr("work_area", "placeholder"))
         self.work_placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.work_placeholder.setProperty("placeholder", "true")
         self.work_placeholder.style().unpolish(self.work_placeholder)
         self.work_placeholder.style().polish(self.work_placeholder)
         self.work_layout.addWidget(self.work_placeholder)
+
+        # 语言切换时重设占位文案（WorkArea 非 QObject，
+        # 连接随应用生命周期存续；占位标签销毁后由守卫跳过刷新）
+        get_language_manager().language_changed.connect(self._retranslate_ui)
+
+    def _retranslate_ui(self) -> None:
+        """集中重设工作区用户可见文案（占位标签）"""
+        try:
+            self.work_placeholder.setText(tr("work_area", "placeholder"))
+        except RuntimeError:
+            # 占位标签已被 clear() 的 deleteLater 销毁（C++ 对象失效），无需刷新
+            pass
 
     def get_widget(self) -> QWidget:
         """

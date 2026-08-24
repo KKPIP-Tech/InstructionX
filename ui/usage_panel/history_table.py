@@ -5,7 +5,7 @@
 筛选条件通过 ``current_filters`` 暴露，数据由外部传入 ``update_page`` 渲染。
 """
 
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QColor, QFont
@@ -14,19 +14,26 @@ from PySide6.QtWidgets import (
     QTableWidgetItem, QVBoxLayout,
 )
 
+from core.i18n import get_language_manager, tr
 from core.llm.types import UsageRecord
 from InstructionX_UIKit import T, set_property
 from InstructionX_UIKit.components import Button, ComboBox, LineEdit, Table
 
 from .formatting import fmt_latency, to_local_time
 
-# ===== 筛选选项 =====
-ALL_OPTION = "全部"
+
+def _all_option_text() -> str:
+    """「全部」筛选项文案（运行时取词，随语言切换更新）"""
+    return tr("usage_panel", "filter.all")
+
 
 # ===== 表格结构 =====
-TABLE_HEADERS = (
-    "时间", "Provider", "Model", "输入", "输出", "总Token",
-    "缓存命中", "缓存Token", "耗时", "流式",
+# 表头 i18n 键（usage_panel 分组），显示文案在 _retranslate_ui 中统一取词
+TABLE_HEADER_KEYS = (
+    "table.header.time", "table.header.provider", "table.header.model",
+    "table.header.input", "table.header.output", "table.header.total_tokens",
+    "table.header.cache_hit", "table.header.cached_tokens",
+    "table.header.duration", "table.header.stream",
 )
 COLUMN_WIDTHS = (140, 80, 120, 70, 70, 80, 70, 80, 80, 50)
 # 右对齐的数值列索引
@@ -89,6 +96,12 @@ class HistoryPanel(QFrame):
         self.setObjectName("usageSubPanel")
         self.setStyleSheet(_sub_panel_qss())
 
+        # 当前下拉选项（语言切换时按原选项重建，仅更新「全部」文案）
+        self._provider_options: List[str] = []
+        self._model_options: List[str] = []
+        # 最近一次分页状态（语言切换时按原值重排分页文案）
+        self._last_page: Optional[Tuple[int, int, int]] = None
+
         layout = QVBoxLayout(self)
         layout.setContentsMargins(14, 10, 14, 8)
         layout.setSpacing(6)
@@ -99,15 +112,18 @@ class HistoryPanel(QFrame):
         layout.addLayout(self._build_pagination())
 
         self._connect_signals()
+        self._retranslate_ui()
+        get_language_manager().language_changed.connect(self._retranslate_ui)
         # 初始按 0 行计算高度，首次数据刷新后随当前页行数自动调整
         self._fit_height_to_rows(0)
 
     # ------------------------------------------------------------------ UI
 
     def _build_header(self) -> QHBoxLayout:
-        """面板标题行"""
+        """面板标题行（文案由 ``_retranslate_ui`` 统一设置）"""
         header = QHBoxLayout()
-        header.addWidget(_panel_title("使用历史"))
+        self._title_label = _panel_title("")
+        header.addWidget(self._title_label)
         header.addStretch()
         return header
 
@@ -116,25 +132,23 @@ class HistoryPanel(QFrame):
         toolbar = QHBoxLayout()
         toolbar.setSpacing(8)
 
-        self._provider_combo = self._make_filter_combo("Provider 筛选")
-        self._model_combo = self._make_filter_combo("Model 筛选")
-        provider_label = self._make_filter_label("Provider:")
-        model_label = self._make_filter_label("Model:")
+        self._provider_combo = self._make_filter_combo()
+        self._model_combo = self._make_filter_combo()
+        self._provider_label = self._make_filter_label("")
+        self._model_label = self._make_filter_label("")
 
-        conv_label = self._make_filter_label("对话ID:")
-        self._conv_id_input = LineEdit(placeholder="输入对话ID筛选...")
-        self._conv_id_input.setAccessibleName("对话 ID 筛选输入框")
+        self._conv_label = self._make_filter_label("")
+        self._conv_id_input = LineEdit()
         self._conv_id_input.setMaximumWidth(CONV_INPUT_MAX_WIDTH)
 
-        self._refresh_btn = Button("刷新", variant="primary")
+        self._refresh_btn = Button("", variant="primary")
         self._refresh_btn.setMinimumWidth(PAGE_BTN_MIN_WIDTH)
-        self._refresh_btn.setAccessibleName("刷新用量数据")
 
-        toolbar.addWidget(provider_label)
+        toolbar.addWidget(self._provider_label)
         toolbar.addWidget(self._provider_combo)
-        toolbar.addWidget(model_label)
+        toolbar.addWidget(self._model_label)
         toolbar.addWidget(self._model_combo)
-        toolbar.addWidget(conv_label)
+        toolbar.addWidget(self._conv_label)
         toolbar.addWidget(self._conv_id_input)
         toolbar.addStretch()
         toolbar.addWidget(self._refresh_btn)
@@ -147,19 +161,15 @@ class HistoryPanel(QFrame):
         return label
 
     @staticmethod
-    def _make_filter_combo(accessible_name: str) -> ComboBox:
+    def _make_filter_combo() -> ComboBox:
         combo = ComboBox()
-        combo.setAccessibleName(accessible_name)
         combo.setMinimumWidth(FILTER_COMBO_MIN_WIDTH)
         combo.setMaximumWidth(FILTER_COMBO_MAX_WIDTH)
-        combo.addItem(ALL_OPTION)
         return combo
 
     def _build_table(self) -> Table:
         """创建 10 列只读明细表格（UIKit Table：斑马纹/整行选择/禁编辑）"""
-        self._table = Table(0, len(TABLE_HEADERS), sortable=False)
-        self._table.setAccessibleName("用量明细表格")
-        self._table.setHorizontalHeaderLabels(TABLE_HEADERS)
+        self._table = Table(0, len(TABLE_HEADER_KEYS), sortable=False)
         # UIKit Table 默认行高 32，此处沿用面板的紧凑行高
         self._table.verticalHeader().setDefaultSectionSize(ROW_HEIGHT)
         self._table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
@@ -176,19 +186,17 @@ class HistoryPanel(QFrame):
         pagination = QHBoxLayout()
         pagination.setContentsMargins(0, 4, 0, 0)
 
-        self._prev_btn = Button("上一页", variant="default")
+        self._prev_btn = Button("", variant="default")
         self._prev_btn.setMinimumWidth(PAGE_BTN_MIN_WIDTH)
-        self._prev_btn.setAccessibleName("上一页")
         self._prev_btn.setEnabled(False)
 
-        self._page_label = QLabel("第 1 页")
+        self._page_label = QLabel()
         set_property(self._page_label, "role", "secondary")
         self._page_label.setMinimumWidth(PAGE_LABEL_MIN_WIDTH)
         self._page_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-        self._next_btn = Button("下一页", variant="default")
+        self._next_btn = Button("", variant="default")
         self._next_btn.setMinimumWidth(PAGE_BTN_MIN_WIDTH)
-        self._next_btn.setAccessibleName("下一页")
         self._next_btn.setEnabled(False)
 
         pagination.addStretch()
@@ -199,6 +207,44 @@ class HistoryPanel(QFrame):
         pagination.addWidget(self._next_btn)
         pagination.addStretch()
         return pagination
+
+    def _retranslate_ui(self) -> None:
+        """按当前语言重设面板全部用户可见文案（语言切换时自动触发）"""
+        self._title_label.setText(tr("usage_panel", "table.title"))
+        self._provider_label.setText(tr("usage_panel", "filter.provider"))
+        self._model_label.setText(tr("usage_panel", "filter.model"))
+        self._conv_label.setText(tr("usage_panel", "filter.conversation_id"))
+        self._conv_id_input.setPlaceholderText(
+            tr("usage_panel", "filter.conversation_id_placeholder"))
+        self._refresh_btn.setText(tr("common", "refresh"))
+        self._prev_btn.setText(tr("usage_panel", "page.prev"))
+        self._next_btn.setText(tr("usage_panel", "page.next"))
+        self._retranslate_accessible_names()
+        self._table.setHorizontalHeaderLabels(
+            [tr("usage_panel", key) for key in TABLE_HEADER_KEYS])
+        self._reset_combo_options(self._provider_combo, self._provider_options)
+        self._reset_combo_options(self._model_combo, self._model_options)
+        self._update_page_label()
+
+    def _retranslate_accessible_names(self) -> None:
+        """按当前语言重设各控件的无障碍名称"""
+        self._provider_combo.setAccessibleName(tr("usage_panel", "a11y.provider_filter"))
+        self._model_combo.setAccessibleName(tr("usage_panel", "a11y.model_filter"))
+        self._conv_id_input.setAccessibleName(tr("usage_panel", "a11y.conversation_id_input"))
+        self._refresh_btn.setAccessibleName(tr("usage_panel", "a11y.refresh"))
+        self._table.setAccessibleName(tr("usage_panel", "a11y.table"))
+        self._prev_btn.setAccessibleName(tr("usage_panel", "page.prev"))
+        self._next_btn.setAccessibleName(tr("usage_panel", "page.next"))
+
+    def _update_page_label(self) -> None:
+        """按当前语言重设分页信息（未刷新过数据时显示初始占位文案）"""
+        if self._last_page is None:
+            self._page_label.setText(tr("usage_panel", "page.initial"))
+            return
+        current_page, total_pages, total_count = self._last_page
+        self._page_label.setText(tr(
+            "usage_panel", "page.info",
+            current=current_page + 1, total=total_pages, count=total_count))
 
     def _connect_signals(self) -> None:
         self._provider_combo.currentTextChanged.connect(self._on_filter_changed)
@@ -222,8 +268,8 @@ class HistoryPanel(QFrame):
         model = self._model_combo.currentText()
         conversation_id = self._conv_id_input.text().strip()
         return {
-            "provider": provider if provider != ALL_OPTION else None,
-            "model": model if model != ALL_OPTION else None,
+            "provider": provider if provider != _all_option_text() else None,
+            "model": model if model != _all_option_text() else None,
             "conversation_id": conversation_id if conversation_id else None,
         }
 
@@ -233,6 +279,7 @@ class HistoryPanel(QFrame):
         Args:
             providers: 实际记录中出现过的 Provider 名称列表（无需包含「全部」）
         """
+        self._provider_options = providers
         self._reset_combo_options(self._provider_combo, providers)
 
     def set_model_options(self, models: List[str]) -> None:
@@ -241,6 +288,7 @@ class HistoryPanel(QFrame):
         Args:
             models: 当前筛选条件下出现过的 Model 名称列表（无需包含「全部」）
         """
+        self._model_options = models
         self._reset_combo_options(self._model_combo, models)
 
     @staticmethod
@@ -249,9 +297,9 @@ class HistoryPanel(QFrame):
         current = combo.currentText()
         combo.blockSignals(True)
         combo.clear()
-        combo.addItem(ALL_OPTION)
+        combo.addItem(_all_option_text())
         combo.addItems(options)
-        if current in [ALL_OPTION, *options]:
+        if current in [_all_option_text(), *options]:
             combo.setCurrentText(current)
         combo.blockSignals(False)
 
@@ -270,7 +318,8 @@ class HistoryPanel(QFrame):
         for row, record in enumerate(records):
             self._fill_row(row, record)
 
-        self._page_label.setText(f"第 {current_page + 1} / {total_pages} 页  (共 {total_count} 条)")
+        self._last_page = (current_page, total_pages, total_count)
+        self._update_page_label()
         self._prev_btn.setEnabled(current_page > 0)
         self._next_btn.setEnabled(current_page < total_pages - 1)
         # 面板高度随当前页行数自适应，保证整页记录完整显示
@@ -313,10 +362,10 @@ class HistoryPanel(QFrame):
             f"{record.input_tokens:,}",
             f"{record.output_tokens:,}",
             f"{record.total_tokens:,}",
-            "是" if record.cache_hit else "否",
+            tr("common", "yes") if record.cache_hit else tr("common", "no"),
             f"{record.cached_tokens:,}",
             fmt_latency(record.duration_ms),
-            "是" if record.is_stream else "否",
+            tr("common", "yes") if record.is_stream else tr("common", "no"),
         )
         for col, text in enumerate(cells):
             item = QTableWidgetItem(text)

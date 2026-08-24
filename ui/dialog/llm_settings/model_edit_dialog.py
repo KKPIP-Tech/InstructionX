@@ -25,8 +25,9 @@ from PySide6.QtWidgets import (
     QSpinBox, QToolButton, QVBoxLayout, QWidget,
 )
 
+from core.i18n import tr
 from core.llm.model_schema import (
-    ALL_CAPABILITIES, CAPABILITY_LABELS, get_disabled_capabilities,
+    ALL_CAPABILITIES, capability_label, get_disabled_capabilities,
     infer_model_group, normalize_model_entry,
 )
 
@@ -113,7 +114,7 @@ class _CapabilityTag(QToolButton):
         """
         super().__init__(parent)
         self.capability_key = capability
-        self.setText(CAPABILITY_LABELS.get(capability, capability))
+        self.setText(capability_label(capability))
         self.setCheckable(True)
         self.setChecked(checked)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -161,7 +162,11 @@ class ModelEditDialog(_BaseFormDialog):
         self._edit_mode = model_data is not None
         self._model_data = (
             normalize_model_entry(model_data) if model_data else {})
-        super().__init__("编辑模型" if self._edit_mode else "添加模型", parent)
+        super().__init__(
+            tr("dialog_llm_settings",
+               "model_edit.title_edit" if self._edit_mode
+               else "model_edit.title_create"),
+            parent)
         self.setMinimumWidth(MODEL_EDIT_DIALOG_WIDTH)
         # 先换肤（更新 CURRENT_THEME）再构建内容，保证能力标签按当前主题着色
         apply_dialog_theme(self)
@@ -175,25 +180,35 @@ class ModelEditDialog(_BaseFormDialog):
         """构建表单：ID/名称/分组 + 能力标签组 + 上下文 + 流式 + 定价 + 按钮"""
         self._id_edit = QLineEdit(self)
         self._id_edit.setText(str(self._model_data.get("id", "")))
-        self._id_edit.setPlaceholderText("如 glm-4-flash")
-        self._add_field("模型 ID", self._id_edit)
+        self._id_edit.setPlaceholderText(
+            tr("dialog_llm_settings", "model_edit.field.id_placeholder"))
+        self._add_field(
+            tr("dialog_llm_settings", "model_edit.field.id"), self._id_edit)
         if self._edit_mode:
             self._id_edit.setReadOnly(True)
-            self._id_edit.setToolTip("编辑模式下模型 ID 不可修改")
+            self._id_edit.setToolTip(
+                tr("dialog_llm_settings",
+                   "model_edit.field.id_readonly_tooltip"))
         self._name_edit = QLineEdit(self)
         self._name_edit.setText(str(self._model_data.get("name", "")))
-        self._name_edit.setPlaceholderText("留空则使用模型 ID")
-        self._add_field("显示名称", self._name_edit)
+        self._name_edit.setPlaceholderText(
+            tr("dialog_llm_settings", "model_edit.field.name_placeholder"))
+        self._add_field(
+            tr("dialog_llm_settings", "model_edit.field.name"),
+            self._name_edit)
         self._group_edit = QLineEdit(self)
         self._group_edit.setText(str(self._model_data.get("group", "")))
-        self._group_edit.setPlaceholderText("留空将按模型 ID 自动推断分组")
-        self._add_field("分组", self._group_edit)
+        self._group_edit.setPlaceholderText(
+            tr("dialog_llm_settings", "model_edit.field.group_placeholder"))
+        self._add_field(
+            tr("dialog_llm_settings", "model_edit.field.group"),
+            self._group_edit)
         self._layout.addLayout(self._build_capability_row())
         self._layout.addLayout(self._build_context_row())
         self._layout.addLayout(self._build_streaming_row())
         self._layout.addLayout(self._build_price_row())
         self._layout.addStretch(1)
-        ok = self._add_buttons("确定")
+        ok = self._add_buttons(tr("common", "ok"))
         # 基类默认连接 accept；改为先校验再接受
         ok.clicked.disconnect()
         ok.clicked.connect(self._on_confirm)
@@ -203,7 +218,8 @@ class ModelEditDialog(_BaseFormDialog):
         """构建能力标签开关组（互斥规则由 _apply_capability_exclusion 应用）"""
         row = QVBoxLayout()
         row.setSpacing(6)
-        row.addWidget(make_field_label("能力标签"))
+        row.addWidget(make_field_label(
+            tr("dialog_llm_settings", "model_edit.field.capabilities")))
         tags_layout = QHBoxLayout()
         tags_layout.setSpacing(8)
         selected = self._model_data.get("capabilities") or []
@@ -220,13 +236,16 @@ class ModelEditDialog(_BaseFormDialog):
         """构建上下文长度行（0 表示未设置，步进为 1K）"""
         row = QHBoxLayout()
         row.setSpacing(8)
-        row.addWidget(make_field_label("上下文长度"))
+        row.addWidget(make_field_label(
+            tr("dialog_llm_settings", "model_edit.field.context_length")))
         self._context_spin = QSpinBox(self)
         self._context_spin.setRange(0, CONTEXT_LENGTH_MAX)
         self._context_spin.setSingleStep(TOKENS_PER_K)
-        self._context_spin.setSpecialValueText("未设置")
+        self._context_spin.setSpecialValueText(
+            tr("dialog_llm_settings", "model_edit.unset"))
         self._context_spin.setSuffix(" tokens")
-        self._context_spin.setToolTip("0 表示未设置；步进为 1K（1024）tokens")
+        self._context_spin.setToolTip(
+            tr("dialog_llm_settings", "model_edit.field.context_tooltip"))
         self._context_spin.setValue(self._model_data.get("context_length") or 0)
         row.addWidget(self._context_spin, stretch=1)
         return row
@@ -235,7 +254,8 @@ class ModelEditDialog(_BaseFormDialog):
         """构建「支持流式输出」开关行"""
         row = QHBoxLayout()
         row.setSpacing(8)
-        row.addWidget(make_field_label("支持流式输出"))
+        row.addWidget(make_field_label(
+            tr("dialog_llm_settings", "model_edit.field.streaming")))
         row.addStretch(1)
         streaming = self._model_data.get("support_streaming", True)
         self._streaming_switch = SwitchButton(bool(streaming), self)
@@ -246,7 +266,8 @@ class ModelEditDialog(_BaseFormDialog):
         """构建定价行（输入/输出每百万 tokens + 币种，0 表示未设置）"""
         row = QVBoxLayout()
         row.setSpacing(6)
-        row.addWidget(make_field_label("定价（每百万 tokens，0 表示未设置）"))
+        row.addWidget(make_field_label(
+            tr("dialog_llm_settings", "model_edit.field.price")))
         fields = QHBoxLayout()
         fields.setSpacing(8)
         self._input_price_spin = self._make_price_spin(
@@ -258,9 +279,11 @@ class ModelEditDialog(_BaseFormDialog):
         currency = self._model_data.get("currency") or CURRENCY_OPTIONS[0]
         index = self._currency_combo.findText(currency)
         self._currency_combo.setCurrentIndex(max(index, 0))
-        fields.addWidget(QLabel("输入", self))
+        fields.addWidget(QLabel(
+            tr("dialog_llm_settings", "model_edit.price.input"), self))
         fields.addWidget(self._input_price_spin, stretch=1)
-        fields.addWidget(QLabel("输出", self))
+        fields.addWidget(QLabel(
+            tr("dialog_llm_settings", "model_edit.price.output"), self))
         fields.addWidget(self._output_price_spin, stretch=1)
         fields.addWidget(self._currency_combo)
         row.addLayout(fields)
@@ -278,7 +301,7 @@ class ModelEditDialog(_BaseFormDialog):
         spin = QDoubleSpinBox(self)
         spin.setRange(0.0, PRICE_SPIN_MAX)
         spin.setDecimals(PRICE_SPIN_DECIMALS)
-        spin.setSpecialValueText("未设置")
+        spin.setSpecialValueText(tr("dialog_llm_settings", "model_edit.unset"))
         spin.setValue(float(value) if value else 0.0)
         return spin
 
@@ -301,7 +324,8 @@ class ModelEditDialog(_BaseFormDialog):
     def _on_confirm(self) -> None:
         """确定按钮：校验模型 ID 非空后接受对话框"""
         if not self._id_edit.text().strip():
-            _warn_toast(self, "请输入模型 ID。")
+            _warn_toast(
+                self, tr("dialog_llm_settings", "model_edit.warn.id_required"))
             return
         self.accept()
 

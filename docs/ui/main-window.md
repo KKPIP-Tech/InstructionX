@@ -214,8 +214,9 @@ flowchart TD
     N --> P[设置回调]
     O --> P
     P --> Q[连接 skill_clicked 信号]
-    Q --> R[应用容器样式 _update_container_style]
-    R --> R2[Qt 阴影效果 QGraphicsDropShadowEffect]
+    Q --> PW[预热蓝图 GL 视口 _prewarm_blueprint_viewport]
+    PW --> R[应用容器样式 _update_container_style]
+    R --> R2[阴影位图惰性缓存置位 _shadow_pixmap=None]
     R2 --> R3[setMouseTracking 开启鼠标追踪]
     R3 --> R4[托盘状态变量 + _setup_tray 接线]
     R4 --> S[完成]
@@ -262,15 +263,18 @@ def __init__(self):
     # 创建主布局
     self._create_main_layout()
 
+    # 预热蓝图 GL 视口（须在窗口 show() 之前，见下文说明）
+    self._prewarm_blueprint_viewport()
+
     # 应用容器样式
     self._update_container_style()
 
-    # 创建 Qt 阴影效果（替代 DWM 原生阴影，避免 WM_NCCALCSIZE 坐标错位）
-    self._shadow_effect = QGraphicsDropShadowEffect(self)
-    self._shadow_effect.setBlurRadius(20)
-    self._shadow_effect.setColor(QColor(0, 0, 0, 80))
-    self._shadow_effect.setOffset(0, 4)
-    self._container.setGraphicsEffect(self._shadow_effect)
+    # 窗口阴影：预渲染位图 + 9 宫格绘制（paintEvent 中），此处只做惰性缓存置位。
+    # 不用 QGraphicsDropShadowEffect：它会把容器子树重定向到离屏缓存，
+    # QOpenGLWidget（蓝图 GL 视口）的帧更新无法触发效果源缓存失效，
+    # 窗口化模式下画布会长期呈现旧帧（拖拽卡死）；
+    # 也不用 DWM 原生阴影（WM_NCCALCSIZE 方案曾导致 Qt 与 Windows 坐标系错位）。
+    self._shadow_pixmap = None  # 惰性渲染，首次 paintEvent 时生成
 
     # 边缘 resize 相关变量
     self._resize_margin = 8
@@ -321,6 +325,10 @@ def _create_main_layout(self) -> None:
     # 连接信号
     self.skills_panel.skill_clicked.connect(self._on_skill_clicked)
 ```
+
+> **蓝图 GL 视口预热**（`_prewarm_blueprint_viewport`）：UIKit 蓝图画布的绘制视口在 GL 可用时基于 `QOpenGLWidget`；若其在顶层窗口**可见之后**才加入窗口树，Qt 会重建顶层原生窗口句柄，表现为整个窗口短暂关闭后重开一次（Qt 固有行为，见 UIKit USAGE.md §8.6）。插件的蓝图画布均在主窗口显示后才创建，因此主窗口在构造阶段预创建一个隐藏画布并长期持有（`self._blueprint_prewarm_canvas`），让顶层原生句柄首次创建时即按「含 GL 子控件」的方式建立，后续插件画布加入时不再触发重建。软件渲染回退环境（无 GL / offscreen）自动跳过；预热失败仅记录 WARNING 日志，不影响启动。
+>
+> **图形 API 统一**：与预热配套的启动前置条件是 `main.py` 在 `QApplication` 创建之前调用 `QQuickWindow.setGraphicsApi(QSGRendererInterface.GraphicsApi.OpenGL)`——GL 视口会把顶层窗口合成锁定为 OpenGL，而 UIKit Mermaid 交互查看器（QWebEngineView）基于 Qt Quick RHI（Windows 默认 D3D11），同一顶层窗口混用两种图形 API 会刷 "QQuickWidget: Failed to get a QRhi" 且窗口闪烁，故统一为 OpenGL（与上游 UIKit demo 入口一致）。
 
 ---
 
@@ -559,15 +567,17 @@ def _on_github_plugin_installed(self, results):
 主窗口通过 `changeEvent` 监听 `WindowStateChange` 事件，同步更新：
 
 - **最大化/还原按钮图标**: 最大化按钮为 `IconButton`（`ui/title_bar.py`），图标由 QPainter 自绘而非文字符号；`set_maximized()` 内部调用 `set_icon_type("restore" / "maximize")` 切换图标
-- **容器圆角与阴影**: 最大化/全屏时移除圆角（`border-radius: 0px`）并停用阴影，还原时恢复 8px 圆角并启用阴影；圆角与阴影的启停统一由 `_update_container_style()` 处理
+- **容器圆角与阴影**: 最大化/全屏时移除圆角（`border-radius: 0px`）且不绘制阴影，还原时恢复 8px 圆角并恢复阴影；圆角由 `_update_container_style()` 处理，阴影的启停由 `paintEvent` 按窗口状态控制
+- **阴影实现（重要）**: 窗口阴影使用**预渲染位图 + 9 宫格拉伸绘制**（`_render_shadow_pixmap()` 首次 `paintEvent` 时生成一次，`_draw_shadow_tiles()` 常数时间绘制），**不使用 `QGraphicsDropShadowEffect`**——它会把整个容器子树的绘制重定向到离屏缓存，而 `QOpenGLWidget`（蓝图 GL 视口）的帧更新无法触发效果源缓存失效，导致窗口化模式下画布长期呈现旧帧（拖拽时画面卡死；最大化时因阴影被禁用而不复发）
 - **主题自适应**: 使用 UIKit 设计令牌 `T()` 获取当前主题颜色动态设置背景色和边框色
 
 ```python
 def changeEvent(self, event):
-    """监听窗口状态变化，更新标题栏按钮和阴影"""
+    """监听窗口状态变化，更新标题栏按钮和容器圆角"""
     if event.type() == event.Type.WindowStateChange:
         self._title_bar.set_maximized(self.isMaximized() or self.isFullScreen())
-        # 容器圆角/阴影样式统一由 _update_container_style 处理，避免重复代码
+        # 容器圆角样式统一由 _update_container_style 处理，避免重复代码；
+        # 阴影由 paintEvent 按窗口状态自动启停
         self._update_container_style()
     super().changeEvent(event)
 ```

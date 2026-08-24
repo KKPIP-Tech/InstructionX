@@ -25,10 +25,14 @@ from PySide6.QtWidgets import (
 from InstructionX_UIKit import T, MONO_FAMILY, set_property
 from InstructionX_UIKit.components import Button, LineEdit, Message
 
+from core.i18n import tr
 from utils.logging_tools import LoggerManager, get_name
 
 # 模块级日志器（LoggerManager 为单例）
 _logger = LoggerManager()
+
+# i18n 文案分组名
+_TR_GROUP = "dialog_license"
 
 
 # 许可证类型徽章配色（浅色底 + 深字，亮/暗主题下均可读，属刻意的品牌色设计）
@@ -162,7 +166,7 @@ class LicenseDialog(QDialog):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("开源组件许可")
+        self.setWindowTitle(tr(_TR_GROUP, "title"))
         self.setMinimumSize(900, 600)
         self.resize(950, 650)
         self.setModal(True)
@@ -209,7 +213,7 @@ class LicenseDialog(QDialog):
         hl = QHBoxLayout(self._header)
         hl.setContentsMargins(20, 0, 16, 0)
 
-        title = QLabel("开源组件许可")
+        title = QLabel(tr(_TR_GROUP, "title"))
         font = QFont()
         font.setPixelSize(T("font.title.sm"))
         font.setBold(True)
@@ -229,7 +233,8 @@ class LicenseDialog(QDialog):
         ll.setContentsMargins(12, 12, 12, 12)
         ll.setSpacing(10)
 
-        self._search_input = LineEdit(placeholder="搜索名称...", clearable=True)
+        self._search_input = LineEdit(
+            placeholder=tr(_TR_GROUP, "search.placeholder"), clearable=True)
         self._search_input.textChanged.connect(self._on_search)
         ll.addWidget(self._search_input)
 
@@ -264,7 +269,7 @@ class LicenseDialog(QDialog):
         self._list_widget = list_w
         ll.addWidget(list_w, 1)
 
-        self._empty_state = QLabel("未找到匹配的许可证")
+        self._empty_state = QLabel(tr(_TR_GROUP, "list.empty"))
         self._empty_state.setAlignment(Qt.AlignCenter)
         set_property(self._empty_state, "role", "secondary")
         self._empty_state.hide()
@@ -325,17 +330,17 @@ class LicenseDialog(QDialog):
         bl.setSpacing(8)
         bl.addStretch()
 
-        self._copy_btn = Button("复制全文", variant="default")
+        self._copy_btn = Button(tr(_TR_GROUP, "button.copy_all"), variant="default")
         self._copy_btn.setCursor(Qt.PointingHandCursor)
         self._copy_btn.clicked.connect(self._on_copy)
         bl.addWidget(self._copy_btn, 0, Qt.AlignRight)
 
-        folder_btn = Button("打开文件夹", variant="default")
+        folder_btn = Button(tr(_TR_GROUP, "button.open_folder"), variant="default")
         folder_btn.setCursor(Qt.PointingHandCursor)
         folder_btn.clicked.connect(self._on_open_folder)
         bl.addWidget(folder_btn, 0, Qt.AlignRight)
 
-        close_btn = Button("关闭", variant="primary")
+        close_btn = Button(tr("common", "close"), variant="primary")
         close_btn.setCursor(Qt.PointingHandCursor)
         close_btn.clicked.connect(self.accept)
         bl.addWidget(close_btn, 0, Qt.AlignRight)
@@ -358,7 +363,7 @@ class LicenseDialog(QDialog):
         deps = data.get("dependencies", [])
 
         for d in deps:
-            d["_category"] = "依赖"
+            d["_category"] = tr(_TR_GROUP, "category.dependency")
 
         self._all_items = deps
         self._all_items.sort(key=lambda x: x.get("name", ""))
@@ -458,7 +463,7 @@ class LicenseDialog(QDialog):
         # 第三行：版本 + 分类
         meta_info = []
         if version:
-            meta_info.append(f'版本 v{version}')
+            meta_info.append(tr(_TR_GROUP, "detail.version", version=version))
         if category:
             meta_info.append(f'{category}')
         if meta_info:
@@ -489,9 +494,10 @@ class LicenseDialog(QDialog):
                 with open(lic_path, "r", encoding="utf-8") as f:
                     self._selected_license_text = f.read()
             except IOError:
-                self._selected_license_text = "(无法读取许可文件)"
+                self._selected_license_text = tr(_TR_GROUP, "detail.read_failed")
         else:
-            self._selected_license_text = f"(许可文件未找到: {lic_rel})"
+            self._selected_license_text = tr(
+                _TR_GROUP, "detail.file_not_found", path=lic_rel)
 
         self._license_text_label.setText(self._selected_license_text)
 
@@ -499,7 +505,7 @@ class LicenseDialog(QDialog):
         if self._selected_license_text:
             QApplication.clipboard().setText(self._selected_license_text)
             orig = self._copy_btn.text()
-            self._copy_btn.setText("已复制！")
+            self._copy_btn.setText(tr(_TR_GROUP, "button.copied"))
             QTimer.singleShot(1500, lambda: self._copy_btn.setText(orig))
 
     def _on_open_folder(self):
@@ -507,4 +513,4 @@ class LicenseDialog(QDialog):
         if folder.exists():
             os.startfile(folder)
         else:
-            Message.warning(self, f"目录不存在: {folder}")
+            Message.warning(self, tr(_TR_GROUP, "message.dir_not_exist", path=folder))
