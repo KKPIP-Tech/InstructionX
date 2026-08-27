@@ -461,7 +461,7 @@ dialog.exec()
 
 ### 8.3 行为语义
 
-- **退出程序**：真正退出（`closeEvent` accept + 显式 `QApplication.quit()`）
+- **退出程序**：真正退出（`closeEvent` accept + 经 `_request_application_quit()` 显式退出）
 - **最小化到托盘**：隐藏主窗口、托盘图标驻留、弹通知提示（每次都弹，详见 [系统托盘与关闭行为](system-tray.md)）
 - **取消**：Esc、对话框叉号、「取消」按钮统一走 `reject()`，等价于取消关闭，窗口保持原状
 

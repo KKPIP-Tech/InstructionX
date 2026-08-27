@@ -25,13 +25,27 @@
 
 ```
 closeEvent
-  ├─ _force_quit 已置位（托盘菜单「退出」/ 系统关机）→ accept + QApplication.quit()
+  ├─ _force_quit 已置位（托盘菜单「退出」/ 系统关机）→ accept + _request_application_quit()
   ├─ _close_dialog_showing（确认框已弹出，防重入）→ ignore
   └─ 弹出 CloseConfirmDialog（每次必问，无记忆选项）
-       ├─ 退出程序      → _force_quit 置位 + accept + QApplication.quit()
+       ├─ 退出程序      → _force_quit 置位 + accept + _request_application_quit()
        ├─ 最小化到托盘  → ignore + _minimize_to_tray()
        └─ 取消          → ignore（窗口保持原状）
 ```
+
+所有退出路径统一经 `_request_application_quit()` 请求退出事件循环（幂等）：
+
+1. **幂等守卫（`_quit_requested`）**：macOS 上 `quit()` 经 `NSApplication terminate:`
+   实现，期间会重入 `commitDataRequest` 与 `closeEvent`，重复 `quit()` 会形成
+   嵌套 `terminate:` 使进程提前进入 `exit()`；
+2. **冲刷 DeferredDelete**：关闭确认框 `CloseConfirmDialog.ask()` 在 `exec()`
+   返回后 `deleteLater()`，该事件尚未处理即进入退出流程；macOS 上 `terminate:`
+   终点是 `exit()`，残留待删除的对话框会在 C++ 静态析构阶段才被销毁——此时
+   Qt 的 GL 线程本地存储已析构，`QWindow` 析构链（`QSurface::~QSurface` →
+   `QOpenGLContext::currentContext`）空指针解引用导致 SIGSEGV。`quit()` 前
+   `sendPostedEvents(None, DeferredDelete)` 让对话框在 GL/TLS 存活时正常析构。
+
+Windows 上行为不变（不经过 `NSApplication terminate:` 路径）。
 
 标题栏的最小化按钮（—）保持原语义：最小化到任务栏、不弹窗、不进托盘；
 只有「关闭」语义才触发询问（与微信、QQ 等 Windows 惯例一致）。
@@ -83,7 +97,8 @@ ui/tray/
 
 - **恢复主窗口**（菜单项或双击）：`showNormal()` + `raise_()` + `activateWindow()`；
   恢复后托盘图标移除（下次最小化时再驻留）。
-- **退出**：托盘菜单「退出」置 `_force_quit` 后 `QApplication.quit()`，不再弹确认框；
+- **退出**：托盘菜单「退出」置 `_force_quit` 后经 `_request_application_quit()`
+  请求退出（幂等，含 DeferredDelete 冲刷），不再弹确认框；
   `aboutToQuit` 中隐藏托盘图标，避免通知区域残留「幽灵图标」。
 - 托盘不可用时（如裸 GNOME 桌面），「最小化到托盘」降级为普通最小化
   （`showMinimized()`，任务栏保留图标）并记 WARNING 日志。
@@ -103,8 +118,9 @@ Windows 10/11 上走系统 Toast 通知，可能被「专注助手」或通知�
 Windows 注销/关机要求各进程快速响应结束会话；若此时弹出模态确认框无人点击，
 系统关机会被本程序阻塞。主窗口接线 `QApplication.commitDataRequest`
 （QGuiApplication 的会话结束信号，Windows 上对应 WM_QUERYENDSESSION）：
-回调中直接置 `_force_quit = True` 并 `QApplication.quit()` **静默退出，不弹任何对话框**；
-随后系统下发的 `closeEvent` 因 `_force_quit` 已置位而直接 accept，不阻塞系统关机。
+回调中直接置 `_force_quit = True` 并经 `_request_application_quit()` **静默退出，
+不弹任何对话框**；随后系统下发的 `closeEvent` 因 `_force_quit` 已置位而直接
+accept（`_quit_requested` 幂等守卫使其不重复 `quit()`），不阻塞系统关机。
 
 ## 4. 相关文档
 

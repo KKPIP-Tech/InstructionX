@@ -19,7 +19,7 @@ from PySide6.QtGui import (
     QAction, QCursor, QMouseEvent, QColor, QCloseEvent, QIcon, QSessionManager,
     QImage, QPainter, QPixmap
 )
-from PySide6.QtCore import Qt, QRectF
+from PySide6.QtCore import Qt, QRectF, QEvent
 
 # ===================================================================
 # 自定义工具
@@ -237,6 +237,7 @@ class InstructionXMainWindow(QMainWindow):
 
         # 托盘运行状态（closeEvent 编排用）
         self._force_quit = False            # 显式退出路径置位，closeEvent 直接放行
+        self._quit_requested = False        # 退出请求幂等守卫（macOS 防重入 terminate:）
         self._close_dialog_showing = False  # 关闭确认框防重入守卫
         self._active_plugin: Optional[IPlugin] = None  # 当前激活插件，托盘子菜单标记用
 
@@ -822,9 +823,7 @@ class InstructionXMainWindow(QMainWindow):
             # 托盘菜单「退出」等显式退出路径：放行关闭并显式结束事件循环
             # （setQuitOnLastWindowClosed(False) 后关窗不再自动退出）
             event.accept()
-            app = QApplication.instance()
-            if app is not None:
-                app.quit()
+            self._request_application_quit()
             return
         if self._close_dialog_showing:
             # 防重入：确认框弹出期间的重复关闭触发（Alt+F4 连按等）直接忽略
@@ -856,9 +855,7 @@ class InstructionXMainWindow(QMainWindow):
             # setQuitOnLastWindowClosed(False) 后关窗不再自动退出，需显式 quit
             self._force_quit = True
             event.accept()
-            app = QApplication.instance()
-            if app is not None:
-                app.quit()
+            self._request_application_quit()
             return
         if choice is CloseChoice.MINIMIZE_TO_TRAY:
             event.ignore()
@@ -906,9 +903,7 @@ class InstructionXMainWindow(QMainWindow):
             _manager: 会话管理器（Qt 传入，本应用无需与之交互）
         """
         self._force_quit = True
-        app = QApplication.instance()
-        if app is not None:
-            app.quit()
+        self._request_application_quit()
 
     def _minimize_to_tray(self) -> None:
         """最小化到系统托盘：隐藏主窗口、托盘图标驻留并弹通知提示。
@@ -937,9 +932,32 @@ class InstructionXMainWindow(QMainWindow):
     def _quit_application(self) -> None:
         """真正退出程序（托盘菜单「退出」调用）：用户意图已明确，不再询问。"""
         self._force_quit = True
+        self._request_application_quit()
+
+    def _request_application_quit(self) -> None:
+        """请求退出事件循环（幂等）：冲刷待删除对象后调用 ``QApplication.quit()``。
+
+        针对 macOS 退出链路的两项防护（Windows 不受影响、行为不变）：
+
+        1. **幂等守卫**：macOS 上 ``quit()`` 经 ``NSApplication terminate:``
+           实现，期间会重入 ``commitDataRequest`` 与主窗口 ``closeEvent``；
+           重复调用 ``quit()`` 会形成嵌套 ``terminate:`` 提前走到 ``exit()``；
+        2. **冲刷 DeferredDelete**：关闭确认框 ``CloseConfirmDialog.ask()``
+           在 ``exec()`` 返回后 ``deleteLater()``，该 DeferredDelete 尚未处理
+           即进入退出流程；macOS 上 ``terminate:`` 终点是 ``exit()``，残留
+           待删除的对话框会在 C++ 静态析构阶段才被销毁——此时 Qt 的 GL 线程
+           本地存储已析构，``QWindow`` 析构链（``QSurface::~QSurface`` →
+           ``QOpenGLContext::currentContext``）空指针解引用导致 SIGSEGV。
+           在 ``quit()`` 前冲刷可让对话框在 GL/TLS 存活时正常析构。
+        """
+        if self._quit_requested:
+            return
+        self._quit_requested = True
         app = QApplication.instance()
-        if app is not None:
-            app.quit()
+        if app is None:
+            return
+        app.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+        app.quit()
 
     def _activate_plugin_from_tray(self, plugin: IPlugin) -> None:
         """托盘插件子菜单点击：恢复主窗口并切换到指定插件。

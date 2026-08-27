@@ -286,6 +286,7 @@ def __init__(self):
 
     # 托盘运行状态（closeEvent 编排用）
     self._force_quit = False            # 显式退出路径置位，closeEvent 直接放行
+    self._quit_requested = False        # 退出请求幂等守卫（macOS 防重入 terminate:）
     self._close_dialog_showing = False  # 关闭确认框防重入守卫
     self._active_plugin = None          # 当前激活插件，托盘子菜单标记用
 
