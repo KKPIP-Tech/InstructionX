@@ -179,6 +179,8 @@ def install_from_url(
         github_url: GitHub 仓库 URL
         selected_plugins: 要安装的插件路径列表（多插件仓库时）
                         为 None 时安装所有插件
+                        （与 IXRepo.json 的 path 比较前双方均会去掉
+                        尾斜杠规范化，"a" 与 "a/" 视为同一路径）
         official_dir: 官方插件目录
         thirdparty_dir: 第三方插件目录
         progress_callback: 可选的进度回调函数，接收消息字符串
