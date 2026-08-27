@@ -32,6 +32,7 @@
 | matplotlib | 用量统计与 UIKit MarkdownView LaTeX 公式渲染（math_render 异步渲染中枢）使用；旧用量面板图表曾使用，现用量面板已改用 UIKit 原生图表引擎 |
 | packaging | 插件依赖版本检查 |
 | qrcode[pil] >= 7.4 | InstructionX_UIKit 组件库 QRCodeView 组件依赖（库规定唯一允许的第三方依赖） |
+| pyobjc-framework-Cocoa >= 11.0 | 仅 macOS（`sys_platform == "darwin"` 条件依赖）：运行时设置 Dock 栏应用图标（`utils/macos_dock_icon.py`） |
 
 - 依赖单一来源是 `pyproject.toml` 的 `[project].dependencies`；`requirements.txt` 与其保持同步（供 `run.ps1` 使用），**改依赖时两处都要改**。
 - 环境管理使用 **uv**（存在 `uv.lock`、`.python-version`、`.venv/`）。
@@ -323,6 +324,7 @@ utils/
   logging_tools.py          # LoggerManager 单例（滚动文件日志，输出 logs/application.log）、get_name()
   image_utils.py            # 图片工具（load_image_as_base64，原 LLMPluginService 方法迁出）
   thread_utils.py           # 工作线程 → UI 线程封送（run_in_ui_thread 等）
+  macos_dock_icon.py        # macOS Dock 栏应用图标设置（AppKit，非 macOS 空操作）
 plugin/                     # 官方/示例插件（kebab-case 目录，15 个）
 custom_plugin/              # 第三方插件目录
 workers/                    # 预留扩展

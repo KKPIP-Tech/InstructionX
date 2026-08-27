@@ -18,6 +18,7 @@ from ui.main_window import InstructionXMainWindow
 from ui.uikit_theme import apply_uikit_theme
 
 from utils.logging_tools import LoggerManager, get_name
+from utils.macos_dock_icon import set_macos_dock_icon
 
 # ===================================================================
 # 后台任务
@@ -81,6 +82,10 @@ def main():
     
     # 强制立即处理事件，显示启动画面
     application.processEvents()
+
+    # macOS：设置 Dock 栏应用图标（直接 python 运行时进程属 Python.app，
+    # Dock 默认显示 Python 图标；其他平台为空操作）
+    set_macos_dock_icon(Path(__file__).resolve().parent / "ui" / "logo.png")
     
     # 运行应用
     result = application.exec()
