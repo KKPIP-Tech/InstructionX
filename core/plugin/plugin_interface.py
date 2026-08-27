@@ -21,6 +21,7 @@ from typing import Optional, Tuple
 from pathlib import Path
 from PySide6.QtWidgets import QWidget, QApplication, QStyle
 from PySide6.QtGui import QIcon
+from shiboken6 import isValid as _is_cpp_alive
 
 # 无循环依赖（plugin_info_interface 不反向依赖本模块），置顶导入
 from .plugin_info_interface import IPluginInfo
@@ -57,6 +58,11 @@ class IPlugin(_BaseIPlugin):
         实现缓存机制：首次调用时创建控件并缓存，后续调用直接返回缓存实例。
         如果父控件发生变化，会自动更新控件的父级设置。
 
+        返回缓存前会校验控件的 C++ 对象是否仍存活：工作区 clear() 的
+        deleteLater() 等路径可能销毁控件而未通知插件缓存，直接复用将抛出
+        ``RuntimeError: Internal C++ object already deleted``。检测到失效
+        缓存时丢弃之并重建控件。
+
         Args:
             parent: 父控件，传递工作区的中心控件作为父容器
             data_provider: 数据提供者实例，用于数据读写和插件间通信
@@ -64,6 +70,16 @@ class IPlugin(_BaseIPlugin):
         Returns:
             插件的 Qt 用户界面控件
         """
+        # 缓存控件的 C++ 对象已被销毁（如工作区 clear() 的 deleteLater），
+        # 丢弃失效缓存并记录 WARNING（可自愈，但提示生命周期管理存在遗漏）
+        if self._cached_widget is not None and not _is_cpp_alive(self._cached_widget):
+            self._logger.warning(
+                get_name(),
+                f"插件 {self.plugin_name} 的缓存控件已被销毁，丢弃失效缓存并重建"
+            )
+            self._cached_widget = None
+            self._cached_parent = None
+
         # 缓存命中且父控件未变，直接返回缓存的控件
         # 注意：本方法必须在 GUI 线程中调用（QWidget.setParent 跨线程调用是未定义行为）
         if self._cached_widget is not None and self._cached_parent is parent:

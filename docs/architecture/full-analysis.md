@@ -412,11 +412,14 @@ sequenceDiagram
 
 ### 4.3 Widget 缓存复用机制
 
-**文件**：`core/plugin/plugin_interface.py:53-81`
+**文件**：`core/plugin/plugin_interface.py:54-98`
 
 ```mermaid
 flowchart TD
-    A[IPlugin.get_widget] --> B{cached_widget != None?}
+    A[IPlugin.get_widget] --> G{cached_widget != None<br>但 C++ 对象已销毁?}
+    G -->|是| H[丢弃失效缓存并 WARNING 日志]
+    H --> B{cached_widget != None?}
+    G -->|否| B
     B -->|"parent unchanged"| C[return cached widget]
     B -->|"parent changed"| D[setParent parent]
     D --> C
@@ -424,6 +427,11 @@ flowchart TD
     E --> F[cache widget + parent]
     F --> C
 ```
+
+> **失效缓存守卫**：`WorkArea.clear()` 的 `deleteLater()` 等路径会销毁控件的
+> C++ 对象而不通知插件缓存。`get_widget()` 返回缓存前用 `shiboken6.isValid()`
+> 校验存活，已销毁则丢弃缓存走重建路径，避免
+> `RuntimeError: Internal C++ object already deleted`。
 
 ### 4.4 插件 API 注册与跨插件 RPC
 

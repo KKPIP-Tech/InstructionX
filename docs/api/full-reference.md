@@ -169,7 +169,7 @@ from core.interfaces import ILocalizationFacade
 | `plugin_info` | property | 插件信息对象 |
 | `llm_tools` | property | LLM 工具列表（用于 MCP/Function Calling） |
 | `_create_widget(parent, data_provider)` | method (abstract) | 创建 UI |
-| `get_widget(parent=None, data_provider=None)` | method | 获取 Widget（接口基类无缓存，直接调用 `_create_widget`；缓存机制由 `core/plugin/plugin_interface.py` 中的实现提供） |
+| `get_widget(parent=None, data_provider=None)` | method | 获取 Widget（接口基类无缓存，直接调用 `_create_widget`；缓存机制由 `core/plugin/plugin_interface.py` 中的实现提供，返回缓存前经 `shiboken6.isValid()` 校验，C++ 对象已销毁则丢弃失效缓存并重建） |
 | `on_plugin_loaded(plugin_id=None, **kwargs)` | method | 加载完成回调（PluginManager 调用时不传参数，向后兼容旧插件） |
 
 ### 2.3 IPluginInfo
