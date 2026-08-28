@@ -47,9 +47,9 @@ config = ProviderConfig(
 |------|------|------|------|
 | `name` | `str` | 是 | 实例显示名称（可改名的显示名） |
 | `preset_id` | `Optional[str]` | 否 | 关联的预设目录 ID（如 `"glm"`）；`None` = 完全自定义 |
-| `adapter` | `str` | 是 | 适配器家族键（对应 `PROVIDER_REGISTRY` 的键，如 `"glm"`、`"openai-compatible"`） |
+| `adapter` | `str` | 否 | 适配器家族键（对应 `PROVIDER_REGISTRY` 的键，如 `"glm"`、`"openai-compatible"`）；缺省回退为实例 id（兼容旧配置） |
 | `api_key` | `str` | 建议配置 | API 密钥（内存中始终为明文；Ollama 等可留空） |
-| `base_url` | `str` | 建议配置 | API 端点基础 URL（空串表示使用目录默认地址） |
+| `base_url` | `str` | 建议配置 | API 端点基础 URL；**空串不会被运行时回退**——`BaseProvider._make_request` 直接拼接，配置时必须填写真实端点。UI 层（`provider_detail_panel.py` 的「重置」按钮）会展示目录默认地址作为占位/回填建议 |
 | `chat_model` | `str` | 建议配置 | 默认聊天模型名称 |
 | `embedding_model` | `str` | 建议配置 | 默认嵌入模型名称 |
 | `enabled_chat` | `bool` | 建议配置 | 是否启用 Chat 功能（默认 True） |
@@ -230,7 +230,7 @@ def load_models_cache(self, provider_name: str) -> Optional[List[Dict[str, Any]]
             "name": "SiliconFlow",      // 可改名的显示名
             "adapter": "siliconflow",   // 适配器家族键（冗余落盘，目录变更不影响实例）
             "api_key": "b64:...",       // Base64 编码（仅为编码非加密）
-            "base_url": "",             // 空串 = 使用目录默认地址
+            "base_url": "",             // 空串 = 运行时不会回退；必须填写真实端点
             "chat_model": "",
             "embedding_model": "",
             "enabled_chat": true,

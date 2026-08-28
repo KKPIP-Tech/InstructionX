@@ -434,10 +434,10 @@ def save_asset(
 - `content`: 文件内容（bytes）
 
 **返回**:
-- 相对路径（相对于 assets 目录）
+- 相对路径（相对于**数据目录** `data_dir`，格式为 `assets/plugins/{plugin_id}/{filename}`；再经 `get_asset_path()` 拼接 `data_dir` 转为绝对路径）
 
 **异常**:
-- `DataProviderError`: 保存失败时抛出
+- `DataProviderError`: 路径非法（含绝对路径或 `..` 穿越）或写入失败时抛出
 
 **示例**:
 ```python
@@ -445,6 +445,7 @@ with open("thumbnail.png", "rb") as f:
     content = f.read()
 
 relative_path = provider.save_asset("video-editor", "thumbnail.png", content)
+# relative_path == "assets/plugins/video-editor/thumbnail.png"
 ```
 
 ---
@@ -635,7 +636,7 @@ def reset_all_data(self) -> None
 
 重置所有数据（**慎用！**）
 
-**警告**: 此操作会删除所有插件数据和订阅关系，不可恢复！
+**警告**: 此操作会清空所有插件的 `private/public` 数据与活跃实例映射，但**不会**清空 `_subscriptions`（订阅关系保持不变）；重新调用 `subscribe()` 会替换旧回调。不可恢复！
 
 > **注意**：此方法是 `IDataProvider` 接口契约的一部分，由 `DataProvider` 实现类提供。
 

@@ -216,8 +216,10 @@ def reload_plugins(self):
     _plugin_registry、_plugin_name_to_id、_api_registry），然后重新扫描
     并加载所有插件。
 
-    注意：此方法不会清空插件顺序配置（plugin_order.json），用户自定义的
-    插件显示顺序在重新加载后仍然有效（通过 apply_custom_order() 恢复）。
+    注意：此方法**不会调用 apply_custom_order()**——重新加载后的 `_official_plugins`
+    / `_thirdparty_plugins` 按目录扫描顺序填充；如需恢复用户自定义顺序，
+    调用方须显式调用 `apply_custom_order()`。`config/plugin_order.json`
+    本身不会被此方法清空，仅用于按需重新读取。
     """
 ```
 
@@ -472,34 +474,121 @@ def unregister_plugin_api(self, plugin_id: str) -> None:
     """
 ```
 
+### 3.8.1 完整卸载插件
+
+#### uninstall_plugin()
+
+```python
+def uninstall_plugin(self, plugin_id: str, remove_data: bool = False) -> Dict[str, Any]:
+    """
+    完整卸载指定插件
+
+    流程（六步独立容错，任一步骤失败不阻断其余清理）：
+        1. 运行时卸载（生命周期回调、API/MCP、Widget、sys.modules）
+        2. 从注册表与列表移除
+        3. 删除插件目录
+        4. 清理 UUID 持久化文件（`PluginIdentity.delete()`）
+        5. 清理排序 / 分组 / 版本注册表 / 每插件语言覆盖
+        6. 可选删除插件持久化数据
+
+    Args:
+        plugin_id: 插件 UUID
+        remove_data: True 时同时调用 `DataProvider.unregister_plugin()` 删除插件数据
+
+    Returns:
+        Dict: {"success": bool, "message": str, "warnings": List[str]}
+        - success=False 通常表示插件不存在或未加载
+        - warnings 列出各步骤的非致命失败（如目录删除权限不足）
+    """
+```
+
+#### PluginIdentity.delete()
+
+`PluginIdentity(plugin_dir).delete()`：删除插件目录下优先生成的 `.plugin_info.json`，以及回退目录 `data/plugin_identity/{插件目录名}.json`（两者可能都存在）。
+
+### 3.8.2 用户自定义分组与混排排序
+
+#### get_groups()
+
+```python
+def get_groups(self, scope: str) -> List[PluginGroup]:
+    """
+    获取指定 scope 的用户自定义分组列表（顺序即显示顺序）
+
+    Args:
+        scope: "official" 或 "thirdparty"
+    """
+```
+
+#### save_groups()
+
+```python
+def save_groups(self, scope: str, groups: List[PluginGroup],
+                order: Optional[List[tuple]] = None) -> bool:
+    """
+    保存指定 scope 的分组配置与面板统一顺序
+
+    Args:
+        scope: "official" 或 "thirdparty"
+        groups: PluginGroup 列表
+        order: 面板统一顺序 [("group"|"plugin", id), ...]，
+               None 时保留已有顺序（新分组追加在后）
+    """
+```
+
+#### get_sorted_plugins()
+
+```python
+def get_sorted_plugins(self, scope: str) -> List[tuple]:
+    """
+    按面板统一顺序（分组与未分组插件混排）返回渲染序列
+
+    Args:
+        scope: "official" 或 "thirdparty"
+
+    Returns:
+        渲染项列表，每项为：
+        - ("group", PluginGroup, [插件实例...])：一个分组及其组内插件
+        - ("plugin", 插件实例)：未分组插件
+    """
+```
+
+#### 生命周期钩子 IPlugin.on_plugin_unloaded()
+
+`IPlugin.on_plugin_unloaded()`（`core/interfaces/i_plugin.py:111-119`）由 `PluginManager._unload_plugin_instance()` 在卸载/热重载前调用；子类可重写以释放资源（取消订阅、释放文件句柄等），默认空实现保证旧插件向后兼容。
+
 ### 3.9 依赖注入（PluginServices）
 
 #### _create_plugin_services()
 
 ```python
-def _create_plugin_services(self) -> PluginServices:
+def _create_plugin_services(self, plugin_id: str) -> PluginServices:
     """
     创建插件服务依赖注入容器
 
     创建包含所有核心服务的 PluginServices 对象，
     供插件在构造器和 on_plugin_loaded 回调中使用。
 
+    Args:
+        plugin_id: 插件 UUID（用于绑定多语言取词门面 `PluginI18nFacade`）
+
     Returns:
         PluginServices: 服务容器实例
     """
 ```
 
-**服务容器内容**：
+**服务容器内容**（`core/interfaces/plugin_services.py`，8 字段）：
 
 | 服务 | 类型 | 说明 |
 |------|------|------|
-| `llm_facade` | `LLMPluginService` | LLM 服务入口（单例） |
+| `llm_facade` | `LLMPluginService` | LLM 服务入口（单例，无降级保护、始终注入） |
 | `data_provider` | `DataProvider` | 数据持久化服务（失败时为 `None`） |
 | `task_manager` | `BackgroundTaskManager` | 后台任务管理（失败时为 `None`） |
-| `logger` | `ILogger` | 日志服务（`LoggerManager` 实例） |
+| `logger` | `ILogger` | 日志服务（`LoggerManager` 实例，无降级保护、始终注入） |
 | `mcp_manager` | `MCPManager` | MCP Server 管理器（失败时为 `None`） |
 | `mcp_client` | `MCPClientManager` | MCP 外部连接管理器（失败时为 `None`） |
 | `font_manager` | `FontManager` | 字体管理器（`core/font`，无降级保护、始终注入） |
+| `localization` | `ILocalizationFacade` | 多语言取词门面（绑定本插件 UUID，无降级保护、始终注入；实现为 `PluginI18nFacade`） |
 
 **使用流程**（见 `manager.py` 的 `_load_plugin_from_directory()` 方法）：
 

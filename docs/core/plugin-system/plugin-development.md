@@ -89,7 +89,7 @@ class MyPlugin(IPlugin):
 
 硬性要求：**`service.py` 中的服务类名必须以 `Service` 结尾**（如 `Service`、`MyPluginService`）。框架在自动注册跨插件 API 时按此约定查找服务类。
 
-> **💡 允许的代理模式**：当插件业务实现分散在多个子模块（如 `function/services/`、`function/utils/` 等）时，`service.py` 中的 `Service` 类可通过 `__getattr__` 转发属性访问到底层实现（典型写法见 `plugin/llm-chat/service.py`，其 `Service.__getattr__` 转发到 `function/services/core_service.py`）。**框架对此模式无限制**——只要 `Service` 类存在于 `service.py` 中、类名以 `Service` 结尾即可。
+> **💡 允许的代理模式**：当插件业务实现分散在多个子模块（如 `function/services/`、`function/utils/` 等）时，`service.py` 中的 `Service` 类可通过 `__getattr__` 转发属性访问到底层实现（典型写法：`Service.__getattr__` 转发到 `function/services/core_service.py`）。**框架对此模式无限制**——只要 `Service` 类存在于 `service.py` 中、类名以 `Service` 结尾即可。
 
 框架自动实例化服务类时，按以下顺序匹配构造函数签名（尝试到成功为止）：
 

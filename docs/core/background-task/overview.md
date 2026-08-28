@@ -36,7 +36,7 @@ class TaskType(Enum):
 
 ### 2.2 同步任务 (SYNC)
 
-- **特点**: 立即执行，在主线程中运行
+- **特点**: 立即执行，**在调用方线程中运行**（不是主线程——`SYNC` 任务的同步性是相对异步/定时/长期而言的，调用方应理解任务将阻塞自身线程）
 - **适用场景**: 快速完成的小任务
 - **持久化注意**: 同步任务的 `RUNNING` 状态**不会被持久化**到存储中。`mark_running()` 后没有调用 `save_task()`，任务完成后才在 `finally` 块中保存最终状态（`COMPLETED` 或 `FAILED`）。因此，如果应用在同步任务执行期间崩溃，任务将不会留下运行中的记录。
 - **示例**:
@@ -109,7 +109,21 @@ class TaskType(Enum):
   )
   ```
 
+#### 2.5.1 长期任务自动重启退避机制
+
+`auto_restart=True` 的长期任务异常退出后，`BackgroundTaskManager` 按**指数退避**重启（`core/task/background_task.py` 模块级常量）：
+
+| 常量 | 值 | 含义 |
+|------|----|------|
+| `AUTO_RESTART_INITIAL_DELAY` | 5.0 秒 | 首次重启延迟 |
+| `AUTO_RESTART_MAX_DELAY` | 300.0 秒（5 分钟）| 单次延迟上限（指数增长封顶值） |
+| `MAX_AUTO_RESTARTS` | 10 次 | 单次任务生命周期内最大重启次数；超过后任务标记为 `failed` 并停止后续重启（需插件手动重新注册） |
+
+退避序列：`5s → 10s → 20s → 40s → 80s → 160s → 300s → 300s → ...`，第 11 次异常后停止重启并落 `failed` 状态。退避期间任务在 `_restart_timers` 中以 `threading.Timer` 形式排队；调用 `shutdown()` 时会统一取消所有待重启定时器。
+
 ---
+
+## 3. 任务状态
 
 ## 3. 任务状态
 
@@ -404,6 +418,30 @@ task_id = manager.register_async_task(
 ---
 
 ## 9. 持久化存储
+
+### 9.0 生命周期管理：shutdown() 限时优雅关闭
+
+`main.py` 在 `application.exec()` 返回后调用 `BackgroundTaskManager.shutdown()`，流程**严格限时**，保证应用不会因任务未结束而卡死：
+
+1. **拒绝新任务**：`self._is_shutdown = True`，后续 `register_async_task` / `register_scheduled_task` / `register_long_running_task` 均返回 `None`；
+2. **停止定时任务检查线程**：`_stop_event.set()` + `_schedule_check_thread.join(timeout=CHECK_THREAD_JOIN_TIMEOUT)`；
+3. **取消待重启定时器**：遍历 `_restart_timers` 全部 `timer.cancel()`；
+4. **停止长期任务**：先逐个调用 `stop_callback`（让任务尽快收到停止信号），再 `future.result(timeout=LONG_TASK_STOP_TIMEOUT=3.0s)` 限时等待；超时任务记 WARNING 并 `future.cancel()` 放弃等待；正常退出的长期任务标记为 `STOPPED` 状态并落存储（**正常退出语义**——重启后不自动恢复；「崩溃中断」的任务会在下次启动时由 `_backfill_registry` / 工厂恢复路径恢复）；
+5. **关闭线程池**：在独立 `BackgroundTaskExecutorShutdown` daemon 线程中调用 `executor.shutdown(wait=True, cancel_futures=True)`；总上限 `EXECUTOR_SHUTDOWN_TIMEOUT=10s`，超时记 WARNING 放弃等待；
+6. **清理单例**：`BackgroundTaskManager._instance = None`，下次 `BackgroundTaskManager()` 重新构造（典型场景：单元测试 / 重启）。
+
+可配常量均位于 `BackgroundTaskManager` 模块顶部（`LONG_TASK_STOP_TIMEOUT` / `EXECUTOR_SHUTDOWN_TIMEOUT` / `CHECK_THREAD_JOIN_TIMEOUT`）。
+
+### 9.0.1 启动期自动清理过期任务
+
+`BackgroundTaskManager.__init__()` 启动时调用 `cleanup_old_tasks(max_age_days=TASK_RECORD_MAX_AGE_DAYS=30)`，删除 `finished_at` 距今超过 30 天的已完成/失败任务，**避免 `data/tasks.json` 长期膨胀**。`max_age_days` 由插件通过 `cleanup_old_tasks(max_age_days=N)` 手动调用覆盖。
+
+### 9.0.2 TaskStorage 损坏防护
+
+`TaskStorage` 读取 `data/tasks.json` 时：
+
+- **首次失败**（JSON 解析异常 / 读盘异常）：将原文件备份为 `data/tasks.json.corrupt.bak`（**固定文件名，会覆盖旧备份**），写入空 `{"tasks":{}, "scheduled_tasks":{}, "long_running_tasks":{}}`，记 WARNING 日志；`Application` 启动不受阻断；同时清除 `_read_ok` 标志，**防止后续 save 在未重读的情况下用空数据覆盖磁盘**；
+- **首次失败后再次重读**：基于空配置继续运行（除非空配置本身也无法解析）。
 
 ### 9.1 tasks.json 结构
 

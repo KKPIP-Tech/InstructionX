@@ -43,7 +43,8 @@ docs/
 │   │
 │   ├── data-provider/               # 数据层
 │   │   ├── overview.md              # DataProvider 概述
-│   │   └── api-reference.md         # DataProvider API 参考
+│   │   ├── api-reference.md         # DataProvider API 参考
+│   │   └── sqlite-migration-plan.md # SQLite 迁移实施文档（含 schema 演进 + 运维手册）
 │   │
 │   ├── background-task/             # 后台任务
 │   │   ├── overview.md             # 后台任务概述

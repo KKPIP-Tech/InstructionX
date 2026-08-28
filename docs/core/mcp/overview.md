@@ -233,9 +233,9 @@ mcp.start_server(transport="stdio")
 mcp.start_server(transport="streamable-http")
 ```
 
-**stdio 方式**：`mcp.run(transport="stdio")` 直接在当前进程 stdin/stdout 上运行 MCP 协议。适用于 Claude Code MCP Client 连接。
+**stdio 方式**：`mcp.run(transport="stdio")` 直接在当前进程 stdin/stdout 上运行 MCP 协议。**该调用会阻塞当前线程**直到 Server 退出，请勿在 Qt 主线程直接调用（应放入工作线程，`MCPHostServer.run_stdio()` 检测到主线程调用时会记录警告）。适用于 Claude Code MCP Client 连接。
 
-**streamable-http 方式**：`mcp.run(transport="streamable-http")` 在后台线程启动 HTTP 服务器，默认端口 8765。
+**streamable-http 方式**：`mcp.run(transport="streamable-http")` 在后台线程启动 HTTP 服务器，默认端口 8765。启动时最多等待 5 秒（`SERVER_START_WAIT_TIMEOUT`）确认服务就绪；启动失败（如端口被占用、线程异常退出）会抛出 `RuntimeError`，不会静默吞掉。
 
 ### 5.3 配置
 
@@ -261,7 +261,8 @@ mcp.start_server(transport="streamable-http")
 | 字段 | 说明 |
 |------|------|
 | `auth_token` | HTTP 模式下的 Bearer 认证令牌；`null` 表示不启用认证（仅建议在本机回环地址下使用）。配置文件中以 `b64:` 前缀的 Base64 混淆格式存储（防瞥视，非加密），兼容旧版明文值 |
-| `exposed_plugins` | 允许暴露为 MCP 工具的插件 ID 白名单；`null` 表示暴露全部插件（默认，向后兼容） |
+| `exposed_plugins` | 允许暴露为 MCP 工具的插件 ID 白名单；`null` 表示暴露全部插件（默认，向后兼容）。**fail-closed 语义**：`MCPBridge` 读取白名单时若抛出异常（如配置损坏），返回 `[]` 而非回退到「全部暴露」——任何读取异常都不会意外暴露未授权插件 |
+| `MCPRemoteServerConfig.enabled` | bool | 是否启用该外部 Server 连接；`enabled=False` 时 `MCPClientManager` 在 `connect_all()` 阶段直接跳过该配置项（不发起连接） |
 | `allowed_hosts` | 允许的 HTTP Host 头白名单（保留项，暂未强制校验） |
 
 **HTTP 模式 Bearer Token 鉴权**：`transport` 为 `streamable-http` 且配置了 `auth_token` 时，`MCPHostServer` 会通过内置的 `_BearerAuthMiddleware`（见 `core/mcp/server.py`）校验每个 HTTP/WebSocket 请求的 `Authorization: Bearer <token>` 头，校验失败返回 401（WebSocket 以 4401 关闭）；比较使用 `hmac.compare_digest` 防止时序侧信道。`auth_token` 仅允许 ASCII 可见字符。若需将 MCP Server 暴露到本机回环以外的地址，务必配置 `auth_token` 启用鉴权。
@@ -559,6 +560,18 @@ mcp.start_server(transport="stdio")
 mcp = get_mcp_manager()
 mcp.shutdown()  # 停止 Server + 断开所有 Client 连接
 ```
+
+---
+
+## 9.3 环境变量与故障语义
+
+| 环境变量 / 行为 | 说明 |
+|----------------|------|
+| `INSTRUCTIONX_MCP_CONFIG` | 覆盖 MCP 配置文件路径（默认 `config/mcp_config.json`）；路径不存在时回退到默认路径。 |
+| HTTP 模式启动失败 | `start_server(transport="streamable-http")` 在后台线程启动后等待 `SERVER_START_WAIT_TIMEOUT=5s` 确认就绪；端口被占用 / 线程异常退出 / FastMCP 启动抛错 → 抛出 `RuntimeError`，**不静默吞掉**。`is_server_running()` 仍会返回 `False`。 |
+| `exposed_plugins` 读取失败 | `MCPBridge` 读取白名单时若抛异常（配置损坏、字段类型错误等），返回 `[]` 而非回退到「全部暴露」——**fail-closed** 保证任何读取异常都不会意外暴露未授权插件。 |
+| `MCPRemoteServerConfig.enabled=False` | `MCPManager.connect(config)` 阶段直接跳过该配置项（不发起外部连接、不进入重连循环）；避免对明确禁用的远程 Server 持续重试浪费资源。 |
+| stdio 外部 Server 的 `env` 字段 | 与默认环境**合并**而非替换：未显式列出的环境变量（如 `PATH` / `SYSTEMROOT`）仍继承启动进程的环境，避免目标 MCP Server 找不到可执行文件或系统库。 |
 
 ---
 

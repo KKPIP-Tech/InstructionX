@@ -143,6 +143,10 @@ from core.interfaces import ILocalizationFacade
 | `reload_plugins()` | 重新加载所有插件 | None |
 | `register_plugin(plugin, is_official)` | 手动注册插件 | None |
 | `unregister_plugin(plugin_name)` | 移除插件 | None |
+| `uninstall_plugin(plugin_id, remove_data=False)` | 完整卸载插件（六步流程：运行时卸载 → 注册表移除 → 删除目录 → 清理 UUID → 清理排序/分组/版本注册表/语言覆盖 → 可选删数据） | Dict（`{success, message, warnings}`） |
+| `get_groups(scope)` | 获取指定 scope 的用户自定义分组列表（`"official"` / `"thirdparty"`） | List[PluginGroup] |
+| `save_groups(scope, groups, order=None)` | 保存分组配置与面板统一顺序（分组与未分组插件混排） | bool |
+| `get_sorted_plugins(scope)` | 按面板统一顺序返回渲染序列（分组与未分组插件混排） | List[tuple] |
 | `apply_custom_order()` | 应用自定义顺序 | None |
 | `save_plugin_order(official_plugin_ids, thirdparty_plugin_ids)` | 保存插件顺序 | bool |
 | `get_official_plugin_ids()` | 获取官方插件 UUID 列表 | List[str] |
@@ -153,7 +157,19 @@ from core.interfaces import ILocalizationFacade
 | `register_plugin_api(plugin_id, service_instance, api_descriptions)` | 注册插件 API | None |
 | `get_api_description(plugin_id, method_name=None)` | 获取 API 结构化描述 | Dict |
 | `call_plugin_method(caller_id, plugin_id, method_name, **kwargs)` | 跨插件调用 | Any |
-| `get_all_function_tools()` | 获取 MCP 工具列表 | List[Dict] |
+| `get_all_function_tools()` | 获取 MCP 工具列表 | List[Dict]（工具名 `sanitize_tool_name(f"{plugin_id}__{method_name}")`） |
+
+#### GitHubPluginInstaller 主要 API
+
+**文件**: `core/plugin/github_plugin_installer.py`
+
+| 方法 | 说明 | 返回 |
+|------|------|------|
+| `inspect_repository(github_url)` | 检查 GitHub 仓库返回可安装插件列表 | RepoInspectionResult |
+| `install_from_url(github_url, ...)` | 从 GitHub URL 安装插件 | List[InstallResult] |
+| `install_from_zip(zip_path, target_dir=None, progress_callback=None)` | 从本地 zip 安装插件（含 `IXPlugin.json`） | List[InstallResult] |
+| `get_available_versions(source_url, descriptor_path="")` | 列出远程仓库可用版本（按插件版本号降序，对每个 Release tag 经 Contents API 读取 `IXPlugin.json` 解析版本） | List[ReleaseInfo] |
+| `install_release(owner, repo, tag, target_dir, selected_plugins=None, progress_callback=None)` | 安装指定 GitHub Release tag 对应的插件版本（upgrade / downgrade / reinstall 自动检测） | List[InstallResult] |
 
 ### 2.2 IPlugin
 

@@ -95,7 +95,7 @@ self._logger           # LoggerManager 单例
 # 模块顶部（manager.py 文件头部）：
 from core.data import DataProvider
 
-def _create_plugin_services(self) -> PluginServices:
+def _create_plugin_services(self, plugin_id: str) -> PluginServices:
     # 函数级 import 仅 get_llm_plugin_service（用于打破 core.plugin ↔ core.llm/mcp 循环依赖）
     from core.llm import get_llm_plugin_service
     try:
@@ -110,6 +110,8 @@ def _create_plugin_services(self) -> PluginServices:
         logger=logger,
         mcp_manager=self._get_mcp_manager(),
         mcp_client=self._get_mcp_client(),
+        font_manager=get_font_manager(),
+        localization=PluginI18nFacade(plugin_id, get_language_manager()),
     )
 ```
 
@@ -1973,9 +1975,9 @@ SQLite 迁移解决了“全量文件读写”问题，但单次 `get_plugin_dat
    - 应用使用 `data/data.db` 作为持久化后端。
    - 原始 `data.json` 已备份，可手动归档或删除（建议保留至少最近 3 个 `.bak`）。
 5. **迁移失败时**：
-   - 应用会抛出 `DataProviderError` 并提示用户。
-   - 如果失败发生在 SQLite 事务提交前，不完整的数据库文件会被清理，`data.json` 保持原位，下次启动可重试迁移。
-   - 如果 SQLite 事务已提交但重命名 `data.json` 失败，`data.db` 已包含完整数据，`data.json` 仍在原位；应用会基于 `data.db` 正常运行。
+   - 应用会抛出 `DataProviderError`（来自 `SQLiteBackendError`，由 `DataProvider.__init__` 包装）并提示用户。
+   - 任何失败都会关闭连接并**删除不完整的 `data.db` / `data.db-wal` / `data.db-shm`**，确保下次启动时仍可从原始 `data.json` 重试迁移（`sqlite_backend.py` 的 `ensure_database()` 异常分支）；
+   - 即便 SQLite 事务已提交，只要重命名 `data.json` 失败或后续步骤异常，同样会删除数据库文件并抛 `SQLiteBackendError` —— 下次启动重试迁移（不要假设「重命名失败 = 数据库已完整可用」）。
    - 如需应急启动，可设置环境变量 `INSTRUCTIONX_DATAPROVIDER_BACKEND=json` 临时回退到 JSON 后端。
 6. **回退到 JSON 模式（仅限必要时）**：
    - 停止应用。

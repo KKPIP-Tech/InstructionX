@@ -38,7 +38,7 @@
 | PySide6 | >=6.10 | Qt for Python，UI 框架 |
 | SQLite + WAL | — | DataProvider 默认持久化后端（插件数据） |
 | JSON | — | TaskStorage 持久化格式；DataProvider 应急回退后端 |
-| Windows | 11 | 目标平台 |
+| Windows | 10 / 11 | 目标平台 |
 
 ### 1.3 核心设计原则
 
@@ -121,8 +121,8 @@ graph TB
     end
 
     subgraph Plugins ["Plugins"]
-        LLM_CHAT[llm_chat]
-        OTHER[第三方插件<br/>（通过 GitHub 安装）]
+        OFFICIAL[官方/示例插件<br/>plugin/（仅用于本地开发验证，非框架捆绑列表）]
+        OTHER[第三方插件<br/>（通过 GitHub 安装至 custom_plugin/）]
     end
 
     subgraph Utils ["Utils"]
@@ -275,7 +275,7 @@ class IDataProvider(ABC):
     # 发布/订阅
     def subscribe(subscriber_id, target_plugin_id, target_key, callback) -> None
     def unsubscribe(subscriber_id, target_plugin_id=None) -> None
-    def publish(publisher_id, key, value) -> None
+    def publish(publisher_id, key, value, namespace=PUBLIC) -> None
 
     # 资源管理
     def save_asset(plugin_id, filename, content) -> str
@@ -350,9 +350,10 @@ class PluginServices:
     mcp_manager: "MCPManager" = field(default=None)       # MCP Server 管理器
     mcp_client: "MCPClientManager" = field(default=None)  # MCP Client 管理器
     font_manager: "FontManager" = field(default=None)     # 字体管理器（core/font，无降级保护、始终注入）
+    localization: "ILocalizationFacade" = field(default=None)  # 多语言取词门面（绑定本插件 UUID，无降级保护、始终注入；实现为 PluginI18nFacade）
 ```
 
-**使用方式**：PluginManager 通过 `_create_plugin_services()` 创建容器实例，在加载插件时通过 `services` 参数注入。详见 [PluginManager](../core/plugin-system/plugin-manager.md)。
+**使用方式**：PluginManager 通过 `_create_plugin_services(plugin_id)` 创建容器实例（传入 `plugin_id` 用于绑定取词门面），在加载插件时通过 `services` 参数注入。详见 [PluginManager](../core/plugin-system/plugin-manager.md)。
 
 ---
 
@@ -749,11 +750,12 @@ sequenceDiagram
     SB->>SB: mousePressEvent / click
     SB->>SP: skill_clicked Signal(IPlugin)
     SP->>MW: skill_clicked Signal(IPlugin)
-    MW->>WA: set_plugin(IPlugin)
-    WA->>Plugin: plugin.get_widget(parent, dp)
-    Plugin-->>WA: QWidget (cached)
+    MW->>WA: clear_keep_highlight()
+    WA-->>MW: clear done (keep highlight)
+    MW->>Plugin: plugin.get_widget(parent=work_area.get_widget())
+    Plugin-->>MW: QWidget (cached)
+    MW->>WA: add_widget(widget)
     WA-->>MW: widget displayed
-    MW->>SP: set_active_button(SkillButton)
 ```
 
 ### 8.3 WorkArea Widget 缓存策略
@@ -902,7 +904,7 @@ sequenceDiagram
 
 ### 12.4 PluginServices DI 容器
 
-PluginManager 通过 `_create_plugin_services()` 创建 `PluginServices` 容器，并通过构造器参数注入到各插件中。新版插件通过 `self._services` 访问服务，旧版插件可通过直接导入单例兼容访问。
+PluginManager 通过 `_create_plugin_services(plugin_id)` 创建 `PluginServices` 容器（传入 `plugin_id` 用于绑定 `PluginI18nFacade` 取词门面），并通过构造器参数注入到各插件中。新版插件通过 `self._services` 访问服务，旧版插件可通过直接导入单例兼容访问。
 
 ### 12.5 API 注册类名偏好
 
@@ -946,8 +948,7 @@ class MyPlugin(IPlugin):
         return widget
 
     def on_plugin_loaded(self) -> None:
-        # 注册定时任务工厂
-        from core.task import BackgroundTaskManager
+        # 注册定时任务工厂（导入位于文件顶部，本例仅示意调用方式）
         BackgroundTaskManager().register_scheduled_task_factory(
             self.plugin_id, self.my_task_func, self.on_task_done
         )
@@ -1121,7 +1122,7 @@ class Service:
 | `data/data.db` | SQLite 数据库：plugins、plugin_data、active_instances 表 |
 | `data/data.json` | `{plugins: {id: {type, active, private, public}}, active_instances: {}}`（JSON 应急后端） |
 | `data/tasks.json` | `{tasks: {}, scheduled_tasks: {}, long_running_tasks: {}}`（任务记录含 `func_name` 字段，用于重启后精确匹配工厂函数） |
-| `data/llm_usage.json` | `[UsageRecord, ...]` |
+| `data/llm_usage.json` | `{"version": 1, "records": [UsageRecord, ...]}`（schema v1：顶层对象 + records 数组） |
 | `data/conversations.json` | LLM 会话持久化 |
 
 ### 附录 B：已知问题汇总

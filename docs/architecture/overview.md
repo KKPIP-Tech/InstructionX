@@ -55,6 +55,15 @@ graph TB
         TR[ToolRegistry<br/>工具注册表]
     end
 
+    subgraph I18N ["i18n 层"]
+        LMM[LanguageManager<br/>单例 QObject]
+        PIF[PluginI18nFacade<br/>绑定插件 UUID]
+    end
+
+    subgraph Font ["字体子系统"]
+        FM[FontManager<br/>单例]
+    end
+
     subgraph Storage ["持久化层"]
         DB[data/data.db]
         DBWAL[data.db-wal]
@@ -74,17 +83,22 @@ graph TB
     PM -.->|创建并注入| PS
     PS -.->|llm_facade| LLMS
     PS -.->|mcp_manager / mcp_client| MCPM
+    PS -.->|localization| PIF
+    PIF --> LMM
+    PS -.->|font_manager| FM
     LLMS --> LLMP
     LLMS --> TR
     MCPC --> TR
     LLMP -->|LLM API| LLMConfig
     PM -->|插件加载| Plugins
     PM -->|MCP 工具同步| MCPM
+    PM -->|注册插件语言包| LMM
     DP -->|数据持久化| DB
     DBWAL -.->|WAL| DB
     DBSHM -.->|WAL| DB
     BTM -->|任务存储| TasksJSON
     MCPM -->|配置| MCPConfig
+    LMM -->|读写| I18NCfg[config/i18n.json<br/>config/plugin_languages.json]
 ```
 
 ---
@@ -160,7 +174,7 @@ graph TB
 **职责**:
 - 对话生命周期管理（创建、更新、查询）
 - 上下文截断（超出 `max_context_tokens`（默认 120000）时自动从最早的用户/助手消息开始截断，system prompt 与最近消息保留；旧参数名 `max_context` 为废弃兼容参数）
-- Token 估算（中文字符按 1:1 计，英文按 4:1 估算）
+- Token 估算（CJK（中/日/韩）字符按 ~1 token/字，其余字符按 ~4 字符/token 估算）
 - 费用计算（基于 `DEFAULT_PRICING` 定价表，随配置变更热更新）
 
 #### 3.4.2 ToolCallExecutor / ToolRegistry
@@ -184,7 +198,7 @@ graph TB
 
 **文件位置**: `core/plugin/plugin_version.py`
 
-**职责**: 语义化版本管理，支持类型前缀（release/beta/alpha/internal）和中文显示。
+**职责**: 语义化版本管理，支持五种类型前缀（release/pre-release/beta/alpha/internal）和中文显示。
 
 ### 3.6 PluginIcon（图标管理）
 
@@ -224,7 +238,37 @@ graph TB
 
 **详细文档**: [GitHub 插件安装器](../core/plugin-system/plugin-installer.md)
 
-### 3.11 抽象接口层
+### 3.11 多语言子系统（i18n）
+
+**文件位置**: `core/i18n/`（9 个模块）
+
+**职责**: 框架与插件文案的统一取词、当前语言状态管理、语言变更通知、每插件语言覆盖。
+
+**核心模块**:
+
+| 模块 | 职责 |
+|------|------|
+| `language_manager.py` | `LanguageManager` 单例（QObject）：`tr(group, key, /, **params)` 取词、`set_language()` 实时切换（`language_changed` 信号）、每插件语言覆盖三级解析 |
+| `facade.py` | `PluginI18nFacade`：绑定插件 UUID 的取词门面（`ILocalizationFacade` 实现，由 `PluginServices.localization` 注入） |
+| `plugin_registry.py` | `PluginTextRegistry`：插件语言包自动注册表（扫 `<插件目录>/text/*.xml`） |
+| `settings_store.py` | `I18nSettingsStore`：`config/i18n.json` + `config/plugin_languages.json` 读写（原子写 + 损坏备份 `.json.corrupt.bak` 重建） |
+| `loader.py` | `load_catalog()` + `CatalogCache`：XML 解析 + 目录级惰性加载（含负缓存） |
+| `catalog.py` | `TextCatalog`（frozen dataclass）：单语言文案目录数据模型 |
+| `fallback.py` | 语言代码解析（`zh-TW → zh`）、取词回退链、`ERROR_TEXT` 常量 |
+| `ixplugin_i18n.py` | `resolve_i18n_field`：IXPlugin.json / IXRepo.json 多语言字段解析 |
+| `exceptions.py` | `I18nError`（仅编程错误，正常路径走回退链） |
+
+**语言文件约定**: 框架语言文件位于 `ui/text/<语言代码>.xml`（`zh.xml` 默认语言必须完整）；插件语言文件位于各插件的 `text/` 目录（**插件必需项**，对未提供语言包的存量插件保持兼容）。
+
+**回退链**: `当前语言 → 默认语言（DEFAULT_LANGUAGE="zh"，开发者设定用户不可改）→ ERROR_TEXT`。
+
+**启动集成**: `main.py` 在 `apply_uikit_theme()` 之后、主窗口构造之前调用 `get_language_manager()` 完成初始化（依赖 `QObject`，需 `QCoreApplication` 已创建）；插件加载期由 `PluginManager` 自动调用 `register_plugin_texts(plugin_id, plugin_dir)`。
+
+**UI 入口**: 主窗口「编辑 → 语言」打开 `LanguageDialog`（`ui/dialog/language_dialog.py`）；插件管理对话框详情面板「语言…」按钮打开 `PluginLanguageDialog`（无语言包时置灰）。
+
+**详细文档**: [多语言（i18n）子系统概述](../core/i18n/overview.md)
+
+### 3.12 抽象接口层
 
 **文件位置**: `core/interfaces/`
 
@@ -239,14 +283,15 @@ graph TB
 **接口清单**:
 
 | 接口 | 文件 | 说明 | 对应实现 |
-|------|------|------|---------|
+|------|------|------|--------|
 | `IPlugin` | `i_plugin.py` | 插件抽象基类 | `core/plugin/plugin_interface.py` |
 | `IPluginInfo` | `i_plugin_info.py` | 插件信息抽象基类 | `core/plugin/plugin_info_interface.py` |
 | `IDataProvider` | `i_data_provider.py` | 数据提供者接口 | `core/data/data_provider.py` |
 | `ITaskManager` | `i_task_manager.py` | 任务管理器接口 | `core/task/background_task.py` |
 | `ILLMService` | `i_llm_service.py` | LLM 插件服务接口 | `core/llm/plugin_service.py`（`LLMPluginService` 显式继承） |
 | `ILogger` | `i_logger.py`（`core/interfaces/` 重导出） | 日志接口 | `utils/logging_tools.py`（LoggerManager） |
-| `PluginServices` | `plugin_services.py` | 服务封装（依赖注入容器） | — |
+| `ILocalizationFacade` | `i_localization.py` | 插件文案取词门面接口（绑定插件 UUID） | `core/i18n/facade.py` 的 `PluginI18nFacade` |
+| `PluginServices` | `plugin_services.py` | 服务封装（依赖注入容器，8 字段） | — |
 
 **导入指南**:
 ```python
@@ -360,6 +405,16 @@ InstructionX/
 │   │   ├── manager.py        # FontManager 单例（安装/卸载/注册表持久化/系统回退）
 │   │   ├── font_record.py    # FontRecord 字体注册记录
 │   │   └── exceptions.py     # FontInstallError
+│   ├── i18n/                 # 多语言子系统（XML 语言文件 + 回退链取词）
+│   │   ├── catalog.py        # TextCatalog 数据模型（frozen dataclass）
+│   │   ├── loader.py         # load_catalog + CatalogCache（目录级惰性加载缓存）
+│   │   ├── fallback.py       # resolve_language_code / lookup_template / ERROR_TEXT 常量
+│   │   ├── settings_store.py # I18nSettingsStore（config/i18n.json + config/plugin_languages.json）
+│   │   ├── plugin_registry.py # PluginTextRegistry 插件语言包注册表
+│   │   ├── facade.py         # PluginI18nFacade（ILocalizationFacade 实现）
+│   │   ├── ixplugin_i18n.py  # resolve_i18n_field（IXPlugin.json 多语言字段解析）
+│   │   ├── exceptions.py     # I18nError（仅编程错误）
+│   │   └── language_manager.py # LanguageManager 单例（QObject）：tr() / set_language / language_changed
 │   └── llm/                  # LLM 提供者实现
 │       ├── llm_provider.py  # LLMProvider 核心层（adapter 分发、check_*、惰性刷新）
 │       ├── provider_interface.py  # ILLM + Message/ChatResponse/ToolCall/ModelInfo/ModelCheckResult
@@ -400,17 +455,21 @@ InstructionX/
 │   │   └── skill_button.py  # SkillButton 按钮组件
 │   ├── work_area/           # 工作区
 │   │   └── work_area.py
+│   ├── text/                # 框架语言文件目录（<语言代码>.xml）
 │   └── dialog/              # 对话框
 │       ├── __init__.py
 │       ├── about_dialog.py      # 关于对话框
 │       ├── license_dialog.py    # 开源许可对话框
 │       ├── close_confirm_dialog.py  # 关闭确认对话框（退出/最小化到托盘/取消）
+│       ├── font_manager_dialog.py   # 字体管理对话框（安装/卸载/预览/系统字体回退）
+│       ├── language_dialog.py       # 界面语言选择对话框（编辑菜单「语言」打开）
+│       ├── plugin_language_dialog.py # 插件语言选择对话框（每插件语言覆盖）
 │       ├── llm_settings/        # LLM 设置对话框包（两栏：列表 + 详情，自动保存语义）
 │       ├── plugin_management_dialog.py  # 插件管理对话框（安装/升级/降级/卸载 + 分组与排序）
-│       ├── plugin_order_dialog.py  # 插件排序对话框
+│       ├── plugin_order_dialog.py  # 插件排序对话框（遗留，排序功能已迁入 plugin_management_dialog）
 │       └── github_plugin_install_dialog.py  # GitHub 插件安装对话框
 │
-├── workers/                  # 预留：多进程工作池
+├── workers/                  # 预留扩展目录（当前为空，框架后台线程统一由 BackgroundTaskManager 管理）
 │
 ├── plugin/                   # 官方插件安装目录（.gitignore 忽略 plugin/*/，git 仅跟踪 __init__.py；
 │                             #   插件内容经 GitHub 安装器获取，本地开发副本中另有若干官方/示例插件）
@@ -424,6 +483,8 @@ InstructionX/
 │   ├── tasks.json
 │   ├── llm_usage.json
 │   ├── conversations.json    # LLM 会话持久化
+│   ├── fonts/                # 框架安装字体目录（fonts.json 注册表，schema v1）
+│   ├── plugin_identity/      # 插件 UUID 回退存储（{插件目录名}.json）
 │   └── assets/
 │       └── plugins/          # 插件资源文件
 │
@@ -433,13 +494,20 @@ InstructionX/
 │   ├── plugin_registry.json  # 已安装插件注册表（版本/来源/安装时间）
 │   ├── llm_providers.json
 │   ├── llm_models_cache.json
-│   └── mcp_config.json      # MCP 协议配置
+│   ├── mcp_config.json      # MCP 协议配置
+│   ├── i18n.json            # 框架语言设置（schema v1：default_language + current_language）
+│   └── plugin_languages.json # 每插件语言覆盖（schema v1：overrides）
 │
 ├── utils/                    # 工具类
 │   ├── logging_tools.py     # 日志管理
 │   ├── i_logger.py         # ILogger 接口
 │   ├── image_utils.py      # 图片工具（load_image_as_base64）
-│   └── thread_utils.py     # 工作线程 → UI 线程封送
+│   ├── thread_utils.py     # 工作线程 → UI 线程封送
+│   └── macos_dock_icon.py  # macOS Dock 栏应用图标设置（非 macOS 空操作）
+│
+├── scripts/                  # 独立验证脚本（冒烟/截图/演示/校验，运行方式：.venv\Scripts\python.exe scripts\<name>.py）
+│
+├── temp/                     # 临时文件目录（gitignore，禁止提交）
 │
 └── docs/                     # 技术文档
 ```
@@ -451,13 +519,18 @@ InstructionX/
 ```mermaid
 flowchart TD
     A[main] --> B[QApplication 创建]
-    B --> C[apply_uikit_theme<br/>UIKit 全局主题，auto 自动检测系统主题]
+    B --> B1[QQuickWindow.setGraphicsApi OpenGL<br/>统一图形 API，避免 GL/Qt Quick 混用]
+    B1 --> B2[uikit_bootstrap 扩展 sys.path<br/>使 InstructionX_UIKit 以顶层包可导入]
+    B2 --> C[apply_uikit_theme<br/>UIKit 全局主题，auto 自动检测系统主题]
     C --> D[LoggerManager 初始化]
-    D --> E[InstructionXMainWindow 创建]
+    D --> D2[sys.excepthook 兜底异常记录]
+    D2 --> D3[get_language_manager 初始化 i18n<br/>主窗口构造前完成]
+    D3 --> E[InstructionXMainWindow 创建]
     E --> F[创建自定义标题栏 + 菜单栏]
     F --> G[_create_main_layout]
-    G --> G1[初始化 PluginManager]
-    G1 --> G2[load_plugins<br/>加载官方 + 第三方插件]
+    G --> G0[_prewarm_blueprint_viewport<br/>预创建隐藏蓝图画布<br/>让顶层原生句柄首次创建即含 GL 子控件]
+    G0 --> G1[初始化 PluginManager]
+    G1 --> G2[load_plugins<br/>加载官方 + 第三方插件<br/>注册插件语言包]
     G2 --> G3[apply_custom_order<br/>应用自定义排序]
     G3 --> H[创建 SkillsPanel]
     H --> I[从 PluginManager 加载技能按钮]

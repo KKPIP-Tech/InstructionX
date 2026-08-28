@@ -224,8 +224,8 @@ sequenceDiagram
         PM->>PID: PluginIdentity(plugin_dir).load_or_create_id()
         Note over PID: 读取/创建 .plugin_info.json<br/>写入 UUID
 
-        PM->>PM: _create_plugin_services() → PluginServices
-        Note over PM: llm_facade = get_llm_plugin_service()<br/>data_provider = DataProvider()<br/>task_manager = BackgroundTaskManager()<br/>logger = LoggerManager()<br/>mcp_manager = get_mcp_manager()<br/>mcp_client = get_client_manager(tool_registry)<br/>font_manager = get_font_manager()
+        PM->>PM: _create_plugin_services(plugin_id) → PluginServices
+        Note over PM: llm_facade = get_llm_plugin_service()<br/>data_provider = DataProvider()<br/>task_manager = BackgroundTaskManager()<br/>logger = LoggerManager()<br/>mcp_manager = get_mcp_manager()<br/>mcp_client = get_client_manager(tool_registry)<br/>font_manager = get_font_manager()<br/>localization = PluginI18nFacade(plugin_id, get_language_manager())
 
         PM->>PL: inspect.signature() → detect 'services' param
         PM->>PL: plugin_class(services=services) 或 plugin_class()
@@ -258,7 +258,8 @@ sequenceDiagram
 | `i_llm_service.py` | `ILLMService`：对话管理、流式、直接 chat、工具调用、嵌入、多模态、实例与模型查询的接口契约（`LLMPluginService` 显式继承） |
 | `i_task_manager.py` | `ITaskManager`：同步/异步/定时/长期任务注册与查询接口 |
 | `i_data_provider.py` | `IDataProvider`：数据存取、发布/订阅、插件管理接口 |
-| `plugin_services.py` | `PluginServices` dataclass：依赖注入容器 |
+| `i_localization.py` | `ILocalizationFacade`：插件文案取词抽象契约（绑定插件 UUID，由 `PluginI18nFacade` 实现） |
+| `plugin_services.py` | `PluginServices` dataclass：依赖注入容器（8 字段，含 `localization`） |
 
 #### 3.1.4 插件 API 自动注册机制
 
@@ -335,8 +336,8 @@ sequenceDiagram
   - `register(name, description, parameters, handler)` — 注册工具
   - `unregister(name)` / `get_tools()` / `get_handler(name)` / `list_tools()`
 - **关键 API（ToolCallExecutor）**：
-  - `chat_with_tools(messages, max_turns)` → `(final_messages, tool_results, final_response)`
-  - `chat_with_tools_stream(messages, callback, max_turns)`
+  - `chat_with_tools(messages, max_turns)` → `ToolChatResult`（`messages` / `tool_results` / `final_response` / `final_text` 结构化对象）
+  - `chat_with_tools_stream(messages, callback, max_turns)` → `ToolChatResult`
 - **模块关系**：
   - ⬅️ **我依赖**：`LLMProvider`（发起 chat）
   - ➡️ **依赖我**：`LLMPluginService`（持有 `ToolCallExecutor` 和共享 `ToolRegistry`）；`MCPClientManager`（将外部 MCP 工具注册到 `ToolRegistry`）
@@ -358,7 +359,7 @@ class GLMProvider(BaseProvider):
     ...
 ```
 
-每个适配器类在模块加载时注册到全局注册表（注册表键为**适配器家族** adapter，如 `"glm"`；`register_adapter(adapter_key, cls)` 注册，`get_adapter_class(adapter_key)` 查询，`register_provider` 为保留的旧名薄别名），`LLMProvider` 按实例配置中的 `adapter` 键查找并创建实例。
+每个适配器类在模块加载时显式注册到全局注册表——通过 `providers/__init__.py` 的 `register_adapter(adapter_key, cls)` 注册，`get_adapter_class(adapter_key)` 查询；注册表键为**适配器家族** adapter（如 `"glm"`）；`register_provider` / `get_provider_class` / `get_all_provider_types` 均为保留的旧名薄别名（语义同为适配器家族）。`LLMProvider` 按实例配置中的 `adapter` 键查找并创建实例；未知适配器记 ERROR 日志并跳过该实例，不影响其余实例。
 
 ---
 
@@ -431,13 +432,22 @@ sequenceDiagram
     Note over PLUGIN,EXT: 路径一：插件 API → MCP Server（暴露本地工具）
     PLUGIN->>PM: _auto_register_plugin_api()
     PM->>PM: register_plugin_api(plugin_id, service_instance, api_descriptions)
-    PM->>MCPM: sync_plugin_tool(plugin_id, method_name, ...)
-    MCPM->>BRIDGE: sync_new_plugin_tool(...)
-    BRIDGE->>MCPH: add_tool(name, desc, params, plugin_id, method_name)
-    MCPH->>MCPH: 创建异步 handler → MCPHostServer._tool_registry[name]
+PM->>MCPM: sync_plugin_tool(plugin_id, method_name, ...)
+        MCPM->>BRIDGE: sync_new_plugin_tool(...)
+        BRIDGE->>MCPH: add_tool(name=sanitize_tool_name(f"{plugin_id}__{method_name}"),
+                              desc, params, plugin_id, method_name)
+        MCPH->>MCPH: 创建异步 handler → MCPHostServer._tool_registry[name]
+        Note over BRIDGE: 工具命名规则：sanitize_tool_name(f"{plugin_id}__{method_name}")
+        Note over BRIDGE: 双下划线分隔 + 净化为 OpenAI function 名字符集
 
     Note over PLUGIN,EXT: 路径二：外部 MCP Client → 插件方法（调用）
-    EXT->>MCPH: call_tool("plugin_uuid.method_name", args)
+    EXT->>MCPH: call_tool("plugin_uuid__method_name", args)
+    MCPH->>PM: call_plugin_method(caller_id, plugin_uuid, method_name, args)
+    PM-->>MCPH: result
+    MCPH-->>EXT: tool result
+
+Note over PLUGIN,EXT: 路径二：外部 MCP Client → 插件方法（调用）
+    EXT->>MCPH: call_tool("plugin_uuid__method_name", args)
     MCPH->>PM: call_plugin_method(caller_id, plugin_uuid, method_name, args)
     PM-->>MCPH: result
     MCPH-->>EXT: tool result
@@ -483,7 +493,7 @@ sequenceDiagram
 #### 3.4.3 TaskScheduler / SchedulerCallback
 
 - **`TaskScheduler` 当前状态**：`core/task/scheduler.py` 中的 `TaskScheduler` 为**轻量生命周期占位**——历史版本在后台线程中周期调用的 `_check_and_run_tasks()`（空实现、每秒空醒）已整体移除，当前仅保留 `start()`/`stop()` 生命周期接口以保持兼容，**不承担调度职责**。
-- **`SchedulerCallback` 实际职责**：定时任务的**调度判断**（基于 cron 表达式或间隔秒数）和回调执行。`BackgroundTaskManager._check_scheduled_tasks()` daemon 线程每 1 秒调用 `SchedulerCallback.should_run()` 判断到期任务，并通过 `SchedulerCallback.execute_scheduled_task()` 执行。
+- **`SchedulerCallback` 实际职责**：定时任务的**调度判断**（基于 `ScheduledTask.interval` 间隔秒数，`ScheduledTask.next_run` 时间戳）和回调执行。`BackgroundTaskManager._check_scheduled_tasks()` daemon 线程每 1 秒调用 `SchedulerCallback.should_run()` 判断到期任务，并通过 `SchedulerCallback.execute_scheduled_task()` 执行。
 - **模块关系**：
   - ⬅️ **SchedulerCallback 依赖**：`BackgroundTaskManager`（执行回调）
   - ➡️ **BackgroundTaskManager 依赖**：`SchedulerCallback`（使用调度判断）
@@ -669,13 +679,13 @@ class ILLMService(ABC):
 ```python
 class ITaskManager(ABC):
     @abstractmethod
-    def register_async_task(self, plugin_id, name, func, callback, args, kwargs) -> str: ...
+    def register_async_task(self, plugin_id, name, func, callback, args, kwargs) -> Optional[str]: ...
 
     @abstractmethod
     def register_scheduled_task_factory(self, plugin_id, func, callback) -> None: ...
 
     @abstractmethod
-    def register_long_running_task(self, ...) -> str: ...
+    def register_long_running_task(self, ...) -> Optional[str]: ...
 ```
 
 #### IDataProvider（`core/interfaces/i_data_provider.py`）
@@ -777,7 +787,7 @@ class IDataProvider(ABC):
            → MCPManager.sync_plugin_tool(...)
                → MCPBridge.sync_new_plugin_tool(...)
                    → MCPHostServer.add_tool(
-                         name=f"{plugin_id}.{method_name}",
+                         name=sanitize_tool_name(f"{plugin_id}__{method_name}"),
                          description, parameters,
                          plugin_id, method_name)
                    → MCPHostServer._tool_registry[name] = {plugin_id, method_name}
@@ -786,11 +796,11 @@ class IDataProvider(ABC):
 2.  External MCP Client (e.g. Claude Code) connects via stdio
        → MCPHostServer.run_stdio() → FastMCP.run(transport="stdio")
 
-3.  External Client calls tool "plugin_uuid.search"
+3.  External Client calls tool "plugin_uuid__search"（双下划线分隔）
        → MCPHostServer → anyio.to_thread.run_sync(
              PluginManager().call_plugin_method(
                  caller_id="", plugin_uuid, "search", **kwargs))
-       → PluginManager.call_plugin_method()
+       → PluginManager.call_plugin_method() — 回调使用原始 (plugin_id, method_name) 元组，不受工具名净化影响
            → _api_registry[plugin_uuid].api_methods["search"](**kwargs)
            → return result
 

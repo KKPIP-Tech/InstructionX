@@ -217,7 +217,7 @@ font_size = T("font.md")        # 正文字号 13px
 | 令牌 | 值 | 说明 |
 |------|-----|------|
 | `font.xs` / `font.sm` / `font.md` / `font.lg` | 11 / 12 / 13 / 14 | 正文字阶 |
-| `space.1` ~ `space.16` | 4 ~ 64 | 间距阶梯 |
+| `space.0` / `space.05` / `space.1` ~ `space.6` / `space.8` / `space.10` / `space.12` / `space.16` | 0 / 2 / 4 ~ 24 / 32 / 40 / 48 / 64 | 间距阶梯（键集非连续，无 `space.7` 等） |
 | `radius.sm` / `radius.md` / `radius.lg` / `radius.pill` | 4 / 6 / 8 / 999 | 圆角 |
 | `shadow.sm` / `shadow.md` / `shadow.lg` | dict | 投影规格（配合 `apply_shadow(widget, level)`） |
 | `duration.*` / `easing.*` | int / QEasingCurve | 动画时长与缓动 |
@@ -345,7 +345,7 @@ from PySide6.QtWidgets import QApplication
 from ui.uikit_theme import apply_uikit_theme
 
 app = QApplication(sys.argv)
-apply_uikit_theme(app, "auto")   # 设置 UIKit 全局主题
+apply_uikit_theme(app)   # theme 缺省为 "auto"，自动检测系统主题
 ```
 
 ### 9.2 业务代码取色
