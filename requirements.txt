@@ -1,6 +1,6 @@
 # InstructionX 直接运行依赖
 # 以 pyproject.toml 的 [project].dependencies 为单一来源,本文件与其保持同步,
-# 供 pip install -r requirements.txt(如 run.ps1)使用。
+# 供 uv pip install -r requirements.txt / pip install -r requirements.txt 直接安装使用。
 PySide6>=6.10
 requests>=2.32
 aiohttp>=3.11

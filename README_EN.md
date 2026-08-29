@@ -107,7 +107,7 @@ Plugins can call each other's APIs to achieve functional collaboration:
 Built-in InstructionX_UIKit component library providing a unified modern interface appearance:
 - **Global Theme**: Support for light/dark/auto theme modes, switchable via menu or shortcuts, with automatic OS-level theme following
 - **Design Tokens**: Unified color, font, spacing, and radius tokens that restyle in real time with theme switching
-- **57 Components** (+ 12 Layouts + 8 Blueprint Nodes + 6 Charts + 2 Animations = complete component library): Covering buttons, inputs, menus, dialogs, charts, and other common UI elements, ready for plugin development reuse
+- **58 Components** (+ 13 Layouts + 52 Animations + native chart engine + blueprint node graph + Mermaid subpackage): Covering buttons, inputs, menus, dialogs, charts, and other common UI elements, ready for plugin development reuse
 
 ### 🅰️ Font Manager
 
@@ -129,12 +129,28 @@ When switching plugins, the plugin's UI state is automatically cached. When you 
 
 - Python 3.14 or higher
 - Windows 10/11
+- [uv](https://docs.astral.sh/uv/) (Python virtual environment & dependency manager)
+
+### Install uv
+
+```bash
+# Windows (PowerShell)
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+
+# macOS / Linux
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
 
 ### Install Dependencies
 
+The first run of `uv run main.py` automatically creates a virtual environment and syncs dependencies from `uv.lock`; you may also install explicitly first:
+
 ```bash
-pip install -r requirements.txt
+uv venv
+uv pip install -r requirements.txt
 ```
+
+> Note: Do **not** use `uv sync` — it strictly reconciles to `uv.lock` and **removes** extra packages installed in the environment (e.g., plugin dependencies installed via the framework's DependencyManager, or test dependencies).
 
 Main dependencies:
 - `PySide6` (>=6.10) - Qt GUI framework
@@ -148,7 +164,7 @@ Main dependencies:
 ### Run the Application
 
 ```bash
-python main.py
+uv run main.py   # Automatically syncs the environment from uv.lock and launches
 ```
 
 ---

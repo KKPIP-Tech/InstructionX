@@ -34,7 +34,7 @@
 | qrcode[pil] >= 7.4 | InstructionX_UIKit 组件库 QRCodeView 组件依赖（库规定唯一允许的第三方依赖） |
 | pyobjc-framework-Cocoa >= 11.0 | 仅 macOS（`sys_platform == "darwin"` 条件依赖）：运行时设置 Dock 栏应用图标（`utils/macos_dock_icon.py`） |
 
-- 依赖单一来源是 `pyproject.toml` 的 `[project].dependencies`；`requirements.txt` 与其保持同步（供 `run.ps1` 使用），**改依赖时两处都要改**。
+- 依赖单一来源是 `pyproject.toml` 的 `[project].dependencies`；`requirements.txt` 与其保持同步（供 `uv pip install -r requirements.txt` / `pip install -r requirements.txt` 直接安装使用），**改依赖时两处都要改**。
 - 环境管理使用 **uv**（存在 `uv.lock`、`.python-version`、`.venv/`）。
 
 ## 构建与运行命令
@@ -44,8 +44,8 @@
 uv venv
 uv pip install -r requirements.txt
 
-# 运行应用（推荐入口，自动建 venv + 装依赖 + 启动）
-.\run.bat            # 内部调用 run.ps1
+# 运行应用（推荐入口，自动按 uv.lock 同步环境后启动）
+uv run main.py
 
 # 或直接运行
 .venv\Scripts\python.exe main.py
@@ -423,6 +423,7 @@ config/ data/ logs/         # 运行时生成：配置、数据、日志
 - LLM：`docs/core/llm-provider/`、`docs/plugins/llm-integration-guide.md`
 - MCP：`docs/core/mcp/overview.md`
 - API 参考：`docs/api/full-reference.md`
+- 插件开发快速入门：根目录 `插件开发流程.md`（环境初始化 / 插件仓库配置 / AI 辅助提示词模板，面向插件开发者）
 
 **根目录历史设计报告**（已落地为正式文档，仅作决策溯源参考）：
 - `temp/close-to-tray-report-2026-07-31.md` — 关闭确认弹窗与系统托盘运行的实现分析报告（已迁出根目录至 `temp/`）；其内容已被 `docs/ui/system-tray.md` 与 `docs/ui/dialogs.md §8 CloseConfirmDialog` 完整替代，**当前文档地图不再单列**。如需查阅决策溯源可在 git 历史中追踪。
