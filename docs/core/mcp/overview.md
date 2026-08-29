@@ -12,7 +12,7 @@
 
 **模式**: 单例模式（`MCPManager` 全局唯一实例）
 
-**核心依赖**: `mcp>=1.0.0`（官方 MCP Python SDK）
+**核心依赖**: `mcp>=1.28.1,<2`（官方 MCP Python SDK）
 
 **两种运行模式**:
 
@@ -661,7 +661,7 @@ mcp.shutdown()  # 停止 Server + 断开所有 Client 连接
 ### 11.1 新增依赖
 
 ```
-mcp>=1.0.0
+mcp>=1.28.1,<2
 ```
 
 MCP SDK 主要依赖：

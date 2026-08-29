@@ -187,6 +187,7 @@ from core.interfaces import ILocalizationFacade
 | `_create_widget(parent, data_provider)` | method (abstract) | 创建 UI |
 | `get_widget(parent=None, data_provider=None)` | method | 获取 Widget（接口基类无缓存，直接调用 `_create_widget`；缓存机制由 `core/plugin/plugin_interface.py` 中的实现提供，返回缓存前经 `shiboken6.isValid()` 校验，C++ 对象已销毁则丢弃失效缓存并重建） |
 | `on_plugin_loaded(plugin_id=None, **kwargs)` | method | 加载完成回调（PluginManager 调用时不传参数，向后兼容旧插件） |
+| `on_plugin_unloaded()` | method | 卸载/热重载前回调（框架在销毁插件实例前调用；子类可重写以释放资源，默认空实现保证向后兼容） |
 
 ### 2.3 IPluginInfo
 
@@ -287,7 +288,7 @@ from core.interfaces import ILocalizationFacade
 
 ### 4.2 TaskType
 
-**文件**: `core/task/task_model.py`
+**文件**: `core/task/task_model.py`（**枚举单一来源为 `core/interfaces/i_task_manager.py`，task_model.py 仅 re-export 保持导入路径**）
 
 | 枚举值 | 说明 |
 |--------|------|
@@ -298,7 +299,7 @@ from core.interfaces import ILocalizationFacade
 
 ### 4.3 TaskStatus
 
-**文件**: `core/task/task_model.py`
+**文件**: `core/task/task_model.py`（**枚举单一来源为 `core/interfaces/i_task_manager.py`，task_model.py 仅 re-export 保持导入路径**）
 
 | 枚举值 | 说明 |
 |--------|------|

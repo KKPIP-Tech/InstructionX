@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """UIKit 导入引导：让 ``ui/InstructionX_UIKit`` 以顶层包身份可导入。
 
-背景：InstructionX_UIKit 库内约 20 个模块使用
+背景：InstructionX_UIKit 库内 16 个模块（全部位于 ``components/`` 子包）使用
 ``from InstructionX_UIKit.xxx import ...`` 绝对导入（库独立维护，不改库文件）。
 若仅作为 ``ui.InstructionX_UIKit`` 子包导入，这些绝对导入会 ImportError。
 

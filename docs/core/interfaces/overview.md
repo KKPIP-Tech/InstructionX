@@ -640,6 +640,7 @@ from core.interfaces import IPlugin, IPluginInfo
 | `ITaskManager` | `BackgroundTaskManager` | `core/task/background_task.py` |
 | `ILLMService` | `LLMPluginService` | `core/llm/plugin_service.py`（显式继承 `ILLMService`，经 `PluginServices.llm_facade` 注入） |
 | `ILogger` | `LoggerManager` | `utils/logging_tools.py` |
+| `ILocalizationFacade` | `PluginI18nFacade` | `core/i18n/facade.py`（绑定插件 UUID，经 `PluginServices.localization` 注入） |
 
 ### 5.2 访问单例实例
 

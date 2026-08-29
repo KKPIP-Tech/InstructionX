@@ -92,7 +92,7 @@ dialog.exec()
 - **API 密钥**：`QLineEdit`（密码模式 + 眼睛图标切换可见性），即时落盘
 - **连接检测**：「检测」按钮，经 `ConnectionCheckWorker`（QThread）调用 `LLMProvider.check_provider()`；成功显示「连接正常 · N 个模型」且未启用时自动开启 `enabled_chat`，失败显示错误详情
 - **API 地址**：`QLineEdit`（占位符显示目录默认地址）+「重置」按钮（清空实例覆写、回退目录默认）；输入完成即时落盘
-- 官网 / 获取密钥 / 文档链接全部由目录预设元数据驱动
+- **获取密钥**：`_key_link_btn` 链接，指向 `preset.api_key_url`（目录预设元数据驱动）。注意：`docs_url` 虽在预设中定义，但框架 UI 当前**无消费点**；预设亦无 homepage 字段，UI 不存在「官网」链接
 
 #### 模型区（ModelSection）
 - **标题栏**: 计数 / 「↻ 刷新」（`FetchModelsWorker` 后台拉取，内部走 `check_provider()`）/ 「＋ 添加」/ 「检查」（健康检查对话框）/ 「同步」（模型同步对话框）/ 「管理」

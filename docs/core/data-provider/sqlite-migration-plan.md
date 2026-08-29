@@ -1192,7 +1192,7 @@ PRAGMA synchronous = NORMAL;
    - **仅迁移标准顶层键**：迁移只处理 `plugins` 和 `active_instances` 两个顶层键。若旧 `data.json` 中存在其他自定义顶层键（旧 `load_data`/`save_data` 允许），这些键在迁移后会丢失。这是 schema 变更带来的限制，需在变更日志中说明。
 2. 创建 `data.db` 并执行 DDL（含 `db_metadata`）。
 3. 对每条待导入的 value 调用 `_sanitize_for_migration(value)` 进行清洗扫描，再调用 `_serialize(cleaned_value)` 序列化。
-   - 清洗扫描递归查找 `NaN/Inf` 并替换为 `None`，将非字符串 dict key（如 `datetime` / `UUID` / `tuple`）转为字符串；同时记录 `warning` 日志告知用户某插件某 key 的数据已被清洗。
+   - 清洗扫描递归查找 `NaN/Inf` 并替换为 `None`，将非字符串 dict key（如 `datetime` / `UUID` / `tuple`）转为字符串。当前实现为纯函数（`_sanitize_for_migration`），**不记录任何日志**。
    - 若旧数据中存在大量 `NaN/Inf`，清洗会改变业务语义（`float` 变为 `NoneType`；`Inf`/`-Inf` 的无界语义丢失），需在变更日志中明确告知插件开发者。
    - `_sanitize_for_migration` 实现示例：
 
@@ -1203,8 +1203,8 @@ from typing import Any, Dict
 def _sanitize_for_migration(obj: Any, path: str = "") -> Any:
     """迁移专用：递归将 NaN/Inf 替换为 None，同时处理 dict key。"""
     if isinstance(obj, float) and (math.isnan(obj) or math.isinf(obj)):
-        # 实际实现中应使用项目 logger；此处仅示例
-        print(f"[warn] 迁移清洗：将 {path} 处的 {obj} 替换为 None")
+        # 注意：当前实际实现为纯函数，不记录日志（本 print 仅为示例）
+        print(f"[示例] 迁移清洗：将 {path} 处的 {obj} 替换为 None")
         return None
     if isinstance(obj, dict):
         # key 中的 NaN/Inf 也清洗；key 若为 UUID/datetime/tuple 则转为字符串
@@ -1227,7 +1227,7 @@ def _sanitize_for_migration(obj: Any, path: str = "") -> Any:
      - 逐条插入 `plugin_data`（private/public 下的每个 key 一行）。
      - 逐条插入 `active_instances`：
        - 插入前校验引用的 `instance_id` 是否存在于已插入的 `plugins` 中。
-       - 若存在孤立引用（旧 `data.json` 中 `active_instances.<type>` 指向不存在的插件），丢弃该记录并记录 `warning` 日志，避免外键约束失败。
+       - 若存在孤立引用（旧 `data.json` 中 `active_instances.<type>` 指向不存在的插件），丢弃该记录（当前实现静默跳过、不记录日志），避免外键约束失败。
      - 插入 `db_metadata`：
        - `schema_version` = `'1'`
        - `migrated_from` = `'<原始 JSON 文件名>'`（如 `data.json`）
@@ -1237,7 +1237,7 @@ def _sanitize_for_migration(obj: Any, path: str = "") -> Any:
    - 若提交过程中发生异常（如磁盘满、WAL 写入失败、序列化失败），视为迁移未完全成功：回滚 SQLite 事务、关闭连接、删除不完整的 `data.db` / `-wal`/`-shm`、保留原始 `data.json`，并抛出 `DataProviderError`。
 6. **重命名 `data.json` 为备份**。
    - 只有在 SQLite 事务成功提交后，才将 `data.json` 重命名为 `data.migrated-<ISO8601-微秒>.bak`。
-   - 若重命名失败（权限、磁盘满等），数据本身已经安全保存在 `data.db` 中；此时 `data.json` 仍在原位，下次启动不会触发重复迁移。应用应记录 error 日志并提示用户手动处理备份文件。
+   - 若重命名失败（权限、磁盘满等），会走初始化失败路径：关闭连接并删除不完整的 `data.db` / `-wal` / `-shm`（保留原始 `data.json`），下次启动重新迁移——不会丢数据，但会重复迁移直至重命名成功（详见 §15.1 第 5 步）。
 
 > **关于 `NaN/Inf` 的说明**：标准库 `json` 默认允许输出非标准的 `NaN`/`Infinity` 标记（可被 `json.loads` 读回），但 `orjson.loads` 无法解析这些标记。为保证迁移后后端一致可用，迁移阶段必须将 `NaN/Inf` 清洗为 `None`。新后端下写入 `NaN/Inf` 会统一抛出 `DataProviderError`。
 
@@ -1245,11 +1245,11 @@ def _sanitize_for_migration(obj: Any, path: str = "") -> Any:
 
 - 任何异常都回滚 SQLite 事务。
 - 在删除不完整的 `data.db` 及 `-wal`/`-shm` 文件前，**必须先关闭数据库连接**（`conn.close()`），避免 Windows 等系统因文件被占用而删除失败。关闭连接应在 `try...finally` 或异常处理中保证执行。
-- 若删除文件失败（如权限、占用），应记录 error 日志并提示用户手动清理。
+- 若删除文件失败（如权限、占用），记录 debug 日志（不阻断错误恢复主流程）。
 - **确保 `data.json` 仍然以原始文件名存在**：
   - 如果迁移在 SQLite 事务提交之前失败，原始 `data.json` 不动；`data.db` 会被清理。
-  - 如果 SQLite 事务已提交但重命名 `data.json` 失败，`data.json` 仍在原位，`data.db` 已包含完整数据。这种情况不会导致数据丢失，但会遗留一份过时的 `data.json`，需要用户手动清理或重命名。
-  - 目标是：无论失败发生在哪个阶段，应用下次启动时都能安全地基于 `data.db` 运行；如果需要重试迁移，可手动删除 `data.db` 并保留原始 `data.json`。
+  - 如果 SQLite 事务已提交但重命名 `data.json` 失败，会走初始化失败路径：关闭连接并删除不完整的 `data.db` / `-wal` / `-shm`（保留原始 `data.json`），下次启动重新迁移——不会导致数据丢失，但会重复迁移直至重命名成功。
+  - 目标是：迁移成功时应用基于 `data.db` 运行；任何失败阶段都保留原始 `data.json` 并清理不完整的 `data.db`，下次启动自动重试迁移。
 - 若 `data.json` 损坏或 JSON 解析失败：
   - 不创建 `data.db`。
   - 抛出 `DataProviderError`，提示用户 `data.json` 损坏。

@@ -1213,7 +1213,7 @@ class LLMProvider:
         temperature: float = DEFAULT_TEMPERATURE,
         max_tokens: Optional[int] = None,
         **kwargs
-    ) -> Any:
+    ) -> AsyncIterator[ChatResponse]:
         """异步发送流式聊天请求
 
         异步版本的流式聊天接口。返回异步生成器，迭代过程中收集末块

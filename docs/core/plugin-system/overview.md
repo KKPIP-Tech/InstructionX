@@ -96,8 +96,8 @@ def _load_plugin_from_directory(self, plugin_dir: Path) -> Optional[IPlugin]:
     identity = PluginIdentity(plugin_dir)
     plugin_id = identity.load_or_create_id()
 
-    # 6. 创建服务容器
-    services = self._create_plugin_services()
+    # 6. 创建服务容器（传入 plugin_id 绑定多语言取词门面）
+    services = self._create_plugin_services(plugin_id)
 
     # 7. 实例化插件（尝试注入 services）
     sig = inspect.signature(plugin_class)

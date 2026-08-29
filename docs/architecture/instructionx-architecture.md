@@ -76,8 +76,8 @@ graph TB
 
             subgraph DataLayer["data/"]
                 DP["DataProvider\n(singleton)"]
-                DAO["DAO"]
-                DB["DatabaseConnection"]
+                SQB["SQLiteBackend"]
+                SQLM["SQLMap / SchemaMigrations"]
             end
 
             subgraph FontLayer["font/"]
@@ -326,8 +326,9 @@ sequenceDiagram
   - `get_conversation(conv_id)` / `list_conversations()` / `delete_conversation(conv_id)`
   - `get_usage_stats(conversation_id)`
 - **模块关系**：
-  - ⬅️ **我依赖**：`LLMProvider`（发起 chat 请求）、`UsageRecordStore`（持久化用量记录）
+  - ⬅️ **我依赖**：`LLMProvider`（发起 chat 请求）
   - ➡️ **依赖我**：`LLMPluginService`（门面委托）
+  - **用量落盘说明**：用量记录的持久化由 `LLMProvider._record_usage`（经 `UsageRecordStore`）完成，`ConversationManager` 不直接依赖 `UsageRecordStore`
 
 #### 3.2.4 ToolCallExecutor + ToolRegistry
 
@@ -400,7 +401,7 @@ class GLMProvider(BaseProvider):
   - `run_stdio()` — 启动 stdio 传输
   - `run_http()` — 启动 HTTP 传输（后台线程）
 - **模块关系**：
-  - ⬅️ **我依赖**：无直接框架依赖（延迟创建 FastMCP）
+  - ⬅️ **我依赖**：`core/plugin/manager.PluginManager`（工具 handler 经 `call_plugin_method` 调用插件方法）；FastMCP 延迟创建
   - ➡️ **依赖我**：`MCPBridge`（调用 `add_tool()`）、`MCPManager`（持有实例）
 - **工具调用链路**：`MCPHostServer` 为每个工具创建一个 `handler`（异步函数），handler 内部通过 `anyio.to_thread.run_sync(PluginManager().call_plugin_method(...))` 调用插件方法。
 
@@ -626,12 +627,12 @@ graph LR
 | **PluginManager** | 插件发现/加载/生命周期管理 | `load_plugins()`, `call_plugin_method()`, `register_plugin_api()` | `IPlugin`, `PluginServices`, `PluginIdentity`, `MCPManager` | `InstructionXMainWindow`, `MCPBridge`, 所有插件 |
 | **LLMPluginService** | 插件的 LLM 统一门面 | `create_conversation()`, `send_message()`, `chat_with_tools()` | `ConversationManager`, `ToolCallExecutor`, `LLMProvider` | 所有插件 |
 | **LLMProvider** | 多 LLM 提供商管理 | `chat()`, `embed()`, `get_provider()` | `LLMConfig`, `LoggerManager`, `UsageRecordStore` | `LLMPluginService` |
-| **ConversationManager** | 对话生命周期管理 | `create_conversation()`, `send_message()` | `LLMProvider`, `UsageRecordStore` | `LLMPluginService` |
+| **ConversationManager** | 对话生命周期管理 | `create_conversation()`, `send_message()` | `LLMProvider`（用量落盘由 `LLMProvider._record_usage` 完成） | `LLMPluginService` |
 | **ToolCallExecutor** | LLM 工具调用循环 | `chat_with_tools()` | `LLMProvider`, `ToolRegistry` | `LLMPluginService` |
 | **ToolRegistry** | 工具定义与处理器管理 | `register()`, `get_handler()`, `get_tools()` | 无 | `LLMPluginService`, `MCPClientManager` |
 | **MCPManager** | MCP Server/Client 协调器 | `start_server()`, `connect()`, `sync_plugin_tool()` | `MCPBridge`, `MCPHostServer`, `MCPClientManager` | `PluginManager`, 所有插件 |
 | **MCPBridge** | 插件 API ↔ MCP 工具桥接 | `sync_new_plugin_tool()` | `MCPManager` | `MCPManager` |
-| **MCPHostServer** | FastMCP Server 封装 | `add_tool()`, `run_stdio()`, `run_http()` | 无（延迟创建 FastMCP） | `MCPBridge`, `MCPManager` |
+| **MCPHostServer** | FastMCP Server 封装 | `add_tool()`, `run_stdio()`, `run_http()` | `core/plugin/manager.PluginManager`（工具 handler 调用插件方法） | `MCPBridge`, `MCPManager` |
 | **MCPClientManager** | 外部 MCP Server 连接 | `connect()`, `disconnect()` | `ToolRegistry` | `MCPManager` |
 | **BackgroundTaskManager** | 任务执行引擎 | `register_async_task()`, `register_scheduled_task_factory()` | `TaskStorage`, `SchedulerCallback`, `LoggerManager` | 所有插件 |
 | **TaskStorage** | 任务 JSON 持久化 | `save_task()`, `get_scheduled_tasks_by_plugin()` | `LoggerManager` | `BackgroundTaskManager` |
@@ -740,7 +741,7 @@ class IDataProvider(ABC):
                    → ChatResponse (content + tool_calls?)
 
 3.  ChatResponse.tool_calls exists?
-       → ToolCallExecutor.execute_tool_calls(messages, tool_calls)
+       → ToolCallExecutor._execute_tool_calls(tool_calls, tool_results, messages)
            → For each tool_call:
                → ToolRegistry._handlers[tool_name](**tool_args)
                → Append ToolResult to tool_results

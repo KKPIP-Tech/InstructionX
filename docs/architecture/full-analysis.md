@@ -42,9 +42,9 @@
 
 ### 1.3 核心设计原则
 
-- **单例模式**：6 个核心服务 + 2 个内部单例，全部以单例形式运行
-  - **核心服务**：PluginManager、DataProvider、BackgroundTaskManager、LLMProvider、LLMPluginService、MCPManager
-  - `DataProvider`、`BackgroundTaskManager`、`LLMProvider` 使用 `__new__` + `threading.Lock` 双重检查锁定
+- **单例模式**：10 个核心服务 + 2 个内部单例，全部以单例形式运行
+  - **核心服务**：PluginManager、DataProvider、BackgroundTaskManager、LLMProvider、LLMConfig、UsageRecordStore、LLMPluginService、MCPManager、FontManager、LanguageManager
+  - `DataProvider`、`BackgroundTaskManager`、`LLMProvider`、`LLMConfig`、`UsageRecordStore`、`FontManager`、`LanguageManager` 使用 `__new__` + `threading.Lock` 双重检查锁定
   - `PluginManager` 使用 `__new__` + `_initialized` 标志简化模式（无独立 `_lock`）
   - `LLMPluginService`、`MCPManager` 使用模块级锁 + 全局变量工厂函数（`get_llm_plugin_service()` / `get_mcp_manager()`）
   - **内部单例**：`TaskStorage`（BackgroundTaskManager 内部使用）、`LoggerManager`（框架日志中枢）
@@ -463,7 +463,8 @@ flowchart LR
 
 ```python
 def get_all_function_tools(self) -> List[Dict[str, Any]]:
-    # 格式: {type: "function", function: {name: "uuid.method", description, parameters}}
+    # 格式: {type: "function", function: {name: sanitize_tool_name(f"{plugin_id}__{method_name}"), description, parameters}}
+    # （双下划线分隔；call_plugin_method() 仍使用原始 (plugin_id, method_name) 调用）
 ```
 
 ---
@@ -480,7 +481,7 @@ def get_all_function_tools(self) -> List[Dict[str, Any]]:
 
 **SQLite 表结构**（默认后端）：
 - `plugins`：插件实例元数据（`instance_id`, `plugin_type`, `active`）
-- `plugin_data`：插件键值数据（`instance_id`, `namespace`, `key`, `value`）
+- `plugin_data`：插件键值数据（`instance_id`, `namespace`, `key`, `value_json`）
 - `active_instances`：当前活跃实例映射（`plugin_type`, `instance_id`）
 - `db_metadata`：schema 版本与迁移来源
 
@@ -809,24 +810,22 @@ flowchart TD
 
 ```mermaid
 sequenceDiagram
-    participant UI as Chat UI
-    participant Worker as ChatWorker
-    participant Service as LLMChatService
+    participant UI as Chat UI（插件 Widget）
+    participant SVC as LLMPluginService
+    participant CM as ConversationManager
     participant LLMP as LLMProvider
     participant Prov as Provider
 
-    UI->>Worker: send_message(messages)
-    Worker->>Service: stream_send_message / sync_send_message
-    Service->>LLMP: provider.stream_chat / chat
+    UI->>SVC: send_message / stream_send_message(conv_id, content)
+    SVC->>CM: 追加用户消息 / 更新会话
+    SVC->>LLMP: provider.chat / stream_chat
     LLMP->>LLMP: get_enabled_providers("chat")
-    LLMP->>Prov: provider.stream_chat(messages)
-    Prov-->>Prov: make HTTP stream request
-    Prov-->>Service: ChatResponse chunks
-    Service-->>Worker: chunk_received signal
-    Worker-->>UI: update UI
-    Prov-->>Service: ChatResponse final
-    Service-->Worker: finished signal
-    Worker-->>UI: display final result
+    LLMP->>Prov: provider.chat / stream_chat(messages)
+    Prov-->>Prov: make HTTP request / stream
+    Prov-->>LLMP: ChatResponse chunks
+    LLMP-->>SVC: ChatResponse（流式聚合于 last_stream_response）
+    SVC-->>CM: 追加助手回复 / 累计用量
+    SVC-->>UI: 返回 content（流式经 callback 逐 chunk）
 ```
 
 ### 10.3 典型调用链：定时任务注册与执行
@@ -867,7 +866,7 @@ sequenceDiagram
 
 | 模式 | 应用位置 | 实现方式 |
 |------|---------|---------|
-| **单例** | 4 个核心服务 | `__new__` + `_lock` 双重检查锁定 |
+| **单例** | 10 个核心服务 + 2 个内部单例 | `__new__` + `_lock` 双重检查锁定（PluginManager 用 `_initialized` 标志；LLMPluginService/MCPManager 用模块级锁 + 工厂函数） |
 | **模板方法** | `BaseProvider` | 基类提供 HTTP 骨架，子类实现 API 端点/响应解析 |
 | **观察者/Pub-Sub** | `DataProvider` | `_subscriptions` 字典 + 回调分发 |
 | **门面/Facade** | `LLMProvider` | 路由到具体 Provider，隐藏复杂度 |
@@ -1132,7 +1131,7 @@ class Service:
 | 1 | ~~TaskStatus.STOPPED 存在于接口但不在实现枚举~~ | ~~已修复~~ | 单一来源为 `core/interfaces/i_task_manager.py`，`task_model.py` re-export | ✅ 已修复 |
 | 2 | TaskScheduler 为轻量生命周期占位（空转线程已移除） | 低 | `scheduler.py` 仅保留 start/stop 生命周期接口，实际调度由 `_check_scheduled_tasks()` daemon 线程 + SchedulerCallback 承担 | 📝 已文档化 |
 | 3 | 定时任务恢复无全局入口 | 低 | 恢复由 `register_scheduled_task_factory()` 自动触发（按插件恢复）；历史遗留的 `_restore_all_scheduled_tasks()` 已移除 | 📝 已文档化 |
-| 4 | PluginServices DI 已启用 | 低 | PluginManager._create_plugin_services() 已实现 DI 注入 | 📝 已完成 |
+| 4 | PluginServices DI 已启用 | 低 | PluginManager._create_plugin_services(plugin_id) 已实现 DI 注入 | 📝 已完成 |
 | 5 | API 注册优先选择名称以 'Service' 结尾的类 | 低 | `manager.py` API 自动注册逻辑含注释说明 | 📝 已文档化 |
 | 6 | ~~DAO/database 模块为占位桩~~ | ~~低~~ | ~~SQLite 迁移已完成：`sqlite_backend.py` + `sql_map.py` + `schema_migrations.py`~~ | ✅ 已修复 |
 

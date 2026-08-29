@@ -204,7 +204,7 @@ graph TB
 - **位置**: 窗口中部（技能面板下方）
 - **特性**: 可伸缩，占用剩余空间
 - **功能**: 显示当前选中插件的 Widget
-- **初始状态**: 显示占位文本 "点击上方技能按钮，在此处显示插件功能" (`ui/work_area/work_area.py` 第33行)
+- **初始状态**: 显示占位文本 "点击上方技能按钮，在此处显示插件功能"（`ui/work_area/work_area.py` 第 35 行的占位 QLabel，文案经 `tr("work_area", "placeholder")` 取词）
 
 ### 3.6 用量查询面板 (UsagePanel)
 

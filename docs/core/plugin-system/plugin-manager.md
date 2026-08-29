@@ -593,8 +593,8 @@ def _create_plugin_services(self, plugin_id: str) -> PluginServices:
 **使用流程**（见 `manager.py` 的 `_load_plugin_from_directory()` 方法）：
 
 ```python
-# 1. PluginManager 在加载插件前创建服务容器
-services = self._create_plugin_services()
+# 1. PluginManager 在加载插件前创建服务容器（传入 plugin_id 绑定多语言取词门面）
+services = self._create_plugin_services(plugin_id)
 
 # 2. 将 services 注入插件（构造器参数为条件注入，实例属性为强制注入）
 # 仅当插件的 __init__ 包含 services 参数时才通过构造器传入

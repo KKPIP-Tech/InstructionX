@@ -49,7 +49,7 @@ sequenceDiagram
 
     rect rgb(220, 245, 255)
         Note over PM,Plugin: 方式一：新插件（DI 注入，推荐）
-        PM->>PM: _create_plugin_services()
+        PM->>PM: _create_plugin_services(plugin_id)
         PM->>Plugin: plugin_class(services=services)
         Note over Plugin: self._llm = services.llm_facade
     end

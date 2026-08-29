@@ -426,7 +426,7 @@ task_id = manager.register_async_task(
 1. **拒绝新任务**：`self._is_shutdown = True`，后续 `register_async_task` / `register_scheduled_task` / `register_long_running_task` 均返回 `None`；
 2. **停止定时任务检查线程**：`_stop_event.set()` + `_schedule_check_thread.join(timeout=CHECK_THREAD_JOIN_TIMEOUT)`；
 3. **取消待重启定时器**：遍历 `_restart_timers` 全部 `timer.cancel()`；
-4. **停止长期任务**：先逐个调用 `stop_callback`（让任务尽快收到停止信号），再 `future.result(timeout=LONG_TASK_STOP_TIMEOUT=3.0s)` 限时等待；超时任务记 WARNING 并 `future.cancel()` 放弃等待；正常退出的长期任务标记为 `STOPPED` 状态并落存储（**正常退出语义**——重启后不自动恢复；「崩溃中断」的任务会在下次启动时由 `_backfill_registry` / 工厂恢复路径恢复）；
+4. **停止长期任务**：先逐个调用 `stop_callback`（让任务尽快收到停止信号），再 `future.result(timeout=LONG_TASK_STOP_TIMEOUT=3.0s)` 限时等待；超时任务记 WARNING 并 `future.cancel()` 放弃等待；正常退出的长期任务标记为 `STOPPED` 状态并落存储（**正常退出语义**——重启后不自动恢复；「崩溃中断」的任务会在下次启动时经插件工厂注册（`register_long_running_task_factory`）后的 `restore_long_running_tasks()` 恢复路径自动重启）；
 5. **关闭线程池**：在独立 `BackgroundTaskExecutorShutdown` daemon 线程中调用 `executor.shutdown(wait=True, cancel_futures=True)`；总上限 `EXECUTOR_SHUTDOWN_TIMEOUT=10s`，超时记 WARNING 放弃等待；
 6. **清理单例**：`BackgroundTaskManager._instance = None`，下次 `BackgroundTaskManager()` 重新构造（典型场景：单元测试 / 重启）。
 

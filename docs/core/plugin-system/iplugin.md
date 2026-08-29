@@ -208,7 +208,7 @@ def _create_widget(self, parent=None, data_provider=None) -> "QWidget":
 
 ### 3.2 get_widget()
 
-> **重要说明**: `get_widget()` 是**框架实现方法**，定义在 `core/plugin/plugin_interface.py` 中，**不属于抽象接口** `core/interfaces/i_plugin.py`。
+> **重要说明**: `get_widget()` 在抽象接口 `core/interfaces/i_plugin.py` 中**有默认实现**（直接调用 `_create_widget()`、无缓存）；带缓存的版本由框架实现 `core/plugin/plugin_interface.py` **覆写**提供（缓存命中/父控件变化/失效重建等逻辑见 §5.2）。
 > 开发者只需实现抽象方法 `_create_widget()`，框架会自动提供带缓存的 `get_widget()` 能力。
 
 ```python
@@ -385,6 +385,12 @@ class IPlugin(ABC):
         首次调用时创建 Widget 并缓存，后续调用返回缓存的实例。
         如果传入了不同的 parent，会重新设置 Widget 的 parent。
         """
+        # 情况0: 缓存控件的 C++ 对象已被销毁（如工作区 clear() 的 deleteLater），
+        #        丢弃失效缓存并重建（经 shiboken6.isValid() 校验，记 WARNING 日志）
+        if self._cached_widget is not None and not _is_cpp_alive(self._cached_widget):
+            self._cached_widget = None
+            self._cached_parent = None
+        
         # 情况1: 缓存存在且 parent 相同，直接返回
         if self._cached_widget is not None and self._cached_parent is parent:
             return self._cached_widget
@@ -401,6 +407,8 @@ class IPlugin(ABC):
         self._cached_parent = parent
         return widget
 ```
+
+> **说明**：实际框架实现（`core/plugin/plugin_interface.py`）在返回缓存前会先经 `shiboken6.isValid()` 校验 C++ 对象是否存活——工作区 `clear()` 的 `deleteLater()` 等路径可能销毁控件而未通知插件缓存，直接复用会抛 `RuntimeError: Internal C++ object already deleted`；检测到失效缓存时丢弃并重建（记 WARNING）。
 
 ### 5.3 优势
 

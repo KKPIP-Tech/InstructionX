@@ -10,7 +10,7 @@
 [![PySide6](https://img.shields.io/badge/PySide6-6.10+-green.svg)](https://doc.qt.io/qtforpython/)
 [![Platform](https://img.shields.io/badge/Platform-Windows-lightgrey.svg)](#)
 [![License](https://img.shields.io/badge/License-Commercial%20Source-orange.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/Alpha-1.0.4%20CE-red.svg)](#)
+[![Version](https://img.shields.io/badge/Alpha-1.0.5%20CE-red.svg)](#)
 
 > A PySide6-based plugin desktop application framework with LLM integration, MCP Protocol (Server/Client), multi-conversation management, and hot-swappable plugin system
 
@@ -140,7 +140,7 @@ Main dependencies:
 - `PySide6` (>=6.10) - Qt GUI framework
 - `requests` (>=2.32) - HTTP requests
 - `aiohttp` (>=3.11) - Asynchronous HTTP client
-- `mcp` (>=1.0.0) - MCP protocol (Model Context Protocol)
+- `mcp` (>=1.28.1,<2) - MCP protocol (Model Context Protocol)
 - `orjson` (>=3.11.0,<4) - High-performance JSON serialization
 - `matplotlib` (>=3.10) - Usage statistics charts
 - `packaging` (>=23.0) - Plugin dependency version checking
@@ -354,12 +354,12 @@ The project includes complete technical documentation (in Chinese) located in th
 
 | Technology | Purpose | Version |
 |------------|---------|---------|
-| InstructionX CE | Application version | Alpha 1.0.4 |
+| InstructionX CE | Application version | Alpha 1.0.5 |
 | PySide6 | Qt GUI framework | >= 6.10 |
 | Python | Programming language | >= 3.14 |
 | requests | HTTP requests | >= 2.32 |
 | aiohttp | Asynchronous HTTP | >= 3.11 |
-| mcp | MCP protocol | >= 1.0.0 |
+| mcp | MCP protocol | >= 1.28.1,<2 |
 | orjson | High-performance JSON serialization | >= 3.11.0,<4 |
 | matplotlib | Usage statistics charts | >= 3.10 |
 | packaging | Plugin dependency version checking | >= 23.0 |

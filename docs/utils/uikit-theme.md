@@ -54,7 +54,7 @@ ui/InstructionX_UIKit/
 
 ### 2.2 导入约定（uikit_bootstrap）
 
-库内约 20 个模块使用 `from InstructionX_UIKit.xxx import ...` 绝对导入，因此 UIKit 必须以**顶层包**身份导入。`ui/uikit_bootstrap.py` 在被导入时（模块级副作用）把项目根的 `ui/` 目录 **append** 到 `sys.path`（用 append 而非 insert(0)，避免 `ui/` 下其他子包遮蔽同名第三方包），此后 `import InstructionX_UIKit` 与库内绝对导入解析到同一模块对象，保证 ThemeManager 等单例全局唯一。
+库内 16 个模块（全部位于 `components/` 子包）使用 `from InstructionX_UIKit.xxx import ...` 绝对导入，因此 UIKit 必须以**顶层包**身份导入。`ui/uikit_bootstrap.py` 在被导入时（模块级副作用）把项目根的 `ui/` 目录 **append** 到 `sys.path`（用 append 而非 insert(0)，避免 `ui/` 下其他子包遮蔽同名第三方包），此后 `import InstructionX_UIKit` 与库内绝对导入解析到同一模块对象，保证 ThemeManager 等单例全局唯一。
 
 **硬性约定**：`main.py` 的第一行业务 import 必须是 `import ui.uikit_bootstrap`（早于任何 `InstructionX_UIKit` / `ui.uikit_theme` 导入）。
 

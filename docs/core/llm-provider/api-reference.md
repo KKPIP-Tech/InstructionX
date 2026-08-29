@@ -1840,7 +1840,7 @@ def validate_provider(provider: str) -> Tuple[bool, str]
 - **持久化文件**: `data/conversations.json`，存储全部 `Conversation` 对象（含消息历史、用量累计、provider/model 元数据）
 - **写入策略**: 任一 `create_conversation()` / `send_message()` / `stream_send_message()` / `delete_conversation()` 调用后**原子全量写**（临时文件 + `os.replace`），不依赖增量 patch；保证断电/崩溃时不会留下半写状态
 - **启动恢复**: `LLMPluginService.__init__()`（或首次访问单例时）自动调用 `ConversationManager._load_conversations()` 读回 `data/conversations.json`，重建内存中的 `_conversations` 字典；**损坏文件不备份**，仅记 WARNING 日志后按空会话处理（不阻断启动；与 `TaskStorage` 的 `.corrupt.bak` 备份行为不同——会话持久化数据若损坏直接放弃，恢复后从空开始）。
-- **定价热更新**: `ConversationManager.update_pricing(new_pricing: Dict)`（`ILLMService` 契约成员）允许运行时替换 `DEFAULT_PRICING` 引用——配置变更时已存在的对话后续费用计算使用新表
+- **定价热更新**: `ConversationManager.update_pricing(new_pricing: Dict)`（**`ConversationManager` 内部方法，不属于 `ILLMService` 抽象契约**；由 `LLMPluginService` 在 `LLMConfig` 变更时经 `_build_effective_pricing()` 调用）允许运行时替换 `DEFAULT_PRICING` 引用——配置变更时已存在的对话后续费用计算使用新表
 
 **Conversation 状态机**：
 
