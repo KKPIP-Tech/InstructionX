@@ -1835,6 +1835,13 @@ def validate_provider(provider: str) -> Tuple[bool, str]
 - 自动管理历史消息追加（用户消息和助手回复）
 - 费用计算（基于 `DEFAULT_PRICING`）
 
+### 6.1 会话持久化
+
+- **持久化文件**: `data/conversations.json`，存储全部 `Conversation` 对象（含消息历史、用量累计、provider/model 元数据）
+- **写入策略**: 任一 `create_conversation()` / `send_message()` / `stream_send_message()` / `delete_conversation()` 调用后**原子全量写**（临时文件 + `os.replace`），不依赖增量 patch；保证断电/崩溃时不会留下半写状态
+- **启动恢复**: `LLMPluginService.__init__()`（或首次访问单例时）自动调用 `ConversationManager._load_conversations()` 读回 `data/conversations.json`，重建内存中的 `_conversations` 字典；**损坏文件不备份**，仅记 WARNING 日志后按空会话处理（不阻断启动；与 `TaskStorage` 的 `.corrupt.bak` 备份行为不同——会话持久化数据若损坏直接放弃，恢复后从空开始）。
+- **定价热更新**: `ConversationManager.update_pricing(new_pricing: Dict)`（**`ConversationManager` 内部方法，不属于 `ILLMService` 抽象契约**；由 `LLMPluginService` 在 `LLMConfig` 变更时经 `_build_effective_pricing()` 调用）允许运行时替换 `DEFAULT_PRICING` 引用——配置变更时已存在的对话后续费用计算使用新表
+
 **Conversation 状态机**：
 
 ```mermaid
@@ -1907,6 +1914,14 @@ class ToolCallExecutor:
 > **注意**: 各个 Provider 的实现类（如 `MiniMaxProvider`、`SiliconFlowProvider` 等）为框架内部实现类，不建议开发者直接实例化。所有功能应通过 `get_llm_provider()` 获取的 `LLMProvider` 单例来调用。
 
 Provider 实现类的细节（如请求格式差异、响应解析逻辑等）由框架内部管理，开发者无需关注。如需扩展新的 Provider，请参考 [LLM Provider 概述](overview.md) 中的扩展指南。
+
+### 8.1 公开运行时属性
+
+| 属性 | 类型 | 位置 | 说明 |
+|------|------|------|------|
+| `LLMProvider.last_errors` | `Dict[str, str]`（provider name → 最近错误信息）| `core/llm/llm_provider.py:741` | 合并各 provider 实例的 `last_error` 与健康跟踪中的错误，仅包含有错误的条目；供 UI 健康状态显示 |
+| `LLMPluginService.last_stream_response` | `Optional[ChatResponse]`（`ILLMService` 契约成员）| `core/llm/plugin_service.py:660-667` | 最近一次流式调用的聚合响应（`content` + `tool_calls` + `usage`）；`chat_with_tools_stream()` 通过此属性提取 `tool_calls` 驱动多轮循环 |
+| `UsageRecordStore.flush()` | `None` | `core/llm/usage_record_store.py` | 将内存中累计的待写用量记录冲刷到 `data/llm_usage.json`；`main.py` 退出时调用保证进程终止前数据落盘 |
 
 ---
 

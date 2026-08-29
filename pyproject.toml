@@ -18,6 +18,8 @@ dependencies = [
     "matplotlib>=3.10",
     "packaging>=23.0",
     "qrcode[pil]>=7.4",
+    # macOS Dock 图标设置（仅 macOS 安装，见 utils/macos_dock_icon.py）
+    "pyobjc-framework-Cocoa>=11.0; sys_platform == 'darwin'",
 ]
 
 [project.optional-dependencies]

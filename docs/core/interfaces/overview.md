@@ -32,6 +32,7 @@ graph TB
         I5[ILLMService]
         I6[ILogger]
         I7[PluginServices]
+        I8[ILocalizationFacade]
     end
 
     subgraph CoreImpl [核心实现层]
@@ -81,6 +82,7 @@ graph TB
 | **ITaskManager** | `i_task_manager.py` | 后台任务管理器接口 | `core/task/background_task.py` |
 | **ILLMService** | `i_llm_service.py` | LLM 插件服务接口 | `core/llm/plugin_service.py`（`LLMPluginService` **显式继承** `ILLMService`） |
 | **ILogger** | `utils/i_logger.py`（原始定义）/ `core/interfaces/__init__.py`（重导出）| 日志接口 | `utils/logging_tools.py`（`LoggerManager` 实现）|
+| **ILocalizationFacade** | `i_localization.py` | 插件文案取词门面抽象接口（绑定插件 UUID） | `core/i18n/facade.py` 的 `PluginI18nFacade` |
 
 ### 2.2 辅助类
 
@@ -521,14 +523,15 @@ class MyPlugin(IPlugin):
 
 **作用**: 将插件所需的核心服务聚合到一个对象中，通过依赖注入传递给插件
 
-**属性**:
-- `data_provider`: `DataProvider` - 数据提供者实例
-- `task_manager`: `BackgroundTaskManager` - 后台任务管理器实例
-- `llm_facade`: `ILLMService` - LLM 插件服务（实际为 `LLMPluginService` 单例，显式继承 `ILLMService`）
-- `logger`: `ILogger` - 日志接口
+**属性（共 8 字段）**:
+- `data_provider`: `DataProvider` - 数据提供者实例（失败时降级为 `None`）
+- `task_manager`: `BackgroundTaskManager` - 后台任务管理器实例（失败时降级为 `None`）
+- `llm_facade`: `ILLMService` - LLM 插件服务（实际为 `LLMPluginService` 单例，显式继承 `ILLMService`；无降级保护、始终注入）
+- `logger`: `ILogger` - 日志接口（`LoggerManager` 实例；无降级保护、始终注入）
 - `mcp_manager`: `MCPManager` - MCP Server 管理器实例（可为空，用于管理内置 MCP Server）
 - `mcp_client`: `MCPClientManager` - 外部 MCP Client 管理器实例（可为空，用于连接外部 MCP Server）
 - `font_manager`: `FontManager` - 字体管理器实例（`core/font`，安装/卸载/系统回退解析；无降级保护、始终注入，同 `logger`）
+- `localization`: `ILocalizationFacade` - 多语言取词门面（绑定本插件 UUID；实现为 `PluginI18nFacade`；无降级保护、始终注入；插件无语言包时优雅降级返回键名本身）
 
 **设计模式**: 依赖注入（Dependency Injection）
 
@@ -637,6 +640,7 @@ from core.interfaces import IPlugin, IPluginInfo
 | `ITaskManager` | `BackgroundTaskManager` | `core/task/background_task.py` |
 | `ILLMService` | `LLMPluginService` | `core/llm/plugin_service.py`（显式继承 `ILLMService`，经 `PluginServices.llm_facade` 注入） |
 | `ILogger` | `LoggerManager` | `utils/logging_tools.py` |
+| `ILocalizationFacade` | `PluginI18nFacade` | `core/i18n/facade.py`（绑定插件 UUID，经 `PluginServices.localization` 注入） |
 
 ### 5.2 访问单例实例
 

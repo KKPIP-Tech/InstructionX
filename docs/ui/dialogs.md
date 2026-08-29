@@ -25,7 +25,7 @@
 
 - 项目 Logo（居中显示）
 - 项目名称: "InstructionX - CE"（加粗，字号取 UIKit 令牌 `font.title.lg` = 20px）
-- 版本号: "版本 Alpha 1.0.4"（次要样式）
+- 版本号: "版本 Alpha 1.0.5"（次要样式）
 - 版权声明: "© 2025-2026 dakuang 版权所有，保留所有权利。"
 - 专有软件声明（中文摘要 + 英文法律声明，代码中以 `\n` 换行，实际显示为三行）:
   ```
@@ -92,7 +92,7 @@ dialog.exec()
 - **API 密钥**：`QLineEdit`（密码模式 + 眼睛图标切换可见性），即时落盘
 - **连接检测**：「检测」按钮，经 `ConnectionCheckWorker`（QThread）调用 `LLMProvider.check_provider()`；成功显示「连接正常 · N 个模型」且未启用时自动开启 `enabled_chat`，失败显示错误详情
 - **API 地址**：`QLineEdit`（占位符显示目录默认地址）+「重置」按钮（清空实例覆写、回退目录默认）；输入完成即时落盘
-- 官网 / 获取密钥 / 文档链接全部由目录预设元数据驱动
+- **获取密钥**：`_key_link_btn` 链接，指向 `preset.api_key_url`（目录预设元数据驱动）。注意：`docs_url` 虽在预设中定义，但框架 UI 当前**无消费点**；预设亦无 homepage 字段，UI 不存在「官网」链接
 
 #### 模型区（ModelSection）
 - **标题栏**: 计数 / 「↻ 刷新」（`FetchModelsWorker` 后台拉取，内部走 `check_provider()`）/ 「＋ 添加」/ 「检查」（健康检查对话框）/ 「同步」（模型同步对话框）/ 「管理」
@@ -461,7 +461,7 @@ dialog.exec()
 
 ### 8.3 行为语义
 
-- **退出程序**：真正退出（`closeEvent` accept + 显式 `QApplication.quit()`）
+- **退出程序**：真正退出（`closeEvent` accept + 经 `_request_application_quit()` 显式退出）
 - **最小化到托盘**：隐藏主窗口、托盘图标驻留、弹通知提示（每次都弹，详见 [系统托盘与关闭行为](system-tray.md)）
 - **取消**：Esc、对话框叉号、「取消」按钮统一走 `reject()`，等价于取消关闭，窗口保持原状
 

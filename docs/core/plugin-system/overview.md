@@ -96,8 +96,8 @@ def _load_plugin_from_directory(self, plugin_dir: Path) -> Optional[IPlugin]:
     identity = PluginIdentity(plugin_dir)
     plugin_id = identity.load_or_create_id()
 
-    # 6. 创建服务容器
-    services = self._create_plugin_services()
+    # 6. 创建服务容器（传入 plugin_id 绑定多语言取词门面）
+    services = self._create_plugin_services(plugin_id)
 
     # 7. 实例化插件（尝试注入 services）
     sig = inspect.signature(plugin_class)
@@ -290,7 +290,7 @@ classDiagram
 
 ```mermaid
 graph LR
-    subgraph PluginServices [PluginServices 容器]
+    subgraph PluginServices [PluginServices 容器 8 字段]
         LLM[llm_facade<br/>LLMPluginService]
         DP[data_provider<br/>DataProvider]
         TM[task_manager<br/>BackgroundTaskManager]
@@ -298,6 +298,7 @@ graph LR
         MCM[mcp_manager<br/>MCPManager]
         MCC[mcp_client<br/>MCPClientManager]
         FTM[font_manager<br/>FontManager]
+        LOC[localization<br/>PluginI18nFacade<br/>绑定插件 UUID]
     end
 
     PluginServices --> LLM
@@ -307,17 +308,19 @@ graph LR
     PluginServices --> MCM
     PluginServices --> MCC
     PluginServices --> FTM
+    PluginServices --> LOC
 ```
 
 | 服务字段 | 类型 | 说明 |
 |----------|------|------|
-| `llm_facade` | `LLMPluginService` | LLM 服务入口（单例） |
-| `data_provider` | `DataProvider` | 数据持久化服务 |
-| `task_manager` | `BackgroundTaskManager` | 后台任务管理 |
-| `logger` | `ILogger` | 日志服务 |
-| `mcp_manager` | `MCPManager` | MCP Server 管理器 |
-| `mcp_client` | `MCPClientManager` | MCP 外部连接管理器 |
-| `font_manager` | `FontManager` | 字体管理器（安装/卸载/系统回退解析，`core/font`） |
+| `llm_facade` | `LLMPluginService` | LLM 服务入口（单例，无降级保护、始终注入） |
+| `data_provider` | `DataProvider` | 数据持久化服务（失败时降级为 `None`） |
+| `task_manager` | `BackgroundTaskManager` | 后台任务管理（失败时降级为 `None`） |
+| `logger` | `ILogger` | 日志服务（`LoggerManager` 实例，无降级保护、始终注入） |
+| `mcp_manager` | `MCPManager` | MCP Server 管理器（失败时降级为 `None`） |
+| `mcp_client` | `MCPClientManager` | MCP 外部连接管理器（失败时降级为 `None`） |
+| `font_manager` | `FontManager` | 字体管理器（安装/卸载/系统回退解析，`core/font`，无降级保护、始终注入） |
+| `localization` | `ILocalizationFacade` | 多语言取词门面（绑定本插件 UUID，无降级保护、始终注入；实现为 `PluginI18nFacade`） |
 
 ---
 

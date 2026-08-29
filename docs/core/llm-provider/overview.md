@@ -45,34 +45,16 @@
 | **多模态支持** | 部分 Provider 支持 Vision 图片理解 |
 | **Function Calling** | 支持工具调用，与外部系统集成 |
 
-### 2.5.1 关于 `llm-chat` 插件的旧签名（实现细节，非公共契约）
+### 2.5.1 旧 7 参 `stream_send_message` 调用的废弃说明
 
 > **⚠️ 公共 API 契约**：`LLMPluginService.stream_send_message` 的**新契约**是带 `conversation_id` 的 8 参版本（详见 `docs/api/full-reference.md` §5），所有新插件与代码路径应使用新契约。
 
-`llm-chat` 官方插件（`plugin/llm-chat/`）是一个**特例**：它内部的 `ChatWorker._do_stream()` 仍使用**旧 7 参调用顺序**：
+历史版本中 `stream_send_message` 仅有 7 参调用顺序（`content / provider / model / temperature / max_tokens / images / history`）。该旧契约在以下方面与新 8 参 `conversation_id` 公共契约**不兼容**：
 
-```python
-# plugin/llm-chat/function/services/core_service.py 内部实现（非公共）
-self.service.stream_send_message(
-    self.message,     # content
-    self.provider,    # provider
-    self.model,       # model
-    self.temperature, # temperature
-    self.max_tokens,  # max_tokens
-    self.images,      # images
-    self.history,     # history (旧字段，LLMPluginService 公共 API 不再使用)
-)
-```
+1. 混淆参数顺序会导致 LLM 调用失败；
+2. 旧契约中的 `self.history` 字段在新 `LLMPluginService` 中已被废弃（历史消息改由 `ConversationManager` 内部管理）。
 
-旧 7 参调用经 `plugin/llm-chat/service.py::Service.__getattr__` **代理转发**到 `plugin/llm-chat/function/services/core_service.py::LLMChatService` 的内部实现，**不**走 `core/llm/plugin_service.py::LLMPluginService` 的公共 API。
-
-**为什么文档要单独标注**：
-
-1. 旧 7 参顺序与新 8 参 `conversation_id` 公共契约**不兼容**——混淆参数会导致 LLM 调用失败；
-2. 任何看 `llm-chat/entrance.py` 学开发的用户会误以为这是标准做法，**实际并非如此**；
-3. 旧契约中的 `self.history` 字段在新 `LLMPluginService` 中已被废弃（历史消息改由 `ConversationManager` 内部管理）。
-
-**新插件开发建议**：直接使用 `LLMPluginService.stream_send_message(conversation_id, content, ...)` 新契约；如需像 `llm-chat` 一样拆分业务到子模块（`function/services/` 等），可在插件的 `service.py` 中用 `__getattr__` 代理（详见 `docs/core/plugin-system/plugin-development.md §2.2`），但**底层最终应调用新公共 API**，不要重新发明旧 7 参接口。
+**新插件开发建议**：直接使用 `LLMPluginService.stream_send_message(conversation_id, content, ...)` 新契约；如需将业务拆分到子模块（`function/services/` 等），可在插件的 `service.py` 中用 `__getattr__` 代理（详见 `docs/core/plugin-system/plugin-development.md §2.2`），但**底层最终应调用新公共 API**，不要重新发明旧 7 参接口。
 
 
 
@@ -364,6 +346,9 @@ flowchart TD
 
 - **缓存位置**: `config/llm_models_cache.json`
 - **缓存策略**: 优先从 API 获取，成功则缓存；失败则尝试加载缓存；缓存也没有则进入第三级兜底——用实例配置中的 `chat_model` / `embedding_model` 构造默认模型条目返回（见 `core/llm/providers/base.py` 的 `_get_default_models_from_config()`）
+- **缓存 TTL**：`BaseProvider.MODELS_CACHE_TTL = 24 * 3600`（24 小时）；`refresh_models()` 调用 API 前检查当前缓存时间戳，超过 TTL 时 `self._models_cache_stale = True`；TTL 过期但远程刷新失败时**继续沿用旧缓存**（记 INFO 日志），不直接抛错——保证 LLM 设置界面在网络抖动期间仍能展示可用模型；
+- **`models_cache_stale` 属性**：暴露当前缓存是否过期，供 `LLMProvider._check_models_staleness()` 等上层调度判断是否需要后台静默刷新；
+- **缓存条目格式**：TTL 信封 `{"timestamp": <unix_ts>, "models": [ModelInfo, ...]}`；读取端兼容**纯 list 旧格式**（无 timestamp）——此时视为已过期（`models_cache_stale=True`），强制走 API 刷新或回退默认模型。
 - **预设模型列表**: 子类定义了 `CHAT_MODELS` / `EMBEDDING_MODELS` 类属性的 Provider 不走上述流程，直接返回预设模型列表（`get_models()` → `_get_fallback_models()`）
 - **每次初始化**: 都会尝试从 API 刷新模型列表
 
@@ -685,7 +670,7 @@ if response.tool_calls:
 }
 ```
 
-- `base_url` 为空串时使用目录预设的默认地址；`api_key` 落盘为 Base64 编码（仅为编码非加密）。
+- `base_url` 为空串时**运行时不做回退**——`BaseProvider._make_request` 直接拼接 `f"{self.base_url}{endpoint}"`，空 `base_url` 会导致请求失败（请求 URL 退化为相对路径或空）。仅 UI 层（`ui/dialog/llm_settings/provider_detail_panel.py` 的「重置」按钮）在编辑界面展示目录默认地址作为占位/回填建议，运行时不读取该值。`api_key` 落盘经 Base64 编码（仅为编码非加密）。
 - `custom_models` 为用户覆写模型条目（统一模型 schema，见 `core/llm/model_schema.py`）。
 - 完整字段说明与迁移规则见 [LLM Provider 配置](provider-config.md)。
 

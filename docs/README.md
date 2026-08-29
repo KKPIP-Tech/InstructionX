@@ -43,7 +43,8 @@ docs/
 │   │
 │   ├── data-provider/               # 数据层
 │   │   ├── overview.md              # DataProvider 概述
-│   │   └── api-reference.md         # DataProvider API 参考
+│   │   ├── api-reference.md         # DataProvider API 参考
+│   │   └── sqlite-migration-plan.md # SQLite 迁移实施文档（含 schema 演进 + 运维手册）
 │   │
 │   ├── background-task/             # 后台任务
 │   │   ├── overview.md             # 后台任务概述
@@ -85,6 +86,8 @@ docs/
     ├── thirdparty-plugins.md        # 第三方插件文档
     └── llm-integration-guide.md     # LLM 集成开发指南
 ```
+
+> 另：仓库根目录的 [`插件开发流程.md`](../插件开发流程.md) 为**插件开发快速入门指南**（环境初始化 / 插件仓库配置 / AI 辅助提示词模板），面向插件开发者。
 
 ---
 

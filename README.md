@@ -10,7 +10,7 @@
 [![PySide6](https://img.shields.io/badge/PySide6-6.10+-green.svg)](https://doc.qt.io/qtforpython/)
 [![Platform](https://img.shields.io/badge/Platform-Windows-lightgrey.svg)](#)
 [![License](https://img.shields.io/badge/License-Commercial%20Source-orange.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/Alpha-1.0.4%20CE-red.svg)](#)
+[![Version](https://img.shields.io/badge/Alpha-1.0.5%20CE-red.svg)](#)
 
 <p>基于 PySide6 的插件式桌面应用框架，支持 LLM 集成、MCP 协议（Server/Client）、多会话管理与热插拔插件系统</p>
 
@@ -108,7 +108,7 @@ InstructionX 是一个功能强大的**插件集成框架**，允许你根据实
 内置 InstructionX_UIKit 组件库，提供统一的现代化界面外观：
 - **全局主题**：支持 light/dark/auto 三种主题模式，可通过菜单或快捷键切换，并根据操作系统设置自动跟随
 - **设计令牌**：统一的颜色、字体、间距、圆角等 Design Tokens，随主题实时换肤
-- **57 组件**（+ 12 布局 + 8 蓝图节点 + 6 图表 + 2 动画 = 完整组件库）：覆盖按钮、输入框、菜单、对话框、图表等常用界面元素，插件开发可直接复用
+- **58 组件**（+ 13 布局 + 52 动画 + 原生图表引擎 + 蓝图节点图 + Mermaid 子包）：覆盖按钮、输入框、菜单、对话框、图表等常用界面元素，插件开发可直接复用
 
 ### 🅰️ 字体管理器
 
@@ -130,18 +130,34 @@ InstructionX 是一个功能强大的**插件集成框架**，允许你根据实
 
 - Python 3.14 或更高版本
 - Windows 10/11
+- [uv](https://docs.astral.sh/uv/)（Python 虚拟环境与依赖管理器）
+
+### 安装 uv
+
+```bash
+# Windows（PowerShell）
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+
+# macOS / Linux
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
 
 ### 安装依赖
 
+首次运行 `uv run main.py` 时会自动创建虚拟环境并按 `uv.lock` 同步依赖；也可先显式安装：
+
 ```bash
-pip install -r requirements.txt
+uv venv
+uv pip install -r requirements.txt
 ```
+
+> 注意：请勿使用 `uv sync`——它会严格对齐 `uv.lock` 并**移除**环境中额外安装的包（如插件经框架 DependencyManager 安装的依赖、测试依赖等）。
 
 主要依赖：
 - `PySide6` (>=6.10) - Qt GUI 框架
 - `requests` (>=2.32) - HTTP 请求
 - `aiohttp` (>=3.11) - 异步 HTTP 客户端
-- `mcp` (>=1.0.0) - MCP 协议（Model Context Protocol）
+- `mcp` (>=1.28.1,<2) - MCP 协议（Model Context Protocol）
 - `orjson` (>=3.11.0,<4) - 高性能 JSON 序列化
 - `matplotlib` (>=3.10) - 用量统计图表
 - `packaging` (>=23.0) - 插件依赖版本检查
@@ -149,7 +165,7 @@ pip install -r requirements.txt
 ### 运行应用
 
 ```bash
-python main.py
+uv run main.py   # 自动按 uv.lock 同步环境后启动
 ```
 
 ---
@@ -355,12 +371,12 @@ InstructionX 采用 **InstructionX Commercial Source License**(商业源码许�
 
 | 技术 | 用途 | 版本 |
 |------|------|------|
-| InstructionX CE | 应用版本 | Alpha 1.0.4 |
+| InstructionX CE | 应用版本 | Alpha 1.0.5 |
 | PySide6 | Qt GUI 框架 | >= 6.10 |
 | Python | 编程语言 | >= 3.14 |
 | requests | HTTP 请求 | >= 2.32 |
 | aiohttp | 异步 HTTP | >= 3.11 |
-| mcp | MCP 协议 | >= 1.0.0 |
+| mcp | MCP 协议 | >= 1.28.1,<2 |
 | orjson | 高性能 JSON 序列化 | >= 3.11.0,<4 |
 | matplotlib | 用量统计图表 | >= 3.10 |
 | packaging | 插件依赖版本检查 | >= 23.0 |

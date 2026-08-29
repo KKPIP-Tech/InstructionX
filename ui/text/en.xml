@@ -326,6 +326,7 @@ Interfaces using this font will fall back to a system font after uninstallation.
       <text key="message.no_github_source"><![CDATA[No GitHub source is recorded for this plugin; unable to check for updates.
   You can manually upgrade/downgrade via "Install Local Plugin Package".]]></text>
       <text key="message.no_releases">No Release versions found for this repository</text>
+      <text key="message.no_plugin_installed">No plugin was installed: no matching plugin found in the selected version</text>
       <text key="message.invalid_source_url">Invalid source repository URL</text>
       <text key="message.install_confirm"><![CDATA[Will {relation} plugin "{name}"
   Current version: {current}

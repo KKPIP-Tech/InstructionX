@@ -27,13 +27,14 @@
 |------|------|
 | PySide6 >= 6.10 | Qt GUI 框架 |
 | requests / aiohttp | HTTP / 异步 HTTP |
-| mcp >= 1.0.0 | MCP 协议（FastMCP） |
+| mcp >= 1.28.1, < 2 | MCP 协议（FastMCP） |
 | orjson | JSON 序列化（SQLite 后端） |
 | matplotlib | 用量统计与 UIKit MarkdownView LaTeX 公式渲染（math_render 异步渲染中枢）使用；旧用量面板图表曾使用，现用量面板已改用 UIKit 原生图表引擎 |
 | packaging | 插件依赖版本检查 |
 | qrcode[pil] >= 7.4 | InstructionX_UIKit 组件库 QRCodeView 组件依赖（库规定唯一允许的第三方依赖） |
+| pyobjc-framework-Cocoa >= 11.0 | 仅 macOS（`sys_platform == "darwin"` 条件依赖）：运行时设置 Dock 栏应用图标（`utils/macos_dock_icon.py`） |
 
-- 依赖单一来源是 `pyproject.toml` 的 `[project].dependencies`；`requirements.txt` 与其保持同步（供 `run.ps1` 使用），**改依赖时两处都要改**。
+- 依赖单一来源是 `pyproject.toml` 的 `[project].dependencies`；`requirements.txt` 与其保持同步（供 `uv pip install -r requirements.txt` / `pip install -r requirements.txt` 直接安装使用），**改依赖时两处都要改**。
 - 环境管理使用 **uv**（存在 `uv.lock`、`.python-version`、`.venv/`）。
 
 ## 构建与运行命令
@@ -43,8 +44,8 @@
 uv venv
 uv pip install -r requirements.txt
 
-# 运行应用（推荐入口，自动建 venv + 装依赖 + 启动）
-.\run.bat            # 内部调用 run.ps1
+# 运行应用（推荐入口，自动按 uv.lock 同步环境后启动）
+uv run main.py
 
 # 或直接运行
 .venv\Scripts\python.exe main.py
@@ -73,7 +74,7 @@ python -m pytest test/ -q --tb=short -p no:cacheprovider
 - **注意**：`test/` 下当前仅保留 `test/core/data/test_data_provider.py` 一个有效测试文件（其余旧测试已在重构中删除，残留的 `__pycache__` 是过期产物，不要参考）。现有测试约定：中文 docstring、`tmp_path` fixture、测试单例类时需重置 `XxxManager._instance = None`。
 - UI 测试不配置 offscreen 平台，CI 跑在 `windows-latest` 上使用真实 GUI。
 - 项目还有一类**独立验证脚本**（非 pytest，放在 `scripts/`，用 `.venv\Scripts\python.exe scripts\<name>.py` 直接运行）：
-  - `smoke_*.py`：核心链路无网冒烟测试（LLM、task、utils、i18n、插件管理：安装/升级/降级/卸载/分组）
+  - `smoke_*.py`：核心链路无网冒烟测试（LLM、task、utils、i18n、字体管理、插件管理：安装/升级/降级/卸载/分组）
   - `check_i18n_completeness.py`：语言文件完整性校验（默认语言必须覆盖源码全部 `tr()` 调用，缺键 exit 1；其他语言缺键/孤立键 WARNING；支持 `--text-dir`/`--src-dir`/`--plugin-root`）
   - `screenshot_*.py`：对话框截图对比脚本（输出到 `scripts/screenshots/`）
   - `_mcp_smoke*.py`：真实 MCP SDK 冒烟测试
@@ -240,6 +241,8 @@ core/
     sqlite_backend.py       # SQLite WAL 后端（默认），schema 迁移
   task/                     # 后台任务系统
     background_task.py      # BackgroundTaskManager 单例：4 线程池、定时/长期任务、优雅关闭
+    task_model.py           # BackgroundTask / ScheduledTask / LongRunningTask 数据模型
+    scheduler.py            # TaskScheduler（轻量生命周期占位）+ SchedulerCallback
     task_storage.py         # 任务状态持久化（data/tasks.json）
   llm/                      # LLM 框架
     llm_provider.py         # LLMProvider 单例：对话/流式/embedding/模型列表缓存、
@@ -321,10 +324,13 @@ ui/                         # 界面层
                             #   apply_dialog_theme 经 theme_changed 实时跟随应用主题）
 utils/
   logging_tools.py          # LoggerManager 单例（滚动文件日志，输出 logs/application.log）、get_name()
+  i_logger.py               # ILogger 接口
   image_utils.py            # 图片工具（load_image_as_base64，原 LLMPluginService 方法迁出）
   thread_utils.py           # 工作线程 → UI 线程封送（run_in_ui_thread 等）
-plugin/                     # 官方/示例插件（kebab-case 目录，15 个）
-custom_plugin/              # 第三方插件目录
+  macos_dock_icon.py        # macOS Dock 栏应用图标设置（AppKit，非 macOS 空操作）
+plugin/                     # 官方/示例插件（kebab-case 目录；仅用于本地开发验证，非框架捆绑列表，
+                            #   不视为框架公共契约的一部分，其余能力按需通过 GitHub 安装器获取）
+custom_plugin/              # 第三方插件目录（与框架解耦）
 workers/                    # 预留扩展
 scripts/                    # 冒烟/截图/演示脚本（见“测试”一节）
 test/                       # pytest 测试
@@ -356,7 +362,7 @@ config/ data/ logs/         # 运行时生成：配置、数据、日志
   - 无魔法数字
 - GitHub 安装描述文件：`IXPlugin.json`（每个插件必需，位于插件子目录，文件名大小写敏感）、`IXRepo.json`（插件仓库索引，所有插件仓库必需，含单插件仓库）；KKPIP-Tech 组织下的插件自动归类为官方插件。
 - 详细文档：`docs/core/plugin-system/plugin-development.md`、`docs/plugins/llm-integration-guide.md`。
-- 参考示例：`plugin/framework-api-demo/`、`plugin/llm-chat/`。
+- 参考示例：`plugin/` 目录下提供的官方/示例插件（仅用于本地开发验证，非框架公共契约的一部分）；其余能力按需通过 GitHub 安装器获取。
 
 ## 配置与数据文件（运行时生成，勿手改结构）
 
@@ -385,6 +391,9 @@ config/ data/ logs/         # 运行时生成：配置、数据、日志
 | `INSTRUCTIONX_DATAPROVIDER_BACKEND` | `sqlite`（默认）/ `json`（回退旧 JSON 后端，写 `data/data.json`） |
 | `INSTRUCTIONX_MCP_CONFIG` | 覆盖 MCP 配置文件路径 |
 | `INSTRUCTIONX_GITHUB_TOKEN` | GitHub API Token（可选）：插件安装/Release 更新检查时鉴权，提升限流阈值、支持私有仓库 |
+| `INSTRUCTIONX_LOG_DIR` | 覆盖日志输出目录（默认 `logs/`） |
+| `INSTRUCTIONX_LOG_LEVEL` | 覆盖日志级别（如 `DEBUG`/`INFO`/`WARNING`/`ERROR`/`CRITICAL`） |
+| `DEVELOPMENT_MODE` | 开发模式开关（启用额外日志/调试行为；详见 `utils/logging_tools.py`） |
 
 ## 代码风格
 
@@ -414,6 +423,7 @@ config/ data/ logs/         # 运行时生成：配置、数据、日志
 - LLM：`docs/core/llm-provider/`、`docs/plugins/llm-integration-guide.md`
 - MCP：`docs/core/mcp/overview.md`
 - API 参考：`docs/api/full-reference.md`
+- 插件开发快速入门：根目录 `插件开发流程.md`（环境初始化 / 插件仓库配置 / AI 辅助提示词模板，面向插件开发者）
 
 **根目录历史设计报告**（已落地为正式文档，仅作决策溯源参考）：
-- `close-to-tray-report.md` — 关闭确认弹窗与系统托盘运行的实现分析报告（531 行，2026-07-31）；已被 `docs/ui/system-tray.md` 与 `docs/ui/dialogs.md §8 CloseConfirmDialog` 完整替代，**当前文档地图不再单列**。如需查阅决策溯源可在 git 历史中追踪。
+- `temp/close-to-tray-report-2026-07-31.md` — 关闭确认弹窗与系统托盘运行的实现分析报告（已迁出根目录至 `temp/`）；其内容已被 `docs/ui/system-tray.md` 与 `docs/ui/dialogs.md §8 CloseConfirmDialog` 完整替代，**当前文档地图不再单列**。如需查阅决策溯源可在 git 历史中追踪。

@@ -15,7 +15,7 @@ APP_VERSION = PluginVersion(VersionType.ALPHA, _MAJOR, _MINOR, _PATCH)
 
 
 def get_instructionx_version_string() -> str:
-    """获取 InstructionX 框架版本字符串，如 'Alpha 1.0.4'"""
+    """获取 InstructionX 框架版本字符串，如 'Alpha 1.0.5'"""
     type_map = {
         VersionType.ALPHA: "Alpha",
         VersionType.BETA: "Beta",
@@ -29,5 +29,5 @@ def get_instructionx_version_string() -> str:
 
 
 def get_instructionx_version_display() -> str:
-    """获取带'版本'前缀的 InstructionX 框架显示字符串，如 '版本 Alpha 1.0.4'"""
+    """获取带'版本'前缀的 InstructionX 框架显示字符串，如 '版本 Alpha 1.0.5'"""
     return f"版本 {get_instructionx_version_string()}"

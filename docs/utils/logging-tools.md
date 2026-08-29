@@ -47,7 +47,13 @@ from utils import LoggerManager
 logger = LoggerManager()
 ```
 
-### 2.3 get_name()
+### 2.3 _ModuleNameFilter
+
+为日志记录注入默认 `module_name` 属性的过滤器（内部类，注册在 `ApplicationLogger` 上）。
+
+Formatter 依赖自定义属性 `%(module_name)s`，只有经 `LoggerManager.log()` 写入的记录才带该属性；若代码直接向 `'ApplicationLogger'` logger 写日志（绕过 `LoggerManager`），记录会缺少 `module_name` 而在格式化时抛 `KeyError`。此过滤器在记录缺少该属性时回退为标准 `module` 属性（再退化为 `'unknown'`），保证日志格式外观不变。
+
+### 2.4 get_name()
 
 自动获取当前调用位置的模块名称，无论是从类方法、函数还是主模块调用都能正确获取。
 
@@ -220,7 +226,9 @@ from utils import LoggerManager
 from utils import get_name
 ```
 
-### 7.3 潜在集成点
+### 7.3 实际集成情况
+
+LoggerManager 已在框架各核心模块中广泛使用：
 
 - **BackgroundTaskManager**: 记录任务调度日志
 - **LLM Provider**: 记录 API 调用日志

@@ -10,7 +10,7 @@
 [![PySide6](https://img.shields.io/badge/PySide6-6.10+-green.svg)](https://doc.qt.io/qtforpython/)
 [![Platform](https://img.shields.io/badge/Platform-Windows-lightgrey.svg)](#)
 [![License](https://img.shields.io/badge/License-Commercial%20Source-orange.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/Alpha-1.0.4%20CE-red.svg)](#)
+[![Version](https://img.shields.io/badge/Alpha-1.0.5%20CE-red.svg)](#)
 
 > A PySide6-based plugin desktop application framework with LLM integration, MCP Protocol (Server/Client), multi-conversation management, and hot-swappable plugin system
 
@@ -107,7 +107,7 @@ Plugins can call each other's APIs to achieve functional collaboration:
 Built-in InstructionX_UIKit component library providing a unified modern interface appearance:
 - **Global Theme**: Support for light/dark/auto theme modes, switchable via menu or shortcuts, with automatic OS-level theme following
 - **Design Tokens**: Unified color, font, spacing, and radius tokens that restyle in real time with theme switching
-- **57 Components** (+ 12 Layouts + 8 Blueprint Nodes + 6 Charts + 2 Animations = complete component library): Covering buttons, inputs, menus, dialogs, charts, and other common UI elements, ready for plugin development reuse
+- **58 Components** (+ 13 Layouts + 52 Animations + native chart engine + blueprint node graph + Mermaid subpackage): Covering buttons, inputs, menus, dialogs, charts, and other common UI elements, ready for plugin development reuse
 
 ### 🅰️ Font Manager
 
@@ -129,18 +129,34 @@ When switching plugins, the plugin's UI state is automatically cached. When you 
 
 - Python 3.14 or higher
 - Windows 10/11
+- [uv](https://docs.astral.sh/uv/) (Python virtual environment & dependency manager)
+
+### Install uv
+
+```bash
+# Windows (PowerShell)
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+
+# macOS / Linux
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
 
 ### Install Dependencies
 
+The first run of `uv run main.py` automatically creates a virtual environment and syncs dependencies from `uv.lock`; you may also install explicitly first:
+
 ```bash
-pip install -r requirements.txt
+uv venv
+uv pip install -r requirements.txt
 ```
+
+> Note: Do **not** use `uv sync` — it strictly reconciles to `uv.lock` and **removes** extra packages installed in the environment (e.g., plugin dependencies installed via the framework's DependencyManager, or test dependencies).
 
 Main dependencies:
 - `PySide6` (>=6.10) - Qt GUI framework
 - `requests` (>=2.32) - HTTP requests
 - `aiohttp` (>=3.11) - Asynchronous HTTP client
-- `mcp` (>=1.0.0) - MCP protocol (Model Context Protocol)
+- `mcp` (>=1.28.1,<2) - MCP protocol (Model Context Protocol)
 - `orjson` (>=3.11.0,<4) - High-performance JSON serialization
 - `matplotlib` (>=3.10) - Usage statistics charts
 - `packaging` (>=23.0) - Plugin dependency version checking
@@ -148,7 +164,7 @@ Main dependencies:
 ### Run the Application
 
 ```bash
-python main.py
+uv run main.py   # Automatically syncs the environment from uv.lock and launches
 ```
 
 ---
@@ -354,12 +370,12 @@ The project includes complete technical documentation (in Chinese) located in th
 
 | Technology | Purpose | Version |
 |------------|---------|---------|
-| InstructionX CE | Application version | Alpha 1.0.4 |
+| InstructionX CE | Application version | Alpha 1.0.5 |
 | PySide6 | Qt GUI framework | >= 6.10 |
 | Python | Programming language | >= 3.14 |
 | requests | HTTP requests | >= 2.32 |
 | aiohttp | Asynchronous HTTP | >= 3.11 |
-| mcp | MCP protocol | >= 1.0.0 |
+| mcp | MCP protocol | >= 1.28.1,<2 |
 | orjson | High-performance JSON serialization | >= 3.11.0,<4 |
 | matplotlib | Usage statistics charts | >= 3.10 |
 | packaging | Plugin dependency version checking | >= 23.0 |

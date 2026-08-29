@@ -42,7 +42,7 @@ graph TB
 
 ### 3.1 菜单栏
 
-菜单栏包含三个菜单：**编辑**、**AI**、**帮助**。
+菜单栏包含三个菜单：**编辑**、**AI**、**帮助**。**所有菜单与菜单项的文案统一由 `_retranslate_ui()` 经 `LanguageManager.tr()` 取词设置**——初始化末尾（`__init__`）首次填充，`LanguageManager.language_changed` 信号触发整体重设。
 
 ```python
 def _create_menus(self) -> None:
@@ -51,39 +51,70 @@ def _create_menus(self) -> None:
     menu_bar.setNativeMenuBar(False)
     self._title_bar.set_menu_bar(menu_bar)
 
-    # 编辑菜单
-    menu_edit = menu_bar.addMenu("编辑")
-    menu_edit.addAction(menu_edit_plugin_manage_action)  # 插件管理... (Ctrl+P)
-    menu_edit.addAction(menu_edit_font_manage_action)    # 字体管理...
-    menu_edit.addAction(self._menu_theme_action)         # 切换主题
-    menu_edit.addSeparator()
-    menu_edit.addAction(menu_edit_github_install_action) # 从 GitHub 安装插件...
+    # 编辑菜单（文案由 _retranslate_ui 设置，此处只建结构）
+    self._menu_edit = menu_bar.addMenu("")
+    self._action_plugin_manage = QAction(self)
+    self._action_plugin_manage.setShortcut("Ctrl+P")
+    self._action_plugin_manage.triggered.connect(self._open_plugin_management_dialog)
+    self._menu_edit.addAction(self._action_plugin_manage)
+
+    self._action_font_manage = QAction(self)
+    self._action_font_manage.triggered.connect(self._open_font_manager_dialog)
+    self._menu_edit.addAction(self._action_font_manage)
+
+    self._menu_theme_action = QAction(self)
+    self._menu_theme_action.triggered.connect(self._cycle_theme)
+    self._menu_edit.addAction(self._menu_theme_action)
+
+    # 界面语言（打开 LanguageDialog 实时切换）
+    self._action_language = QAction(self)
+    self._action_language.triggered.connect(self._open_language_dialog)
+    self._menu_edit.addAction(self._action_language)
+
+    self._menu_edit.addSeparator()
+
+    self._action_github_install = QAction(self)
+    self._action_github_install.triggered.connect(self._open_github_plugin_install_dialog)
+    self._menu_edit.addAction(self._action_github_install)
 
     # AI 菜单 - 由 _create_ai_menu 创建
     self._create_ai_menu(menu_bar)
 
     # 帮助菜单
-    menu_help = menu_bar.addMenu("帮助")
-    menu_help.addAction(menu_help_about_action)    # 关于
-    menu_help.addAction(menu_help_license_action)  # 开源组件许可
+    self._menu_help = menu_bar.addMenu("")
+    self._action_about = QAction(self)
+    self._action_about.triggered.connect(self._open_about_dialog)
+    self._menu_help.addAction(self._action_about)
+    self._action_license = QAction(self)
+    self._action_license.triggered.connect(self._open_license_dialog)
+    self._menu_help.addAction(self._action_license)
+
+    # 首次填充全部菜单文案（语言切换时由 language_changed 触发重设）
+    self._retranslate_ui()
 ```
 
 **AI 菜单** (`_create_ai_menu`) 包含以下菜单项：
 
 ```python
 def _create_ai_menu(self, menu_bar):
-    self._ai_menu = menu_bar.addMenu("AI")
+    self._ai_menu = menu_bar.addMenu("")
 
     # LLM 设置 (Ctrl+L)
-    settings_action = QAction("LLM 设置...", self)
-    settings_action.setShortcut("Ctrl+L")
-    settings_action.triggered.connect(self._open_llm_settings_dialog)
-    self._ai_menu.addAction(settings_action)
+    self._action_llm_settings = QAction(self)
+    self._action_llm_settings.setShortcut("Ctrl+L")
+    self._action_llm_settings.triggered.connect(self._open_llm_settings_dialog)
+    self._ai_menu.addAction(self._action_llm_settings)
 
     # 用量查询
-    usage_action = QAction("用量查询", self)
-    usage_action.triggered.connect(self._open_usage_panel)
-    self._ai_menu.addAction(usage_action)
+    self._action_usage = QAction(self)
+    self._action_usage.triggered.connect(self._open_usage_panel)
+    self._ai_menu.addAction(self._action_usage)
+```
+
+`language_changed` 信号接线（位于 `_setup_tray()` 之后）：
+
+```python
+get_language_manager().language_changed.connect(self._retranslate_ui)
 ```
 
 点击 **LLM 设置...** 调用 `_open_llm_settings_dialog()`，打开 `LLMSettingsDialog`（`ui/dialog/llm_settings/` 包，两栏布局、自动保存语义）进行 LLM Provider 实例配置。
@@ -173,7 +204,7 @@ graph TB
 - **位置**: 窗口中部（技能面板下方）
 - **特性**: 可伸缩，占用剩余空间
 - **功能**: 显示当前选中插件的 Widget
-- **初始状态**: 显示占位文本 "点击上方技能按钮，在此处显示插件功能" (`ui/work_area/work_area.py` 第33行)
+- **初始状态**: 显示占位文本 "点击上方技能按钮，在此处显示插件功能"（`ui/work_area/work_area.py` 第 35 行的占位 QLabel，文案经 `tr("work_area", "placeholder")` 取词）
 
 ### 3.6 用量查询面板 (UsagePanel)
 
@@ -286,6 +317,7 @@ def __init__(self):
 
     # 托盘运行状态（closeEvent 编排用）
     self._force_quit = False            # 显式退出路径置位，closeEvent 直接放行
+    self._quit_requested = False        # 退出请求幂等守卫（macOS 防重入 terminate:）
     self._close_dialog_showing = False  # 关闭确认框防重入守卫
     self._active_plugin = None          # 当前激活插件，托盘子菜单标记用
 
@@ -444,7 +476,7 @@ cursor_map = {
 
 #### 关于对话框
 
-通过 **帮助 > 关于** 打开，显示应用 Logo、名称（InstructionX - CE）、版本号（Alpha 1.0.4）、版权声明和专有软件声明。
+通过 **帮助 > 关于** 打开，显示应用 Logo、名称（InstructionX - CE）、版本号（Alpha 1.0.5）、版权声明和专有软件声明。
 
 ```python
 # 文件顶部导入：from ui.dialog.about_dialog import AboutDialog

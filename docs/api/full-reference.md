@@ -143,6 +143,10 @@ from core.interfaces import ILocalizationFacade
 | `reload_plugins()` | 重新加载所有插件 | None |
 | `register_plugin(plugin, is_official)` | 手动注册插件 | None |
 | `unregister_plugin(plugin_name)` | 移除插件 | None |
+| `uninstall_plugin(plugin_id, remove_data=False)` | 完整卸载插件（六步流程：运行时卸载 → 注册表移除 → 删除目录 → 清理 UUID → 清理排序/分组/版本注册表/语言覆盖 → 可选删数据） | Dict（`{success, message, warnings}`） |
+| `get_groups(scope)` | 获取指定 scope 的用户自定义分组列表（`"official"` / `"thirdparty"`） | List[PluginGroup] |
+| `save_groups(scope, groups, order=None)` | 保存分组配置与面板统一顺序（分组与未分组插件混排） | bool |
+| `get_sorted_plugins(scope)` | 按面板统一顺序返回渲染序列（分组与未分组插件混排） | List[tuple] |
 | `apply_custom_order()` | 应用自定义顺序 | None |
 | `save_plugin_order(official_plugin_ids, thirdparty_plugin_ids)` | 保存插件顺序 | bool |
 | `get_official_plugin_ids()` | 获取官方插件 UUID 列表 | List[str] |
@@ -153,7 +157,19 @@ from core.interfaces import ILocalizationFacade
 | `register_plugin_api(plugin_id, service_instance, api_descriptions)` | 注册插件 API | None |
 | `get_api_description(plugin_id, method_name=None)` | 获取 API 结构化描述 | Dict |
 | `call_plugin_method(caller_id, plugin_id, method_name, **kwargs)` | 跨插件调用 | Any |
-| `get_all_function_tools()` | 获取 MCP 工具列表 | List[Dict] |
+| `get_all_function_tools()` | 获取 MCP 工具列表 | List[Dict]（工具名 `sanitize_tool_name(f"{plugin_id}__{method_name}")`） |
+
+#### GitHubPluginInstaller 主要 API
+
+**文件**: `core/plugin/github_plugin_installer.py`
+
+| 方法 | 说明 | 返回 |
+|------|------|------|
+| `inspect_repository(github_url)` | 检查 GitHub 仓库返回可安装插件列表 | RepoInspectionResult |
+| `install_from_url(github_url, ...)` | 从 GitHub URL 安装插件 | List[InstallResult] |
+| `install_from_zip(zip_path, target_dir=None, progress_callback=None)` | 从本地 zip 安装插件（含 `IXPlugin.json`） | List[InstallResult] |
+| `get_available_versions(source_url, descriptor_path="")` | 列出远程仓库可用版本（按插件版本号降序，对每个 Release tag 经 Contents API 读取 `IXPlugin.json` 解析版本） | List[ReleaseInfo] |
+| `install_release(owner, repo, tag, target_dir, selected_plugins=None, progress_callback=None)` | 安装指定 GitHub Release tag 对应的插件版本（upgrade / downgrade / reinstall 自动检测） | List[InstallResult] |
 
 ### 2.2 IPlugin
 
@@ -169,8 +185,9 @@ from core.interfaces import ILocalizationFacade
 | `plugin_info` | property | 插件信息对象 |
 | `llm_tools` | property | LLM 工具列表（用于 MCP/Function Calling） |
 | `_create_widget(parent, data_provider)` | method (abstract) | 创建 UI |
-| `get_widget(parent=None, data_provider=None)` | method | 获取 Widget（接口基类无缓存，直接调用 `_create_widget`；缓存机制由 `core/plugin/plugin_interface.py` 中的实现提供） |
+| `get_widget(parent=None, data_provider=None)` | method | 获取 Widget（接口基类无缓存，直接调用 `_create_widget`；缓存机制由 `core/plugin/plugin_interface.py` 中的实现提供，返回缓存前经 `shiboken6.isValid()` 校验，C++ 对象已销毁则丢弃失效缓存并重建） |
 | `on_plugin_loaded(plugin_id=None, **kwargs)` | method | 加载完成回调（PluginManager 调用时不传参数，向后兼容旧插件） |
+| `on_plugin_unloaded()` | method | 卸载/热重载前回调（框架在销毁插件实例前调用；子类可重写以释放资源，默认空实现保证向后兼容） |
 
 ### 2.3 IPluginInfo
 
@@ -271,7 +288,7 @@ from core.interfaces import ILocalizationFacade
 
 ### 4.2 TaskType
 
-**文件**: `core/task/task_model.py`
+**文件**: `core/task/task_model.py`（**枚举单一来源为 `core/interfaces/i_task_manager.py`，task_model.py 仅 re-export 保持导入路径**）
 
 | 枚举值 | 说明 |
 |--------|------|
@@ -282,7 +299,7 @@ from core.interfaces import ILocalizationFacade
 
 ### 4.3 TaskStatus
 
-**文件**: `core/task/task_model.py`
+**文件**: `core/task/task_model.py`（**枚举单一来源为 `core/interfaces/i_task_manager.py`，task_model.py 仅 re-export 保持导入路径**）
 
 | 枚举值 | 说明 |
 |--------|------|

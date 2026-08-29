@@ -258,6 +258,44 @@ flowchart TD
 
 首次启动时，如果检测到旧的 `data/data.json` 且 `data/data.db` 尚未初始化，`SQLiteBackend` 会自动将 JSON 数据导入 `data/data.db`。迁移成功后，原 `data.json` 会被重命名为 `data.migrated-<timestamp>.bak`；若迁移失败，不完整的数据库文件会被删除，下次启动仍可重试。
 
+### 7.5 Schema 版本与链式升级
+
+SQLite 后端的表结构由 `db_metadata.schema_version`（字符串正整数）追踪版本：
+
+- **单一来源**：`core/data/schema_migrations.py` 的 `MIGRATIONS` 注册表（`Dict[int, MigrationFunc]`）+ `TARGET_SCHEMA_VERSION` 常量；新增表结构或变更时**必须**在此注册一个新版本号的迁移函数，不得就地修改既有迁移。
+- **链式升级**：`SQLiteBackend.ensure_database()` 启动时读取当前版本，与 `TARGET_SCHEMA_VERSION` 比较；`current < target` 时按 `current+1, current+2, ...` 顺序逐个执行，每次迁移在独立 `BEGIN IMMEDIATE ... COMMIT / ROLLBACK` 事务中完成；中途失败抛 `SQLiteBackendError` 并回滚当前迁移，不会留下半成品 schema。
+- **高版本库拒绝启动**：若 `current > target`，抛 `SQLiteBackendError` 提示「数据库由更高版本代码创建」，不会做兼容性猜测——数据层不试图跨版本兼容，向上迁移必须升级应用。
+- **早期无版本数据库**：旧库无 `db_metadata` 表时按「基线表已存在」处理，直接补齐 `db_metadata`（写入 `schema_version=TARGET_SCHEMA_VERSION`、`migrated_from="legacy"`、`migrated_at=now`），**不调用链式升级**。
+- **schema 验证**：`SQLiteBackend._validate_table_schema()` 在启动后期校验表结构是否与 `sql_map.SQLMap` 一致，不一致即抛错。
+
+完整 schema 演进路线与迁移脚本编写约定见 [`docs/core/data-provider/sqlite-migration-plan.md`](sqlite-migration-plan.md)。
+
+### 7.6 值序列化限制（对插件可见）
+
+`SQLiteBackend._serialize()` 拒绝以下类型作为 `set_plugin_data()` / `publish()` 的 value（递归扫描，命中即抛 `SQLiteBackendError`，与 `json` 行为对齐）：
+
+- `datetime` / `date` / `time`
+- `NaN` / `Inf`（`float('nan')` / `float('inf')` / `float('-inf')`）
+- `UUID`
+- `bytes` / `bytearray`
+- `set` / `frozenset` / `deque`
+- 普通 `Enum` 实例（`IntEnum` / `IntFlag` 因与 int 等价不在拒绝之列）
+- 任何 dataclass 实例
+- tuple 作 `dict` key
+
+序列化使用 `orjson`（含 `OPT_NON_STR_KEYS` / `OPT_PASSTHROUGH_DATETIME` / `OPT_PASSTHROUGH_DATACLASS`），键只接受 `str/int/float/bool/None`（其它类型 key 抛错）。
+
+> **JSON 应急后端（`INSTRUCTIONX_DATAPROVIDER_BACKEND=json`）的限制更宽松**：`bytes` / `datetime` / `tuple` 等会被 `json` 静默降级（如 `bytes → []`），调用方不会感知失败——数据已损坏。生产路径务必使用 SQLite 后端，让序列化失败尽早暴露。
+
+### 7.7 资源文件路径约束
+
+`save_asset()` / `get_asset_path()` / `load_asset()` 共同执行**双向路径消毒**：
+
+- 拒绝绝对路径（含盘符或以 `/` 开头）；
+- 拒绝 `..` 路径穿越；
+- 解析后必须仍位于数据目录或插件资产目录下（防止根相对路径/符号链接绕过）；
+- 不合规路径抛 `DataProviderError`（由 `SQLiteBackendError` 包装）。
+
 ---
 
 ## 8. 数据结构
@@ -298,6 +336,9 @@ CREATE TABLE db_metadata (
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL
 );
+
+-- 索引：加速 plugin_type 查询（活跃实例切换）
+CREATE INDEX idx_plugins_type ON plugins(plugin_type);
 ```
 
 ---
