@@ -7,7 +7,7 @@ APP_VERSION 也由它解析得到,修改版本号只需改动此处。
 
 from core.plugin.plugin_version import PluginVersion, VersionType
 
-VERSION = "1.0.5"
+VERSION = "1.1.0"
 
 _MAJOR, _MINOR, _PATCH = (int(part) for part in VERSION.split("."))
 

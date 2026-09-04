@@ -15,7 +15,7 @@
 - InstructionX_UIKit 主题与组件体系（`ui/InstructionX_UIKit` 组件库：设计令牌 + light/dark/auto 全局主题，58 组件 + 原生图表引擎）、字体管理器（`core/font` 子系统：字体安装/卸载/预览/系统字体回退，框架不自带字体）
 - 多国语言（i18n）支持（`core/i18n` 子系统：XML 语言文件 + 回退链取词、界面语言实时切换、每插件语言覆盖；日志文案保持中文不国际化）
 
-- 应用标识：`InstructionX - CE`（组织名 `KKPIP-Tech`），当前版本 **Alpha 1.0.5**
+- 应用标识：`InstructionX - CE`（组织名 `KKPIP-Tech`），当前版本 **Alpha 1.1.0**
 - **版本号单一来源为 `core/version.py` 的 `VERSION` 常量**（pyproject 通过 AST 静态读取，修改版本只改这里）
 - 平台：**仅支持 Windows 10/11**，Python **>= 3.14**
 - 许可证：**InstructionX Commercial Source License（商业源码许可证，非开源）**，详见 `LICENSE`
