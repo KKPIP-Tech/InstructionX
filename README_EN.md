@@ -1,18 +1,19 @@
-
-
 <div align="center">
 
 <img src="./assets/logo.png" alt="InstructionX Logo" width="100%">
 
-[English Version](README_EN.md) | 中文版
+# InstructionX
 
+**A PySide6-based plugin-oriented desktop application framework — LLM integration · Bidirectional MCP protocol support · Hot-swappable plugin system**
+
+[![CI](https://github.com/KKPIP-Tech/InstructionX/actions/workflows/test.yml/badge.svg)](https://github.com/KKPIP-Tech/InstructionX/actions/workflows/test.yml)
 [![Python](https://img.shields.io/badge/Python-3.14+-blue.svg)](https://www.python.org/)
 [![PySide6](https://img.shields.io/badge/PySide6-6.10+-green.svg)](https://doc.qt.io/qtforpython/)
-[![Platform](https://img.shields.io/badge/Platform-Windows-lightgrey.svg)](#)
-[![License](https://img.shields.io/badge/License-Commercial%20Source-orange.svg)](LICENSE)
+[![Platform](https://img.shields.io/badge/Platform-Windows%2010%2F11-lightgrey.svg)](#)
 [![Version](https://img.shields.io/badge/Alpha-1.1.0%20CE-red.svg)](#)
+[![License](https://img.shields.io/badge/License-Commercial%20Source-orange.svg)](LICENSE)
 
-> A PySide6-based plugin desktop application framework with LLM integration, MCP Protocol (Server/Client), multi-conversation management, and hot-swappable plugin system
+[中文版](README.md) | English Version
 
 </div>
 
@@ -20,115 +21,73 @@
 
 ## Introduction
 
-InstructionX is a powerful **plugin integration framework** that allows you to combine various utility tools into a unified desktop application based on your actual needs. Whether you're a developer, designer, or regular user, you can create your own **Tools Cluster** tailored to your workflow.
+InstructionX is a **plugin-oriented desktop application framework** built on PySide6. It unifies plugin hot-swapping, multi-provider LLM integration, bidirectional MCP protocol support, data persistence, and background task management into a single infrastructure, allowing users to freely compose tool plugins around their own workflows and build a personalized all-in-one Tools Cluster.
 
-With InstructionX, you can:
-- Freely combine the tool plugins you need
-- Engage in intelligent conversations with multiple LLM providers
-- Use MCP Function Calling to let AI invoke plugin capabilities
-- Quickly switch between different work scenarios
-- Save and sync your tool configurations
-- Develop custom plugins to meet special requirements
+The framework itself ships no business functionality: every capability is plugged in as a plugin and distributed through the GitHub plugin-repository ecosystem. Developers can rapidly build and publish their own plugins on top of the framework's standardized plugin interfaces, dependency-injected service container, and the UIKit component library.
 
----
+> This is an application project: it runs directly from source and is not distributed as a library.
+
+## Screenshots
+
+<!-- TODO: Application screenshots to be added. Place image files in assets/ (e.g. assets/screenshot-main.png) and replace this placeholder. -->
+
+> Application screenshots coming soon.
 
 ## Core Features
 
-### 🔌 Plugin Hot-Swapping
+### Plugin System
 
-The plugin system supports **hot-loading** and **hot-unloading**, allowing you to add, remove, or update plugins without restarting the application. You can dynamically manage plugins at runtime to build a personalized tool collection.
+- **Lifecycle Management**: Hot-load / hot-unload / hot-reload plugins without restarting the application; uninstalling automatically cleans up associated data such as the plugin identity and language overrides
+- **Installation & Updates**: The built-in GitHub installer supports single-plugin repositories (IXPlugin.json) and multi-plugin repositories (IXRepo.json), with background installation and progress display; local zip installation and GitHub Release upgrade/downgrade with version-relation detection are supported; repositories under the KKPIP-Tech organization are automatically classified as official plugins
+- **Versioning & Identity Governance**: Semantic plugin versions (alpha / beta / pre-release / release) and a per-plugin UUID identity; the installed-plugin registry records version / source / install time as the basis for upgrades and update checks; Python dependencies declared by plugins are installed automatically by the framework (uv first, pip as fallback)
+- **Cross-Plugin Collaboration**: Declaring `service_api` automatically registers cross-plugin APIs and exposes them as MCP tools; plugins can also register tools directly with the LLM via `llm_tools`
+- **Panel Organization**: The skills panel supports custom groups, folding, and mixed ordering; plugin UI state is cached when switching plugins and fully restored on return
 
-### 📦 GitHub Plugin Installer
+### LLM Integration
 
-Built-in GitHub plugin installer for installing plugins from any GitHub URL:
+- **Multi-Provider Support**: Five built-in provider presets — MiniMax, SiliconFlow, Zhipu GLM, Ollama, and OpenAI — plus an `openai-compatible` fallback adapter for zero-code integration with any OpenAI-compatible endpoint
+- **Multi-Conversation Management**: Conversation creation / switching / persistence, with automatic context truncation based on token estimation when the window is exceeded (system prompt and recent messages are preserved)
+- **Automated Tool Calling**: ToolCallExecutor automatically handles the multi-turn tool-calling loop (default `max_turns=5`); plugins only need to register their tools
+- **Multimodal**: Image understanding (Vision), image generation, TTS voice synthesis, and Embedding support
+- **Usage Statistics**: Per-conversation and global token consumption and cost estimation, with a built-in visualization panel (AI → Usage)
 
-- **URL Installation**: Install plugins by entering a GitHub repository URL
-- **Single/Multi-Plugin Support**: Supports single-plugin repos (IXPlugin.json) and multi-plugin repos (IXRepo.json)
-- **Background Installation**: Installation runs in the background with progress display
-- **Auto-Classification**: Plugins from KKPIP-Tech organization are automatically classified as official plugins
+### Bidirectional MCP Protocol Support
 
-### 🤖 LLM Integration & Conversation Management
+- **MCP Server**: Automatically exposes all plugin APIs as MCP tools over stdio and HTTP transport, with optional Bearer authentication; MCP clients such as Claude Code can invoke plugin capabilities directly
+- **MCP Client**: Connects to external MCP Servers and registers their tools into the local ToolRegistry for LLM invocation
+- **Bidirectional Bridge**: MCPBridge automatically synchronizes the plugin API registry with the MCP Server
 
-Built-in multi-provider LLM integration with `LLMPluginService` providing complete conversation management and automated tool calling:
+### Data Persistence
 
-- **Multi-Provider Support**: MiniMax, SiliconFlow, Zhipu GLM, Ollama, OpenAI (5 built-in vendor presets) + 1 `openai-compatible` fallback adapter (zero-code integration for any OpenAI-compatible endpoint)
-- **Conversation Management**: Multi-session creation, switching, automatic history management (context auto-truncation is not currently implemented)
-- **ToolCallExecutor**: Automatic multi-turn tool calling loop (default max_turns=5), plugins only need to register tools
-- **Multimodal Support**: Image understanding (Vision), image generation, TTS voice synthesis
-- **Usage Statistics**: Per-conversation and global Token consumption and cost estimation
-- **Embedding**: Vector embedding support
-- **Model Caching**: Automatic model list fetching and caching at startup
+- **SQLite WAL + Explicit Transactions**: The default backend, resilient against unexpected interruptions; a JSON backend is available via environment variable
+- **Dual Namespaces**: PRIVATE space is visible only within a plugin; PUBLIC space enables cross-plugin sharing
+- **Pub/Sub**: Plugins can subscribe to data changes for reactive interactions; an in-memory cache reduces disk I/O
 
-### 🔗 MCP Protocol Support
+### Background Task System
 
-Full Model Context Protocol support through the official MCP SDK:
+- **Thread-Pool Async Tasks**: Four worker threads keep the UI responsive
+- **Scheduled & Long-Running Tasks**: Fixed-interval recurring execution; long-running tasks support graceful shutdown and automatic restart
+- **Task Persistence**: Task states survive restarts and are rebuilt automatically via the task factory mechanism
 
-- **MCP Server**: Expose all plugin APIs as MCP tools, supporting stdio and HTTP transport
-- **MCP Client**: Connect to external MCP Servers, registering their tools in the local ToolRegistry
-- **Bidirectional Bridge**: MCPBridge automatically syncs plugin API registrations to MCP Server
-- **External Invocation**: Claude Code and other MCP Clients can directly call InstructionX plugin functionality
+### Internationalization (i18n)
 
-### 💾 Flexible Data Layer
+- **XML Language Files**: Both the framework and plugins follow a one-XML-file-per-language convention, with Chinese (default) and English built in
+- **Live Switching**: Switch the UI language instantly from the Edit → Language menu without restarting
+- **Fallback Chain**: Entries missing in the current language automatically fall back to the default language
+- **Per-Plugin Language Override**: Individual plugins may use a UI language different from the framework
 
-**DataProvider** provides robust data persistence capabilities:
-- **SQLite WAL + Explicit Transactions**: Uses SQLite WAL mode and explicit transactions by default to ensure data isn't corrupted by unexpected interruptions; set the environment variable `INSTRUCTIONX_DATAPROVIDER_BACKEND=json` to fall back to the JSON backend
-- **Dual Namespaces**: PRIVATE space is only accessible within a plugin, PUBLIC space supports cross-plugin access
-- **Pub/Sub**: Plugins can subscribe to data changes for reactive interactions
-- **Memory Cache**: Reduces frequent disk I/O for better performance
+### User Interface
 
-### ⚙️ Background Task System
-
-**BackgroundTaskManager** supports multiple task types:
-- **Sync Tasks**: Execute immediately in the main thread, suitable for lightweight operations
-- **Async Tasks**: Execute in a thread pool (4 worker threads), avoiding UI blocking
-- **Scheduled Tasks**: Support fixed-interval recurring execution, suitable for timed reminders, data synchronization, etc.
-- **Long-Running Tasks**: Support continuous operation, graceful shutdown, and auto-restart
-- **Task Persistence**: Task states persist across application restarts
-- **Task Factory**: Supports task recovery mechanism, automatically rebuilds tasks after restart
-
-### 📊 Usage Panel
-
-Built-in LLM usage statistics and visualization panel:
-
-- **Statistics Cards**: Multi-dimensional data cards (Token consumption, cost, request count, etc.)
-- **Trend Charts**: Display LLM usage changes over time
-- **Filter & Query**: Filter records by Provider, Model, conversation ID
-- **Paginated Table**: Detailed usage records table
-
-### 🔗 Cross-Plugin Communication
-
-Plugins can call each other's APIs to achieve functional collaboration:
-- **API Registration & Discovery**: Plugins can register their APIs with the manager
-- **Cross-Plugin Calls**: One plugin can call another plugin's functionality
-- **Data Sharing**: Share data through the PUBLIC namespace
-
-### 🎨 InstructionX_UIKit Theme & Component System
-
-Built-in InstructionX_UIKit component library providing a unified modern interface appearance:
-- **Global Theme**: Support for light/dark/auto theme modes, switchable via menu or shortcuts, with automatic OS-level theme following
-- **Design Tokens**: Unified color, font, spacing, and radius tokens that restyle in real time with theme switching
-- **58 Components** (+ 13 Layouts + 52 Animations + native chart engine + blueprint node graph + Mermaid subpackage): Covering buttons, inputs, menus, dialogs, charts, and other common UI elements, ready for plugin development reuse
-
-### 🅰️ Font Manager
-
-Built-in core/font font subsystem (the framework bundles no third-party fonts):
-
-- **Font Install/Uninstall**: Fonts installed by users or plugins are stored in `data/fonts/` and registered at the application level via QFontDatabase (process-local, no writes to the system font directory)
-- **Font Manager Dialog**: Browse installed and system fonts with live preview via "Edit → Font Manager..."
-- **System Font Fallback**: Plugins obtain fallback-aware QFont instances via `services.font_manager`; missing fonts automatically fall back to the system default font
-
-### 💾 UI State Caching
-
-When switching plugins, the plugin's UI state is automatically cached. When you return to a previously used plugin, the interface state is fully preserved, providing a smooth user experience.
-
----
+- **InstructionX_UIKit Component Library**: 58 components + 13 layouts + 52 animations, including a native chart engine, a blueprint node graph, and Mermaid rendering; three global theme modes (light / dark / auto) with design tokens that restyle in real time
+- **Font Manager**: Application-level font install / uninstall / preview (process-local, no writes to the system font directory), with automatic fallback to system fonts
+- **System Tray**: The tray menu presents running plugins and background tasks in real time; closing the main window prompts a confirmation dialog offering exit or minimize-to-tray
 
 ## Quick Start
 
-### Environment Requirements
+### Requirements
 
+- Windows 10 / 11
 - Python 3.14 or higher
-- Windows 10/11
 - [uv](https://docs.astral.sh/uv/) (Python virtual environment & dependency manager)
 
 ### Install uv
@@ -136,14 +95,11 @@ When switching plugins, the plugin's UI state is automatically cached. When you 
 ```bash
 # Windows (PowerShell)
 powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
-
-# macOS / Linux
-curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
 ### Install Dependencies
 
-The first run of `uv run main.py` automatically creates a virtual environment and syncs dependencies from `uv.lock`; you may also install explicitly first:
+The first run of `uv run main.py` automatically creates a virtual environment and syncs dependencies from `uv.lock`; you may also install them explicitly first:
 
 ```bash
 uv venv
@@ -152,116 +108,71 @@ uv pip install -r requirements.txt
 
 > Note: Do **not** use `uv sync` — it strictly reconciles to `uv.lock` and **removes** extra packages installed in the environment (e.g., plugin dependencies installed via the framework's DependencyManager, or test dependencies).
 
-Main dependencies:
-- `PySide6` (>=6.10) - Qt GUI framework
-- `requests` (>=2.32) - HTTP requests
-- `aiohttp` (>=3.11) - Asynchronous HTTP client
-- `mcp` (>=1.28.1,<2) - MCP protocol (Model Context Protocol)
-- `orjson` (>=3.11.0,<4) - High-performance JSON serialization
-- `matplotlib` (>=3.10) - Usage statistics charts
-- `packaging` (>=23.0) - Plugin dependency version checking
-
-### Run the Application
+### Run
 
 ```bash
-uv run main.py   # Automatically syncs the environment from uv.lock and launches
+uv run main.py
 ```
 
----
+The `data/` and `config/` directories are created automatically on first run.
 
 ## Plugin Ecosystem
 
-InstructionX is a **plugin framework** and does not include built-in plugins. Users can obtain plugins through:
+InstructionX is a plugin framework and ships no built-in business plugins. Ways to obtain plugins:
 
-- **GitHub Installation**: Use the built-in GitHub plugin installer, enter the plugin repository URL to install with one click
-- **Third-party Developers**: Get plugins from other developers, copy to the `custom_plugin/` directory
-
-### Install Plugins
-
-```bash
-# Install plugins via GitHub URL
-# Menu path: Edit → Install GitHub Plugin
-```
-
-### Develop Plugins
-
-If you want to develop your own plugins, please refer to the [Plugin Development](docs/core/plugin-system/plugin-development.md) documentation.
-
----
-
-## Architecture Overview
-
-### Core Components
-
-InstructionX uses **singleton pattern** for core components, ensuring global uniqueness:
-
-```mermaid
-graph TD
-    A[InstructionXMainWindow<br/>Main Window] --> B[SkillsPanel<br/>Skills Panel]
-    A --> C[WorkArea<br/>Work Area]
-
-    B --> D[PluginManager<br/>Plugin Manager]
-    C --> D
-
-    D --> E[plugin/<br/>Official Plugins]
-    D --> F[custom_plugin/<br/>Third-party Plugins]
-
-    D --> G[DataProvider<br/>Data Layer]
-    D --> H[BackgroundTaskManager<br/>Task Manager]
-    D --> I[LLMProvider<br/>LLM Provider]
-```
-
-### Core Modules
-
-| Module | Path | Description |
-|--------|------|-------------|
-| core/plugin | `core/plugin/` | Plugin system core |
-| core/data | `core/data/` | Data persistence layer |
-| core/task | `core/task/` | Background task system |
-| core/llm | `core/llm/` | LLM provider framework |
-| ui | `ui/` | User interface components |
-| utils | `utils/` | Utility classes (logging, themes) |
-| Compat QSS appendix | `ui/uikit_theme.py::_build_compat_qss()` | Theme-exclusion-zone compatibility QSS appendix (title bar / skills panel, etc.; old `utils/style_qss/` replaced by UIKit) |
-| plugin | `plugin/` | Official plugin directory |
-| custom_plugin | `custom_plugin/` | Custom plugin directory |
-| workers | `workers/` | Worker threads (reserved for extension) |
-| docs | `docs/` | Technical documentation |
-| core/interfaces | `core/interfaces/` | Abstract interface layer (IPlugin, IDataProvider, etc.) |
-| core/mcp | `core/mcp/` | MCP protocol core (Server/Client/Bridge) |
-| core/llm/plugin_service | `core/llm/plugin_service.py` | LLM plugin service layer (conversation management, tool calling) |
-| core/llm/types | `core/llm/types.py` | LLM data types (Conversation, UsageStats, etc.) |
-| core/plugin/github_plugin_installer | `core/plugin/github_plugin_installer.py` | GitHub plugin installer |
-| ui/usage_panel | `ui/usage_panel.py` | Usage query panel |
-| core/font/manager | `core/font/manager.py` | Font manager (install/uninstall/preview/system fallback) |
-
-### Detailed Documentation
-
-- [System Architecture Overview](docs/architecture/overview.md)
-- [Module Dependencies](docs/architecture/module-dependencies.md)
-- [Plugin System Overview](docs/core/plugin-system/overview.md)
-- [DataProvider Overview](docs/core/data-provider/overview.md)
-- [Background Task Overview](docs/core/background-task/overview.md)
-- [LLM Provider Overview](docs/core/llm-provider/overview.md)
-- [UIKit Theme System](docs/utils/uikit-theme.md)
-
----
-
-## Plugin Development
+- **GitHub Installation**: Menu "Edit → Install Plugin from GitHub..." — enter a plugin repository URL for one-click installation
+- **Manual Installation**: Copy plugins obtained from third-party developers into the `custom_plugin/` directory
 
 ### Plugin Structure
 
-Each plugin can contain the following files:
+Each plugin is a top-level subdirectory under `plugin/` (official) or `custom_plugin/` (third-party):
 
 ```
 my_plugin/
-├── entrance.py      # Required: Plugin entry, defines IPlugin subclass
-├── service.py       # Required: Plugin service logic / interface layer
-├── information.py   # Required: Plugin metadata (version, icon, API definitions, etc.)
+├── entrance.py      # Required: Plugin entry, defines the IPlugin subclass
+├── information.py   # Required: Plugin metadata (IPluginInfo subclass: version, icon, service_api, etc.)
+├── service.py       # Required: Plugin service / public API layer
 ├── config/          # Required: Plugin configuration directory
+├── text/            # Required: Language pack directory (<language-code>.xml, one file per language)
 └── assets/          # Optional: Static assets directory
 ```
 
-### Simple Example
+When `service_api` is provided and the service class name ends with `Service`, the framework automatically registers the cross-plugin API and syncs it as MCP tools.
+
+### Plugin Metadata
+
+A plugin repository describes each plugin via `IXPlugin.json`, where `name` and `description` support multi-language fields:
+
+```json
+{
+    "id": "my-plugin",
+    "name": {"zh": "我的插件", "en": "My Plugin"},
+    "version": "release.1.0.0",
+    "main": "entrance.py",
+    "description": {"zh": "插件简介", "en": "Short description."},
+    "author": "Your Name",
+    "keywords": ["instructionx", "plugin"]
+}
+```
+
+Multi-plugin repositories additionally require an `IXRepo.json` index file.
+
+### Framework Services Available to Plugins
+
+The framework automatically injects the `PluginServices` container when creating a plugin instance, giving plugins direct access to the framework's full infrastructure:
+
+| Service | Description |
+|---------|-------------|
+| `services.llm_facade` | LLM plugin service facade: multi-conversation chat, tool calling, multimodal, usage statistics |
+| `services.data_provider` | DataProvider data layer: PRIVATE / PUBLIC namespaces, pub/sub |
+| `services.task_manager` | BackgroundTaskManager: async / scheduled / long-running tasks |
+| `services.logger` | Logging interface (ILogger) |
+| `services.mcp_manager` | MCP Server management: expose plugin APIs as MCP tools |
+| `services.mcp_client` | MCP Client: connect to external MCP Servers |
+| `services.font_manager` | Font manager: font resolution with fallback chains |
+| `services.localization` | i18n facade (bound to the plugin UUID) |
+
+### Minimal Plugin Example
 
 ```python
 from core import IPlugin
@@ -285,110 +196,113 @@ class MyPlugin(IPlugin):
         return widget
 ```
 
-### MCP Function Calling Integration
+### Sample Plugins
 
-Define `service_api` in `information.py`, and the framework will automatically convert it to LLM-callable tools:
+The `plugin/` directory provides reference samples for local development: [framework-api-demo](plugin/framework-api-demo) (framework core API demos: data persistence, background tasks, LLM, MCP, cross-plugin calls), [ui-demo](plugin/ui-demo), and [blueprint-opencv](plugin/blueprint-opencv). See the [plugin index](docs/plugins/index.md) for details.
 
-```python
-from core.plugin import IPluginInfo  # Recommended import path (cached framework implementation)
+### Plugin Development Documentation
 
-class MyPluginInfo(IPluginInfo):
-    @property
-    def service_api(self) -> dict:
-        return {
-            "my_method": {
-                "description": "Method description",
-                "parameters": {
-                    "param1": {
-                        "type": "string",
-                        "description": "Parameter description",
-                        "required": True
-                    }
-                },
-                "returns": {
-                    "type": "string",
-                    "description": "Return value description"
-                }
-            }
-        }
+- [Plugin Development Guide (English)](Plugin-Development-Guide.md)
+- [Plugin Development Guide (Chinese)](docs/core/plugin-system/plugin-development.md)
+- [IPlugin Interface Details](docs/core/plugin-system/iplugin.md)
+- [LLM Integration Guide](docs/plugins/llm-integration-guide.md)
+
+## Documentation
+
+Complete technical documentation (in Chinese) is available under [docs/](docs/README.md), covering:
+
+- **Architecture**: [System Architecture Overview](docs/architecture/overview.md), [Module Dependencies](docs/architecture/module-dependencies.md)
+- **Core Modules**: [Plugin System](docs/core/plugin-system/overview.md), [DataProvider](docs/core/data-provider/overview.md), [Background Tasks](docs/core/background-task/overview.md), [LLM Provider](docs/core/llm-provider/overview.md), [MCP Protocol](docs/core/mcp/overview.md), [i18n Subsystem](docs/core/i18n/overview.md), [Font Manager](docs/core/font-manager/overview.md)
+- **UI**: [Main Window](docs/ui/main-window.md), [System Tray & Close Behavior](docs/ui/system-tray.md), [UIKit Theme System](docs/utils/uikit-theme.md)
+- **API Reference**: [Full API Index](docs/api/full-reference.md)
+
+## Project Structure
+
+```
+main.py            # Application entry point
+core/              # Framework core: interfaces / plugin system / data layer / background tasks / LLM / MCP / fonts / i18n
+ui/                # UI layer: main window / skills panel / work area / system tray / dialogs / InstructionX_UIKit
+utils/             # Utility modules (logging, thread marshaling, etc.)
+plugin/            # Official / sample plugins (for local development verification)
+custom_plugin/     # Third-party plugin directory
+scripts/           # Smoke / screenshot / demo scripts
+test/              # pytest tests
+docs/              # Technical documentation
+config/            # Generated at runtime: configuration files
+data/              # Generated at runtime: database, task states, fonts, etc.
+logs/              # Generated at runtime: application logs
 ```
 
-### Development Documentation
+## Configuration & Data
 
-- [Plugin Development Guide](docs/core/plugin-system/plugin-development.md)
-- [IPlugin Interface Details](docs/core/plugin-system/iplugin.md)
-- [PluginManager API](docs/core/plugin-system/plugin-manager.md)
+The following files are generated at runtime; do not modify their structure manually:
 
----
+| File | Purpose |
+|------|---------|
+| `config/llm_providers.json` | LLM provider instance configuration (API keys stored obfuscated) |
+| `config/llm_models_cache.json` | Model list cache |
+| `config/mcp_config.json` | MCP Server / Client configuration |
+| `config/plugin_order.json` | Display order of ungrouped plugins |
+| `config/plugin_groups.json` | User-defined plugin groups and panel ordering |
+| `config/plugin_registry.json` | Installed plugin registry (basis for upgrade/downgrade) |
+| `config/i18n.json` | Framework language settings |
+| `config/plugin_languages.json` | Per-plugin language overrides |
+| `data/data.db` | Plugin data (SQLite + WAL) |
+| `data/tasks.json` | Background task states |
+| `data/llm_usage.json` | LLM usage records |
+| `data/conversations.json` | LLM conversation persistence |
+| `data/fonts/` | Framework-installed fonts and registry |
+| `logs/application.log` | Application logs |
 
-## Configuration Files
+### Environment Variables
 
-| Config File | Path | Purpose |
-|-------------|------|---------|
-| Plugin Order | `config/plugin_order.json` | Plugin display order configuration |
-| LLM Config | `config/llm_providers.json` | Provider API Key, Base URL, etc. |
-| Model Cache | `config/llm_models_cache.json` | LLM model list cache |
-| Plugin Data | `data/data.db` | Plugin data persistent storage (SQLite + WAL; fallback to `data/data.json` via `INSTRUCTIONX_DATAPROVIDER_BACKEND=json`) |
-| Task Status | `data/tasks.json` | Background task state persistence |
-| Assets | `data/assets/` | Plugin asset file storage |
-| MCP Config | `config/mcp_config.json` | MCP Server/Client connection configuration |
-| Usage Records | `data/llm_usage.json` | LLM API usage records |
+| Variable | Purpose |
+|----------|---------|
+| `INSTRUCTIONX_DATAPROVIDER_BACKEND` | Data layer backend: `sqlite` (default) / `json` |
+| `INSTRUCTIONX_MCP_CONFIG` | Override the MCP configuration file path |
+| `INSTRUCTIONX_GITHUB_TOKEN` | GitHub API token: raises rate limits for plugin installation / update checks |
+| `INSTRUCTIONX_LOG_DIR` | Override the log output directory |
+| `INSTRUCTIONX_LOG_LEVEL` | Override the log level (`DEBUG` / `INFO` / `WARNING` / `ERROR` / `CRITICAL`) |
+| `DEVELOPMENT_MODE` | Development mode toggle |
 
----
+## Testing & CI
 
-## License
+```bash
+pip install -e ".[test]"
+python -m pytest test/ -q --tb=short -p no:cacheprovider
+```
 
-InstructionX is licensed under the **InstructionX Commercial Source License** (this is not an open-source license):
+- CI runs on GitHub Actions (`windows-latest` + Python 3.14), triggered by pushes to `dev` / `main` and by all pull requests
+- The `scripts/` directory provides offline smoke scripts for core paths (`smoke_*.py`), language-file completeness checks (`check_i18n_completeness.py`), MCP SDK smoke tests, and other standalone verification scripts
 
-- ✅ **Personal, non-commercial use**: Free to use
-- ⚠️ **Organizational use**: Organizations with more than 100 global employees require written authorization
-- ⚠️ **Deployment scale**: More than 30 installed instances require written authorization
-- ❌ **SaaS / multi-tenant service**: Prohibited without authorization
-- ❌ **Redistribution**: Requires written authorization
+## Contributing & Support
 
-See [LICENSE](LICENSE) file for complete terms.
-
----
-
-## Contribution & Support
-
-### Issue Reporting
-
-If you encounter problems or have feature suggestions, please feel free to submit an Issue.
-
-### Documentation
-
-The project includes complete technical documentation (in Chinese) located in the `docs/` directory, covering:
-- Architecture design
-- Core module details
-- API reference
-- Plugin development guide
-
----
+- **Issue Reporting**: If you encounter problems or have feature suggestions, please file an [Issue](https://github.com/KKPIP-Tech/InstructionX/issues)
+- **Branch Conventions**: `dev` is the development branch (no test code), pytest test code lives exclusively on the `test` branch, and `main` is the release branch
+- **Documentation Language**: Project documentation and code comments are primarily in Chinese
 
 ## Tech Stack
 
 | Technology | Purpose | Version |
 |------------|---------|---------|
-| InstructionX CE | Application version | Alpha 1.1.0 |
-| PySide6 | Qt GUI framework | >= 6.10 |
 | Python | Programming language | >= 3.14 |
-| requests | HTTP requests | >= 2.32 |
-| aiohttp | Asynchronous HTTP | >= 3.11 |
-| mcp | MCP protocol | >= 1.28.1,<2 |
-| orjson | High-performance JSON serialization | >= 3.11.0,<4 |
-| matplotlib | Usage statistics charts | >= 3.10 |
+| PySide6 | Qt GUI framework | >= 6.10 |
+| mcp | MCP protocol (FastMCP) | >= 1.28.1, < 2 |
+| requests / aiohttp | HTTP / async HTTP | >= 2.32 / >= 3.11 |
+| orjson | High-performance JSON serialization | >= 3.11.0, < 4 |
+| matplotlib | Usage statistics and UIKit MarkdownView LaTeX formula rendering | >= 3.10 |
 | packaging | Plugin dependency version checking | >= 23.0 |
-| InstructionX_UIKit | UI theme & component library | Built-in |
+| qrcode[pil] | UIKit QRCodeView component | >= 7.4 |
+| InstructionX_UIKit | UI theme & component library | Built-in (alpha-v1.0.2) |
 
----
+## License
 
-## Notes
+InstructionX is licensed under the **InstructionX Commercial Source License** (a commercial source-available license; **this is not an open-source license**):
 
-- Currently only supports **Windows** platform
-- **Python 3.14+** recommended
-- `data/` and `config/` directories will be automatically created on first run
+- **Personal, non-commercial use**: Free to use
+- **Organizational use**: Organizations with more than 100 global employees (including corporations, non-profits, educational institutions, and government bodies) require written authorization
+- **Deployment scale**: More than 30 installed instances require written authorization
+- **SaaS / multi-tenant service**: Prohibited without authorization
+- **Redistribution**: Requires written authorization
 
----
-
-*Use InstructionX to build your personalized intelligent Tools Cluster!*
+See [LICENSE](LICENSE) for the complete terms.
