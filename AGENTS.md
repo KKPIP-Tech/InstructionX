@@ -15,10 +15,10 @@
 - InstructionX_UIKit 主题与组件体系（`ui/InstructionX_UIKit` 组件库：设计令牌 + light/dark/auto 全局主题，58 组件 + 原生图表引擎）、字体管理器（`core/font` 子系统：字体安装/卸载/预览/系统字体回退，框架不自带字体）
 - 多国语言（i18n）支持（`core/i18n` 子系统：XML 语言文件 + 回退链取词、界面语言实时切换、每插件语言覆盖；日志文案保持中文不国际化）
 
-- 应用标识：`InstructionX - CE`（组织名 `KKPIP-Tech`），当前版本 **Alpha 1.0.5**
+- 应用标识：`InstructionX - CE`（组织名 `KKPIP-Tech`），当前版本 **Alpha 1.1.0**
 - **版本号单一来源为 `core/version.py` 的 `VERSION` 常量**（pyproject 通过 AST 静态读取，修改版本只改这里）
 - 平台：**仅支持 Windows 10/11**，Python **>= 3.14**
-- 许可证：**InstructionX Commercial Source License（商业源码许可证，非开源）**，详见 `LICENSE`
+- 许可证：**GNU AGPL v3（或更高版本）+ §7 附加条款（署名与品牌标识保留 §7b、商标不授权 §7e）+ 双重许可**（闭源 SaaS、嵌入第三方商业产品、第三方服务后端、白标、批量捆绑销售需商业授权），详见 `LICENSE`
 - 项目主要语言（代码注释、文档、提交信息）：**中文**
 
 ## 技术栈与依赖
@@ -409,7 +409,7 @@ config/ data/ logs/         # 运行时生成：配置、数据、日志
 - MCP Server 默认仅监听 `127.0.0.1`；对外开放时务必启用 Bearer token 鉴权（`MCPHostServer` 内置中间件）。
 - `dependency_manager.py` 会自动 `pip install` 插件声明的依赖——审查第三方插件的依赖声明。
 - `data/`、`config/`、`logs/` 含用户数据，改动其读写逻辑时保持向后兼容（SQLite 后端有 schema 迁移机制，改表结构需新增 migration）。
-- 商业源码许可证：再分发、SaaS 化、大规模部署需书面授权，勿将代码当作开源项目处理。
+- 许可证边界：项目为 AGPL 开源 + 双重许可——修改/衍生作品与网络服务须开源回馈；`./ui/` 界面的名称、LOGO、版权信息与框架标识性描述不得移除（白标需授权）；闭源 SaaS、嵌入第三方商业产品、批量捆绑销售等场景需商业授权；仅经公开插件接口交互的插件为独立作品。
 
 ## 文档地图（docs/）
 
