@@ -277,6 +277,7 @@ python -m pytest test/ -q --tb=short -p no:cacheprovider
 ## Contributing & Support
 
 - **Issue Reporting**: If you encounter problems or have feature suggestions, please file an [Issue](https://github.com/KKPIP-Tech/InstructionX/issues)
+- **Contributing Code**: By submitting a contribution to this project, you agree to the [InstructionX Individual Contributor License Agreement (ICLA)](ICLA.md) — you retain copyright in your contributions while granting the Producer the licenses required for the dual licensing model (AGPL community edition + proprietary commercial editions)
 - **Branch Conventions**: `dev` is the development branch (no test code), pytest test code lives exclusively on the `test` branch, and `main` is the release branch
 - **Documentation Language**: Project documentation and code comments are primarily in Chinese
 

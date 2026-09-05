@@ -271,6 +271,7 @@ python -m pytest test/ -q --tb=short -p no:cacheprovider
 ## 贡献与支持
 
 - **问题反馈**：如遇到问题或有功能建议，欢迎提交 [Issue](https://github.com/KKPIP-Tech/InstructionX/issues)
+- **贡献代码**：向本项目提交贡献即表示你同意 [InstructionX 个人贡献者许可协议（ICLA）](ICLA.md)——你保留自己贡献的版权，并授予生产者双重许可（AGPL 社区版 + 专有商业版）所需的许可
 - **分支约定**：`dev` 为开发分支（不含测试代码），pytest 测试代码仅存在于 `test` 分支，`main` 为发布分支
 - **文档语言**：项目文档与代码注释以中文为主
 
