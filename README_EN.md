@@ -2,7 +2,6 @@
 
 <img src="./assets/logo.png" alt="InstructionX Logo" width="100%">
 
-# InstructionX
 
 **A PySide6-based plugin-oriented desktop application framework — LLM integration · Bidirectional MCP protocol support · Hot-swappable plugin system**
 
