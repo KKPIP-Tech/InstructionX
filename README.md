@@ -10,7 +10,7 @@
 [![PySide6](https://img.shields.io/badge/PySide6-6.10+-green.svg)](https://doc.qt.io/qtforpython/)
 [![Platform](https://img.shields.io/badge/Platform-Windows%2010%2F11-lightgrey.svg)](#)
 [![Version](https://img.shields.io/badge/Alpha-1.1.0%20CE-red.svg)](#)
-[![License](https://img.shields.io/badge/License-Commercial%20Source-orange.svg)](LICENSE)
+[![License](https://img.shields.io/badge/License-AGPL--3.0%2B%20%2B%20%C2%A77%20Terms-blue.svg)](LICENSE)
 
 中文版 | [English Version](README_EN.md)
 
@@ -290,12 +290,19 @@ python -m pytest test/ -q --tb=short -p no:cacheprovider
 
 ## 许可证
 
-InstructionX 采用 **InstructionX Commercial Source License**（商业源码许可证，**非开源许可证**）：
+InstructionX 是开源软件，采用 **GNU AGPL v3**（或更高版本）授权，并附两条依 AGPL 第 7 条加入的附加条款：
 
-- **个人非商业使用**：免费使用
-- **组织使用**：全球员工超过 100 人的组织（含企业、非营利、教育、政府机构）需书面授权
-- **部署规模**：超过 30 个安装实例需书面授权
-- **SaaS / 多租户服务**：未经授权禁止
-- **再分发**：需书面授权
+- **署名与品牌标识保留**（§7b）：任何包含框架用户界面（`./ui/` 目录）的副本或网络交互版本，必须保留 InstructionX 名称、LOGO、版权信息与框架标识性描述
+- **商标不授权**（§7e）：本许可证不授予 InstructionX 名称与 LOGO 的任何商标使用权
+
+**商业授权（双重许可）**——以下场景需另行取得书面商业授权（联系 dakuang2002@126.com）：
+
+1. 闭源运营 SaaS / 多租户服务（1 租户 = 1 工作区）
+2. 将 InstructionX 嵌入第三方商业产品或平台（不遵守 copyleft 义务）
+3. 将 InstructionX 作为第三方 SaaS / 平台的后端服务（不遵守 copyleft 义务）
+4. 白标使用：移除、修改框架 LOGO、名称、版权信息或框架标识性描述
+5. 将框架与插件批量捆绑销售（无论是否开放捆绑体源码）
+
+独立开发、仅经框架公开插件接口交互的插件为独立作品，许可由插件作者自定。
 
 完整条款见 [LICENSE](LICENSE)。

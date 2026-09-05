@@ -11,7 +11,7 @@
 [![PySide6](https://img.shields.io/badge/PySide6-6.10+-green.svg)](https://doc.qt.io/qtforpython/)
 [![Platform](https://img.shields.io/badge/Platform-Windows%2010%2F11-lightgrey.svg)](#)
 [![Version](https://img.shields.io/badge/Alpha-1.1.0%20CE-red.svg)](#)
-[![License](https://img.shields.io/badge/License-Commercial%20Source-orange.svg)](LICENSE)
+[![License](https://img.shields.io/badge/License-AGPL--3.0%2B%20%2B%20%C2%A77%20Terms-blue.svg)](LICENSE)
 
 [中文版](README.md) | English Version
 
@@ -297,12 +297,19 @@ python -m pytest test/ -q --tb=short -p no:cacheprovider
 
 ## License
 
-InstructionX is licensed under the **InstructionX Commercial Source License** (a commercial source-available license; **this is not an open-source license**):
+InstructionX is open-source software, licensed under the **GNU AGPL v3** (or any later version), with two Additional Terms added pursuant to Section 7 of the AGPL:
 
-- **Personal, non-commercial use**: Free to use
-- **Organizational use**: Organizations with more than 100 global employees (including corporations, non-profits, educational institutions, and government bodies) require written authorization
-- **Deployment scale**: More than 30 installed instances require written authorization
-- **SaaS / multi-tenant service**: Prohibited without authorization
-- **Redistribution**: Requires written authorization
+- **Preservation of Attribution and Brand Notices** (§7b): Any copy or network-interactive version that includes the framework's user interface (the `./ui/` directory) must preserve the InstructionX name, logo, copyright notice, and product-identifying descriptions
+- **Trademark Non-Grant** (§7e): This license grants no rights to use the InstructionX name or logo as trademarks
+
+**Commercial licensing (dual licensing)** — a separate written commercial license is required for the following scenarios (contact dakuang2002@126.com):
+
+1. Operating a closed-source SaaS / multi-tenant service (one tenant corresponds to one workspace)
+2. Embedding InstructionX into a third-party commercial product or platform (without complying with copyleft obligations)
+3. Using InstructionX as the backend service of a third-party SaaS / platform (without complying with copyleft obligations)
+4. White-label use: removing, altering, or replacing the framework's logo, name, copyright notices, or product-identifying descriptions
+5. Selling bulk bundles of the framework together with plugins (whether or not the bundled work's source code is made available)
+
+Plugins developed independently that interact with the framework solely through its published plugin interfaces are independent works, licensed at their authors' discretion.
 
 See [LICENSE](LICENSE) for the complete terms.
