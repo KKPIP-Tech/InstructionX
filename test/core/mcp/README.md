@@ -46,7 +46,7 @@ pytest test/core/mcp/ --cov=core.mcp --cov-report=html
 | `mock_tool_registry` | function | Mock ToolRegistry |
 | `mock_mcp_sdk` | function | Mock MCP SDK 组件 (FastMCP, ClientSession 等) |
 | `mock_mcp_host_server` | function | Mock MCPHostServer 避免真实服务器启动 |
-| `mcp_manager` | function | 创建 MCPManager 实例 |
+| `mcp_manager` | function | 创建 MCPManager 实例（定义于 `test_manager.py`，当前无用例引用，属冗余脚手架） |
 | `client_manager` | function | 创建 MCPClientManager 实例 |
 
 ## Mock 策略
@@ -78,8 +78,15 @@ pytest test/core/mcp/ --cov=core.mcp --cov-report=html
 | `MCPManager` | 首次调用 `get_client_manager()` 不传 tool_registry | 抛出 ValueError |
 | `MCPBridge` | server 未初始化时同步 | 优雅忽略，记录 warning |
 | `MCPBridge` | 工具名格式无效 (无 ".") | 跳过该工具 |
-| `MCPClientManager` | 连接失败超时 | 60秒后抛出异常 |
 | `MCPHostServer` | 重复启动 | 警告日志，不执行 |
+
+### 尚未覆盖的路径（据实记录，勿按"已覆盖"引用）
+
+- **Client 连接超时**：`core/mcp/client.py` 的 `DEFAULT_MCP_CLIENT_TIMEOUT = 60.0` 已可经构造函数注入，但本目录**没有任何超时相关用例**（检索 `timeout|TIMEOUT|60` 命中 0 处）；
+- **`MCPClientManager.connect()` / `_async_connect()`**：无直接用例，仅有连接字段、事件循环与字典级用例；
+- **异常路径的 session 释放**：仅有 `test_client.py::TestMCPClientManager::test_shutdown_closes_all_connections` 等关闭路径用例，且该用例**未调用 `shutdown()`**（自行清空 `_connections` 后断言字典为空，属自证式弱断言），异常路径无专用用例。
+
+> 用例清单与逐条说明以 [`mcp-testing.md`](mcp-testing.md) §3 为准（按测试文件 → 测试类 → 用例函数名列出，与代码双向零差异）。
 
 ## 已知问题
 

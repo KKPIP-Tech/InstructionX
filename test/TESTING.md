@@ -228,14 +228,16 @@ def test_example(qtbot):
 
 阶段 0 代码审视识别的高风险区域，下表按**当前套件实测**核对（状态以代码中实际存在的用例为准，不采信计划态描述）：
 
-| 风险 ID | 描述 | 用例编号 | 实际落地用例 | 状态 |
-|---------|------|---------|-------------|------|
-| R-01 | 插件 API 自动注册硬编码 "Service" | TC-PLUGIN-025~028 | `core/plugin/test_plugin_api_auto_register.py`：`test_auto_register_with_custom_service_class`、`test_auto_register_only_service_methods`、空 / 全私有 Service 共 4 例 | 已覆盖 |
-| R-02 | MCP 私有 API 依赖 `_tool_manager._tools` | TC-MCP-019, TC-MCP-020 | `core/mcp/test_server.py` 覆盖公开注册表 API（`test_add_tool_records_in_registry_directly`、`test_remove_tool_removes_from_registry`、`test_registered_tools_returns_copy`）；**无「不依赖私有属性」的专用断言** | 部分覆盖 |
-| R-03 | shutdown `wait=False` 可能丢失任务 | TC-TASK-021, TC-TASK-022 | `core/task/test_background_task_shutdown.py`：`test_shutdown_waits_for_tasks_to_prevent_data_loss`、`test_shutdown_cleans_up_resources` | 已覆盖 |
-| R-04 | MCP Client 60 秒超时硬编码 | TC-MCP-022 | **未找到对应用例**（`core/mcp/` 下无超时相关断言） | 未覆盖 |
-| R-05 | MCP Client 连接可能泄漏 | TC-MCP-021, TC-MCP-023 | `core/mcp/test_client.py`：`test_shutdown_closes_all_connections`；异常路径 session 释放无专用用例 | 部分覆盖 |
-| R-06 | 定时任务恢复 `_restore_all_scheduled_tasks` 未在 init 调用 | TC-TASK-023, TC-TASK-024 | `core/task/test_background_task_shutdown.py`：`test_scheduled_tasks_restore_after_init`、`test_restore_called_during_init` | 已覆盖 |
+| 风险 ID | 描述 | 实际落地用例 | 状态 |
+|---------|------|-------------|------|
+| R-01 | 插件 API 自动注册硬编码 "Service" | `core/plugin/test_plugin_api_auto_register.py`：`test_auto_register_with_custom_service_class`、`test_auto_register_only_service_methods`、空 / 全私有 Service 共 4 例 | 已覆盖 |
+| R-02 | MCP 私有 API 依赖 `_tool_manager._tools` | `core/mcp/test_server.py` 覆盖公开注册表 API（`test_add_tool_records_in_registry_directly`、`test_remove_tool_removes_from_registry`、`test_registered_tools_returns_copy`）；**无「不依赖私有属性」的专用断言**，`conftest.py` 的 mock 反而固化了私有结构 | 部分覆盖 |
+| R-03 | shutdown `wait=False` 可能丢失任务 | **源码已修复**：`core/task/background_task.py` 现为 `shutdown(wait=True, cancel_futures=True)`；用例 `test_shutdown_waits_for_tasks_to_prevent_data_loss`（断言该调用）、`test_shutdown_cleans_up_resources` | 已覆盖 |
+| R-04 | MCP Client 60 秒超时硬编码 | **未找到对应用例**；源码 `core/mcp/client.py` 的 `DEFAULT_MCP_CLIENT_TIMEOUT` 已可经构造函数注入，但无测试守护 | 未覆盖 |
+| R-05 | MCP Client 连接可能泄漏 | `core/mcp/test_client.py`：`test_shutdown_closes_all_connections` —— 该用例**未调用 `shutdown()`**，自行清空 `_connections` 后断言字典为空（自证式弱断言）；异常路径 session 释放无专用用例 | 部分覆盖 |
+| R-06 | 定时任务恢复 `_restore_all_scheduled_tasks` 未在 init 调用 | **风险前提已失效**：检索 `core/` 无该方法，实际恢复路径为 `register_scheduled_task_factory()` → `restore_scheduled_tasks()`；用例 `test_scheduled_tasks_restore_after_init`、`test_restore_called_during_init` 锁定当前行为 | 已覆盖（前提已失效） |
+
+> 早期计划中的 `TC-XXX-NN` 编号未落到代码中（测试函数 docstring 与代码注释里都没有该编号；仅 `test/core/task/test_background_task_shutdown.py` 的段落注释保留了 TC-TASK 编号），各模块文档已改为按「测试文件 → 测试类 → 用例函数名」定位，本表同样只引用真实存在的函数名。
 
 **状态说明**：
 - **已覆盖**：代码中存在针对该风险的用例
