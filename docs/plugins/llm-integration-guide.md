@@ -49,7 +49,7 @@ sequenceDiagram
 
     rect rgb(220, 245, 255)
         Note over PM,Plugin: 方式一：新插件（DI 注入，推荐）
-        PM->>PM: _create_plugin_services()
+        PM->>PM: _create_plugin_services(plugin_id)
         PM->>Plugin: plugin_class(services=services)
         Note over Plugin: self._llm = services.llm_facade
     end
@@ -101,7 +101,7 @@ svc = get_llm_plugin_service()
 
 ## PluginServices 服务容器
 
-`PluginServices` 是框架自动注入的服务容器，包含 7 个核心服务字段：
+`PluginServices` 是框架自动注入的服务容器，包含 **8 个核心服务字段**：
 
 | 字段 | 类型 | 说明 | 注入失败时 |
 |------|------|------|-----------|
@@ -112,6 +112,7 @@ svc = get_llm_plugin_service()
 | `mcp_manager` | `MCPManager` | MCP Server 管理器 | `None` |
 | `mcp_client` | `MCPClientManager` | MCP 外部连接管理器 | `None` |
 | `font_manager` | `FontManager` | 字体管理器（安装/卸载/回退解析，`core/font`） | 不适用（无降级保护，同 `logger`/`llm_facade`，始终注入） |
+| `localization` | `ILocalizationFacade` | 多语言取词门面（绑定本插件 UUID；实现为 `PluginI18nFacade`，详见 [多语言概述](../core/i18n/overview.md)） | 不适用（无降级保护，始终注入；插件无语言包时优雅降级返回键名） |
 
 完整说明见 [插件系统概述](../core/plugin-system/overview.md)。
 

@@ -12,13 +12,13 @@
 - 多厂商 LLM 集成（MiniMax、SiliconFlow、智谱 GLM、Ollama、OpenAI 兼容接口等），多会话管理、工具调用自动化（ToolCallExecutor）、多模态、用量统计
 - MCP 协议双向支持（内置 MCP Server 暴露插件 API；MCP Client 连接外部 MCP Server）
 - SQLite WAL 数据持久化层（DataProvider）、后台任务系统（BackgroundTaskManager）
-- InstructionX_UIKit 主题与组件体系（`ui/InstructionX_UIKit` 组件库：设计令牌 + light/dark/auto 全局主题，58 组件 + 原生图表引擎）、字体管理器（`core/font` 子系统：字体安装/卸载/预览/系统字体回退，框架不自带字体）
+- InstructionX_UIKit 主题与组件体系（`ui/InstructionX_UIKit` 组件库：设计令牌 + light/dark/auto 全局主题，58 组件 + 原生图表引擎 + 仿 VS Code 代码编辑器）、字体管理器（`core/font` 子系统：字体安装/卸载/预览/系统字体回退，框架不自带字体）
 - 多国语言（i18n）支持（`core/i18n` 子系统：XML 语言文件 + 回退链取词、界面语言实时切换、每插件语言覆盖；日志文案保持中文不国际化）
 
-- 应用标识：`InstructionX - CE`（组织名 `KKPIP-Tech`），当前版本 **Alpha 1.0.5**
+- 应用标识：`InstructionX - CE`（组织名 `KKPIP-Tech`），当前版本 **Alpha 1.1.0**
 - **版本号单一来源为 `core/version.py` 的 `VERSION` 常量**（pyproject 通过 AST 静态读取，修改版本只改这里）
 - 平台：**仅支持 Windows 10/11**，Python **>= 3.14**
-- 许可证：**InstructionX Commercial Source License（商业源码许可证，非开源）**，详见 `LICENSE`
+- 许可证：**GNU AGPL v3（或更高版本）+ §7 附加条款（署名与品牌标识保留 §7b、商标不授权 §7e）+ 双重许可**（闭源 SaaS、嵌入第三方商业产品、第三方服务后端、白标、批量捆绑销售需商业授权），详见 `LICENSE`
 - 项目主要语言（代码注释、文档、提交信息）：**中文**
 
 ## 技术栈与依赖
@@ -27,13 +27,15 @@
 |------|------|
 | PySide6 >= 6.10 | Qt GUI 框架 |
 | requests / aiohttp | HTTP / 异步 HTTP |
-| mcp >= 1.0.0 | MCP 协议（FastMCP） |
+| mcp >= 1.28.1, < 2 | MCP 协议（FastMCP） |
 | orjson | JSON 序列化（SQLite 后端） |
 | matplotlib | 用量统计与 UIKit MarkdownView LaTeX 公式渲染（math_render 异步渲染中枢）使用；旧用量面板图表曾使用，现用量面板已改用 UIKit 原生图表引擎 |
 | packaging | 插件依赖版本检查 |
-| qrcode[pil] >= 7.4 | InstructionX_UIKit 组件库 QRCodeView 组件依赖（库规定唯一允许的第三方依赖） |
+| qrcode[pil] >= 7.4 | InstructionX_UIKit 组件库 QRCodeView 组件依赖 |
+| numpy >= 2.0 | InstructionX_UIKit 图表引擎依赖（alpha-v1.0.3 起在模块导入期即依赖）：大规模数据的紧凑存储、向量化降采样与坐标映射、分层采样金字塔 |
+| pyobjc-framework-Cocoa >= 11.0 | 仅 macOS（`sys_platform == "darwin"` 条件依赖）：运行时设置 Dock 栏应用图标（`utils/macos_dock_icon.py`） |
 
-- 依赖单一来源是 `pyproject.toml` 的 `[project].dependencies`；`requirements.txt` 与其保持同步（供 `run.ps1` 使用），**改依赖时两处都要改**。
+- 依赖单一来源是 `pyproject.toml` 的 `[project].dependencies`；`requirements.txt` 与其保持同步（供 `uv pip install -r requirements.txt` / `pip install -r requirements.txt` 直接安装使用），**改依赖时两处都要改**。
 - 环境管理使用 **uv**（存在 `uv.lock`、`.python-version`、`.venv/`）。
 
 ## 构建与运行命令
@@ -43,8 +45,8 @@
 uv venv
 uv pip install -r requirements.txt
 
-# 运行应用（推荐入口，自动建 venv + 装依赖 + 启动）
-.\run.bat            # 内部调用 run.ps1
+# 运行应用（推荐入口，自动按 uv.lock 同步环境后启动）
+uv run main.py
 
 # 或直接运行
 .venv\Scripts\python.exe main.py
@@ -73,7 +75,7 @@ python -m pytest test/ -q --tb=short -p no:cacheprovider
 - **注意**：`test/` 下当前仅保留 `test/core/data/test_data_provider.py` 一个有效测试文件（其余旧测试已在重构中删除，残留的 `__pycache__` 是过期产物，不要参考）。现有测试约定：中文 docstring、`tmp_path` fixture、测试单例类时需重置 `XxxManager._instance = None`。
 - UI 测试不配置 offscreen 平台，CI 跑在 `windows-latest` 上使用真实 GUI。
 - 项目还有一类**独立验证脚本**（非 pytest，放在 `scripts/`，用 `.venv\Scripts\python.exe scripts\<name>.py` 直接运行）：
-  - `smoke_*.py`：核心链路无网冒烟测试（LLM、task、utils、i18n、插件管理：安装/升级/降级/卸载/分组）
+  - `smoke_*.py`：核心链路无网冒烟测试（LLM、task、utils、i18n、字体管理、插件管理：安装/升级/降级/卸载/分组）
   - `check_i18n_completeness.py`：语言文件完整性校验（默认语言必须覆盖源码全部 `tr()` 调用，缺键 exit 1；其他语言缺键/孤立键 WARNING；支持 `--text-dir`/`--src-dir`/`--plugin-root`）
   - `screenshot_*.py`：对话框截图对比脚本（输出到 `scripts/screenshots/`）
   - `_mcp_smoke*.py`：真实 MCP SDK 冒烟测试
@@ -240,6 +242,8 @@ core/
     sqlite_backend.py       # SQLite WAL 后端（默认），schema 迁移
   task/                     # 后台任务系统
     background_task.py      # BackgroundTaskManager 单例：4 线程池、定时/长期任务、优雅关闭
+    task_model.py           # BackgroundTask / ScheduledTask / LongRunningTask 数据模型
+    scheduler.py            # TaskScheduler（轻量生命周期占位）+ SchedulerCallback
     task_storage.py         # 任务状态持久化（data/tasks.json）
   llm/                      # LLM 框架
     llm_provider.py         # LLMProvider 单例：对话/流式/embedding/模型列表缓存、
@@ -289,12 +293,15 @@ ui/                         # 界面层
   uikit_theme.py            # 全局主题入口：apply_uikit_theme(app, light/dark/auto) +
                             #   current_theme_mode() + 排除区（标题栏/技能面板/工作区）兼容 QSS 附录
   InstructionX_UIKit/       # PySide6 组件库（独立仓库 KKPIP-Tech/InstructionX_UIKit 的同步副本，
-                            #   alpha-v1.0.2：tokens/theme 主题系统 + 58 组件（含 MarkdownView
+                            #   alpha-v1.0.3：tokens/theme 主题系统 + 58 组件（含 MarkdownView
                             #   Markdown 渲染组件与 math_render 公式渲染中枢）+ 13 布局
-                            #   （含 chat_conversation 流式对话布局）+ 52 动画 + 原生图表引擎 +
-                            #   蓝图节点图（含 GL/软件双绘制视口 viewport.py）+ mermaid/ 子包
-                            #   （官方 mermaid.js WebEngine 渲染 + 自绘降级 + 交互查看器）；
-                            #   主项目不修改库内文件）
+                            #   （含 chat_conversation 流式对话布局）+ 52 动画 + 原生图表引擎
+                            #   （alpha-v1.0.3 起：GL/软件双绘制视口 charts/viewport.py + 大数据
+                            #   紧凑存储/降采样/采样金字塔 + 流式实时入口 set_stream_data）+
+                            #   蓝图节点图（含 GL/软件双绘制视口 blueprint/viewport.py）+
+                            #   code_editor/ 仿 VS Code 代码编辑器（含并排/内联 DiffEditor）+
+                            #   mermaid/ 子包（官方 mermaid.js WebEngine 渲染 + 自绘降级 +
+                            #   交互查看器）；主项目不修改库内文件）
   skills_panel/             # 插件技能面板（含 plugin_group_widget.py 分组折叠控件：
                             #   文件夹形式收起、点击行内向右展开、展开区区分背景）
   work_area/                # 插件 Widget 宿主区（切换插件时缓存 UI 状态）
@@ -321,10 +328,13 @@ ui/                         # 界面层
                             #   apply_dialog_theme 经 theme_changed 实时跟随应用主题）
 utils/
   logging_tools.py          # LoggerManager 单例（滚动文件日志，输出 logs/application.log）、get_name()
+  i_logger.py               # ILogger 接口
   image_utils.py            # 图片工具（load_image_as_base64，原 LLMPluginService 方法迁出）
   thread_utils.py           # 工作线程 → UI 线程封送（run_in_ui_thread 等）
-plugin/                     # 官方/示例插件（kebab-case 目录，15 个）
-custom_plugin/              # 第三方插件目录
+  macos_dock_icon.py        # macOS Dock 栏应用图标设置（AppKit，非 macOS 空操作）
+plugin/                     # 官方/示例插件（kebab-case 目录；仅用于本地开发验证，非框架捆绑列表，
+                            #   不视为框架公共契约的一部分，其余能力按需通过 GitHub 安装器获取）
+custom_plugin/              # 第三方插件目录（与框架解耦）
 workers/                    # 预留扩展
 scripts/                    # 冒烟/截图/演示脚本（见“测试”一节）
 test/                       # pytest 测试
@@ -338,7 +348,8 @@ config/ data/ logs/         # 运行时生成：配置、数据、日志
 - **接口与实现分离**：共享类型统一定义在 `core/interfaces/`，其他模块从这里 re-export，避免循环导入。
 - **关闭行为约定**：`main.py` 已 `setQuitOnLastWindowClosed(False)`，「关窗即退出」的隐式链路被切断，退出时机完全由代码显式控制（`QApplication.quit()`）；主窗口 `closeEvent` 统一拦截全部关闭路径（自绘叉子 / 标题栏右键 / Alt+F4 / 任务栏右键关闭），每次弹出 `CloseConfirmDialog` 询问「退出程序 / 最小化到托盘 / 取消」（无记忆选项）；托盘菜单「退出」与 Windows 注销/关机（`commitDataRequest` 回调置 `_force_quit`）走静默直退，不弹窗、不阻塞系统关机。
 - 后台任务回调在**工作线程**执行，更新 UI 必须通过 `utils/thread_utils.py` 封送到 UI 线程。
-- **蓝图 GL 视口预热**：主窗口构造期（`show()` 之前）调用 `_prewarm_blueprint_viewport()` 预创建一个隐藏蓝图画布并长期持有——蓝图画布的 GL 视口基于 `QOpenGLWidget`，若在窗口可见后才加入窗口树会触发顶层原生句柄重建（窗口短暂关闭重开）；预热让原生句柄首次创建时即按含 GL 子控件的方式建立（详见 `docs/ui/main-window.md` §4 与 UIKit USAGE.md §8.6）。
+- **蓝图 GL 视口预热**：主窗口构造期（`show()` 之前）调用 `_prewarm_blueprint_viewport()` 预创建一个隐藏蓝图画布并长期持有——蓝图画布的 GL 视口基于 `QOpenGLWidget`，若在窗口可见后才加入窗口树会触发顶层原生句柄重建（窗口短暂关闭重开）；预热让原生句柄首次创建时即按含 GL 子控件的方式建立（详见 `docs/ui/main-window.md` §4 与 UIKit USAGE.md §9.6）。
+- **图表 GL 视口**：UIKit 图表引擎（alpha-v1.0.3 起）的 `ChartWidget` 在构造期即创建绘制视口，GL 可用时为 `QOpenGLWidget`（不可用/offscreen 自动回退软件渲染）。框架内唯一的图表使用方是 `ui/usage_panel/trend_chart.py`，其控件在对话框 `exec()` 之前构造，不触发上述原生句柄重建。
 
 ### 插件开发约定（重要）
 
@@ -356,7 +367,7 @@ config/ data/ logs/         # 运行时生成：配置、数据、日志
   - 无魔法数字
 - GitHub 安装描述文件：`IXPlugin.json`（每个插件必需，位于插件子目录，文件名大小写敏感）、`IXRepo.json`（插件仓库索引，所有插件仓库必需，含单插件仓库）；KKPIP-Tech 组织下的插件自动归类为官方插件。
 - 详细文档：`docs/core/plugin-system/plugin-development.md`、`docs/plugins/llm-integration-guide.md`。
-- 参考示例：`plugin/framework-api-demo/`、`plugin/llm-chat/`。
+- 参考示例：`plugin/` 目录下提供的官方/示例插件（仅用于本地开发验证，非框架公共契约的一部分）；其余能力按需通过 GitHub 安装器获取。
 
 ## 配置与数据文件（运行时生成，勿手改结构）
 
@@ -385,6 +396,9 @@ config/ data/ logs/         # 运行时生成：配置、数据、日志
 | `INSTRUCTIONX_DATAPROVIDER_BACKEND` | `sqlite`（默认）/ `json`（回退旧 JSON 后端，写 `data/data.json`） |
 | `INSTRUCTIONX_MCP_CONFIG` | 覆盖 MCP 配置文件路径 |
 | `INSTRUCTIONX_GITHUB_TOKEN` | GitHub API Token（可选）：插件安装/Release 更新检查时鉴权，提升限流阈值、支持私有仓库 |
+| `INSTRUCTIONX_LOG_DIR` | 覆盖日志输出目录（默认 `logs/`） |
+| `INSTRUCTIONX_LOG_LEVEL` | 覆盖日志级别（如 `DEBUG`/`INFO`/`WARNING`/`ERROR`/`CRITICAL`） |
+| `DEVELOPMENT_MODE` | 开发模式开关（启用额外日志/调试行为；详见 `utils/logging_tools.py`） |
 
 ## 代码风格
 
@@ -400,7 +414,7 @@ config/ data/ logs/         # 运行时生成：配置、数据、日志
 - MCP Server 默认仅监听 `127.0.0.1`；对外开放时务必启用 Bearer token 鉴权（`MCPHostServer` 内置中间件）。
 - `dependency_manager.py` 会自动 `pip install` 插件声明的依赖——审查第三方插件的依赖声明。
 - `data/`、`config/`、`logs/` 含用户数据，改动其读写逻辑时保持向后兼容（SQLite 后端有 schema 迁移机制，改表结构需新增 migration）。
-- 商业源码许可证：再分发、SaaS 化、大规模部署需书面授权，勿将代码当作开源项目处理。
+- 许可证边界：项目为 AGPL 开源 + 双重许可——修改/衍生作品与网络服务须开源回馈；`./ui/` 界面的名称、LOGO、版权信息与框架标识性描述不得移除（白标需授权）；闭源 SaaS、嵌入第三方商业产品、批量捆绑销售等场景需商业授权；仅经公开插件接口交互的插件为独立作品。
 
 ## 文档地图（docs/）
 
@@ -414,6 +428,7 @@ config/ data/ logs/         # 运行时生成：配置、数据、日志
 - LLM：`docs/core/llm-provider/`、`docs/plugins/llm-integration-guide.md`
 - MCP：`docs/core/mcp/overview.md`
 - API 参考：`docs/api/full-reference.md`
+- 插件开发快速入门：根目录 `插件开发流程.md`（环境初始化 / 插件仓库配置 / AI 辅助提示词模板，面向插件开发者）
 
 **根目录历史设计报告**（已落地为正式文档，仅作决策溯源参考）：
-- `close-to-tray-report.md` — 关闭确认弹窗与系统托盘运行的实现分析报告（531 行，2026-07-31）；已被 `docs/ui/system-tray.md` 与 `docs/ui/dialogs.md §8 CloseConfirmDialog` 完整替代，**当前文档地图不再单列**。如需查阅决策溯源可在 git 历史中追踪。
+- `temp/close-to-tray-report-2026-07-31.md` — 关闭确认弹窗与系统托盘运行的实现分析报告（已迁出根目录至 `temp/`）；其内容已被 `docs/ui/system-tray.md` 与 `docs/ui/dialogs.md §8 CloseConfirmDialog` 完整替代，**当前文档地图不再单列**。如需查阅决策溯源可在 git 历史中追踪。

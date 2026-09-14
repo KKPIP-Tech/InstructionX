@@ -164,7 +164,7 @@ shutdown()                         # 安全关闭任务管理器
 
 ### 3.1 单例列表
 
-项目中有 **8 个核心单例**（含 2 个内部单例）：
+项目中有 **12 个单例**（10 个核心 + 2 个内部）：
 
 | 类名 | 文件 | 用途 |
 |------|------|------|
@@ -172,8 +172,12 @@ shutdown()                         # 安全关闭任务管理器
 | **DataProvider** | `core/data/data_provider.py` | 数据管理 |
 | **BackgroundTaskManager** | `core/task/background_task.py` | 任务调度 |
 | **LLMProvider** | `core/llm/llm_provider.py` | 大语言模型核心层（底层） |
+| **LLMConfig** | `core/llm/config.py` | LLM Provider 实例配置（schema v2 + 变更订阅） |
+| **UsageRecordStore** | `core/llm/usage_record_store.py` | LLM 用量记录持久化（data/llm_usage.json） |
 | **LLMPluginService** | `core/llm/plugin_service.py` | LLM 插件服务层（插件开发者入口） |
 | **MCPManager** | `core/mcp/manager.py` | MCP 协议协调器（Server + Client 管理） |
+| **FontManager** | `core/font/manager.py` | 字体子系统（安装/卸载/系统回退解析） |
+| **LanguageManager** | `core/i18n/language_manager.py` | 多语言子系统（QObject 取词/切换/每插件覆盖） |
 | **TaskStorage** | `core/task/task_storage.py` | 任务数据持久化（BackgroundTaskManager 内部使用，内部单例） |
 | **LoggerManager** | `utils/logging_tools.py` | 日志管理（框架内部使用，内部单例） |
 
@@ -257,7 +261,7 @@ sequenceDiagram
 
 ### 4.4 依赖注入（PluginServices）
 
-`core/interfaces/plugin_services.py` 中定义了 `PluginServices` 数据类，PluginManager 通过 `_create_plugin_services()` 创建并通过构造器参数注入到各插件中：
+`core/interfaces/plugin_services.py` 中定义了 `PluginServices` 数据类，PluginManager 通过 `_create_plugin_services(plugin_id)` 创建并通过构造器参数注入到各插件中：
 
 ```python
 @dataclass
@@ -269,6 +273,7 @@ class PluginServices:
     mcp_manager: "MCPManager" = field(default=None)       # MCP Server 管理器
     mcp_client: "MCPClientManager" = field(default=None)  # MCP Client 管理器
     font_manager: "FontManager" = field(default=None)     # 字体管理器（core/font，无降级保护、始终注入）
+    localization: "ILocalizationFacade" = field(default=None)  # 多语言取词门面（绑定插件 UUID，无降级保护、始终注入；实现 PluginI18nFacade）
 ```
 
 新版插件通过 `self._services` 访问服务，旧版插件可通过直接导入单例兼容访问。

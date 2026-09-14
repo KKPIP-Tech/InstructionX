@@ -584,12 +584,20 @@ class GitHubPluginInstaller:
         plugins_list = repo_index.get("plugins", [])
         repo_root = repo_index_path.parent.resolve()
 
+        # 路径规范化后比较：IXRepo.json 的 path 可能带尾斜杠（"a/"），而
+        # 注册表 source_path / 勾选列表可能不带（"a"），精确字符串比较会
+        # 导致全部跳过、返回空结果（升级/降级「没有任何变化」的根因）
+        selected_normalized = (
+            {p.strip("/") for p in selected_plugins}
+            if selected_plugins is not None else None
+        )
+
         for plugin_entry in plugins_list:
-            plugin_path_str = plugin_entry.get("path", "")
+            plugin_path_str = plugin_entry.get("path", "").strip("/")
             plugin_id = plugin_entry.get("id", "")
 
             # 如果用户指定了插件，检查是否在列表中
-            if selected_plugins is not None and plugin_path_str not in selected_plugins:
+            if selected_normalized is not None and plugin_path_str not in selected_normalized:
                 continue
 
             # 路径穿越防护：解析后的插件目录必须位于仓库根目录内
@@ -803,6 +811,9 @@ class GitHubPluginInstaller:
         try:
             pm = self._plugin_manager or get_plugin_manager()
             scope = self._scope_of_target_dir(target_dir)
+            # 持久化前规范化路径（去掉尾斜杠），保证注册表 source_path 统一、
+            # 后续升级/降级的描述文件路径拼接与匹配不受书写差异影响
+            source_path = source_path.strip("/")
             # 优先复用注册表中已有 UUID（升级/重装场景），避免产生重复记录
             found = pm.registry.find_by_descriptor(scope, descriptor_id)
             if found:

@@ -226,8 +226,10 @@ config/*
 !.gitkeep
 
 
-# 官方插件安装目录(保留 __init__.py 的跟踪状态,不跟踪安装进来的插件内容)
-plugin/*/
+# 官方插件安装目录(保留 __init__.py 的跟踪状态,不跟踪安装进来的插件内容,
+# 含插件仓库根的 IXRepo.json/README.md 等顶层文件)
+plugin/*
+custom_plugin/*
 .playwright-mcp/
 
 # 不忽略 plugin 核心模块的单元测试目录，但继续忽略其编译缓存

@@ -186,7 +186,7 @@ class MCPClientManager:
                 )
 
             elif config.transport == "streamable-http":
-                # mcp==1.27.0 的 streamable_http_client 没有 headers 参数，
+                # mcp 1.29.1（实测，约束 mcp>=1.28.1,<2） 的 streamable_http_client 没有 headers 参数，
                 # 认证头通过自带 httpx.AsyncClient 传入；
                 # 它 yield (read, write, get_session_id) 三元组
                 http_client = None
@@ -317,7 +317,7 @@ class MCPClientManager:
                     f"Failed to unregister MCP tool {namespaced_name}: {e}"
                 )
 
-        # mcp==1.27.0 的 ClientSession 没有 close()，
+        # mcp 1.29.1（实测，约束 mcp>=1.28.1,<2） 的 ClientSession 没有 close()，
         # 连接生命周期由 AsyncExitStack 统一关闭
         try:
             if conn.exit_stack is not None:

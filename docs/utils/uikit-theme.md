@@ -14,7 +14,7 @@
 
 | 文件 | 说明 |
 |------|------|
-| `ui/InstructionX_UIKit/` | PySide6 组件库（独立仓库 KKPIP-Tech/InstructionX_UIKit 的同步副本，版本 alpha-v1.0.2），主项目不修改库内文件 |
+| `ui/InstructionX_UIKit/` | PySide6 组件库（独立仓库 KKPIP-Tech/InstructionX_UIKit 的同步副本，版本 alpha-v1.0.3），主项目不修改库内文件 |
 | `ui/uikit_bootstrap.py` | sys.path 引导，导入即生效，使 UIKit 以顶层包可导入 |
 | `ui/uikit_theme.py` | 全局主题入口：`apply_uikit_theme()` / `current_theme_mode()` + 排除区兼容附录 |
 
@@ -22,7 +22,7 @@
 
 - 浅色/深色/跟随系统三种主题模式（auto 读 Windows 注册表）
 - 设计令牌 `T()` 实时取色，主题切换全局生效
-- 58 个组件、13 布局、动画与原生图表引擎
+- 58 个组件、13 布局、动画、原生图表引擎（GL/软件双视口）与仿 VS Code 代码编辑器
 - 排除区兼容附录：为不做 UI 迁移的区域保留原选择器结构，颜色取 UIKit 令牌
 - 对话框与 QMessageBox 已迁移到 UIKit Dialog / Message 组件（仅遗留的 `ui/dialog/plugin_order_dialog.py` 除外，见 §6.1）
 
@@ -36,7 +36,7 @@
 ui/InstructionX_UIKit/
 ├── __init__.py          # 包入口：re-export ThemeManager/T/build_qss/set_property/apply_shadow、
 │                        #   LIGHT/DARK/TokenState/FONT_FAMILY/MONO_FAMILY/Breakpoint/DURATION/EASING、
-│                        #   get_icon/ICON_NAMES；__version__ = "alpha-v1.0.2"
+│                        #   get_icon/ICON_NAMES；__version__ = "alpha-v1.0.3"
 ├── tokens.py            # 设计令牌：LIGHT / DARK 两套令牌字典 + TokenState 状态机
 ├── theme.py             # ThemeManager 单例 + T() + build_qss() 全局 QSS + set_property + apply_shadow
 ├── icons.py             # 图标（get_icon / ICON_NAMES）
@@ -46,7 +46,12 @@ ui/InstructionX_UIKit/
 ├── layouts/             # 13 个布局（HolyGrail/SidebarLayout/MasterDetail/CardGrid/
 │                        #   chat_conversation 流式对话布局等）
 ├── anim/                # 动画（属性动画 / 自绘动画）
-├── charts/              # 原生图表引擎（ChartWidget + set_option，ECharts 风格 option）
+├── charts/              # 原生图表引擎（ChartWidget + set_option，ECharts 风格 option）；
+│                        #   alpha-v1.0.3 起：GL/软件双绘制视口（viewport.py，GL 可用时
+│                        #   QOpenGLWidget，否则软件回退）、大数据紧凑存储/降采样/采样金字塔、
+│                        #   静态层与系列层位图缓存、流式实时入口 set_stream_data
+├── code_editor/         # 仿 VS Code 代码编辑器（CodeEditor/DiffEditor：语法高亮、小地图、
+│                        #   查找替换、诊断/断点/折叠、补全与悬停 provider）
 ├── mermaid/             # Mermaid 图表渲染（官方 mermaid.js WebEngine 光栅化 + 自绘降级渲染器 +
 │                        #   MermaidView 交互查看器，MarkdownView 内部依赖）
 └── blueprint/           # 蓝图（节点画布）
@@ -54,7 +59,7 @@ ui/InstructionX_UIKit/
 
 ### 2.2 导入约定（uikit_bootstrap）
 
-库内约 20 个模块使用 `from InstructionX_UIKit.xxx import ...` 绝对导入，因此 UIKit 必须以**顶层包**身份导入。`ui/uikit_bootstrap.py` 在被导入时（模块级副作用）把项目根的 `ui/` 目录 **append** 到 `sys.path`（用 append 而非 insert(0)，避免 `ui/` 下其他子包遮蔽同名第三方包），此后 `import InstructionX_UIKit` 与库内绝对导入解析到同一模块对象，保证 ThemeManager 等单例全局唯一。
+库内 16 个模块（全部位于 `components/` 子包）使用 `from InstructionX_UIKit.xxx import ...` 绝对导入，因此 UIKit 必须以**顶层包**身份导入。`ui/uikit_bootstrap.py` 在被导入时（模块级副作用）把项目根的 `ui/` 目录 **append** 到 `sys.path`（用 append 而非 insert(0)，避免 `ui/` 下其他子包遮蔽同名第三方包），此后 `import InstructionX_UIKit` 与库内绝对导入解析到同一模块对象，保证 ThemeManager 等单例全局唯一。
 
 **硬性约定**：`main.py` 的第一行业务 import 必须是 `import ui.uikit_bootstrap`（早于任何 `InstructionX_UIKit` / `ui.uikit_theme` 导入）。
 
@@ -217,7 +222,7 @@ font_size = T("font.md")        # 正文字号 13px
 | 令牌 | 值 | 说明 |
 |------|-----|------|
 | `font.xs` / `font.sm` / `font.md` / `font.lg` | 11 / 12 / 13 / 14 | 正文字阶 |
-| `space.1` ~ `space.16` | 4 ~ 64 | 间距阶梯 |
+| `space.0` / `space.05` / `space.1` ~ `space.6` / `space.8` / `space.10` / `space.12` / `space.16` | 0 / 2 / 4 ~ 24 / 32 / 40 / 48 / 64 | 间距阶梯（键集非连续，无 `space.7` 等） |
 | `radius.sm` / `radius.md` / `radius.lg` / `radius.pill` | 4 / 6 / 8 / 999 | 圆角 |
 | `shadow.sm` / `shadow.md` / `shadow.lg` | dict | 投影规格（配合 `apply_shadow(widget, level)`） |
 | `duration.*` / `easing.*` | int / QEasingCurve | 动画时长与缓动 |
@@ -345,7 +350,7 @@ from PySide6.QtWidgets import QApplication
 from ui.uikit_theme import apply_uikit_theme
 
 app = QApplication(sys.argv)
-apply_uikit_theme(app, "auto")   # 设置 UIKit 全局主题
+apply_uikit_theme(app)   # theme 缺省为 "auto"，自动检测系统主题
 ```
 
 ### 9.2 业务代码取色
@@ -378,7 +383,7 @@ def switch_to_light(app: QApplication):
 3. **不修改库内文件**：`ui/InstructionX_UIKit/` 是独立仓库的同步副本，主项目不做任何修改
 4. **Fusion 样式**：`ThemeManager.apply()` 会将应用样式设置为 `Fusion`，这是全局 QSS 的基础
 5. **size 属性别名**：Qt 中 `setProperty("size", ...)` 无效，组件尺寸请通过 `set_property(widget, "size", v)` 设置（内部自动映射为 `uiksize`）
-6. **依赖**：UI 迁移后新增依赖 `qrcode[pil]>=7.4`（`pyproject.toml` 与 `requirements.txt` 双来源同步），供 UIKit `QRCodeView` 组件使用
+6. **依赖**：组件库引入两项第三方依赖，均按 `pyproject.toml` 与 `requirements.txt` 双来源同步——`qrcode[pil]>=7.4`（UIKit `QRCodeView` 组件使用）与 `numpy>=2.0`（UIKit 图表引擎自 alpha-v1.0.3 起在**模块导入期**即依赖，用于大数据紧凑存储、向量化降采样与坐标映射、分层采样金字塔）
 7. **排除区只减不增**：兼容附录仅覆盖标题栏 / 技能面板 / 占位标签三个历史区域，新区域一律使用 UIKit 组件
 
 ---

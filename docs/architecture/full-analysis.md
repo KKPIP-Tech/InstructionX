@@ -38,13 +38,13 @@
 | PySide6 | >=6.10 | Qt for Python，UI 框架 |
 | SQLite + WAL | — | DataProvider 默认持久化后端（插件数据） |
 | JSON | — | TaskStorage 持久化格式；DataProvider 应急回退后端 |
-| Windows | 11 | 目标平台 |
+| Windows | 10 / 11 | 目标平台 |
 
 ### 1.3 核心设计原则
 
-- **单例模式**：6 个核心服务 + 2 个内部单例，全部以单例形式运行
-  - **核心服务**：PluginManager、DataProvider、BackgroundTaskManager、LLMProvider、LLMPluginService、MCPManager
-  - `DataProvider`、`BackgroundTaskManager`、`LLMProvider` 使用 `__new__` + `threading.Lock` 双重检查锁定
+- **单例模式**：10 个核心服务 + 2 个内部单例，全部以单例形式运行
+  - **核心服务**：PluginManager、DataProvider、BackgroundTaskManager、LLMProvider、LLMConfig、UsageRecordStore、LLMPluginService、MCPManager、FontManager、LanguageManager
+  - `DataProvider`、`BackgroundTaskManager`、`LLMProvider`、`LLMConfig`、`UsageRecordStore`、`FontManager`、`LanguageManager` 使用 `__new__` + `threading.Lock` 双重检查锁定
   - `PluginManager` 使用 `__new__` + `_initialized` 标志简化模式（无独立 `_lock`）
   - `LLMPluginService`、`MCPManager` 使用模块级锁 + 全局变量工厂函数（`get_llm_plugin_service()` / `get_mcp_manager()`）
   - **内部单例**：`TaskStorage`（BackgroundTaskManager 内部使用）、`LoggerManager`（框架日志中枢）
@@ -121,8 +121,8 @@ graph TB
     end
 
     subgraph Plugins ["Plugins"]
-        LLM_CHAT[llm_chat]
-        OTHER[第三方插件<br/>（通过 GitHub 安装）]
+        OFFICIAL[官方/示例插件<br/>plugin/（仅用于本地开发验证，非框架捆绑列表）]
+        OTHER[第三方插件<br/>（通过 GitHub 安装至 custom_plugin/）]
     end
 
     subgraph Utils ["Utils"]
@@ -275,7 +275,7 @@ class IDataProvider(ABC):
     # 发布/订阅
     def subscribe(subscriber_id, target_plugin_id, target_key, callback) -> None
     def unsubscribe(subscriber_id, target_plugin_id=None) -> None
-    def publish(publisher_id, key, value) -> None
+    def publish(publisher_id, key, value, namespace=PUBLIC) -> None
 
     # 资源管理
     def save_asset(plugin_id, filename, content) -> str
@@ -350,9 +350,10 @@ class PluginServices:
     mcp_manager: "MCPManager" = field(default=None)       # MCP Server 管理器
     mcp_client: "MCPClientManager" = field(default=None)  # MCP Client 管理器
     font_manager: "FontManager" = field(default=None)     # 字体管理器（core/font，无降级保护、始终注入）
+    localization: "ILocalizationFacade" = field(default=None)  # 多语言取词门面（绑定本插件 UUID，无降级保护、始终注入；实现为 PluginI18nFacade）
 ```
 
-**使用方式**：PluginManager 通过 `_create_plugin_services()` 创建容器实例，在加载插件时通过 `services` 参数注入。详见 [PluginManager](../core/plugin-system/plugin-manager.md)。
+**使用方式**：PluginManager 通过 `_create_plugin_services(plugin_id)` 创建容器实例（传入 `plugin_id` 用于绑定取词门面），在加载插件时通过 `services` 参数注入。详见 [PluginManager](../core/plugin-system/plugin-manager.md)。
 
 ---
 
@@ -412,11 +413,14 @@ sequenceDiagram
 
 ### 4.3 Widget 缓存复用机制
 
-**文件**：`core/plugin/plugin_interface.py:53-81`
+**文件**：`core/plugin/plugin_interface.py:54-98`
 
 ```mermaid
 flowchart TD
-    A[IPlugin.get_widget] --> B{cached_widget != None?}
+    A[IPlugin.get_widget] --> G{cached_widget != None<br>但 C++ 对象已销毁?}
+    G -->|是| H[丢弃失效缓存并 WARNING 日志]
+    H --> B{cached_widget != None?}
+    G -->|否| B
     B -->|"parent unchanged"| C[return cached widget]
     B -->|"parent changed"| D[setParent parent]
     D --> C
@@ -424,6 +428,11 @@ flowchart TD
     E --> F[cache widget + parent]
     F --> C
 ```
+
+> **失效缓存守卫**：`WorkArea.clear()` 的 `deleteLater()` 等路径会销毁控件的
+> C++ 对象而不通知插件缓存。`get_widget()` 返回缓存前用 `shiboken6.isValid()`
+> 校验存活，已销毁则丢弃缓存走重建路径，避免
+> `RuntimeError: Internal C++ object already deleted`。
 
 ### 4.4 插件 API 注册与跨插件 RPC
 
@@ -454,7 +463,8 @@ flowchart LR
 
 ```python
 def get_all_function_tools(self) -> List[Dict[str, Any]]:
-    # 格式: {type: "function", function: {name: "uuid.method", description, parameters}}
+    # 格式: {type: "function", function: {name: sanitize_tool_name(f"{plugin_id}__{method_name}"), description, parameters}}
+    # （双下划线分隔；call_plugin_method() 仍使用原始 (plugin_id, method_name) 调用）
 ```
 
 ---
@@ -471,7 +481,7 @@ def get_all_function_tools(self) -> List[Dict[str, Any]]:
 
 **SQLite 表结构**（默认后端）：
 - `plugins`：插件实例元数据（`instance_id`, `plugin_type`, `active`）
-- `plugin_data`：插件键值数据（`instance_id`, `namespace`, `key`, `value`）
+- `plugin_data`：插件键值数据（`instance_id`, `namespace`, `key`, `value_json`）
 - `active_instances`：当前活跃实例映射（`plugin_type`, `instance_id`）
 - `db_metadata`：schema 版本与迁移来源
 
@@ -741,11 +751,12 @@ sequenceDiagram
     SB->>SB: mousePressEvent / click
     SB->>SP: skill_clicked Signal(IPlugin)
     SP->>MW: skill_clicked Signal(IPlugin)
-    MW->>WA: set_plugin(IPlugin)
-    WA->>Plugin: plugin.get_widget(parent, dp)
-    Plugin-->>WA: QWidget (cached)
+    MW->>WA: clear_keep_highlight()
+    WA-->>MW: clear done (keep highlight)
+    MW->>Plugin: plugin.get_widget(parent=work_area.get_widget())
+    Plugin-->>MW: QWidget (cached)
+    MW->>WA: add_widget(widget)
     WA-->>MW: widget displayed
-    MW->>SP: set_active_button(SkillButton)
 ```
 
 ### 8.3 WorkArea Widget 缓存策略
@@ -799,24 +810,22 @@ flowchart TD
 
 ```mermaid
 sequenceDiagram
-    participant UI as Chat UI
-    participant Worker as ChatWorker
-    participant Service as LLMChatService
+    participant UI as Chat UI（插件 Widget）
+    participant SVC as LLMPluginService
+    participant CM as ConversationManager
     participant LLMP as LLMProvider
     participant Prov as Provider
 
-    UI->>Worker: send_message(messages)
-    Worker->>Service: stream_send_message / sync_send_message
-    Service->>LLMP: provider.stream_chat / chat
+    UI->>SVC: send_message / stream_send_message(conv_id, content)
+    SVC->>CM: 追加用户消息 / 更新会话
+    SVC->>LLMP: provider.chat / stream_chat
     LLMP->>LLMP: get_enabled_providers("chat")
-    LLMP->>Prov: provider.stream_chat(messages)
-    Prov-->>Prov: make HTTP stream request
-    Prov-->>Service: ChatResponse chunks
-    Service-->>Worker: chunk_received signal
-    Worker-->>UI: update UI
-    Prov-->>Service: ChatResponse final
-    Service-->Worker: finished signal
-    Worker-->>UI: display final result
+    LLMP->>Prov: provider.chat / stream_chat(messages)
+    Prov-->>Prov: make HTTP request / stream
+    Prov-->>LLMP: ChatResponse chunks
+    LLMP-->>SVC: ChatResponse（流式聚合于 last_stream_response）
+    SVC-->>CM: 追加助手回复 / 累计用量
+    SVC-->>UI: 返回 content（流式经 callback 逐 chunk）
 ```
 
 ### 10.3 典型调用链：定时任务注册与执行
@@ -857,7 +866,7 @@ sequenceDiagram
 
 | 模式 | 应用位置 | 实现方式 |
 |------|---------|---------|
-| **单例** | 4 个核心服务 | `__new__` + `_lock` 双重检查锁定 |
+| **单例** | 10 个核心服务 + 2 个内部单例 | `__new__` + `_lock` 双重检查锁定（PluginManager 用 `_initialized` 标志；LLMPluginService/MCPManager 用模块级锁 + 工厂函数） |
 | **模板方法** | `BaseProvider` | 基类提供 HTTP 骨架，子类实现 API 端点/响应解析 |
 | **观察者/Pub-Sub** | `DataProvider` | `_subscriptions` 字典 + 回调分发 |
 | **门面/Facade** | `LLMProvider` | 路由到具体 Provider，隐藏复杂度 |
@@ -894,7 +903,7 @@ sequenceDiagram
 
 ### 12.4 PluginServices DI 容器
 
-PluginManager 通过 `_create_plugin_services()` 创建 `PluginServices` 容器，并通过构造器参数注入到各插件中。新版插件通过 `self._services` 访问服务，旧版插件可通过直接导入单例兼容访问。
+PluginManager 通过 `_create_plugin_services(plugin_id)` 创建 `PluginServices` 容器（传入 `plugin_id` 用于绑定 `PluginI18nFacade` 取词门面），并通过构造器参数注入到各插件中。新版插件通过 `self._services` 访问服务，旧版插件可通过直接导入单例兼容访问。
 
 ### 12.5 API 注册类名偏好
 
@@ -938,8 +947,7 @@ class MyPlugin(IPlugin):
         return widget
 
     def on_plugin_loaded(self) -> None:
-        # 注册定时任务工厂
-        from core.task import BackgroundTaskManager
+        # 注册定时任务工厂（导入位于文件顶部，本例仅示意调用方式）
         BackgroundTaskManager().register_scheduled_task_factory(
             self.plugin_id, self.my_task_func, self.on_task_done
         )
@@ -1113,7 +1121,7 @@ class Service:
 | `data/data.db` | SQLite 数据库：plugins、plugin_data、active_instances 表 |
 | `data/data.json` | `{plugins: {id: {type, active, private, public}}, active_instances: {}}`（JSON 应急后端） |
 | `data/tasks.json` | `{tasks: {}, scheduled_tasks: {}, long_running_tasks: {}}`（任务记录含 `func_name` 字段，用于重启后精确匹配工厂函数） |
-| `data/llm_usage.json` | `[UsageRecord, ...]` |
+| `data/llm_usage.json` | `{"version": 1, "records": [UsageRecord, ...]}`（schema v1：顶层对象 + records 数组） |
 | `data/conversations.json` | LLM 会话持久化 |
 
 ### 附录 B：已知问题汇总
@@ -1123,7 +1131,7 @@ class Service:
 | 1 | ~~TaskStatus.STOPPED 存在于接口但不在实现枚举~~ | ~~已修复~~ | 单一来源为 `core/interfaces/i_task_manager.py`，`task_model.py` re-export | ✅ 已修复 |
 | 2 | TaskScheduler 为轻量生命周期占位（空转线程已移除） | 低 | `scheduler.py` 仅保留 start/stop 生命周期接口，实际调度由 `_check_scheduled_tasks()` daemon 线程 + SchedulerCallback 承担 | 📝 已文档化 |
 | 3 | 定时任务恢复无全局入口 | 低 | 恢复由 `register_scheduled_task_factory()` 自动触发（按插件恢复）；历史遗留的 `_restore_all_scheduled_tasks()` 已移除 | 📝 已文档化 |
-| 4 | PluginServices DI 已启用 | 低 | PluginManager._create_plugin_services() 已实现 DI 注入 | 📝 已完成 |
+| 4 | PluginServices DI 已启用 | 低 | PluginManager._create_plugin_services(plugin_id) 已实现 DI 注入 | 📝 已完成 |
 | 5 | API 注册优先选择名称以 'Service' 结尾的类 | 低 | `manager.py` API 自动注册逻辑含注释说明 | 📝 已文档化 |
 | 6 | ~~DAO/database 模块为占位桩~~ | ~~低~~ | ~~SQLite 迁移已完成：`sqlite_backend.py` + `sql_map.py` + `schema_migrations.py`~~ | ✅ 已修复 |
 

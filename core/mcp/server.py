@@ -147,7 +147,7 @@ class MCPHostServer:
     def _init_fastmcp(self) -> Any:
         """延迟初始化 FastMCP（避免在主线程事件循环外创建）
 
-        mcp==1.27.0 中 host/port 需传给 FastMCP 构造器，
+        mcp 1.29.1（实测，约束 mcp>=1.28.1,<2） 中 host/port 需传给 FastMCP 构造器，
         FastMCP.run() 只接受 transport/mount_path 参数。
 
         Raises:
@@ -277,7 +277,7 @@ class MCPHostServer:
     ) -> None:
         """直接注册工具到 FastMCP
 
-        mcp==1.27.0 实测：ToolManager.add_tool() 内部通过
+        mcp 1.29.1（实测，约束 mcp>=1.28.1,<2）：ToolManager.add_tool() 内部通过
         Tool.from_function() 构建 Tool 并放入 _tools 字典；
         对外展示的 parameters 可在构建后覆盖为调用方提供的 JSON Schema。
         同名工具会被显式替换并记录 warning，注册失败记录 error。
@@ -393,7 +393,7 @@ class MCPHostServer:
 
         self._running = True
         try:
-            # mcp==1.27.0：run() 只接受 transport/mount_path，
+            # mcp 1.29.1（实测，约束 mcp>=1.28.1,<2）：run() 只接受 transport/mount_path，
             # host/port 已在构造器传入
             self._fastmcp.run(transport="stdio")
         except Exception as e:

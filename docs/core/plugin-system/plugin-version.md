@@ -82,6 +82,10 @@ v2 = PluginVersion.from_string("beta.2.1.3")
 v3 = PluginVersion.from_string("alpha.1.0.0")
 ```
 
+> **大小写不敏感**：类型前缀 `release/pre-release/beta/alpha/internal` 经 `parts[0].lower()` 归一化处理，`RELEASE.1.0.0` 与 `release.1.0.0` 等价。
+>
+> **与 IXPlugin.json 校验的差异**：`github_plugin_installer.validate_descriptor()` 的正则 `^(release|pre-release|beta|alpha|internal)\.\d+\.\d+\.\d+$` **只接受小写**，因此描述文件中类型前缀必须是小写。运行时 `from_string()` 接受大小写混写的场景主要出现在 `config/plugin_registry.json` 等内部持久化数据的手工编辑中（仍建议保持小写以与正则一致）。
+
 ### to_string()
 
 ```python

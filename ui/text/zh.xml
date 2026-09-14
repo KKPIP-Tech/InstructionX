@@ -327,6 +327,7 @@
       <text key="message.no_github_source"><![CDATA[该插件没有记录 GitHub 来源，无法检查更新。
   可使用「安装本地插件包」手动升级/降级。]]></text>
       <text key="message.no_releases">未获取到该仓库的 Release 版本</text>
+      <text key="message.no_plugin_installed">没有插件被安装：所选版本中未找到匹配的插件</text>
       <text key="message.invalid_source_url">来源仓库 URL 无效</text>
       <text key="message.install_confirm"><![CDATA[将{relation}插件「{name}」
   当前版本: {current}

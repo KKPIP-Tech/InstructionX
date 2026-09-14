@@ -43,10 +43,10 @@
 | 字段 | 类型 | 必需 | 说明 |
 |------|------|------|------|
 | `id` | string | 是 | 插件唯一标识符（字母、数字、下划线、连字符，允许大写字母） |
-| `name` | string | 是 | 插件显示名称 |
+| `name` | string 或 object | 是 | 插件显示名称；支持多语言字典形式 `{"zh": "...", "en": "..."}`（`I18nFieldValue = Union[str, Dict[str, str]]`，经 `resolve_i18n_field()` 解析） |
 | `version` | string | 是 | 版本号，格式：`<类型>.<大>.<小>.<补丁>`，如 `release.1.0.0` |
 | `main` | string | 是 | 插件入口文件路径，当前必须固定为 `entrance.py`；框架加载器只识别该文件名 |
-| `description` | string | 否 | 插件简短描述 |
+| `description` | string 或 object | 否 | 插件简短描述；同样支持多语言字典形式（同 `name`） |
 | `author` | string | 否 | 插件作者 |
 | `homepage` | string | 否 | 插件主页 URL |
 | `keywords` | array | 否 | 关键词列表 |
@@ -80,7 +80,7 @@
 | `plugins` | array | 是 | 插件列表 |
 | `plugins[].path` | string | 是 | 插件相对于仓库根目录的路径 |
 | `plugins[].id` | string | 是 | 插件唯一标识符 |
-| `plugins[].name` | string | 是 | 插件显示名称 |
+| `plugins[].name` | string 或 object | 是 | 插件显示名称；同 IXPlugin.json 的 `name`，支持多语言字典形式 |
 
 ---
 
@@ -114,15 +114,21 @@ class InstallResult:
 @dataclass
 class PluginInfo:
     plugin_id: str
-    name: str
+    name: I18nFieldValue                # str 或 Dict[str, str]（多语言）
     version: str
     main: str
-    description: Optional[str] = None
+    description: Optional[I18nFieldValue] = None   # str 或 Dict[str, str]（多语言）
     author: Optional[str] = None
     homepage: Optional[str] = None
     keywords: List[str] = field(default_factory=list)
     dependencies: Dict[str, str] = field(default_factory=dict)
     path: str = ""  # 相对于仓库根目录的路径
+
+# I18nFieldValue = Union[str, Dict[str, str]]
+#   - str：所有语言共用同一文案（旧形式，向后兼容）
+#   - Dict[str, str]：按当前语言 → 默认语言 → 字典首个值的顺序解析
+# 解析入口：core.i18n.ixplugin_i18n.resolve_i18n_field(value, language, default_language)
+# 解析时机：PluginRegistry 回填路径按默认语言解析；安装对话框展示层按当前语言解析
 ```
 
 ### 3.3 RepoInspectionResult
@@ -179,6 +185,8 @@ def install_from_url(
         github_url: GitHub 仓库 URL
         selected_plugins: 要安装的插件路径列表（多插件仓库时）
                         为 None 时安装所有插件
+                        （与 IXRepo.json 的 path 比较前双方均会去掉
+                        尾斜杠规范化，"a" 与 "a/" 视为同一路径）
         official_dir: 官方插件目录
         thirdparty_dir: 第三方插件目录
         progress_callback: 可选的进度回调函数，接收消息字符串

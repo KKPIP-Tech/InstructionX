@@ -984,6 +984,12 @@ class PluginManagementDialog(QDialog):
 
     def _on_install_results(self, results: List[InstallResult]) -> None:
         """安装/升级/降级完成，展示结果并刷新"""
+        # 空结果（如所选版本中未匹配到该插件路径）不属于成功，
+        # 明确告警而非误报「全部成功」后毫无变化
+        if not results:
+            Message.warning(self, tr(_I18N_GROUP, "title.install_result"),
+                            tr(_I18N_GROUP, "message.no_plugin_installed"))
+            return
         success = [r for r in results if r.success]
         failed = [r for r in results if not r.success]
         details = "\n".join(
