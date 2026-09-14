@@ -15,21 +15,27 @@
 
 ### 1.2 测试范围
 
+> 下表为实测值（`pytest test/<模块> --collect-only -q` 统计，随测试增删需同步更新）。
+
 | 模块 | 测试文件数 | 测试用例数 | 覆盖范围 |
 |------|-----------|-----------|---------|
-| core.data | 1 | 30+ | DataProvider 全部公开 API |
-| core.llm | 7 | 30+ | LLMProvider, ConversationManager, Config, Types, Exceptions, ToolCallExecutor, PluginService |
-| core.mcp | 7 | 25+ | Manager, Client, Server, Bridge, Config, PluginInterface |
-| core.plugin | 4 | 34+ | Manager, Identity, ConfigManager, Version |
-| core.task | 2 | 27+ | BackgroundTaskManager, TaskModel |
-| ui_tests | 3 | 15+ | MainWindow, SkillsPanel, LLMSettingsDialog |
-| **合计** | **24** | **161+** | — |
+| core.data | 1 | 36 | DataProvider 全部公开 API（含单例/注册表/迁移/LRU/并发/资源路径） |
+| core.font | 1 | 16 | FontManager 安装/卸载/注册表持久化/系统字体回退 |
+| core.llm | 18 | 283 | LLMProvider, ConversationManager, Config, Types, Exceptions, ToolCallExecutor, PluginService, 适配器注册表, 模型 schema, 用量记录 |
+| core.mcp | 6 | 93 | Manager, Client, Server, Bridge, Config, PluginInterface |
+| core.plugin | 7 | 153 | Manager, Identity, ConfigManager, Version, DependencyManager, 插件 API 自动注册, 插件图标 |
+| core.task | 4 | 72 | BackgroundTaskManager, TaskModel, TaskStorage, 优雅关闭 |
+| core（版本号） | 1 | 9 | `core/version.py` 单一来源与 pyproject 动态版本约束 |
+| ui_tests | 10 | 86 | MainWindow, SkillsPanel, 关闭事件分发, 应用标识, LLM 设置对话框（列表/详情/编辑器/模型编辑）, 用量趋势面板渲染通路 |
+| uikit | 2 | 33 | 蓝图节点注册表命名空间隔离；UIKit 同步副本守卫（版本钉子/导入契约/新增能力） |
+| utils | 5 | 29 | LoggerManager, 线程工具, 旧样式表兼容与主题 |
+| **合计** | **55** | **810** | — |
 
 ### 1.3 测试环境要求
 
 - Python 3.14+
-- PySide6（offscreen 模式用于 CI）
-- pytest 8.0+, pytest-mock, pytest-qt, pytest-asyncio
+- PySide6（UI 测试使用**真实图形平台**；`qapp_instance` 仅在进程尚无 QApplication 时才回退 `-platform offscreen`，CI 在 windows-latest 上跑真实 GUI）
+- pytest 9.0+, pytest-mock, pytest-qt, pytest-asyncio（`pip install -e ".[test]"`）
 - 临时目录（由 fixtures 自动管理）
 
 ---
@@ -40,7 +46,7 @@
 
 ```
        ┌─────────────────────────────────┐
-       │         UI Tests (3)           │  ← qtbot, 模拟用户交互
+       │        UI Tests (10)           │  ← qtbot, 模拟用户交互
        │   test/ui_tests/test_*.py      │
        └─────────────────────────────────┘
                        │
@@ -130,7 +136,7 @@ test/
 |---------|--------|------|
 | `reset_singletons` | autouse | 每个测试前后重置所有单例 |
 | `mock_logger` | autouse | 禁用日志输出 |
-| `qapp_instance` | session | QApplication 实例 (offscreen) |
+| `qapp_instance` | session | QApplication 实例；进程内无实例时才以 `-platform offscreen` 创建，通常由 pytest-qt 先建好真实平台实例 |
 | `qtbot` | function | Qt 测试工具 |
 | `temp_data_dir` | function | 临时数据目录 |
 | `temp_config_dir` | function | 临时配置目录 |
@@ -220,36 +226,43 @@ def test_example(qtbot):
 
 ## 6.1 风险覆盖清单
 
-阶段 0 代码审视识别的高风险区域对应的测试覆盖状态：
+阶段 0 代码审视识别的高风险区域，下表按**当前套件实测**核对（状态以代码中实际存在的用例为准，不采信计划态描述）：
 
-| 风险 ID | 描述 | 测试用例 | 状态 |
-|---------|------|---------|------|
-| R-01 | 插件 API 自动注册硬编码 "Service" | TC-PLUGIN-025~028 | 待实现 |
-| R-02 | MCP 私有 API 依赖 `_tool_manager._tools` | TC-MCP-019, TC-MCP-020 | 待实现 |
-| R-03 | shutdown `wait=False` 可能丢失任务 | TC-TASK-021, TC-TASK-022 | 待实现 |
-| R-04 | MCP Client 60 秒超时硬编码 | TC-MCP-022 | 待实现 |
-| R-05 | MCP Client 连接可能泄漏 | TC-MCP-021, TC-MCP-023 | 待实现 |
-| R-06 | 定时任务恢复 `_restore_all_scheduled_tasks` 未在 init 调用 | TC-TASK-023, TC-TASK-024 | 待实现 |
+| 风险 ID | 描述 | 用例编号 | 实际落地用例 | 状态 |
+|---------|------|---------|-------------|------|
+| R-01 | 插件 API 自动注册硬编码 "Service" | TC-PLUGIN-025~028 | `core/plugin/test_plugin_api_auto_register.py`：`test_auto_register_with_custom_service_class`、`test_auto_register_only_service_methods`、空 / 全私有 Service 共 4 例 | 已覆盖 |
+| R-02 | MCP 私有 API 依赖 `_tool_manager._tools` | TC-MCP-019, TC-MCP-020 | `core/mcp/test_server.py` 覆盖公开注册表 API（`test_add_tool_records_in_registry_directly`、`test_remove_tool_removes_from_registry`、`test_registered_tools_returns_copy`）；**无「不依赖私有属性」的专用断言** | 部分覆盖 |
+| R-03 | shutdown `wait=False` 可能丢失任务 | TC-TASK-021, TC-TASK-022 | `core/task/test_background_task_shutdown.py`：`test_shutdown_waits_for_tasks_to_prevent_data_loss`、`test_shutdown_cleans_up_resources` | 已覆盖 |
+| R-04 | MCP Client 60 秒超时硬编码 | TC-MCP-022 | **未找到对应用例**（`core/mcp/` 下无超时相关断言） | 未覆盖 |
+| R-05 | MCP Client 连接可能泄漏 | TC-MCP-021, TC-MCP-023 | `core/mcp/test_client.py`：`test_shutdown_closes_all_connections`；异常路径 session 释放无专用用例 | 部分覆盖 |
+| R-06 | 定时任务恢复 `_restore_all_scheduled_tasks` 未在 init 调用 | TC-TASK-023, TC-TASK-024 | `core/task/test_background_task_shutdown.py`：`test_scheduled_tasks_restore_after_init`、`test_restore_called_during_init` | 已覆盖 |
 
 **状态说明**：
-- **待实现**：需在阶段 2 新增测试代码
-- **部分覆盖**：有测试但未完全覆盖风险场景
-- **已覆盖**：测试已完整覆盖风险场景
+- **已覆盖**：代码中存在针对该风险的用例
+- **部分覆盖**：有相关用例但未覆盖风险场景的全部路径（含仅间接覆盖）
+- **未覆盖**：暂无对应用例，属待补测试
+
+> **文档漂移提示**：各模块的 `<模块>-testing.md` 记录的用例清单与代码存在偏差（按 `def test_*` 名称比对：`data-testing.md` 32/32 不匹配、`plugin-testing.md` 23 个、`task-testing.md` 19 个、`llm-testing.md` 18 个、`mcp-testing.md` 18 个文档函数在代码中不存在），这些清单反映的是编写时的计划，**不能作为覆盖状态依据**；引用前请以代码为准，待专项刷新。
+> `test/修订说明.md` 是该轮修订（2026-04-06）的**历史记录**，其中同一张表标注的"待实现"反映当时状态，按历史文档保留、不再回改。
 
 ---
 
 ## 7. 模块测试文档
 
-详细测试用例请参考各模块文档：
+详细测试用例请参考各模块文档（下表用例数为 `pytest --collect-only` 实测值；模块文档内的用例清单存在历史漂移，见 §6.1 末尾提示）：
 
 | 模块 | 测试文档 | 测试用例数 |
 |------|----------|-----------|
-| DataProvider | [data-testing.md](core/data/data-testing.md) | 30+ |
-| LLM 模块 | [llm-testing.md](core/llm/llm-testing.md) | 30+ |
-| MCP 模块 | [mcp-testing.md](core/mcp/mcp-testing.md) | 25+ |
-| 插件系统 | [plugin-testing.md](core/plugin/plugin-testing.md) | 34+ |
-| 任务系统 | [task-testing.md](core/task/task-testing.md) | 27+ |
-| UI 组件 | [ui-testing.md](../ui_tests/ui-testing.md) | 15+ |
+| DataProvider | [data-testing.md](core/data/data-testing.md) | 36 |
+| LLM 模块 | [llm-testing.md](core/llm/llm-testing.md) | 283 |
+| MCP 模块 | [mcp-testing.md](core/mcp/mcp-testing.md) | 93 |
+| 插件系统 | [plugin-testing.md](core/plugin/plugin-testing.md) | 153 |
+| 任务系统 | [task-testing.md](core/task/task-testing.md) | 72 |
+| UI 组件 | [ui-testing.md](ui_tests/ui-testing.md) | 86 |
+| 蓝图与 UIKit 同步守卫 | —（暂无模块文档，见 `test/uikit/`） | 33 |
+| 字体子系统 | —（暂无模块文档，见 `test/core/font/`） | 16 |
+| 版本号单一来源 | —（暂无模块文档，见 `test/core/test_version.py`） | 9 |
+| 工具与日志 | —（暂无模块文档，见 `test/utils/`） | 29 |
 
 ---
 
