@@ -244,14 +244,31 @@ def test_example(qtbot):
 - **部分覆盖**：有相关用例但未覆盖风险场景的全部路径（含仅间接覆盖）
 - **未覆盖**：暂无对应用例，属待补测试
 
-> **文档漂移提示**：各模块的 `<模块>-testing.md` 记录的用例清单与代码存在偏差（按 `def test_*` 名称比对：`data-testing.md` 32/32 不匹配、`plugin-testing.md` 23 个、`task-testing.md` 19 个、`llm-testing.md` 18 个、`mcp-testing.md` 18 个文档函数在代码中不存在），这些清单反映的是编写时的计划，**不能作为覆盖状态依据**；引用前请以代码为准，待专项刷新。
+> **模块文档状态**：`data-testing.md`、`llm-testing.md`、`mcp-testing.md`、`plugin-testing.md`、`task-testing.md`、`ui-testing.md` 六份文档的用例清单已按代码重建（原为编写期计划，与代码严重不符，例如 `data-testing.md` 的 32 个函数名在代码中一个都不存在）。当前六份文档与代码**唯一名双向零差异、类级归属全部正确**，可用 `temp/check_testing_docs.py` 与 `temp/check_testing_docs_by_class.py` 复核。
 > `test/修订说明.md` 是该轮修订（2026-04-06）的**历史记录**，其中同一张表标注的"待实现"反映当时状态，按历史文档保留、不再回改。
+
+## 6.2 隐性断言用例清单
+
+下列用例不含显式 `assert`，其正确性依赖「不抛异常 / 不死锁 / 不挂起」（AST 扫描：`temp/find_assertionless_tests.py`）。当前**保留现状**，在此登记以便后续按需补强；改动这些用例时请勿删除其「不应抛异常」的语义。
+
+| 位置 | 用例 | 隐式判定依据 |
+|------|------|-------------|
+| `core/data/test_data_provider.py` | `test_callback_can_reenter_dataprovider` | 回调内重入读取不死锁 |
+| `core/mcp/test_bridge.py` | `test_sync_plugin_api_server_not_init`、`test_sync_new_plugin_tool_server_not_init`、`test_remove_plugin_tool_server_not_init` | server 未初始化时优雅返回、不抛异常 |
+| `core/mcp/test_bridge.py` | `test_remove_plugin_tool_not_in_synced` | 移除未同步的工具不抛异常 |
+| `core/mcp/test_client.py` | `test_disconnect_not_found` | 断开不存在的 server 不抛异常 |
+| `core/mcp/test_manager.py` | `test_stop_server_when_not_running`、`test_shutdown_when_not_started` | 未启动时停止 / 关闭不抛异常 |
+| `core/mcp/test_server.py` | `test_remove_tool_not_found` | 移除不存在的工具不抛异常 |
+| `core/plugin/test_plugin_manager.py` | `test_unregister_plugin_idempotent` | 重复卸载幂等、不抛异常 |
+| `core/task/test_task_model.py` | `test_uuid_is_auto_generated` | `uuid.UUID(task_id)` 对非法值即抛（隐式校验） |
+
+> 扫描另命中 `core/llm/test_tool_call_executor.py` 的 `test_tool`——它是用例内部定义的**本地工具函数**（非测试用例，pytest 不收集），不属本清单。
 
 ---
 
 ## 7. 模块测试文档
 
-详细测试用例请参考各模块文档（下表用例数为 `pytest --collect-only` 实测值；模块文档内的用例清单存在历史漂移，见 §6.1 末尾提示）：
+详细测试用例请参考各模块文档（下表用例数为 `pytest --collect-only` 实测值，模块文档已与代码同步，见 §6.1 说明）：
 
 | 模块 | 测试文档 | 测试用例数 |
 |------|----------|-----------|

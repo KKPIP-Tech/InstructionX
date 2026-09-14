@@ -1,7 +1,7 @@
 """pytest tests for core/mcp/client.py"""
 
 import pytest
-from unittest.mock import MagicMock, AsyncMock, patch
+from unittest.mock import MagicMock, AsyncMock, patch, call
 
 
 class TestMCPServerConnection:
@@ -127,19 +127,27 @@ class TestMCPClientManager:
         """Verify all connections closed."""
         from core.mcp.client import MCPServerConnection
 
+        exit_stack = MagicMock()
+        exit_stack.aclose = AsyncMock()
         conn = MCPServerConnection(
             server_id="to-close",
             name="To Close",
             config=MagicMock(),
             session=MagicMock(),
+            tool_name_map={"to-close__demo": "demo"},
+            exit_stack=exit_stack,
         )
         client_manager._connections["to-close"] = conn
 
-        # Directly clear connections to simulate shutdown behavior
-        client_manager._connections.clear()
+        client_manager.shutdown()
 
-        # Verify connections are cleared
-        assert len(client_manager._connections) == 0
+        # 真实走 shutdown → disconnect → _async_disconnect：
+        # 连接表被清空、该连接注册的工具被注销、退出栈被关闭
+        assert client_manager._connections == {}
+        assert client_manager._tool_registry.unregister.call_args_list == [
+            call("to-close__demo")
+        ]
+        exit_stack.aclose.assert_awaited_once()
 
     def test_make_handler_creates_callable(self, client_manager):
         """Verify _make_handler creates a callable handler."""

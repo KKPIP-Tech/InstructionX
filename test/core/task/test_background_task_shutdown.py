@@ -14,7 +14,10 @@ from unittest.mock import MagicMock, patch, call
 from concurrent.futures import Future
 import threading
 
-from core.task.background_task import BackgroundTaskManager
+from core.task.background_task import (
+    BackgroundTaskManager,
+    LONG_TASK_STATUS_RESTARTING,
+)
 from core.task.task_model import (
     BackgroundTask, ScheduledTask, LongRunningTask,
     TaskType, TaskStatus
@@ -308,48 +311,45 @@ class TestLongRunningTaskRestart:
         TC-TASK-025: 长时任务自动重启间隔
 
         测试步骤：
-        1. 注册长时任务
-        2. 任务崩溃
-        3. 验证重启前有 5 秒等待
+        1. 以 auto_restart=True 注册长时任务，其函数执行即抛异常
+        2. 调用 _execute_long_running_task 触发失败处理
+        3. 断言重启定时器的延时与重启计数
 
-        预期结果：重启间隔为 5 秒
-
-        注意：需要验证 _execute_long_running_task 中 task.auto_restart=True 时
-        会调用 time.sleep(5)
+        预期结果：首次重启延时 = AUTO_RESTART_INITIAL_DELAY（5s），第二次失败
+        按指数退避翻倍为 10s；定时器登记进 _restart_timers 以便 shutdown 取消。
         """
         manager, mock_storage, mock_executor, mock_scheduler = _make_btm(mocker)
 
-        # 创建长时任务
         task = LongRunningTask(
             task_id="long-running-task-001",
             plugin_id="plugin-restart",
             name="long-running-task",
-            func=MagicMock(side_effect=Exception("Task crashed")),
+            func=MagicMock(side_effect=RuntimeError("Task crashed")),
             auto_restart=True,
         )
 
-        # 模拟任务已提交并正在运行
-        mock_fut = MagicMock(spec=Future)
-        mock_fut.done.return_value = False
+        # 用假 Timer 记录调度参数，避免真的等待退避时长
+        fake_timer = MagicMock()
+        timer_cls = mocker.patch(
+            "core.task.background_task.threading.Timer", return_value=fake_timer)
 
-        with manager._task_lock:
-            manager._running_long_running_tasks[task.task_id] = task
-            manager._futures[task.task_id] = mock_fut
+        # 首次失败：按初始退避延时调度重启
+        manager._execute_long_running_task(task)
 
-        # 模拟任务执行（通过调用 _execute_long_running_task）
-        # 由于任务会抛出异常，应该会触发重启逻辑
-        with patch('time.sleep') as mock_sleep:
-            # 手动触发任务执行（在真实线程中会循环执行）
-            # 这里我们直接测试异常处理和 sleep 调用
-            try:
-                # 执行任务逻辑
-                task.func()
-            except Exception:
-                pass
+        assert task.current_status == LONG_TASK_STATUS_RESTARTING
+        assert task.restart_count == 1
+        assert timer_cls.call_args.args[0] == (
+            BackgroundTaskManager.AUTO_RESTART_INITIAL_DELAY)
+        assert fake_timer.daemon is True
+        assert fake_timer.start.called
+        assert manager._restart_timers[task.task_id] is fake_timer
 
-            # 如果 auto_restart 为 True，应该调用 time.sleep(5)
-            # 注意：在真实场景中，任务会在循环中持续运行直到被停止
-            # 这里的测试验证的是：当任务失败且 auto_restart=True 时，会等待 5 秒
+        # 二次失败：指数退避翻倍
+        manager._execute_long_running_task(task)
+
+        assert task.restart_count == 2
+        assert timer_cls.call_args.args[0] == (
+            BackgroundTaskManager.AUTO_RESTART_INITIAL_DELAY * 2)
 
 
 # ============================================================================
