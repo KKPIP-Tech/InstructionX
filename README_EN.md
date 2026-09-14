@@ -293,7 +293,8 @@ python -m pytest test/ -q --tb=short -p no:cacheprovider
 | matplotlib | Usage statistics and UIKit MarkdownView LaTeX formula rendering | >= 3.10 |
 | packaging | Plugin dependency version checking | >= 23.0 |
 | qrcode[pil] | UIKit QRCodeView component | >= 7.4 |
-| InstructionX_UIKit | UI theme & component library | Built-in (alpha-v1.0.2) |
+| numpy | UIKit charts engine (large-data pipeline / downsampling) | >= 2.0 |
+| InstructionX_UIKit | UI theme & component library | Built-in (alpha-v1.0.3) |
 
 ## License
 

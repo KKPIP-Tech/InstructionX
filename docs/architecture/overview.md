@@ -442,7 +442,8 @@ InstructionX/
 │           └── openai_compatible.py  # 自定义 OpenAI 兼容兜底适配器
 │
 ├── ui/                       # UI 模块
-│   ├── InstructionX_UIKit/  # UIKit 组件库（设计令牌 + ThemeManager + 58 组件/布局/图表，同步副本不修改）
+│   ├── InstructionX_UIKit/  # UIKit 组件库（alpha-v1.0.3：设计令牌 + ThemeManager + 58 组件/布局/图表
+│   │                        #   + 代码编辑器，同步副本不修改）
 │   ├── uikit_bootstrap.py   # sys.path 引导（使 UIKit 以顶层包可导入，main.py 第一个业务 import）
 │   ├── uikit_theme.py       # 全局主题入口（apply_uikit_theme 三模式 + 排除区兼容附录）
 │   ├── main_window.py       # 主窗口

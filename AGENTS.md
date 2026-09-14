@@ -12,7 +12,7 @@
 - 多厂商 LLM 集成（MiniMax、SiliconFlow、智谱 GLM、Ollama、OpenAI 兼容接口等），多会话管理、工具调用自动化（ToolCallExecutor）、多模态、用量统计
 - MCP 协议双向支持（内置 MCP Server 暴露插件 API；MCP Client 连接外部 MCP Server）
 - SQLite WAL 数据持久化层（DataProvider）、后台任务系统（BackgroundTaskManager）
-- InstructionX_UIKit 主题与组件体系（`ui/InstructionX_UIKit` 组件库：设计令牌 + light/dark/auto 全局主题，58 组件 + 原生图表引擎）、字体管理器（`core/font` 子系统：字体安装/卸载/预览/系统字体回退，框架不自带字体）
+- InstructionX_UIKit 主题与组件体系（`ui/InstructionX_UIKit` 组件库：设计令牌 + light/dark/auto 全局主题，58 组件 + 原生图表引擎 + 仿 VS Code 代码编辑器）、字体管理器（`core/font` 子系统：字体安装/卸载/预览/系统字体回退，框架不自带字体）
 - 多国语言（i18n）支持（`core/i18n` 子系统：XML 语言文件 + 回退链取词、界面语言实时切换、每插件语言覆盖；日志文案保持中文不国际化）
 
 - 应用标识：`InstructionX - CE`（组织名 `KKPIP-Tech`），当前版本 **Alpha 1.1.0**
@@ -31,7 +31,8 @@
 | orjson | JSON 序列化（SQLite 后端） |
 | matplotlib | 用量统计与 UIKit MarkdownView LaTeX 公式渲染（math_render 异步渲染中枢）使用；旧用量面板图表曾使用，现用量面板已改用 UIKit 原生图表引擎 |
 | packaging | 插件依赖版本检查 |
-| qrcode[pil] >= 7.4 | InstructionX_UIKit 组件库 QRCodeView 组件依赖（库规定唯一允许的第三方依赖） |
+| qrcode[pil] >= 7.4 | InstructionX_UIKit 组件库 QRCodeView 组件依赖 |
+| numpy >= 2.0 | InstructionX_UIKit 图表引擎依赖（alpha-v1.0.3 起在模块导入期即依赖）：大规模数据的紧凑存储、向量化降采样与坐标映射、分层采样金字塔 |
 | pyobjc-framework-Cocoa >= 11.0 | 仅 macOS（`sys_platform == "darwin"` 条件依赖）：运行时设置 Dock 栏应用图标（`utils/macos_dock_icon.py`） |
 
 - 依赖单一来源是 `pyproject.toml` 的 `[project].dependencies`；`requirements.txt` 与其保持同步（供 `uv pip install -r requirements.txt` / `pip install -r requirements.txt` 直接安装使用），**改依赖时两处都要改**。
@@ -292,12 +293,15 @@ ui/                         # 界面层
   uikit_theme.py            # 全局主题入口：apply_uikit_theme(app, light/dark/auto) +
                             #   current_theme_mode() + 排除区（标题栏/技能面板/工作区）兼容 QSS 附录
   InstructionX_UIKit/       # PySide6 组件库（独立仓库 KKPIP-Tech/InstructionX_UIKit 的同步副本，
-                            #   alpha-v1.0.2：tokens/theme 主题系统 + 58 组件（含 MarkdownView
+                            #   alpha-v1.0.3：tokens/theme 主题系统 + 58 组件（含 MarkdownView
                             #   Markdown 渲染组件与 math_render 公式渲染中枢）+ 13 布局
-                            #   （含 chat_conversation 流式对话布局）+ 52 动画 + 原生图表引擎 +
-                            #   蓝图节点图（含 GL/软件双绘制视口 viewport.py）+ mermaid/ 子包
-                            #   （官方 mermaid.js WebEngine 渲染 + 自绘降级 + 交互查看器）；
-                            #   主项目不修改库内文件）
+                            #   （含 chat_conversation 流式对话布局）+ 52 动画 + 原生图表引擎
+                            #   （alpha-v1.0.3 起：GL/软件双绘制视口 charts/viewport.py + 大数据
+                            #   紧凑存储/降采样/采样金字塔 + 流式实时入口 set_stream_data）+
+                            #   蓝图节点图（含 GL/软件双绘制视口 blueprint/viewport.py）+
+                            #   code_editor/ 仿 VS Code 代码编辑器（含并排/内联 DiffEditor）+
+                            #   mermaid/ 子包（官方 mermaid.js WebEngine 渲染 + 自绘降级 +
+                            #   交互查看器）；主项目不修改库内文件）
   skills_panel/             # 插件技能面板（含 plugin_group_widget.py 分组折叠控件：
                             #   文件夹形式收起、点击行内向右展开、展开区区分背景）
   work_area/                # 插件 Widget 宿主区（切换插件时缓存 UI 状态）
@@ -344,7 +348,8 @@ config/ data/ logs/         # 运行时生成：配置、数据、日志
 - **接口与实现分离**：共享类型统一定义在 `core/interfaces/`，其他模块从这里 re-export，避免循环导入。
 - **关闭行为约定**：`main.py` 已 `setQuitOnLastWindowClosed(False)`，「关窗即退出」的隐式链路被切断，退出时机完全由代码显式控制（`QApplication.quit()`）；主窗口 `closeEvent` 统一拦截全部关闭路径（自绘叉子 / 标题栏右键 / Alt+F4 / 任务栏右键关闭），每次弹出 `CloseConfirmDialog` 询问「退出程序 / 最小化到托盘 / 取消」（无记忆选项）；托盘菜单「退出」与 Windows 注销/关机（`commitDataRequest` 回调置 `_force_quit`）走静默直退，不弹窗、不阻塞系统关机。
 - 后台任务回调在**工作线程**执行，更新 UI 必须通过 `utils/thread_utils.py` 封送到 UI 线程。
-- **蓝图 GL 视口预热**：主窗口构造期（`show()` 之前）调用 `_prewarm_blueprint_viewport()` 预创建一个隐藏蓝图画布并长期持有——蓝图画布的 GL 视口基于 `QOpenGLWidget`，若在窗口可见后才加入窗口树会触发顶层原生句柄重建（窗口短暂关闭重开）；预热让原生句柄首次创建时即按含 GL 子控件的方式建立（详见 `docs/ui/main-window.md` §4 与 UIKit USAGE.md §8.6）。
+- **蓝图 GL 视口预热**：主窗口构造期（`show()` 之前）调用 `_prewarm_blueprint_viewport()` 预创建一个隐藏蓝图画布并长期持有——蓝图画布的 GL 视口基于 `QOpenGLWidget`，若在窗口可见后才加入窗口树会触发顶层原生句柄重建（窗口短暂关闭重开）；预热让原生句柄首次创建时即按含 GL 子控件的方式建立（详见 `docs/ui/main-window.md` §4 与 UIKit USAGE.md §9.6）。
+- **图表 GL 视口**：UIKit 图表引擎（alpha-v1.0.3 起）的 `ChartWidget` 在构造期即创建绘制视口，GL 可用时为 `QOpenGLWidget`（不可用/offscreen 自动回退软件渲染）。框架内唯一的图表使用方是 `ui/usage_panel/trend_chart.py`，其控件在对话框 `exec()` 之前构造，不触发上述原生句柄重建。
 
 ### 插件开发约定（重要）
 
