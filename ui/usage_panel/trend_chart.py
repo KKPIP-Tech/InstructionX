@@ -3,23 +3,21 @@
 时间范围选择（近半年 / 近一年 / 自定义）、指标切换（请求数 / 输入 Token /
 输出 Token）、GitHub 贡献图风格的日历热力图（heatmap + calendar 坐标系）、
 悬停提示与区间状态文本。图表使用 InstructionX_UIKit 原生图表引擎
-（ChartWidget + set_option），配色实时取自 UIKit 令牌并随主题切换自动换肤。
+（ChartWidget；指标/区间变化走 set_option 全量重建，仅数值刷新走
+set_stream_data 增量通路），配色实时取自 UIKit 令牌并随主题切换自动换肤。
 """
 
 from datetime import date, datetime, timedelta
 from typing import List, Optional, Tuple
 
-from PySide6.QtCore import QDate, QRectF, Qt, Signal
-from PySide6.QtGui import QColor, QFont, QFontMetricsF, QPainter
+from PySide6.QtCore import QDate, Signal
+from PySide6.QtGui import QFont
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QVBoxLayout
 
 from core.i18n import get_language_manager, tr
 from core.llm.types import UsageRecord
 from InstructionX_UIKit import T, set_property
-from InstructionX_UIKit.charts import (
-    ChartWidget, register_component, register_series,
-)
-from InstructionX_UIKit.charts.axes import _MONTH_LABELS, chart_font
+from InstructionX_UIKit.charts import ChartWidget, register_series
 from InstructionX_UIKit.charts.series_cartesian import HeatmapSeriesRenderer
 from InstructionX_UIKit.components import Button, ComboBox, DatePicker
 
@@ -27,7 +25,7 @@ from .formatting import local_tz, to_local_time
 
 
 # ===================================================================
-# 图表引擎扩展（经 register_series/register_component 公开扩展点注册，不改库）
+# 图表引擎扩展（经 register_series 公开扩展点注册，不改库）
 class _CalendarHeatmapRenderer(HeatmapSeriesRenderer):
     """日历热力图（悬停 tooltip 显示单元格日期）。
 
@@ -44,61 +42,7 @@ class _CalendarHeatmapRenderer(HeatmapSeriesRenderer):
         return hit
 
 
-class _CalendarMonthLabels:
-    """跨年月份标签补充组件（option 键 ``monthLabels``）。
-
-    库内 CalendarCoord.paint_axes 的月份标签按 ``date(coord.year, month, 1)``
-    构造，只支持单年 range：跨年 range 中相邻年份的月份标签缺失。
-    本组件补画「年份 != coord.year」的月份 1 日标签，列位经公开的
-    ``cell_rect()`` 计算，样式与内建标签一致。
-    """
-
-    option_key = "monthLabels"
-
-    def __init__(self, chart, opt):
-        self.chart = chart
-        self._marks = []   # [(x, label)]
-        self._top = 0.0
-
-    def layout(self, rect: QRectF) -> None:
-        """计算需补画的月份标签（仅 coord.year 之外的年份）"""
-        self._marks = []
-        self._top = rect.top()
-        coord = self.chart.coord_for({"coordinateSystem": "calendar"})
-        if coord is None or getattr(coord, "kind", "") != "calendar":
-            return
-        first_monday = coord.start - timedelta(days=coord.start.weekday())
-        cursor = date(coord.start.year, coord.start.month, 1)
-        last_col = -1
-        while cursor <= coord.end:
-            if cursor.year != coord.year:
-                anchor = max(cursor, coord.start)
-                col = (anchor - first_monday).days // 7
-                if col != last_col:
-                    last_col = col
-                    cell = coord.cell_rect(cursor)
-                    if not cell.isNull():
-                        self._marks.append(
-                            (cell.left(), _MONTH_LABELS[cursor.month - 1]))
-            cursor = date(cursor.year + (cursor.month == 12),
-                          cursor.month % 12 + 1, 1)
-
-    def paint(self, p: QPainter, anim_t: float = 1.0) -> None:
-        """按内建标签样式（font.xs + text.tertiary）绘制补充月份标签"""
-        if not self._marks:
-            return
-        p.save()
-        p.setPen(QColor(T("color.text.tertiary")))
-        font = chart_font(T("font.xs"))
-        p.setFont(font)
-        for x, label in self._marks:
-            p.drawText(QRectF(x, self._top, 40, QFontMetricsF(font).height()),
-                       Qt.AlignLeft | Qt.AlignVCenter, label)
-        p.restore()
-
-
 register_series("calendarHeatmap", _CalendarHeatmapRenderer)
-register_component("monthLabels", _CalendarMonthLabels)
 
 # ===== 时间范围选项（i18n 键，显示文案在取词时解析） =====
 RANGE_OPTION_KEYS = ("range.half_year", "range.year", "range.custom")
@@ -118,6 +62,8 @@ def _resolve_texts(keys: Tuple[str, ...]) -> List[str]:
 
 # ===== 图表显示常量 =====
 CHART_MIN_HEIGHT = 60
+# 面板只注册一个日历热力图系列，增量刷新（set_stream_data）的目标序号固定为 0
+HEATMAP_SERIES_INDEX = 0
 # 自适应高度的单元格边长上限（短范围时令格不被拉得过大）
 MAX_CELL_HEIGHT = 28.0
 MIN_CELL_HEIGHT = 3.0
@@ -167,6 +113,8 @@ class TrendPanel(QFrame):
         layout.addWidget(self._status_label)
         # 最近一次状态文本参数（语言切换时按原值重排文案）
         self._last_status: Optional[Tuple[str, str, int]] = None
+        # 最近一次渲染的图表结构标识（指标 + 区间）：未变化时走增量刷新通路
+        self._render_key: Optional[Tuple[int, date, date]] = None
 
         self._connect_signals()
         self._retranslate_ui()
@@ -358,31 +306,71 @@ class TrendPanel(QFrame):
     # ------------------------------------------------------------- 渲染
 
     def _render_series(self, points: List[Tuple[date, int]], metric_idx: int) -> None:
-        """将聚合后的序列构建为日历热力图 option 并交给 ChartWidget
+        """按「结构是否变化」选择渲染通路：增量刷新或全量重建
 
         GitHub 贡献图风格：行=星期、列=周序，单元格颜色深浅映射当日用量
         （色带为 UIKit 令牌 primary.subtle → primary，按数据范围映射）。
+
+        Args:
+            points: 按天聚合后的序列 [(日期, 聚合值), ...]
+            metric_idx: 当前指标下标（决定系列名，属图表结构的一部分）
         """
         start_d, end_d = points[0][0], points[-1][0]
+        render_key = (metric_idx, start_d, end_d)
+        series_data = [[d.isoformat(), v] for d, v in points]
+        if render_key == self._render_key and self._push_series_data(series_data):
+            return
+        self._render_full(series_data, metric_idx, start_d)
+        self._render_key = render_key
 
+    def _push_series_data(self, series_data: List[List[object]]) -> bool:
+        """结构未变时走流式数据入口：只换数据，不重建 option / 坐标系 / 渲染器
+
+        UIKit alpha-v1.0.3 的 ``set_stream_data`` 既不深拷贝 option 也不重建
+        渲染器，区间不变时静态层缓存持续命中；返回 False（系列序号越界、数据
+        不可用等）时由调用方回退全量渲染，避免图表停留在上一次数据。
+
+        Args:
+            series_data: 热力图数据 [[ISO 日期, 数值], ...]
+
+        Returns:
+            bool: 是否写入成功
+        """
+        return self._chart.set_stream_data(series_data, series=HEATMAP_SERIES_INDEX)
+
+    def _render_full(
+        self, series_data: List[List[object]], metric_idx: int, start_d: date
+    ) -> None:
+        """全量重建图表 option（首次渲染或指标 / 区间变化）并使层级缓存失效
+
+        失效缓存不可省略：alpha-v1.0.3 新增的静态层缓存键由尺寸、主题、轴解析
+        结果与坐标的 ``data_extent_version`` 构成，**不含日历 range**；日历图
+        没有 xAxis/yAxis，坐标每次重建后该版本号恒为 1，因此同尺寸切换区间会
+        命中上一次的静态位图，内建月份标签停留在旧区间。这里以一次静态层重绘
+        换取标签正确。
+
+        Args:
+            series_data: 热力图数据 [[ISO 日期, 数值], ...]
+            metric_idx: 当前指标下标（取 i18n 键作为系列名）
+            start_d: 区间起始日（日历 range 的 year 取起始年）
+        """
         self._chart.set_option({
             "legend": {"show": False},
             "tooltip": {"show": True, "trigger": "item"},
-            # year 取起始年：内建月份标签可正确覆盖起始年各月；
-            # 跨年部分由 monthLabels 组件补画（见模块顶部扩展类）
+            # year 取起始年：内建月份标签按 start→end 逐月绘制，跨年同样正确
             "calendar": {
                 "year": start_d.year,
-                "range": [start_d.isoformat(), end_d.isoformat()],
+                "range": [series_data[0][0], series_data[-1][0]],
                 "cellSize": "auto",
             },
-            "monthLabels": {},
             "series": [{
                 "type": "calendarHeatmap",
                 "name": tr("usage_panel", METRIC_OPTION_KEYS[metric_idx]),
                 "coordinateSystem": "calendar",
-                "data": [[d.isoformat(), v] for d, v in points],
+                "data": series_data,
             }],
         })
+        self._chart.invalidate_all_caches()
 
     # ------------------------------------------------------------- 事件
 
