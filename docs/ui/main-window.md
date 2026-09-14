@@ -212,10 +212,11 @@ graph TB
 - **打开方式**: 通过 **AI > 用量查询** 菜单，在模态对话框中展示
 - **布局**: 整体内容置于 `QScrollArea` 垂直滚动区内；KPI 卡片为固定高度（92px）；趋势面板高度按热力图内容自适应（单元格边长 = 可用宽度 / 周数，上限 28px，范围切换与窗口宽度变化时同步调整）；历史面板高度随当前页行数自适应（行高 27px，保证整页记录完整显示）；窗口缩小时页面整体上下滚动，各区块高度不变
 - **功能**: 提供 Token 用量统计、趋势图表和明细查询
+- **渲染后端**: 趋势图控件自 UIKit alpha-v1.0.3 起在**构造期**即创建绘制视口（GL 可用时为 `QOpenGLWidget`，不可用或 offscreen 平台自动回退软件渲染）。面板在对话框 `exec()` 之前构造，GL 子控件入树早于顶层窗口可见，因此不会触发 §4 所述「GL 子控件加入已可见顶层窗口 → 原生句柄重建」的闪烁问题
 - **组件**:
   - 顶部标题行（主标题 + 副标题）
   - KPI 卡片区（总请求数、输入 Token、输出 Token、总 Token、缓存命中率、平均耗时，含「较上周期 ±x.x%」同比）
-  - 用量趋势面板（UIKit ChartWidget 日历热力图，GitHub 贡献图风格：行=星期、列=周序；近半年 / 近一年 / 自定义范围；请求数 / 输入 Token / 输出 Token 指标切换；悬停提示显示「日期: 当日值」；无 visualMap 指示条与图例；色带为 UIKit 令牌 primary.subtle→primary，随主题换肤。面板经引擎公开扩展点注册了两个扩展：系列类型 `calendarHeatmap`（hit_test 让 tooltip 行名回退为日期）与组件 `monthLabels`（补画跨年月份标签），均未修改组件库）
+  - 用量趋势面板（UIKit ChartWidget 日历热力图，GitHub 贡献图风格：行=星期、列=周序；近半年 / 近一年 / 自定义范围；请求数 / 输入 Token / 输出 Token 指标切换；悬停提示显示「日期: 当日值」；无 visualMap 指示条与图例；色带为 UIKit 令牌 primary.subtle→primary，随主题换肤。面板经引擎公开扩展点仅注册了系列类型 `calendarHeatmap`（hit_test 让 tooltip 行名回退为日期），未修改组件库；渲染按「结构是否变化」分流——指标或区间变化走 `set_option` 全量重建，仅数值刷新走 `set_stream_data` 增量通路（不重建 option / 坐标系 / 渲染器），增量写入失败自动回退全量重建；全量重建后必须调用 `invalidate_all_caches()`，原因见 `docs/utils/uikit-theme.md` §6.2）
   - 使用历史面板（Provider / Model / 对话ID 筛选 + 明细表格 + 分页）
   - 明细表格（10 列：时间、Provider、Model、输入、输出、总Token、缓存命中、缓存Token、耗时、流式；按时间倒序，最新记录在第 1 页）
   - 分页控件（每页 50 条）
