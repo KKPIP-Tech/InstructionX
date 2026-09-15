@@ -338,6 +338,31 @@ def main() -> int:
         check("无效包不产生任何插件目录",
               not any((work_dir / "custom_plugin" / name).exists()
                       for name in ("repo-main", "docs")))
+
+        print("== 12. 插件目录内包外文件的兜底备份 ==")
+        # 模拟「插件把运行时数据写进自己目录」（规范要求改存 DataProvider）
+        installed_dir = work_dir / "custom_plugin" / "demo-five"
+        (installed_dir / "runtime.dat").write_text("runtime", encoding="utf-8")
+        zip_upgrade = work_dir / "demo-five-2.0.0.zip"
+        make_plugin_zip(zip_upgrade, "demo-five", "release.2.0.0", "演示插件五")
+        results = installer.install_from_zip(zip_upgrade)
+        check("升级成功", results[0].success)
+        check("结果提示已备份包外文件",
+              "已备份 1 个包外文件" in results[0].message)
+        backup_root = work_dir / "data" / "plugin_backup" / "demo-five"
+        snapshots = sorted(backup_root.iterdir()) if backup_root.is_dir() else []
+        check("已生成快照", len(snapshots) == 1)
+        check("快照内含包外数据文件",
+              bool(snapshots) and (snapshots[0] / "runtime.dat").is_file())
+        check("升级后新目录内不再有包外数据文件",
+              not (installed_dir / "runtime.dat").exists())
+        zip_upgrade2 = work_dir / "demo-five-3.0.0.zip"
+        make_plugin_zip(zip_upgrade2, "demo-five", "release.3.0.0", "演示插件五")
+        results = installer.install_from_zip(zip_upgrade2)
+        check("无包外文件时不提示备份",
+              "已备份" not in results[0].message)
+        check("无包外文件时不新增快照",
+              len(sorted(backup_root.iterdir())) == 1)
     finally:
         # 关闭后台任务管理器线程池，避免进程悬挂
         try:
