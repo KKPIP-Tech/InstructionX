@@ -573,5 +573,10 @@ Interfaces using this font will fall back to a system font after uninstallation.
       <text key="result.all_success">The following plugins were installed:\n{details}</text>
       <text key="result.partial">Some plugins were not installed:\n{details}</text>
       <text key="result.ok">Got it</text>
+      <text key="title.confirm_downgrade">Confirm Downgrade</text>
+      <text key="message.downgrade_confirm"><![CDATA[The following plugins will be downgraded:
+{details}
+
+Warning: downgrading may cause data incompatibility or configuration loss. Continue?]]></text>
   </group>
 </texts>
