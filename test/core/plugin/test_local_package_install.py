@@ -301,3 +301,68 @@ class TestTempDirectoryCleanup:
 
         assert created, "安装器应创建临时目录"
         assert all(not path.exists() for path in created)
+
+
+class TestExtraFileBackup:
+    """覆盖安装前对插件目录内「包外文件」的兜底快照"""
+
+    def test_upgrade_backs_up_extra_files(self, installer, isolated_pm, tmp_path):
+        """升级前发现包外文件 → 生成快照并在结果里提示"""
+        installer.install_from_zip(make_plugin_zip(
+            tmp_path / "v1.zip", plugins=[("plugin-a", "release.1.0.0")]))
+        installed_dir = isolated_pm.thirdparty_plugin_dir / "plugin-a"
+        (installed_dir / "runtime.dat").write_text("runtime", encoding="utf-8")
+
+        results = installer.install_from_zip(make_plugin_zip(
+            tmp_path / "v2.zip", plugins=[("plugin-a", "release.2.0.0")]))
+
+        assert results[0].success
+        assert "已备份 1 个包外文件" in results[0].message
+        backup_dir = tmp_path / "data" / "plugin_backup" / "plugin-a"
+        snapshots = sorted(backup_dir.iterdir())
+        assert len(snapshots) == 1
+        assert (snapshots[0] / "runtime.dat").read_text(encoding="utf-8") == "runtime"
+        assert "release.2.0.0" in snapshots[0].name
+        assert not (installed_dir / "runtime.dat").exists(), "旧数据文件不应残留在新版本目录"
+
+    def test_no_backup_without_extra_files(self, installer, isolated_pm, tmp_path):
+        """无包外文件时不提示、不产生快照"""
+        installer.install_from_zip(make_plugin_zip(
+            tmp_path / "v1.zip", plugins=[("plugin-a", "release.1.0.0")]))
+
+        results = installer.install_from_zip(make_plugin_zip(
+            tmp_path / "v2.zip", plugins=[("plugin-a", "release.2.0.0")]))
+
+        assert results[0].success
+        assert "已备份" not in results[0].message
+        assert not (tmp_path / "data" / "plugin_backup" / "plugin-a").exists()
+
+    def test_fresh_install_has_no_backup(self, installer, tmp_path):
+        """全新安装（无旧目录）不触发快照"""
+        results = installer.install_from_zip(make_plugin_zip(
+            tmp_path / "v1.zip", plugins=[("plugin-a", "release.1.0.0")]))
+
+        assert results[0].success
+        assert "已备份" not in results[0].message
+        assert not (tmp_path / "data" / "plugin_backup").exists()
+
+    def test_backup_failure_does_not_block_install(self, installer, isolated_pm,
+                                                   tmp_path, monkeypatch):
+        """快照失败时降级为提示，不影响安装成功"""
+        installer.install_from_zip(make_plugin_zip(
+            tmp_path / "v1.zip", plugins=[("plugin-a", "release.1.0.0")]))
+        (isolated_pm.thirdparty_plugin_dir / "plugin-a" / "runtime.dat").write_text(
+            "x", encoding="utf-8")
+
+        def broken_snapshot(*args, **kwargs):
+            """模拟磁盘满/权限不足导致的快照失败"""
+            raise OSError("disk full")
+
+        monkeypatch.setattr(
+            "core.plugin.github_plugin_installer.snapshot_plugin_dir", broken_snapshot)
+
+        results = installer.install_from_zip(make_plugin_zip(
+            tmp_path / "v2.zip", plugins=[("plugin-a", "release.2.0.0")]))
+
+        assert results[0].success, "备份失败必须不影响安装"
+        assert "备份失败" in results[0].message
