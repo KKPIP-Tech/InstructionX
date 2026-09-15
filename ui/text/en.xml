@@ -286,7 +286,6 @@ Interfaces using this font will fall back to a system font after uninstallation.
       <text key="title.uninstall_done">Uninstall Completed</text>
       <text key="title.save_failed">Save Failed</text>
       <text key="title.operation_failed">Operation Failed</text>
-      <text key="title.select_zip">Select Plugin Package</text>
 
       <!-- 页签与 scope 分类名 -->
       <text key="tab.manage">Plugin Management</text>
@@ -318,8 +317,6 @@ Interfaces using this font will fall back to a system font after uninstallation.
       <!-- 通用兜底词（本分组内复用） -->
       <text key="label.unknown">Unknown</text>
 
-      <!-- 文件选择对话框 -->
-      <text key="file_dialog.zip_filter">Zip Files (*.zip)</text>
 
       <!-- 提示/结果消息 -->
       <text key="message.select_plugin_first">Please select a plugin first</text>
@@ -537,5 +534,44 @@ Interfaces using this font will fall back to a system font after uninstallation.
   <group name="dialog_language">
       <text key="title">Interface Language</text>
       <text key="note">Language changes take effect immediately. Each plugin can have its own language configured in "Plugin Management"; if not set, it follows the selection here.</text>
+  </group>
+  <group name="dialog_local_package_install">
+      <text key="window.title">Install from Local Package</text>
+      <text key="label.no_file">Choose a zip downloaded from GitHub (or a single-plugin zip)</text>
+      <text key="button.choose_zip">Choose zip…</text>
+      <text key="button.install_selected">Install Selected</text>
+      <text key="button.close">Close</text>
+      <text key="button.select_all">Select All</text>
+      <text key="button.deselect_all">Deselect All</text>
+      <text key="hint.select_package">After choosing a zip, its plugins are detected automatically: a single plugin is installed directly, a plugin collection can be selected and installed in one go (nested repository archives are supported).</text>
+      <text key="hint.scanning">Scanning package contents…</text>
+      <text key="hint.installing">Installing, please keep this window open…</text>
+      <text key="source.single">Detected: single plugin</text>
+      <text key="source.index">Detected: plugin collection (via IXRepo.json index; undeclared entries stay unchecked)</text>
+      <text key="source.scan">Detected: plugin collection (no IXRepo.json found; plugins below were found by directory scan)</text>
+      <text key="invalid.title">Unrecognized package</text>
+      <text key="invalid.hint">Make sure the zip contains IXPlugin.json (single plugin); for a collection, providing IXRepo.json in the repository root is recommended.</text>
+      <text key="invalid.unknown">The package contents could not be recognized</text>
+      <text key="row.no_description">No description</text>
+      <text key="row.invalid">Not installable: {reason}</text>
+      <text key="row.path">path in package {path}</text>
+      <text key="row.undeclared">Not declared in IXRepo.json</text>
+      <text key="row.dependencies">Dependencies: {deps}</text>
+      <text key="scope.official">Official directory</text>
+      <text key="scope.thirdparty">Third-party directory</text>
+      <text key="relation.new">New install</text>
+      <text key="relation.upgrade">Upgrade {prev} → {version}</text>
+      <text key="relation.downgrade">Downgrade {prev} → {version}</text>
+      <text key="relation.reinstall">Reinstall {version}</text>
+      <text key="label.selection_summary">Selected {selected} / {total} ({invalid} not installable)</text>
+      <text key="message.no_selection">Select at least one plugin</text>
+      <text key="title.select_zip">Choose Local Plugin Package</text>
+      <text key="file_dialog.zip_filter">Plugin package (*.zip)</text>
+      <text key="result.title">Install Result</text>
+      <text key="result.empty">No plugin was installed</text>
+      <text key="result.item">{name}: {message}</text>
+      <text key="result.all_success">The following plugins were installed:\n{details}</text>
+      <text key="result.partial">Some plugins were not installed:\n{details}</text>
+      <text key="result.ok">Got it</text>
   </group>
 </texts>

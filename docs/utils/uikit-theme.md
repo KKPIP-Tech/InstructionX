@@ -85,6 +85,22 @@ from InstructionX_UIKit.components import Button, LineEdit, Dialog, Message, Tab
 from InstructionX_UIKit.charts import ChartWidget
 ```
 
+### 2.4 上游版本升级指引（同步副本维护）
+
+同步副本与上游 tag **逐字节一致**，升级时按下表逐项处理（本次 alpha-v1.0.2 → alpha-v1.0.3 的实践沉淀）：
+
+| 步骤 | 操作 | 说明 |
+|------|------|------|
+| 1 | 用 `git -C <上游仓库> archive -o kit.tar <tag>` 导出后覆盖 `ui/InstructionX_UIKit/` | 该导出方式与现有副本的 CRLF 形态一致，直接覆盖不会产生「全文件重写」的假 diff；覆盖后删除副本内陈旧 `__pycache__` |
+| 2 | 校验：`git diff --no-index ui/InstructionX_UIKit <解包目录>/InstructionX_UIKit` 应无输出 | 确认同步完整、无本地改动残留（框架不得修改库内文件） |
+| 3 | 逐个导入库内子包（含新增子包）并核对 `InstructionX_UIKit.__version__` | 需要 `ui.uikit_bootstrap` 先导入；注意验证脚本不要放在含同名 `InstructionX_UIKit` 目录的路径下（会成为 `sys.path[0]` 遮蔽真副本） |
+| 4 | 同步库侧新增第三方依赖到 `pyproject.toml` + `requirements.txt`，并执行 `uv lock`、更新依赖文档表 | 依赖单一来源约束，见 §10 注意事项第 6 条 |
+| 5 | 更新版本号引用：`AGENTS.md`、`README.md`、`README_EN.md`、`docs/architecture/overview.md`、本文档 | 全文检索旧版本号确认无残留 |
+| 6 | 更新库结构说明（组件/布局/动画计数、新增子包、图表与视口等新模块） | 结构树见 §2.1 |
+| 7 | 若上游文档章节重排，修正框架内 `USAGE.md §x.y` 形式的引用 | 上游只增章节也会导致后续编号整体位移 |
+| 8 | 更新 `test` 分支的 `test/uikit/test_uikit_sync.py` 的 `EXPECTED_UIKIT_VERSION` 与新增能力用例 | 该守卫测试的 docstring 已约定「每次同步上游新版本时需同步更新」 |
+| 9 | 回归：`scripts/smoke_*.py`、`pytest test/`，并实机验证受影响界面 | 关注图表类改动的后端切换、缓存键变化与新公开 API 的行为差异 |
+
 ---
 
 ## 3. 全局主题入口（ui/uikit_theme.py）
@@ -287,7 +303,8 @@ Message.warning(parent, "请先选择一项")
 
 # 图表（ECharts 风格 option，用量趋势图已从 QtCharts 迁移至此）
 chart = ChartWidget(parent)
-chart.set_option({"xAxis": {...}, "series": [...]})
+chart.set_option({"xAxis": {...}, "series": [...]})   # 全量重建（结构变化时）
+chart.set_stream_data(values, series=0)               # 增量换数据（结构未变时）
 ```
 
 ### 6.1 QMessageBox → Dialog / Message 替换规则
@@ -301,6 +318,19 @@ QMessageBox 在框架中已基本移除（仅遗留的 `ui/dialog/plugin_order_d
 | 轻量提示（校验失败、操作完成等） | `Message.info/success/warning(parent, text)`（非阻塞） |
 
 llm_settings 包内进一步封装为 `feedback.py`：`confirm` / `notice`（阻塞式 Dialog）与 `info` / `warn` / `success`（非阻塞 Message）。
+
+### 6.2 图表引擎接入约定（alpha-v1.0.3 起）
+
+框架侧接入 `InstructionX_UIKit.charts` 必须遵守以下约定（当前唯一使用方为 `ui/usage_panel/trend_chart.py`）：
+
+| 约定 | 说明 |
+|------|------|
+| 绘制视口自动选后端 | `ChartWidget` 在**构造期**创建绘制视口：GL 可用时为 `QOpenGLWidget`（GPU 合成），不可用或 offscreen/minimal 平台自动回退软件渲染。控件自身不再绘制，`paintEvent` 仅为 `grab()` / `render()` 路径保留；`UIKIT_CHART_GL=off` 可强制软件路径用于对照排查 |
+| GL 视口与顶层窗口 | 视口若在顶层窗口**可见之后**才加入窗口树，Qt 会重建顶层原生句柄（窗口短暂关闭重开，见 `docs/ui/main-window.md` §4）。用法上应让控件先入树、后显示窗口（如对话框在 `exec()` 前构造面板） |
+| 两种数据入口 | `set_option(option)` 全量重建：深拷贝 option、重建渲染器与坐标系、播放旧→新插值动画；`set_stream_data(values, series=N)` 只换数据：不重建、不启动动画，适合同结构高频刷新。结构（系列构成 / 坐标范围 / 系列名）变化时必须走全量入口 |
+| 层级缓存与失效 | 引擎维护静态层（底色 / 坐标轴 / 图例 / 标题）与系列层位图缓存。静态层缓存键 = 尺寸 + 主题 + 系列显隐 + dataZoom 窗口 + 各轴解析结果 + 各坐标 `data_extent_version`，**不含仅由 option 时间范围决定的坐标（如 `calendar`）的 range** |
+| 日历类图表必读 | 因上一条，日历坐标系图表切换区间后必须全量 `set_option` 并随后调用 `invalidate_all_caches()`（或 `invalidate_static_layer()`），否则坐标轴标签停留在旧区间；`ui/usage_panel/trend_chart.py` 的 `_render_full()` 即按此实现 |
+| 公开扩展点 | `register_series(type_name, cls)` 注册系列渲染器；`register_component(name, cls)` 注册 option 组件（协议：`option_key` 类属性 + `layout(rect)` + `paint(p, anim_t)`）。框架经此扩展实现日历热力图，**不修改库内文件** |
 
 ---
 
@@ -383,7 +413,7 @@ def switch_to_light(app: QApplication):
 3. **不修改库内文件**：`ui/InstructionX_UIKit/` 是独立仓库的同步副本，主项目不做任何修改
 4. **Fusion 样式**：`ThemeManager.apply()` 会将应用样式设置为 `Fusion`，这是全局 QSS 的基础
 5. **size 属性别名**：Qt 中 `setProperty("size", ...)` 无效，组件尺寸请通过 `set_property(widget, "size", v)` 设置（内部自动映射为 `uiksize`）
-6. **依赖**：组件库引入两项第三方依赖，均按 `pyproject.toml` 与 `requirements.txt` 双来源同步——`qrcode[pil]>=7.4`（UIKit `QRCodeView` 组件使用）与 `numpy>=2.0`（UIKit 图表引擎自 alpha-v1.0.3 起在**模块导入期**即依赖，用于大数据紧凑存储、向量化降采样与坐标映射、分层采样金字塔）
+6. **依赖**：组件库依赖 `PySide6`、`matplotlib`（MarkdownView 的 LaTeX 公式渲染）与 `qrcode[pil]>=7.4`（`QRCodeView` 组件）；自 alpha-v1.0.3 起新增 `numpy>=2.0`，图表引擎在**模块导入期**即依赖它（大数据紧凑存储、向量化降采样与坐标映射、分层采样金字塔）。三者由框架在 `pyproject.toml` 与 `requirements.txt` 双来源同步声明，缺失 numpy 会导致启动期导入失败
 7. **排除区只减不增**：兼容附录仅覆盖标题栏 / 技能面板 / 占位标签三个历史区域，新区域一律使用 UIKit 组件
 
 ---

@@ -6,13 +6,17 @@
 
 ## 1. 概述
 
-`GitHubPluginInstaller` 是插件系统的扩展组件，负责从 GitHub 仓库远程安装插件。
+`GitHubPluginInstaller` 是插件系统的扩展组件，负责插件安装：既支持从 GitHub 仓库**远程安装**，
+也支持**本地插件包**（zip）安装。
 
 **文件位置**: `core/plugin/github_plugin_installer.py`
+（本地包识别逻辑独立在 `core/plugin/package_discovery.py`，纯文件系统实现、可单测）
 
 **核心功能**:
 - 支持单插件仓库（仓库根目录有 `IXPlugin.json`）
 - 支持多插件仓库（仓库根目录有 `IXRepo.json`）
+- **本地插件包自动识别**：自动判断 zip 是单插件还是插件集，适配 GitHub 下载的仓库压缩包
+  （`repo-<branch>/`）、用户二次打包、`__MACOSX` 等任意层嵌套；插件集可勾选后**一次装完**
 - 自动判定安装目录（KKPIP-Tech → plugin/，其他 → custom_plugin/）
 - 后台下载和安装，不阻塞 UI
 
@@ -52,7 +56,7 @@
 | `keywords` | array | 否 | 关键词列表 |
 | `dependencies` | object | 否 | Python 依赖，key 为包名，value 为版本约束 |
 
-> **当前实现说明**：上表 `id`（`^[a-zA-Z0-9_-]+$`）与 `version`（`^(release|pre-release|beta|alpha|internal)\.\d+\.\d+\.\d+$`）约束已由 `validate_descriptor()` 做**代码级正则硬校验**（见 `core/plugin/github_plugin_installer.py` 的 `validate_descriptor` 方法）；安装时 `_install_plugin_dir()` 内联读取描述文件，并调用 `validate_descriptor()` 完成校验，格式不符会直接拒绝安装。
+> **当前实现说明**：上表 `id`（`^[a-zA-Z0-9_-]+$`）与 `version`（`^(release|pre-release|beta|alpha|internal)\.\d+\.\d+\.\d+$`）约束由 `core/plugin/package_discovery.py` 的 `validate_descriptor()` 做**代码级正则硬校验**；安装器的 `GitHubPluginInstaller.validate_descriptor()` 直接委托同一实现（本地包识别与安装校验共用一套规则，避免两处分叉）。格式不符会被拒绝安装；在**本地插件集**场景下仅该插件标记为不可安装，不影响其余插件。
 
 ### 2.2 IXRepo.json（多插件仓库索引）
 
@@ -141,6 +145,37 @@ class RepoInspectionResult:
     error_message: Optional[str] = None
 ```
 
+### 3.4 LocalInstallPlan
+
+本地插件包中**单个插件**的安装计划，由 `inspect_local_package()` 产出，供安装对话框展示与勾选。
+
+```python
+@dataclass
+class LocalInstallPlan:
+    candidate: PluginCandidate          # 识别层候选（见 package_discovery.PluginCandidate）
+    relation: str = "new"               # new / upgrade / downgrade / reinstall
+    prev_version: str = ""              # 已安装版本（未安装时为空串）
+    target_scope: str = "thirdparty"    # official / thirdparty
+    default_selected: bool = True       # 有索引时仅索引声明项为 True
+```
+
+### 3.5 LocalPackageInspection
+
+```python
+@dataclass
+class LocalPackageInspection:
+    kind: str                                   # single / multi / invalid
+    plans: List[LocalInstallPlan] = field(default_factory=list)
+    warnings: List[str] = field(default_factory=list)
+    error: str = ""                             # kind == invalid 时的中文诊断信息
+    has_index: bool = False                     # 包内是否存在 IXRepo.json
+```
+
+> **识别层的值对象**（纯文件系统，定义在 `core/plugin/package_discovery.py`）：
+> `PluginCandidate`（候选插件：`descriptor_id`/`name`/`version`/`main`/`description`/`dependencies`/
+> `rel_path`（相对包根路径，`""` 表示插件就在包根）/`valid`/`error`/`declared_in_index`）与
+> `PackageInspection`（`kind`/`candidates`/`warnings`/`error`/`has_index`）。
+
 ---
 
 ## 4. 核心 API
@@ -221,6 +256,9 @@ def validate_descriptor(self, descriptor: Dict[str, Any]) -> Tuple[bool, str]:
     检查必需字段（id, name, version, main）是否存在，
     并验证 version 格式和 id 格式。
 
+    规则实现位于 core.plugin.package_discovery.validate_descriptor，
+    本方法仅做委托（本地包识别与安装校验共用同一套规则）。
+
     Args:
         descriptor: 从 IXPlugin.json 解析的字典
 
@@ -228,6 +266,84 @@ def validate_descriptor(self, descriptor: Dict[str, Any]) -> Tuple[bool, str]:
         (is_valid, error_message): 验证是否通过及错误信息
     """
 ```
+
+### 4.5 inspect_local_package()
+
+```python
+def inspect_local_package(self, zip_path) -> LocalPackageInspection:
+    """
+    识别本地插件包：单插件 / 插件集 / 无效，并预演各插件的安装关系
+
+    只读操作：解压到临时目录 → 识别 → 清理；不写入插件目录、不改注册表。
+
+    Args:
+        zip_path: 本地插件包路径（.zip）
+
+    Returns:
+        LocalPackageInspection: 分类结果、逐个插件的安装计划与警告；
+        kind == "invalid" 时 error 含可诊断的具体原因
+    """
+```
+
+- 识别与安装**各自解压一次**（换取接口无状态、避免跨调用持有临时目录造成泄漏）；插件包通常仅数 MB，成本可接受；
+- 每个计划含安装关系（新装/升级/降级/重装）、目标范围（官方/第三方）与默认勾选建议；
+- 识别失败时给出**可诊断**信息：已扫描目录数与层数、跳过的噪声目录数、是否发现索引，
+  以及「请确认压缩包内包含 IXPlugin.json；若为插件集，建议在仓库根提供 IXRepo.json」的指引。
+
+### 4.6 install_from_zip()
+
+```python
+def install_from_zip(
+    self,
+    zip_path,
+    target_dir: Path = None,
+    progress_callback=None,
+    selected_plugins: Optional[List[str]] = None
+) -> List[InstallResult]:
+    """
+    从本地 zip 插件包安装/升级/降级插件（支持单插件与插件集）
+
+    Args:
+        zip_path: 本地插件包路径
+        target_dir: 目标目录；为 None 时逐个自动判定
+        progress_callback: 进度回调（逐插件调用）
+        selected_plugins: 只安装这些插件（按包内相对路径或插件 id 匹配，
+            两侧均忽略首尾斜杠）；None 表示安装全部可安装候选
+
+    Returns:
+        List[InstallResult]: 每个插件一条结果（顺序与识别顺序一致）；
+        包无法识别时为单条错误结果；未选中任何插件时为空列表
+    """
+```
+
+- 单插件包：行为与历史版本一致（结果是单元素列表）；
+- 插件集包：**逐个安装**，每个插件独立成败互不阻断（依赖安装失败只影响该插件）；
+- 不可安装的候选（描述文件缺失/非法、ID 重复、索引声明的目录不存在）被自动跳过；
+- 注册表登记 `source_type="local_zip"`、`source_path=<包内相对路径>`，便于排查与后续比对；
+- 本方法**只新增可选参数**，旧调用 `install_from_zip(zip_path)` 语义不变。
+
+### 4.7 本地插件包识别规则矩阵
+
+对应 `core/plugin/package_discovery.py` 的识别逻辑；验证见 `scripts/smoke_plugin_management.py`
+（第 8–11 节）与 `test/core/plugin/test_package_discovery.py`（test 分支）。
+
+| zip 内容形态 | 判定 | 结果 |
+|---|---|---|
+| 根目录 / `repo-main/` / `外层/repo-main/` 含 `IXPlugin.json` | single | 直接安装 |
+| `repo-main/` 下并列多个插件目录（GitHub 下载的插件集仓库） | multi | 勾选后一次装完 |
+| `repo-main/IXRepo.json` + 索引项 | multi | 索引驱动：顺序按索引，索引项默认勾选 |
+| 索引 + 未声明的插件目录 | multi | 未声明项仍作为候选，但默认**不**勾选并给出警告 |
+| `repo-main/packages/plugins/a` 等多层嵌套 | multi | 递归扫描命中 |
+| `__MACOSX/`、`.git/`、`node_modules/`、`_`/`.` 前缀目录 | — | 噪声目录跳过，不影响判定 |
+| 插件目录内部再嵌套插件目录 | — | 命中描述文件即停止下潜，不误判 |
+| 包内两个目录 `id` 相同 | multi | 保留首个（索引项优先），其余标注"重复"且不可安装 |
+| 描述文件缺 `id/name/version/main` 或格式非法 | — | 该候选不可安装并显示原因，其余照常 |
+| 索引声明的目录不存在 / 索引路径越界 | multi/invalid | 逐条报错：目录不存在 / 路径越出包根已拒绝 |
+| 空包 / 无任何插件 | invalid | 诊断信息 + 指引 |
+
+**扫描上限**（防病态压缩包）：单次识别最多遍历 `MAX_SCAN_DIRS = 20000` 个目录、下潜
+`MAX_DISCOVERY_DEPTH = 6` 层、穿过包装层 `MAX_WRAPPER_DEPTH = 6` 层；超限时截断并在
+`warnings` 中提示"可能存在未扫描到的插件"。
 
 ---
 
@@ -329,6 +445,57 @@ from ui.dialog.github_plugin_install_dialog import GitHubPluginInstallDialog
 dialog = GitHubPluginInstallDialog(parent_window)
 dialog.plugin_installed.connect(self._on_plugin_installed)
 dialog.exec()
+```
+
+### 7.1 本地插件包安装对话框
+
+**文件位置**: `ui/dialog/local_package_install_dialog.py`
+**入口**: 插件管理对话框 →「安装本地插件包」按钮（`PluginManagementDialog._on_install_zip()`）
+
+```
+┌──────────────────────────────────────────────────┐
+│  本地插件包安装                                     │
+├──────────────────────────────────────────────────┤
+│  collection.zip                        [选择压缩包…] │
+│  识别结果：插件集（未找到 IXRepo.json，由目录扫描识别） │
+│  ┌────────────────────────────────────────────┐  │
+│  │ ☑ 演示插件五 (v release.1.0.0)              │  │
+│  │    一个演示插件                              │  │
+│  │    id: demo-five · 包内路径 demo-five ·       │  │
+│  │    新安装 · 第三方目录                        │  │
+│  ├────────────────────────────────────────────┤  │
+│  │ ☑ 演示插件六 (v release.1.0.0)              │  │
+│  └────────────────────────────────────────────┘  │
+│  已选 2 / 共 2（0 项不可安装）      [全选][取消全选] │
+├──────────────────────────────────────────────────┤
+│  [进度]  正在安装…          [安装所选]  [关闭]      │
+└──────────────────────────────────────────────────┘
+```
+
+**行为要点**:
+
+| 场景 | 界面表现 |
+|------|---------|
+| 单插件包 | 一行插件信息（名称/版本/关系/目标目录/依赖），默认勾选，直接安装 |
+| 插件集包 | 多行勾选列表 + 全选/取消全选 + 计数行；**一次装完**所选插件 |
+| 有 `IXRepo.json` | 按索引识别与排序；索引项默认勾选，未声明项默认不勾选并标注 |
+| 无任何插件 | 切到诊断页：显示扫描统计与指引，安装按钮不可用 |
+| 部分插件不可安装 | 该行置灰并显示原因（缺字段/版本号非法/ID 重复/索引目录不存在），其余可正常安装 |
+| 安装中 | 进度条可见、按钮禁用、禁止关闭窗口（运行中关闭会先请求中断并等待线程结束） |
+
+**实现约定**: 识别与安装都在后台 `QThread` 中执行；界面只消费 `LocalInstallPlan`
+（不写业务逻辑），安装完成发 `plugin_installed` 信号交给调用方刷新插件列表。
+
+**信号与用法**:
+
+```python
+from ui.dialog.local_package_install_dialog import LocalPackageInstallDialog
+
+dialog = LocalPackageInstallDialog(parent_window, installer=installer)
+dialog.plugin_installed.connect(lambda results: self._refresh_after_change())
+dialog.exec()
+# 也可直接驱动识别（便于自动化验证）：
+dialog.start_inspect("/path/to/package.zip")
 ```
 
 ---

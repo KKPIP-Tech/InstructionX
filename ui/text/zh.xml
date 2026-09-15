@@ -287,7 +287,6 @@
       <text key="title.uninstall_done">卸载完成</text>
       <text key="title.save_failed">保存失败</text>
       <text key="title.operation_failed">操作失败</text>
-      <text key="title.select_zip">选择插件包</text>
   
       <!-- 页签与 scope 分类名 -->
       <text key="tab.manage">插件管理</text>
@@ -319,8 +318,6 @@
       <!-- 通用兜底词（本分组内复用） -->
       <text key="label.unknown">未知</text>
   
-      <!-- 文件选择对话框 -->
-      <text key="file_dialog.zip_filter">Zip 文件 (*.zip)</text>
   
       <!-- 提示/结果消息 -->
       <text key="message.select_plugin_first">请先选择插件</text>
@@ -538,5 +535,44 @@
   <group name="dialog_language">
       <text key="title">界面语言</text>
       <text key="note">语言切换实时生效。各插件可在「插件管理」中单独设置语言，未设置时跟随此处选择。</text>
+  </group>
+  <group name="dialog_local_package_install">
+      <text key="window.title">本地插件包安装</text>
+      <text key="label.no_file">请选择从 GitHub 下载的压缩包（或单个插件的 zip）</text>
+      <text key="button.choose_zip">选择压缩包…</text>
+      <text key="button.install_selected">安装所选</text>
+      <text key="button.close">关闭</text>
+      <text key="button.select_all">全选</text>
+      <text key="button.deselect_all">取消全选</text>
+      <text key="hint.select_package">选择压缩包后将自动识别其中的插件：单个插件直接安装，插件集可勾选后一次装完（支持任意层嵌套的仓库压缩包）。</text>
+      <text key="hint.scanning">正在识别压缩包内容…</text>
+      <text key="hint.installing">正在安装，请勿关闭窗口…</text>
+      <text key="source.single">识别结果：单个插件</text>
+      <text key="source.index">识别结果：插件集（按 IXRepo.json 索引识别，未声明项默认不勾选）</text>
+      <text key="source.scan">识别结果：插件集（未找到 IXRepo.json，以下插件由目录扫描识别）</text>
+      <text key="invalid.title">无法识别的压缩包</text>
+      <text key="invalid.hint">请确认压缩包内包含 IXPlugin.json（单插件）；若为插件集，建议在仓库根提供 IXRepo.json。</text>
+      <text key="invalid.unknown">压缩包内容无法识别</text>
+      <text key="row.no_description">无描述</text>
+      <text key="row.invalid">不可安装：{reason}</text>
+      <text key="row.path">包内路径 {path}</text>
+      <text key="row.undeclared">未在 IXRepo.json 中声明</text>
+      <text key="row.dependencies">依赖：{deps}</text>
+      <text key="scope.official">官方目录</text>
+      <text key="scope.thirdparty">第三方目录</text>
+      <text key="relation.new">新安装</text>
+      <text key="relation.upgrade">升级 {prev} → {version}</text>
+      <text key="relation.downgrade">降级 {prev} → {version}</text>
+      <text key="relation.reinstall">重装 {version}</text>
+      <text key="label.selection_summary">已选 {selected} / 共 {total}（{invalid} 项不可安装）</text>
+      <text key="message.no_selection">请至少勾选一个插件</text>
+      <text key="title.select_zip">选择本地插件包</text>
+      <text key="file_dialog.zip_filter">插件包 (*.zip)</text>
+      <text key="result.title">安装结果</text>
+      <text key="result.empty">没有插件被安装</text>
+      <text key="result.item">{name}：{message}</text>
+      <text key="result.all_success">以下插件已安装：\n{details}</text>
+      <text key="result.partial">部分插件未能安装：\n{details}</text>
+      <text key="result.ok">知道了</text>
   </group>
 </texts>

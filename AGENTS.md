@@ -236,7 +236,10 @@ core/
     plugin_version.py       # PluginVersion（如 release.1.0.0）、VersionType
     dependency_manager.py   # 插件 Python 依赖检查/自动安装（优先 uv，回退 pip）
     github_plugin_installer.py  # 插件安装器：GitHub 一键安装（IXPlugin.json / IXRepo.json）、
-                            #   本地 zip 安装、GitHub Release 升级/降级、版本关系检测与注册表登记
+                            #   本地 zip 安装（自动识别单插件/插件集，见 package_discovery.py）、
+                            #   GitHub Release 升级/降级、版本关系检测与注册表登记
+    package_discovery.py    # 本地插件包识别（纯文件系统）：包装层穿透、IXRepo.json 索引驱动、
+                            #   递归扫描 IXPlugin.json、候选校验与去重、失败诊断
   data/                     # 数据持久化层
     data_provider.py        # DataProvider 单例：PRIVATE/PUBLIC 双命名空间、发布订阅、内存缓存
     sqlite_backend.py       # SQLite WAL 后端（默认），schema 迁移
@@ -317,6 +320,8 @@ ui/                         # 界面层
     plugin_management_dialog.py  # 插件管理对话框：安装/升级/降级/卸载 + 分组与排序
                                  #   （替代原 plugin_order_dialog 的菜单入口）；
                                  #   详情面板含「语言…」按钮与语言状态行（无语言包置灰）
+    local_package_install_dialog.py  # 本地插件包安装对话框：选 zip → 自动识别
+                                 #   单插件/插件集（任意层嵌套）→ 勾选后一次装完
     language_dialog.py        # 界面语言选择对话框（编辑菜单「语言」打开，
                               #   选中即 LanguageManager.set_language 实时切换）
     plugin_language_dialog.py # 插件语言选择对话框（「跟随框架（默认）」+ 插件实际提供的语言，

@@ -13,7 +13,7 @@ from typing import Callable, Dict, List, Optional, Tuple
 from PySide6.QtWidgets import (
     QDialog, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
     QLabel, QListWidget, QListWidgetItem, QTabWidget,
-    QFileDialog, QFrame,
+    QFrame,
 )
 from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtGui import QColor, QFont
@@ -29,6 +29,7 @@ from core.plugin.plugin_groups import (
 )
 from core.plugin.plugin_version import PluginVersion
 from ui.dialog.github_plugin_install_dialog import GitHubPluginInstallDialog
+from ui.dialog.local_package_install_dialog import LocalPackageInstallDialog
 from ui.dialog.plugin_language_dialog import PluginLanguageDialog
 from utils.logging_tools import LoggerManager, get_name
 from InstructionX_UIKit import T
@@ -910,17 +911,10 @@ class PluginManagementDialog(QDialog):
         dialog.exec()
 
     def _on_install_zip(self) -> None:
-        """选择本地插件包并安装"""
-        zip_path, _selected = QFileDialog.getOpenFileName(
-            self, tr(_I18N_GROUP, "title.select_zip"), "",
-            tr(_I18N_GROUP, "file_dialog.zip_filter")
-        )
-        if not zip_path:
-            return
-        self._run_background(
-            lambda: self.installer.install_from_zip(zip_path),
-            self._on_install_results,
-        )
+        """打开本地插件包安装对话框（自动识别单插件 / 插件集并勾选安装）"""
+        dialog = LocalPackageInstallDialog(self, installer=self.installer)
+        dialog.plugin_installed.connect(lambda _results: self._refresh_after_change())
+        dialog.exec()
 
     def _on_check_updates(self) -> None:
         """检查选中插件的可用版本（GitHub Release）"""

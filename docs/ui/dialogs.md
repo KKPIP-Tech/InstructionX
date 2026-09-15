@@ -161,7 +161,7 @@ dialog.deleteLater()
 
 ### 3.3 功能特性
 
-- **插件管理页**: 官方/第三方两个插件列表 + 右侧详情面板（名称/版本/来源/语言状态行）；工具栏提供「从 GitHub 安装插件…」（内嵌 `GitHubPluginInstallDialog`）、「安装本地插件包…」（本地 zip）、「刷新」；详情面板提供「语言…」（打开 `PluginLanguageDialog` 设置每插件语言覆盖，插件无语言包时置灰并显示 tooltip，见 §10）、「检查更新 / 升级 / 降级…」（列出 GitHub Release 版本供选择，降级二次确认并警告数据不兼容风险）与「卸载…」（确认弹窗，可选「同时删除插件数据」）
+- **插件管理页**: 官方/第三方两个插件列表 + 右侧详情面板（名称/版本/来源/语言状态行）；工具栏提供「从 GitHub 安装插件…」（内嵌 `GitHubPluginInstallDialog`）、「安装本地插件包…」（打开 `LocalPackageInstallDialog`，自动识别单插件/插件集，见 §11）、「刷新」；详情面板提供「语言…」（打开 `PluginLanguageDialog` 设置每插件语言覆盖，插件无语言包时置灰并显示 tooltip，见 §10）、「检查更新 / 升级 / 降级…」（列出 GitHub Release 版本供选择，降级二次确认并警告数据不兼容风险）与「卸载…」（确认弹窗，可选「同时删除插件数据」）
 - **分组与排序页**: 官方/第三方各一个 `GroupEditorWidget`——左侧「面板顺序」为分组与未分组插件的统一混排列表（新建/重命名/设置图标/删除分组、上移/下移），右侧穿梭框编辑选中分组的组内成员与组内顺序；「保存分组与排序」统一提交两个 scope，「重置」放弃工作副本重新加载
 - **后台执行**: 下载/安装等耗时操作经 `_Worker`（QThread）后台执行，期间禁用对话框防止并发操作
 - **确认与提示**: 统一使用 UIKit Dialog / Message（模块级 `_confirm` / `_notice` / `_prompt_text` / `_prompt_item` 辅助函数），替代 QMessageBox / QInputDialog
@@ -551,7 +551,83 @@ dialog.exec()
 
 ---
 
-## 11. 相关文档
+## 11. LocalPackageInstallDialog 本地插件包安装对话框
+
+**文件位置**: `ui/dialog/local_package_install_dialog.py`
+**入口**: 插件管理对话框 →「安装本地插件包…」（`PluginManagementDialog._on_install_zip()`）
+
+### 11.1 概述
+
+选择本地 zip（典型来源：GitHub 仓库页的「Download ZIP」）后，**自动识别**包内是
+**单个插件**还是**插件集**：单插件直接安装；插件集展示勾选列表，一次装完所选插件。
+适配任意层嵌套（`repo-<branch>/`、用户二次打包、`macOS` 的 `__MACOSX` 干扰等），
+用户不必再解压、翻目录、逐个打包。
+
+识别规则矩阵与失败诊断见 [GitHub 插件安装器 §4.7](../core/plugin-system/plugin-installer.md)。
+
+### 11.2 窗口属性
+
+| 属性 | 值 |
+|------|-----|
+| 类型 | `QDialog`（模态，由插件管理对话框 `exec()`） |
+| 最小尺寸 | 620 × 460 |
+| 标题 | 经 `tr("dialog_local_package_install", "window.title")` 取词 |
+
+### 11.3 布局结构
+
+```
+┌──────────────────────────────────────────────────┐
+│  本地插件包安装                                     │
+├──────────────────────────────────────────────────┤
+│  collection.zip                        [选择压缩包…] │
+│  识别结果：插件集（未找到 IXRepo.json，由目录扫描识别） │
+│  ┌────────────────────────────────────────────┐  │
+│  │ ☑ 演示插件五 (v release.1.0.0)              │  │
+│  │    一个演示插件                              │  │
+│  │    id: demo-five · 包内路径 demo-five ·       │  │
+│  │    新安装 · 第三方目录                        │  │
+│  ├────────────────────────────────────────────┤  │
+│  │ ☑ 演示插件六 (v release.1.0.0)              │  │
+│  └────────────────────────────────────────────┘  │
+│  已选 2 / 共 2（0 项不可安装）      [全选][取消全选] │
+├──────────────────────────────────────────────────┤
+│  [进度]  正在安装…          [安装所选]  [关闭]      │
+└──────────────────────────────────────────────────┘
+```
+
+页面用 `QStackedWidget` 分三态：提示页（未选择/识别中）、结果页（勾选列表）、
+无效包诊断页（扫描统计 + 指引，安装按钮不可用）。
+
+### 11.4 行为要点
+
+| 场景 | 界面表现 |
+|------|---------|
+| 单插件包 | 一行插件信息（名称/版本/安装关系/目标目录/依赖），默认勾选 |
+| 插件集包 | 多行勾选列表 + 全选/取消全选 + 计数行，一次装完所选插件 |
+| 有 `IXRepo.json` | 按索引识别与排序；索引项默认勾选，未声明项默认不勾选并标注 |
+| 无任何插件 | 诊断页显示已扫描目录数/层数/跳过噪声目录数与「应包含 IXPlugin.json」指引 |
+| 部分插件不可安装 | 该行置灰并显示原因（缺字段/版本号非法/ID 重复/索引目录不存在），其余可正常安装 |
+| 安装中 | 进度条可见、选择与安装按钮禁用；运行中关闭会先请求线程中断并等待结束 |
+
+### 11.5 信号与使用方式
+
+```python
+from ui.dialog.local_package_install_dialog import LocalPackageInstallDialog
+
+dialog = LocalPackageInstallDialog(parent_window, installer=installer)
+dialog.plugin_installed.connect(lambda results: self._refresh_after_change())
+dialog.exec()
+
+# 也可直接驱动识别（便于自动化验证，不弹文件选择框）：
+dialog.start_inspect("/path/to/package.zip")
+```
+
+**实现约定**: 识别与安装都在后台 `QThread`（`_InspectWorker` / `_InstallWorker`）执行；
+界面只消费 `LocalInstallPlan`（不写业务逻辑），完成后发 `plugin_installed` 由调用方刷新。
+
+---
+
+## 12. 相关文档
 
 - [主窗口](main-window.md)
 - [系统托盘与关闭行为](system-tray.md)
