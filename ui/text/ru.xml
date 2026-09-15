@@ -19,7 +19,9 @@
     1. 自带自适应的容器（模型编辑对话框、关闭确认对话框等）会按内容撑开，
        文案用完整专业表述即可；
     2. **固定宽度控件必须让文案装进既有宽度**，否则会被裁切，实测约束如下：
-       - 使用历史表格列（70/80px）：«Кэш»、«Из кэша»、«Токенов»；
+       - 使用历史表格列（70/80px）：表头 QSS 左右内边距各 10px 且以粗体绘制，
+         实际可用宽度 ≈ 列宽 − 23px，故取 «Сервис»、«Задерж.»、«Пот.»、«Кэш»、
+         «Из кэша»、«Токенов»（«Провайдер»/«Время, мс»/«Поток» 均会溢出）；
        - LLM 详情面板「检测」按钮（76px）与忙碌态：«Тест» / «Тест…»；
        - LLM 详情面板「重置」按钮（64px）：任何俄语词都放不下（«Сброс» 需 71px），
          故用重置符号 «↺»，完整语义由 detail.reset_tooltip 承载；
@@ -504,15 +506,15 @@
     <!-- 使用历史面板 -->
     <text key="table.title">История использования</text>
     <text key="table.header.time">Время</text>
-    <text key="table.header.provider">Провайдер</text>
+    <text key="table.header.provider">Сервис</text>
     <text key="table.header.model">Модель</text>
     <text key="table.header.input">Ввод</text>
     <text key="table.header.output">Вывод</text>
     <text key="table.header.total_tokens">Токенов</text>
     <text key="table.header.cache_hit">Кэш</text>
     <text key="table.header.cached_tokens">Из кэша</text>
-    <text key="table.header.duration">Время, мс</text>
-    <text key="table.header.stream">Поток</text>
+    <text key="table.header.duration">Задерж.</text>
+    <text key="table.header.stream">Пот.</text>
     <!-- 分页控件 -->
     <text key="page.prev">Назад</text>
     <text key="page.next">Вперёд</text>
