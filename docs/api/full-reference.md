@@ -167,7 +167,8 @@ from core.interfaces import ILocalizationFacade
 |------|------|------|
 | `inspect_repository(github_url)` | 检查 GitHub 仓库返回可安装插件列表 | RepoInspectionResult |
 | `install_from_url(github_url, ...)` | 从 GitHub URL 安装插件 | List[InstallResult] |
-| `install_from_zip(zip_path, target_dir=None, progress_callback=None)` | 从本地 zip 安装插件（含 `IXPlugin.json`） | List[InstallResult] |
+| `inspect_local_package(zip_path)` | 识别本地插件包：单插件 / 插件集 / 无效，并预演各插件的安装关系（新装/升级/降级/重装）、目标范围与默认勾选；只读，不落盘 | LocalPackageInspection |
+| `install_from_zip(zip_path, target_dir=None, progress_callback=None, selected_plugins=None)` | 从本地 zip 安装/升级/降级插件（自动识别单插件与插件集；`selected_plugins` 按包内相对路径或插件 id 筛选，None 为全部可安装项） | List[InstallResult] |
 | `get_available_versions(source_url, descriptor_path="")` | 列出远程仓库可用版本（按插件版本号降序，对每个 Release tag 经 Contents API 读取 `IXPlugin.json` 解析版本） | List[ReleaseInfo] |
 | `install_release(owner, repo, tag, target_dir, selected_plugins=None, progress_callback=None)` | 安装指定 GitHub Release tag 对应的插件版本（upgrade / downgrade / reinstall 自动检测） | List[InstallResult] |
 

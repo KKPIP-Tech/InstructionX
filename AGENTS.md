@@ -75,7 +75,7 @@ python -m pytest test/ -q --tb=short -p no:cacheprovider
 - **注意**：`test/` 下当前仅保留 `test/core/data/test_data_provider.py` 一个有效测试文件（其余旧测试已在重构中删除，残留的 `__pycache__` 是过期产物，不要参考）。现有测试约定：中文 docstring、`tmp_path` fixture、测试单例类时需重置 `XxxManager._instance = None`。
 - UI 测试不配置 offscreen 平台，CI 跑在 `windows-latest` 上使用真实 GUI。
 - 项目还有一类**独立验证脚本**（非 pytest，放在 `scripts/`，用 `.venv\Scripts\python.exe scripts\<name>.py` 直接运行）：
-  - `smoke_*.py`：核心链路无网冒烟测试（LLM、task、utils、i18n、字体管理、插件管理：安装/升级/降级/卸载/分组）
+  - `smoke_*.py`：核心链路无网冒烟测试（LLM、task、utils、i18n、字体管理、插件管理：安装/升级/降级/卸载/分组、本地插件包自动识别与插件集一次安装、包外文件兜底备份）
   - `check_i18n_completeness.py`：语言文件完整性校验（默认语言必须覆盖源码全部 `tr()` 调用，缺键 exit 1；其他语言缺键/孤立键 WARNING；支持 `--text-dir`/`--src-dir`/`--plugin-root`）
   - `screenshot_*.py`：对话框截图对比脚本（输出到 `scripts/screenshots/`）
   - `_mcp_smoke*.py`：真实 MCP SDK 冒烟测试

@@ -572,7 +572,10 @@ multi-plugin-repo/
 - `dependencies` 声明了未实际使用的包，或把 Python 标准库写进依赖；
 - 发布后修改 `id`，导致老用户无法升级；
 - 描述文件名大小写错误（如 `ixplugin.json`）；
-- 多插件仓库只在根目录放一个 IXPlugin.json，子目录缺少独立描述文件。
+- 多插件仓库只在根目录放一个 IXPlugin.json，子目录缺少独立描述文件；
+- **把运行时数据写进插件目录**（如把采样记录、缓存、用户配置写进 `{插件目录}/` 或其中的 `assets/`）
+  ——插件目录按程序包处理，安装/升级/降级/重装会整目录替换，这些数据必然丢失；
+  正确做法见 §5.2（`DataProvider` 的 `set_plugin_data` / `save_asset`）。
 
 ### 4.4 安装目录规则
 
@@ -581,7 +584,10 @@ multi-plugin-repo/
 | `KKPIP-Tech` | `plugin/`（官方插件目录） |
 | 其他所有 | `custom_plugin/`（第三方插件目录） |
 
-除 GitHub 一键安装外，框架还支持**本地 zip 安装**（zip 内须包含 IXPlugin.json）。
+除 GitHub 一键安装外，框架还支持**本地 zip 安装**：直接选择 GitHub 下载的仓库压缩包即可，
+框架会自动识别包内是单插件还是插件集，并适配任意层嵌套（`repo-<branch>/`、二次打包、
+`__MACOSX` 干扰等），插件集可勾选后一次装完——**无需手动解压、逐层翻目录、逐个打包**
+（识别规则见[插件安装器 §4.7](plugin-installer.md)）。
 
 从 GitHub 安装或检查 Release 更新时，可设置环境变量 `INSTRUCTIONX_GITHUB_TOKEN` 提供 GitHub API Token 用于鉴权，提升 API 限流阈值并支持私有仓库。
 
