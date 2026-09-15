@@ -642,6 +642,23 @@ class Service:
         )
 ```
 
+**存放位置规范（重要）**：插件目录按「程序包」处理——安装 / 升级 / 降级 / 重装会用包内容
+**整目录替换**（仅保留 `.plugin_info.json` 以保证 UUID 稳定）。因此：
+
+| 数据 | 正确位置 | 说明 |
+|------|---------|------|
+| 配置 / 状态 / 统计（结构化） | `DataProvider.set_plugin_data` / `get_plugin_data`（PRIVATE 命名空间） | 以插件 UUID 为键，升级/降级/重装均不丢失 |
+| 采样记录 / 导出 / 缓存（文件） | `DataProvider.save_asset(plugin_id, filename, content)` → `get_asset_path()` / `load_asset()` | 落在 `<项目>/data/assets/plugins/{插件ID}/`，带路径穿越防护 |
+| 大文件流式写 | 先 `save_asset(plugin_id, name, b"")` 建占位 → `get_asset_path(相对路径)` 拿绝对路径追加 | `get_asset_path()` 要求文件已存在 |
+| 随包发布的默认配置 | `<插件目录>/config/*.json`（只读） | 只能作为默认值来源，用户可改的部分必须落 DataProvider |
+| ❌ 运行时数据写入插件目录 | —— | 下次升级即丢失；框架仅在安装时**兜底快照**（见下），不保证 |
+
+> **兜底保护**：安装/升级/降级/重装前，若检测到插件目录内存在**包外文件**（新包中不存在的文件，
+> 排除 `.plugin_info.json`、`__pycache__`、`*.pyc`），框架会把整个旧目录快照到
+> `<项目>/data/plugin_backup/{插件ID}/{时间戳}_{版本}/`（每插件保留最近 3 份），并在安装结果里
+> 提示「已备份 N 个包外文件」。该快照**只供人工取回、不会自动恢复**（避免旧代码/旧配置污染新版本），
+> 请勿把它当成数据持久化方案。
+
 ### 5.3 发布/订阅
 
 ```python

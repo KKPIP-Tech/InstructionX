@@ -562,6 +562,11 @@ SkillsPanel.load_skills_from_manager()   # 按分组+顺序重新渲染
   - GitHub 来源插件：插件管理对话框「检查更新 / 升级 / 降级…」列出仓库 Release 版本（通过 Contents API 读取各 tag 的 `IXPlugin.json` 版本号），任选版本安装；
   - 本地插件包：「安装本地插件包…」上传 zip，自动解析包内 `IXPlugin.json` 版本号，识别为升级/降级/重装并提示；
   - 覆盖安装沿用 `.bak` 备份回滚机制，并保留原插件 UUID（排序、分组、数据不受影响）。
+- **包外文件兜底快照**：插件目录按「程序包」处理，替换前若检测到目录内存在新包没有的文件
+  （运行时数据，排除 `.plugin_info.json`、`__pycache__`、`*.pyc`），会把整个旧目录快照到
+  `data/plugin_backup/{插件ID}/{时间戳}_{版本}/`（每插件保留最近 3 份）并在安装结果中提示
+  「已备份 N 个包外文件」。快照**仅供人工取回、不自动恢复**；插件的运行时数据应改用
+  `DataProvider.set_plugin_data` 或 `save_asset`（见 `plugin-development.md` §5.2）。
 - **卸载**：插件管理对话框「卸载…」，官方与第三方插件均可卸载；可选同时删除插件数据（DataProvider）。卸载会清理插件目录、UUID 文件、排序/分组/注册表记录、API/MCP 注册与 `sys.modules` 缓存。
 - **pip 依赖**：安装/升级时自动安装缺失依赖（优先 uv，回退 pip）；卸载时**不自动卸载依赖**（可能被其他插件使用）。
 - **GitHub Token**：设置环境变量 `INSTRUCTIONX_GITHUB_TOKEN` 可提升 API 限流阈值并支持私有仓库。

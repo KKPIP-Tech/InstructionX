@@ -240,6 +240,8 @@ core/
                             #   GitHub Release 升级/降级、版本关系检测与注册表登记
     package_discovery.py    # 本地插件包识别（纯文件系统）：包装层穿透、IXRepo.json 索引驱动、
                             #   递归扫描 IXPlugin.json、候选校验与去重、失败诊断
+    plugin_backup.py        # 插件目录「包外文件」兜底：替换前检测插件目录内新包没有的文件，
+                            #   整目录快照到 data/plugin_backup/{插件ID}/（每插件留最近 3 份）
   data/                     # 数据持久化层
     data_provider.py        # DataProvider 单例：PRIVATE/PUBLIC 双命名空间、发布订阅、内存缓存
     sqlite_backend.py       # SQLite WAL 后端（默认），schema 迁移
@@ -384,6 +386,8 @@ config/ data/ logs/         # 运行时生成：配置、数据、日志
 | `config/plugin_order.json` | 插件显示顺序（未分组插件之间的顺序） |
 | `config/plugin_groups.json` | 用户自定义分组（schema v2：official/thirdparty 各自含 groups 分组数组 + order 面板统一顺序（分组与未分组插件混排）；v1 自动迁移） |
 | `config/plugin_registry.json` | 已安装插件注册表（schema v1：顶层显式 `version: 1`（`PluginRegistry.SCHEMA_VERSION`），插件条目含版本/来源/安装时间，升级降级与更新检查依据；启动时自动回填） |
+| `data/plugin_backup/{插件ID}/{时间戳}_{版本}/` | 插件目录「包外文件」兜底快照（安装/升级/降级/重装前自动生成，每插件保留最近 3 份，仅人工取回、不自动恢复；见 `core/plugin/plugin_backup.py`） |
+| `data/assets/plugins/{插件ID}/` | 插件资产文件（`DataProvider.save_asset` 写入，插件存放运行时文件数据的规范位置） |
 | `config/i18n.json` | 框架语言设置（schema v1：`default_language` 开发者设定用户不可改 + `current_language` 用户选择；原子写，损坏备份 `.json.corrupt.bak` 重建） |
 | `config/plugin_languages.json` | 每插件语言覆盖（schema v1：`overrides` {插件UUID: 语言代码}，无键=跟随框架；卸载插件自动清除） |
 | `data/data.db` | 插件数据（SQLite + WAL；另有 `-wal`/`-shm` 伴生文件） |
