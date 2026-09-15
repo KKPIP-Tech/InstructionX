@@ -1,0 +1,616 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  InstructionX 框架俄语语言文件（ru — Русский）
+  术语约定（与 zh.xml 分组/键名严格一一对应）：
+    1. 通用英文缩写与专有名词保留拉丁写法：API / API Key / LLM / MCP / URL / ID /
+       GitHub / OpenAI / Base URL / Release / tag / Embedding 等；
+    2. 已进入俄语专业用语的借词写西里尔字母并按下述统一译法：
+       плагин（插件）、провайдер（提供方）、модель（模型）、токен（Token）、
+       кэш（缓存）、эмбеддинг（嵌入）、диалог（会话）、группа（分组）、шрифт（字体）、
+       трей（托盘）、тема（主题）、зависимости（依赖）、возможности（能力）；
+    3. 版本关系固定用词：Обновление（升级）/ Откат（降级）/ Переустановка（重装）；
+    4. 计数文案规避俄语数词变格歧义，统一采用「动词 + 名词第二格复数 + 数量」或
+       「标签: 数值」结构（如 «Установлено плагинов: {count}»、«записей: {count}»），
+       不使用 «1 плагин / 2 плагина / 5 плагинов» 之类需要复数规则的写法；
+    5. 动作按钮与菜单项用不定式（Сохранить / Удалить / Открыть），
+       状态与说明用无人称句（Не выбрано / Проверка выполняется），不使用 «Вы»；
+    6. 标点遵循俄语排版：引号 «…»、破折号 « — »、省略号 «…»、百分号前不留空格。
+  版式约定（俄语平均比中文长 2~3 倍，框架代码未因本语言做任何改动）：
+    1. 自带自适应的容器（模型编辑对话框、关闭确认对话框等）会按内容撑开，
+       文案用完整专业表述即可；
+    2. **固定宽度控件必须让文案装进既有宽度**，否则会被裁切，实测约束如下：
+       - 使用历史表格列（70/80px）：«Кэш»、«Из кэша»、«Токенов»；
+       - LLM 详情面板「检测」按钮（76px）与忙碌态：«Тест» / «Тест…»；
+       - LLM 详情面板「重置」按钮（64px）：任何俄语词都放不下（«Сброс» 需 71px），
+         故用重置符号 «↺»，完整语义由 detail.reset_tooltip 承载；
+       - 默认模型行标签（110px）：«Модель диалога»、«Эмбеддинги»；
+       - GitHub 安装对话框「检查」按钮（80px）：«Анализ»（«Проверить» 需 100px）；
+       - 分组编辑器按钮（56px）：«Вверх» / «Вниз»；
+       - KPI 卡片标题与同比小字（约 97px）：«Токены ввода» / «Токены вывода» /
+         «Кэш-попадания» / «к пред. {pct:+.1f}%»（к пред. = к предыдущему периоду）。
+  校验：.venv\Scripts\python.exe scripts/check_i18n_completeness.py
+       （键集合与默认语言覆盖；版式约束按上述清单人工复核）
+-->
+<texts language="ru">
+  <group name="common">
+    <text key="language.self_name">Русский</text>
+    <text key="ok">ОК</text>
+    <text key="cancel">Отмена</text>
+    <text key="save">Сохранить</text>
+    <text key="close">Закрыть</text>
+    <text key="yes">Да</text>
+    <text key="no">Нет</text>
+    <text key="error">Ошибка</text>
+    <text key="warning">Предупреждение</text>
+    <text key="success">Успешно</text>
+    <text key="confirm">Подтвердить</text>
+    <text key="delete">Удалить</text>
+    <text key="refresh">Обновить</text>
+    <text key="retry">Повторить</text>
+    <text key="copy">Копировать</text>
+    <text key="open">Открыть</text>
+    <text key="back">Назад</text>
+    <text key="loading">Загрузка…</text>
+  </group>
+
+  <group name="dialog_about">
+    <text key="window.title">О программе</text>
+    <text key="logo.placeholder">Логотип</text>
+    <text key="copyright">© 2025-2026 dakuang. Все права защищены.</text>
+    <text key="statement"><![CDATA[Данное программное обеспечение является проприетарным.
+  Коммерческое использование сверх установленных порогов требует авторизации.
+
+  Proprietary software.
+  Commercial use requires authorization if thresholds are exceeded.]]></text>
+  </group>
+
+  <group name="dialog_close_confirm">
+    <text key="title">Подтверждение закрытия</text>
+    <text key="message"><![CDATA[Завершить работу программы или свернуть её в системный трей?
+  В трее плагины и фоновые задачи продолжат работу.]]></text>
+    <text key="button.exit">Завершить работу</text>
+    <text key="button.minimize_to_tray">Свернуть в трей</text>
+  </group>
+
+  <group name="dialog_font_manager">
+    <text key="title">Управление шрифтами</text>
+    <text key="search.placeholder">Поиск шрифта…</text>
+    <text key="group.installed">Установленные шрифты</text>
+    <text key="group.system">Системные шрифты</text>
+    <text key="list.empty_hint">(Шрифты не установлены)</text>
+    <text key="preview.sample_text">InstructionX — образец шрифта 0123 ABCabc АБВгде</text>
+    <text key="preview.input_placeholder">Введите текст для предпросмотра…</text>
+    <text key="preview.size_label">Размер</text>
+    <text key="preview.hint">Выберите шрифт в списке слева для предпросмотра</text>
+    <text key="preview.resolved">Текущий шрифт: {family}</text>
+    <text key="preview.fallback">Шрифт {family} недоступен, используется системный: {resolved}</text>
+    <text key="button.install">Установить шрифт…</text>
+    <text key="button.uninstall">Удалить</text>
+    <text key="install.dialog_title">Выбор файла шрифта</text>
+    <text key="install.file_filter">Файлы шрифтов (*.ttf *.otf *.ttc)</text>
+    <text key="message.install_failed"><![CDATA[Не удалось установить: {name}
+  {error}]]></text>
+    <text key="message.install_success">Установлено шрифтов: {count}</text>
+    <text key="uninstall.title">Удаление шрифта</text>
+    <text key="uninstall.confirm"><![CDATA[Удалить шрифт «{family}»?
+  После удаления интерфейс, использующий этот шрифт, вернётся к системному шрифту.]]></text>
+    <text key="uninstall.success">Шрифт «{family}» удалён</text>
+    <text key="uninstall.failed">Не удалось удалить: шрифт {family} не найден</text>
+  </group>
+
+  <group name="dialog_github_install">
+    <text key="window.title">Установка плагина с GitHub</text>
+    <text key="url.placeholder">https://github.com/owner/repo или git@github.com:owner/repo.git</text>
+    <text key="button.check">Анализ</text>
+    <text key="button.install">Установить</text>
+    <text key="button.select_all">Выбрать все</text>
+    <text key="button.deselect_all">Снять выделение</text>
+    <text key="page.empty_hint">Нажмите «Анализ», чтобы проверить репозиторий GitHub</text>
+    <text key="page.invalid_hint">Репозиторий не содержит корректного файла описания плагина</text>
+    <text key="info.author">Автор: {author}</text>
+    <text key="info.deps">Зависимости: {deps}</text>
+    <text key="plugin.no_description">Нет описания</text>
+    <text key="dir.official">Каталог официальных плагинов (plugin/)</text>
+    <text key="dir.thirdparty">Каталог сторонних плагинов (custom_plugin/)</text>
+    <text key="dir.will_install_to">Будет установлено в: {dir_desc}</text>
+    <text key="status.url_required">Введите URL репозитория GitHub</text>
+    <text key="status.checking">Проверка репозитория…</text>
+    <text key="status.repo_invalid">Репозиторий недействителен</text>
+    <text key="status.single_repo">Репозиторий с одним плагином — проверьте данные и нажмите «Установить»</text>
+    <text key="status.multi_repo">Репозиторий с несколькими плагинами — выберите плагины для установки (всего: {count})</text>
+    <text key="status.error">Ошибка: {error}</text>
+    <text key="status.installing">Установка…</text>
+    <text key="status.install_success">Установка завершена! Установлено плагинов: {count}</text>
+    <text key="status.install_partial">Установка завершена: успешно — {success_count}, с ошибкой — {fail_count}</text>
+    <text key="status.install_failed">Не удалось установить: {error}</text>
+    <text key="message.select_plugins">Выберите плагины для установки</text>
+    <text key="result.ok_got_it">Понятно</text>
+    <text key="result.title">Результат установки</text>
+    <text key="result.failed_title">Не удалось установить</text>
+    <text key="result.all_success">Всё успешно</text>
+    <text key="result.partial">Частично выполнено</text>
+    <text key="result.summary"><![CDATA[{outcome}:
+  {details}]]></text>
+  </group>
+
+  <group name="dialog_license">
+    <text key="title">Лицензии компонентов</text>
+    <text key="search.placeholder">Поиск по названию…</text>
+    <text key="list.empty">Лицензии не найдены</text>
+    <text key="category.dependency">Зависимости</text>
+    <text key="detail.version">Версия v{version}</text>
+    <text key="detail.read_failed">(Не удалось прочитать файл лицензии)</text>
+    <text key="detail.file_not_found">(Файл лицензии не найден: {path})</text>
+    <text key="button.copy_all">Копировать текст</text>
+    <text key="button.copied">Скопировано!</text>
+    <text key="button.open_folder">Открыть папку</text>
+    <text key="message.dir_not_exist">Каталог не существует: {path}</text>
+  </group>
+
+  <group name="dialog_llm_settings">
+    <!-- ============ 主对话框（dialog.py） ============ -->
+    <text key="dialog.title">Настройки LLM</text>
+    <text key="dialog.placeholder"><![CDATA[Провайдеры не добавлены
+  Нажмите «+ Добавить провайдера» в левом нижнем углу]]></text>
+
+    <!-- ============ 左栏列表面板（provider_list_panel.py） ============ -->
+    <text key="list.section_title">Сервисы моделей</text>
+    <text key="list.search_placeholder">Поиск провайдера</text>
+    <text key="list.add_button">+ Добавить провайдера</text>
+
+    <!-- ============ 详情面板（provider_detail_panel.py） ============ -->
+    <text key="detail.overlay_disabled"><![CDATA[Провайдер отключён
+  Включите переключатель в правом верхнем углу, чтобы настроить его]]></text>
+    <text key="detail.menu.rename">Переименовать</text>
+    <text key="detail.menu.delete_provider">Удалить провайдера</text>
+    <text key="detail.delete_provider.message">Удалить «{name}» вместе со всеми его моделями?</text>
+    <text key="detail.section.api_config">Настройки API</text>
+    <text key="detail.section.default_model">Модель по умолчанию</text>
+    <text key="detail.field.api_key">API-ключ</text>
+    <text key="detail.field.api_host">Адрес API</text>
+    <text key="detail.key_link">Получить ключ</text>
+    <text key="detail.key_placeholder">sk-...</text>
+    <text key="detail.key_placeholder_optional">sk-... (необязательно)</text>
+    <text key="detail.host_placeholder">https://...</text>
+    <text key="detail.eye_tooltip">Показать / скрыть ключ</text>
+    <text key="detail.check.button">Тест</text>
+    <text key="detail.check.button_busy">Тест…</text>
+    <text key="detail.check.status_checking">Проверка подключения…</text>
+    <text key="detail.check.status_ok">✓ Подключение в норме · моделей: {count}</text>
+    <text key="detail.check.status_fail">✗ Ошибка подключения: {error}</text>
+    <!-- 「重置」按钮为固定 64px（RESET_BUTTON_WIDTH），任何俄语词（«Сброс» 需 71px）
+         都放不下，故用通用重置符号，完整语义由 detail.reset_tooltip 承载 -->
+    <text key="detail.reset_button">↺</text>
+    <text key="detail.reset_tooltip">Восстановить адрес API по умолчанию</text>
+    <text key="detail.badge.custom">Свой</text>
+    <text key="detail.rename.title">Переименование провайдера</text>
+    <text key="detail.rename.label">Имя:</text>
+    <text key="detail.default_model.chat">Модель диалога</text>
+    <text key="detail.default_model.embedding">Эмбеддинги</text>
+    <text key="detail.default_model.embedding_enable">Включить эмбеддинги</text>
+    <text key="detail.default_model.embedding_switch_tooltip">Включить / отключить эмбеддинги у этого провайдера</text>
+    <text key="detail.default_model.unset">(не задано)</text>
+    <text key="detail.refresh.status_busy">Получение списка моделей…</text>
+    <text key="detail.refresh.status_updated">✓ Обновлено · моделей: {count}</text>
+    <text key="detail.refresh.fail_title">Не удалось получить список моделей</text>
+    <text key="detail.refresh.fail_message"><![CDATA[Не удалось получить актуальный список моделей через API:
+  {error}]]></text>
+    <text key="detail.health.no_models">Нет моделей для проверки. Сначала добавьте модели или обновите список.</text>
+
+    <!-- ============ 通用杂项 ============ -->
+    <text key="misc.unknown_error">Неизвестная ошибка</text>
+
+    <!-- ============ 模型分区（model_section.py） ============ -->
+    <text key="model.section.title">Модели</text>
+    <text key="model.section.count">({count})</text>
+    <text key="model.section.empty_hint">Моделей нет, нажмите «+ Добавить» в правом верхнем углу</text>
+    <text key="model.section.add">+ Добавить</text>
+    <text key="model.section.refresh_tooltip">Получить актуальный список моделей через API</text>
+    <text key="model.section.health">⚡ Проверка</text>
+    <text key="model.section.health_tooltip">Проверить доступность каждой модели</text>
+    <text key="model.section.sync">⇅ Синхронизация</text>
+    <text key="model.section.sync_tooltip">Сравнение списка моделей с удалённым и управление им</text>
+    <text key="model.section.manage">Управление</text>
+    <text key="model.section.manage_done">Готово</text>
+    <text key="model.section.select_all">Выбрать все</text>
+    <text key="model.section.delete_selected">Удалить выбранные</text>
+    <text key="model.group_caption">{label} · {count}</text>
+    <text key="model.delete.title">Удаление модели</text>
+    <text key="model.delete.message">Удалить модель «{id}»?</text>
+    <text key="model.delete.message_multi">Удалить выбранные модели ({count} шт.)?</text>
+    <text key="model.type.chat">Чат</text>
+    <text key="model.type.vision">Изображения</text>
+    <text key="model.type.embedding">Эмбеддинг</text>
+    <text key="model.type.rerank">Реранжирование</text>
+
+    <!-- ============ Provider 编辑器（provider_editor_dialog.py） ============ -->
+    <text key="editor.title_create">Добавление провайдера</text>
+    <text key="editor.title_edit">Редактирование провайдера</text>
+    <text key="editor.custom_choice.title">Свой сервис, совместимый с OpenAI</text>
+    <text key="editor.custom_choice.subtitle">Подключение любого сервиса моделей с протоколом, совместимым с OpenAI</text>
+    <text key="editor.custom_default_name">Свой сервис</text>
+    <text key="editor.custom_subtitle_fallback">Своё подключение</text>
+    <text key="editor.type_page.label">Выберите тип сервиса моделей</text>
+    <text key="editor.field.name">Имя</text>
+    <text key="editor.field.api_key">API Key</text>
+    <text key="editor.field.api_key_optional">API Key (необязательно)</text>
+    <text key="editor.field.api_key_keep_placeholder">Оставьте пустым, чтобы не менять</text>
+    <text key="editor.form.hint_create_preset">Создание экземпляра {name}</text>
+    <text key="editor.form.hint_create_custom">Создание экземпляра {type_name}</text>
+    <text key="editor.form.hint_missing">Экземпляр не существует</text>
+    <text key="editor.form.hint_edit">Редактирование экземпляра (адаптер: {adapter})</text>
+    <text key="editor.warn.validation_title">Ошибка проверки</text>
+    <text key="editor.warn.save_failed_title">Не удалось сохранить</text>
+    <text key="editor.warn.name_required">Введите имя экземпляра.</text>
+    <text key="editor.warn.base_url_required">Для своего сервиса, совместимого с OpenAI, нужно указать Base URL.</text>
+    <text key="editor.warn.instance_missing">Редактируемый экземпляр не существует: возможно, он уже удалён.</text>
+
+    <!-- ============ 模型编辑对话框（model_edit_dialog.py） ============ -->
+    <text key="model_edit.title_create">Добавление модели</text>
+    <text key="model_edit.title_edit">Редактирование модели</text>
+    <text key="model_edit.field.id">ID модели</text>
+    <text key="model_edit.field.id_placeholder">например, glm-4-flash</text>
+    <text key="model_edit.field.id_readonly_tooltip">В режиме редактирования ID модели изменить нельзя</text>
+    <text key="model_edit.field.name">Отображаемое имя</text>
+    <text key="model_edit.field.name_placeholder">Если пусто, используется ID модели</text>
+    <text key="model_edit.field.group">Группа</text>
+    <text key="model_edit.field.group_placeholder">Если пусто, группа определяется по ID модели</text>
+    <text key="model_edit.field.capabilities">Теги возможностей</text>
+    <text key="model_edit.field.context_length">Длина контекста</text>
+    <text key="model_edit.field.context_tooltip">0 — не задано; шаг 1K (1024) токенов</text>
+    <text key="model_edit.field.streaming">Поддержка потоковой передачи</text>
+    <text key="model_edit.field.price">Цена (за миллион токенов; 0 — не задано)</text>
+    <text key="model_edit.price.input">Ввод</text>
+    <text key="model_edit.price.output">Вывод</text>
+    <text key="model_edit.unset">Не задано</text>
+    <text key="model_edit.warn.id_required">Введите ID модели.</text>
+
+    <!-- ============ 健康检查对话框（health_check_dialog.py） ============ -->
+    <text key="health.title">Проверка доступности моделей</text>
+    <text key="health.header">Экземпляр «{name}» · всего моделей: {total}</text>
+    <text key="health.empty">Нет моделей для проверки</text>
+    <text key="health.row.waiting">Ожидание</text>
+    <text key="health.row.checking">● Проверка…</text>
+    <text key="health.row.cancelled">Отменено</text>
+    <text key="health.row.skipped">⚠ Пропущено · {reason}</text>
+    <text key="health.row.not_checked">Не проверялось</text>
+    <text key="health.row.ok">✓ Норма · {latency} мс</text>
+    <text key="health.row.fail">✗ Ошибка · {error}</text>
+    <text key="health.summary_done">Проверка завершена: успешно — {ok} · ошибок — {fail} · пропущено — {skip}</text>
+    <text key="health.summary_running">Успешно — {ok} · ошибок — {fail} · пропущено — {skip} · осталось — {remaining}</text>
+    <text key="health.summary_cancelled">Отменено: успешно — {ok} · ошибок — {fail} · пропущено — {skip} · не проверено — {unchecked}</text>
+
+    <!-- ============ 模型同步对话框（sync_models_dialog.py） ============ -->
+    <text key="sync.title">Синхронизация моделей</text>
+    <text key="sync.group.new">Новые</text>
+    <text key="sync.group.existing">Существующие</text>
+    <text key="sync.group.invalid">Устаревшие</text>
+    <text key="sync.group_caption">{label} · {count}</text>
+    <text key="sync.search_placeholder">Поиск по ID модели</text>
+    <text key="sync.add_selected">Добавить выбранные в список</text>
+    <text key="sync.clean_selected">Удалить выбранные устаревшие модели</text>
+    <text key="sync.hint.missing">Экземпляр провайдера не существует, синхронизация невозможна.</text>
+    <text key="sync.hint.preset_catalog">Этот провайдер использует предустановленный каталог моделей, синхронизация не требуется.</text>
+    <text key="sync.hint.fetch_failed">Не удалось получить список моделей с сервера: {error}. Показан только локальный список.</text>
+    <text key="sync.status.fetching">Получение списка моделей с сервера…</text>
+    <text key="sync.status.summary">На сервере моделей: {total} · новых: {new} · устаревших: {invalid}</text>
+    <text key="sync.empty">Моделей нет</text>
+    <text key="sync.toast.add_none">Сначала отметьте новые модели для добавления.</text>
+    <text key="sync.toast.clean_none">Сначала отметьте устаревшие модели для удаления.</text>
+    <text key="sync.toast.added">В список добавлено моделей: {count}.</text>
+    <text key="sync.toast.cleaned">Удалено устаревших моделей: {count}.</text>
+
+    <!-- ============ 反馈入口与通用控件（feedback.py / widgets.py） ============ -->
+    <text key="feedback.notice_ok">Понятно</text>
+    <text key="widget.provider_switch.tooltip">Включить / отключить этого провайдера</text>
+    <text key="widget.model_switch.tooltip">Включить / отключить эту модель</text>
+    <text key="widget.model_row.delete_tooltip">Удалить эту модель</text>
+  </group>
+
+  <group name="dialog_plugin_management">
+    <!-- 窗口/对话框标题 -->
+    <text key="title.dialog">Управление плагинами</text>
+    <text key="title.confirm_install">Подтверждение установки</text>
+    <text key="title.install_result">Результат установки</text>
+    <text key="title.confirm_uninstall">Подтверждение удаления</text>
+    <text key="title.uninstall_failed">Не удалось удалить</text>
+    <text key="title.uninstall_done">Удаление завершено</text>
+    <text key="title.save_failed">Не удалось сохранить</text>
+    <text key="title.operation_failed">Операция не выполнена</text>
+
+    <!-- 页签与 scope 分类名 -->
+    <text key="tab.manage">Управление плагинами</text>
+    <text key="tab.groups">Группы и порядок</text>
+    <text key="scope.official">Официальные плагины</text>
+    <text key="scope.thirdparty">Сторонние плагины</text>
+
+    <!-- 按钮（common 已有的 取消/关闭/刷新 直接复用 common 分组） -->
+    <text key="button.install_github">Установить с GitHub…</text>
+    <text key="button.install_zip">Установить локальный пакет…</text>
+    <text key="button.check_updates">Проверить обновления / откат…</text>
+    <text key="button.uninstall">Удалить…</text>
+    <text key="button.reset">Сбросить</text>
+    <text key="button.save_groups">Сохранить группы и порядок</text>
+    <text key="button.acknowledge">Понятно</text>
+    <text key="button.move_up">Вверх</text>
+    <text key="button.move_down">Вниз</text>
+    <text key="button.new_group">Новая группа</text>
+    <text key="button.rename">Переименовать</text>
+    <text key="button.set_icon">Задать значок</text>
+    <text key="button.delete_group">Удалить группу</text>
+
+    <!-- 详情面板 -->
+    <text key="detail.no_selection">Плагин не выбран</text>
+    <text key="detail.name">Имя: {name}</text>
+    <text key="detail.version">Версия: {version}</text>
+    <text key="detail.source">Источник: {source}</text>
+
+    <!-- 通用兜底词（本分组内复用） -->
+    <text key="label.unknown">Неизвестно</text>
+
+    <!-- 提示/结果消息 -->
+    <text key="message.select_plugin_first">Сначала выберите плагин</text>
+    <text key="message.no_github_source"><![CDATA[Для этого плагина не сохранён источник GitHub, проверка обновлений невозможна.
+  Для обновления или отката используйте «Установить локальный пакет».]]></text>
+    <text key="message.no_releases">Для этого репозитория не найдено ни одной версии Release</text>
+    <text key="message.no_plugin_installed">Плагины не установлены: в выбранной версии не найдено подходящих плагинов</text>
+    <text key="message.invalid_source_url">Недействительный URL репозитория-источника</text>
+    <text key="message.install_confirm"><![CDATA[{relation} плагина «{name}»
+  Текущая версия: {current}
+  Целевая версия: {target}]]></text>
+    <text key="message.downgrade_warning"><![CDATA[
+
+  Внимание: откат версии может привести к несовместимости данных или потере настроек!]]></text>
+    <text key="message.result_item">  - {name}: {message}</text>
+    <text key="message.result_partial"><![CDATA[Часть операций не выполнена:
+  {details}]]></text>
+    <text key="message.result_all_success"><![CDATA[Всё выполнено успешно:
+  {details}]]></text>
+    <text key="message.uninstall_confirm">Удалить плагин «{name}»?</text>
+    <text key="message.uninstall_official_warning"><![CDATA[
+
+  Это официальный плагин: после удаления его потребуется установить заново.]]></text>
+    <text key="message.uninstall_delete_data">Также удалить данные плагина (без возможности восстановления)</text>
+    <text key="message.uninstall_warnings"><![CDATA[
+
+  Внимание:
+  {warnings}]]></text>
+    <text key="message.save_groups_failed">Не удалось сохранить группы. Проверьте права доступа и свободное место на диске.</text>
+    <text key="message.groups_saved">Группы и порядок сохранены</text>
+    <text key="message.operation_busy">Выполняется другая операция, подождите</text>
+
+    <!-- 版本选择对话框 -->
+    <text key="version_select.title">Выбор версии — {name}</text>
+    <text key="version_select.current_version">Текущая версия: {version}</text>
+    <text key="version_select.unknown_version">Неизвестная версия</text>
+    <text key="version_select.item_format">{tag}  —  {version} ({relation})</text>
+    <text key="version_select.button.install_selected">Установить выбранную версию</text>
+    <text key="version_select.message.no_selection">Выберите версию для установки</text>
+
+    <!-- 版本关系标签（_version_relation 内部标识的显示文案） -->
+    <text key="version_relation.upgrade">Обновление</text>
+    <text key="version_relation.downgrade">Откат</text>
+    <text key="version_relation.reinstall">Переустановка</text>
+
+    <!-- 分组与排序编辑器 -->
+    <text key="group_editor.panel_column_title">Порядок на панели (группы / плагины)</text>
+    <text key="group_editor.available_label">Плагины без группы</text>
+    <text key="group_editor.member_label">Плагины в группе</text>
+    <text key="group_editor.shuttle_title">Настройка группы: {icon} {name}</text>
+    <text key="group_editor.invalid_group">(недействительная группа) {id}</text>
+    <text key="group_editor.removed_plugin">(удалён) {id}</text>
+    <text key="group_editor.prompt.new_group_title">Новая группа</text>
+    <text key="group_editor.prompt.rename_group_title">Переименование группы</text>
+    <text key="group_editor.prompt.group_name_label">Имя группы:</text>
+    <text key="group_editor.prompt.set_icon_title">Выбор значка</text>
+    <text key="group_editor.prompt.select_icon_label">Значок группы:</text>
+    <text key="group_editor.message.select_group_first">Сначала выберите группу в списке слева</text>
+    <text key="group_editor.message.select_target_group">Сначала выберите целевую группу в списке слева</text>
+    <text key="group_editor.message.select_plugin_to_add">Выберите плагин в списке «Плагины без группы»</text>
+
+    <!-- 每插件语言自定义（详情面板语言行 + 插件语言对话框） -->
+    <text key="button.language">Язык…</text>
+    <text key="detail.language">Язык: {language}</text>
+    <text key="language.none">Языковые пакеты отсутствуют</text>
+    <text key="language.follow_framework">Как в интерфейсе ({language})</text>
+    <text key="language.unavailable_tooltip">Плагин не предоставляет языковых пакетов</text>
+    <text key="language.dialog_title">Язык плагина {name}</text>
+    <text key="language.follow_option">Как в интерфейсе (по умолчанию)</text>
+  </group>
+
+  <group name="main_window">
+    <text key="menu.edit">Правка</text>
+    <text key="menu.edit.plugin_management">Управление плагинами…</text>
+    <text key="menu.edit.font_management">Управление шрифтами…</text>
+    <text key="menu.edit.toggle_theme">Сменить тему</text>
+    <text key="menu.edit.toggle_theme.tooltip">Светлая → тёмная → как в системе</text>
+    <text key="menu.edit.toggle_theme.current">Сменить тему ({label})</text>
+    <text key="menu.edit.language">Язык</text>
+    <text key="menu.edit.install_from_github">Установить плагин с GitHub…</text>
+    <text key="menu.edit.install_from_github.status_tip">Установка плагина из репозитория GitHub</text>
+    <text key="menu.ai">ИИ</text>
+    <text key="menu.ai.llm_settings">Настройки LLM…</text>
+    <text key="menu.ai.usage">Статистика использования</text>
+    <text key="menu.help">Справка</text>
+    <text key="menu.help.about">О программе</text>
+    <text key="menu.help.licenses">Лицензии компонентов</text>
+    <text key="dialog.usage.title">Статистика использования</text>
+    <text key="work_area.load_error"><![CDATA[Не удалось загрузить плагин: {name} <a href='retry'>Повторить</a>]]></text>
+    <text key="work_area.load_error.tooltip">Не удалось загрузить. Нажмите «Повторить», чтобы загрузить плагин снова</text>
+    <text key="theme.light">Светлая</text>
+    <text key="theme.dark">Тёмная</text>
+    <text key="theme.auto">Как в системе</text>
+    <text key="tray.unknown_plugin">Неизвестный плагин</text>
+  </group>
+
+  <group name="skills_panel">
+    <text key="tab.official">Официальные функции</text>
+    <text key="tab.thirdparty">Сторонние функции</text>
+    <text key="header.plugin_count">Плагинов: {count}</text>
+    <text key="group.tooltip">Группа: {name} (нажмите, чтобы развернуть или свернуть)</text>
+  </group>
+
+  <group name="title_bar">
+    <text key="tooltip.minimize">Свернуть</text>
+    <text key="tooltip.maximize_restore">Развернуть / восстановить</text>
+    <text key="accessibility.minimize">Свернуть</text>
+    <text key="accessibility.maximize">Развернуть</text>
+    <text key="accessibility.close">Закрыть</text>
+    <text key="context_menu.restore">Восстановить(В)</text>
+    <text key="context_menu.move">Переместить(П)</text>
+    <text key="context_menu.minimize">Свернуть(С)</text>
+    <text key="context_menu.maximize">Развернуть(Р)</text>
+    <text key="context_menu.close">Закрыть(З)</text>
+  </group>
+
+  <group name="tray">
+    <text key="tooltip">InstructionX - CE</text>
+    <text key="menu.show_main_window">Показать главное окно</text>
+    <text key="menu.running_plugins">Работающие плагины</text>
+    <text key="menu.running_tasks">Фоновые задачи</text>
+    <text key="menu.quit">Выход</text>
+    <text key="menu.no_plugins">Нет загруженных плагинов</text>
+    <text key="menu.no_tasks">Нет выполняющихся задач</text>
+    <text key="menu.task_entry">{task_name} ({plugin_name})</text>
+    <text key="notify.minimize_title">InstructionX - CE</text>
+    <text key="notify.minimize_message">Программа свёрнута в системный трей и продолжает работу в фоне</text>
+  </group>
+
+  <group name="usage_panel">
+    <!-- 面板标题行 -->
+    <text key="header.title">Панель использования ИИ</text>
+    <text key="header.subtitle">Обзор использования LLM API</text>
+    <!-- KPI 卡片标题 -->
+    <text key="kpi.total_requests">Всего запросов</text>
+    <text key="kpi.input_tokens">Токены ввода</text>
+    <text key="kpi.output_tokens">Токены вывода</text>
+    <text key="kpi.total_tokens">Всего токенов</text>
+    <text key="kpi.cache_hit_rate">Кэш-попадания</text>
+    <text key="kpi.avg_duration">Среднее время</text>
+    <!-- KPI 同比小字：卡片可用宽度约 97px，采用俄语看板通行的缩写「к пред.」-->
+    <text key="kpi.delta_empty">к пред. —</text>
+    <text key="kpi.delta">к пред. {pct:+.1f}%</text>
+    <!-- 错误提示弹窗 -->
+    <text key="error.refresh_data"><![CDATA[Не удалось обновить данные об использовании:
+  {error}]]></text>
+    <text key="error.refresh_trend"><![CDATA[Не удалось обновить график использования:
+  {error}]]></text>
+    <!-- 筛选工具行 -->
+    <text key="filter.all">Все</text>
+    <text key="filter.provider">Провайдер:</text>
+    <text key="filter.model">Модель:</text>
+    <text key="filter.conversation_id">ID диалога:</text>
+    <text key="filter.conversation_id_placeholder">Введите ID диалога для фильтра…</text>
+    <!-- 使用历史面板 -->
+    <text key="table.title">История использования</text>
+    <text key="table.header.time">Время</text>
+    <text key="table.header.provider">Провайдер</text>
+    <text key="table.header.model">Модель</text>
+    <text key="table.header.input">Ввод</text>
+    <text key="table.header.output">Вывод</text>
+    <text key="table.header.total_tokens">Токенов</text>
+    <text key="table.header.cache_hit">Кэш</text>
+    <text key="table.header.cached_tokens">Из кэша</text>
+    <text key="table.header.duration">Время, мс</text>
+    <text key="table.header.stream">Поток</text>
+    <!-- 分页控件 -->
+    <text key="page.prev">Назад</text>
+    <text key="page.next">Вперёд</text>
+    <text key="page.initial">Стр. 1</text>
+    <text key="page.info">Стр. {current} из {total} (записей: {count})</text>
+    <!-- 历史面板无障碍名称 -->
+    <text key="a11y.provider_filter">Фильтр по провайдеру</text>
+    <text key="a11y.model_filter">Фильтр по модели</text>
+    <text key="a11y.conversation_id_input">Поле фильтра по ID диалога</text>
+    <text key="a11y.refresh">Обновить данные об использовании</text>
+    <text key="a11y.table">Таблица использования</text>
+    <!-- 用量趋势面板 -->
+    <text key="trend.title">Динамика использования</text>
+    <text key="trend.status">{start} — {end} · дней: {days}</text>
+    <!-- 图表坐标轴单位后缀（formatting.pick_token_scale） -->
+    <text key="chart.axis.million">(млн)</text>
+    <text key="chart.axis.thousand">(тыс.)</text>
+    <!-- 时间范围选项 -->
+    <text key="range.half_year">Полгода</text>
+    <text key="range.year">Год</text>
+    <text key="range.custom">Другой период</text>
+    <text key="range.to">по</text>
+    <text key="range.apply">Применить</text>
+    <!-- 趋势指标选项 -->
+    <text key="metric.requests">Запросы</text>
+    <text key="metric.input_tokens">Токены ввода</text>
+    <text key="metric.output_tokens">Токены вывода</text>
+    <!-- 趋势面板无障碍名称 -->
+    <text key="a11y.range_combo">Выбор периода</text>
+    <text key="a11y.start_date">Дата начала</text>
+    <text key="a11y.end_date">Дата окончания</text>
+    <text key="a11y.apply_range">Применить свой период</text>
+    <text key="a11y.metric_combo">Переключение показателя</text>
+  </group>
+
+  <group name="work_area">
+    <text key="placeholder">Нажмите кнопку плагина выше, чтобы открыть его здесь</text>
+  </group>
+
+  <!-- LLM 模型能力标签（core/llm/model_schema.py 的 capability_label()） -->
+  <group name="model_capability">
+    <text key="vision">Изображения</text>
+    <text key="web">Веб-поиск</text>
+    <text key="reasoning">Рассуждения</text>
+    <text key="tools">Инструменты</text>
+    <text key="embedding">Эмбеддинг</text>
+    <text key="rerank">Реранжирование</text>
+  </group>
+
+  <group name="dialog_language">
+    <text key="title">Язык интерфейса</text>
+    <text key="note">Язык переключается сразу. Для каждого плагина язык можно задать отдельно в разделе «Управление плагинами»; если он не задан, используется выбранный здесь.</text>
+  </group>
+
+  <group name="dialog_local_package_install">
+    <text key="window.title">Установка локального пакета плагинов</text>
+    <text key="label.no_file">Выберите архив, скачанный с GitHub (или zip одного плагина)</text>
+    <text key="button.choose_zip">Выбрать архив…</text>
+    <text key="button.install_selected">Установить выбранные</text>
+    <text key="button.close">Закрыть</text>
+    <text key="button.select_all">Выбрать все</text>
+    <text key="button.deselect_all">Снять выделение</text>
+    <text key="hint.select_package">После выбора архива плагины определяются автоматически: один плагин устанавливается сразу, набор плагинов можно отметить и установить за один раз (поддерживаются архивы репозиториев с любой вложенностью).</text>
+    <text key="hint.scanning">Анализ содержимого архива…</text>
+    <text key="hint.installing">Идёт установка, не закрывайте окно…</text>
+    <text key="source.single">Результат: один плагин</text>
+    <text key="source.index">Результат: набор плагинов (определён по индексу IXRepo.json; необъявленные плагины по умолчанию не отмечены)</text>
+    <text key="source.scan">Результат: набор плагинов (IXRepo.json не найден, плагины определены сканированием каталогов)</text>
+    <text key="invalid.title">Не удалось распознать архив</text>
+    <text key="invalid.hint">Убедитесь, что архив содержит IXPlugin.json (один плагин); для набора плагинов рекомендуется добавить IXRepo.json в корень репозитория.</text>
+    <text key="invalid.unknown">Содержимое архива не распознано</text>
+    <text key="row.no_description">Нет описания</text>
+    <text key="row.invalid">Установка невозможна: {reason}</text>
+    <text key="row.path">Путь в архиве: {path}</text>
+    <text key="row.undeclared">Не объявлен в IXRepo.json</text>
+    <text key="row.dependencies">Зависимости: {deps}</text>
+    <text key="scope.official">Официальный каталог</text>
+    <text key="scope.thirdparty">Каталог сторонних плагинов</text>
+    <text key="relation.new">Новая установка</text>
+    <text key="relation.upgrade">Обновление {prev} → {version}</text>
+    <text key="relation.downgrade">Откат {prev} → {version}</text>
+    <text key="relation.reinstall">Переустановка {version}</text>
+    <text key="label.selection_summary">Выбрано: {selected} из {total} (недоступно для установки: {invalid})</text>
+    <text key="message.no_selection">Отметьте хотя бы один плагин</text>
+    <text key="title.select_zip">Выбор локального пакета плагинов</text>
+    <text key="file_dialog.zip_filter">Пакеты плагинов (*.zip)</text>
+    <text key="result.title">Результат установки</text>
+    <text key="result.empty">Плагины не установлены</text>
+    <text key="result.item">{name}: {message}</text>
+    <text key="result.all_success"><![CDATA[Установлены следующие плагины:
+{details}]]></text>
+    <text key="result.partial"><![CDATA[Некоторые плагины не установлены:
+{details}]]></text>
+    <text key="result.ok">Понятно</text>
+    <text key="title.confirm_downgrade">Подтверждение отката</text>
+    <text key="message.downgrade_confirm"><![CDATA[Следующие плагины будут откатаны к более старой версии:
+{details}
+
+Внимание: откат может привести к несовместимости данных или потере настроек! Продолжить?]]></text>
+  </group>
+</texts>
