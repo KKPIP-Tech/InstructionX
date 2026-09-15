@@ -574,5 +574,10 @@
       <text key="result.all_success">以下插件已安装：\n{details}</text>
       <text key="result.partial">部分插件未能安装：\n{details}</text>
       <text key="result.ok">知道了</text>
+      <text key="title.confirm_downgrade">确认降级</text>
+      <text key="message.downgrade_confirm"><![CDATA[以下插件将被降级：
+{details}
+
+警告：降级可能导致数据不兼容或配置丢失！是否继续？]]></text>
   </group>
 </texts>

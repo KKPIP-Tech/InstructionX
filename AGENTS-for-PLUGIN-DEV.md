@@ -101,6 +101,34 @@ InstructionX/
 - **每个插件必须是一级子目录**——单插件仓库同样采用“只含一个插件子目录”的形态，不得把 `entrance.py` 等插件文件直接散置在仓库根部；
 - 你只工作在当前模式对应目录下的插件子目录中（如 `plugin-a/`、`plugin-b/`）。
 
+### 运行时数据严禁写进插件目录（硬性规则）
+
+**插件目录按「程序包」处理**：框架在安装 / 升级 / 降级 / 重装时用包内容**整目录替换**，仅保留
+`.plugin_info.json`（保证插件 UUID 稳定）。因此**插件目录内的一切文件都应视为随包发布的程序文件**，
+运行时产生的数据不得写在其中——升级后必然丢失。
+
+框架提供两个以插件 UUID 为键、升级/降级/重装都安全的通道：
+
+```python
+# 1) 结构化数据（配置、状态、统计）→ DataProvider（SQLite，PRIVATE 命名空间）
+data_provider.set_plugin_data(plugin_id, key, value, DataNamespace.PRIVATE)
+value = data_provider.get_plugin_data(plugin_id, key, DataNamespace.PRIVATE, default)
+
+# 2) 文件类数据（采样记录、导出、缓存）→ DataProvider 资产区
+relative = data_provider.save_asset(plugin_id, "records/2026-09-14.dat", content)
+absolute = data_provider.get_asset_path(relative)   # 大文件可拿绝对路径流式追加
+content  = data_provider.load_asset(relative)
+```
+
+- 资产落地在 `<项目>/data/assets/plugins/{插件ID}/`，框架已做路径穿越防护（拒绝空名、绝对路径、`..`）；
+- `get_asset_path()` **要求文件已存在**：大文件流式写入请先 `save_asset(plugin_id, name, b"")`
+  建占位，再用返回的绝对路径 `open(..., "wb")` 追加；
+- 插件目录内的 `config/*.json` 只能作为**随包发布的默认配置**（只读、由开发者维护），
+  用户可改的部分必须落到 DataProvider；
+- **兜底保护**：若插件目录内确实存在包外文件，安装时会自动快照到
+  `<项目>/data/plugin_backup/{插件ID}/{时间戳}_{版本}/`（每插件保留最近 3 份）并在安装结果中提示，
+  但**不会自动恢复**——请勿依赖该兜底，它是为存量插件准备的救济手段。
+
 ### 描述文件规范与详解
 
 描述文件（`IXPlugin.json` / `IXRepo.json`）是插件安装、升级、降级的唯一依据，**必须逐字段按本规范填写，禁止随意编造字段值**。文件名**大小写敏感**，必须为 `IXPlugin.json` / `IXRepo.json`。

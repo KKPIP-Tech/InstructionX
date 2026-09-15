@@ -31,6 +31,7 @@ from .package_discovery import (
     inspect_package,
     validate_descriptor as validate_descriptor_rules,
 )
+from .plugin_backup import collect_extra_files, snapshot_plugin_dir
 from .plugin_identity import PluginIdentity
 from .plugin_version import PluginVersion
 
@@ -734,6 +735,11 @@ class GitHubPluginInstaller:
             target_plugin_dir = target_dir / actual_plugin_id
             backup_dir = target_dir / f"{actual_plugin_id}.bak"
 
+            # 兜底保护：替换前检测插件目录内的「包外文件」并快照
+            # （插件目录按程序包处理，运行时数据本应存 DataProvider；见 plugin_backup）
+            backup_note = self._backup_extra_files(
+                target_plugin_dir, plugin_dir, actual_plugin_id, new_version)
+
             # 升级回滚保护：旧版本先重命名为 .bak，安装成功后再删除，失败时恢复
             if target_plugin_dir.exists():
                 if backup_dir.exists():
@@ -780,6 +786,7 @@ class GitHubPluginInstaller:
             if relation != "new":
                 label = {"upgrade": "升级", "downgrade": "降级", "reinstall": "重装"}[relation]
                 message += f"（{label} {prev_version} → {new_version}）"
+            message += backup_note
 
             self._logger.info(get_name(), f"插件已安装到 {target_plugin_dir}")
             result = InstallResult.ok(actual_plugin_id, plugin_name, message)
@@ -789,6 +796,51 @@ class GitHubPluginInstaller:
         except Exception as e:
             self._logger.error(get_name(), f"安装插件失败: {e}")
             return InstallResult.error(f"安装插件失败: {e}")
+
+    def _backup_extra_files(self, old_dir: Path, new_dir: Path, plugin_id: str,
+                            version: str) -> str:
+        """替换前把旧插件目录内的「包外文件」快照到 data/plugin_backup
+
+        插件目录被视为程序包，运行时数据应存 DataProvider；对违规写入的文件做
+        兜底备份（不自动恢复，避免旧数据污染新版本）。
+
+        Args:
+            old_dir: 已安装的插件目录（不存在时直接跳过）
+            new_dir: 待安装的新包目录
+            plugin_id: 插件 ID
+            version: 本次安装的版本（写入快照目录名）
+
+        Returns:
+            str: 备份成功时返回可拼接进安装结果的中文提示，无需备份/失败时返回空串
+        """
+        if not old_dir.is_dir():
+            return ""
+        try:
+            extra_files = collect_extra_files(old_dir, new_dir)
+            if not extra_files:
+                return ""
+            snapshot = snapshot_plugin_dir(old_dir, self._backup_root(),
+                                          plugin_id, version)
+        except Exception as e:  # noqa: BLE001 —— 备份失败不能阻断安装，降级为日志提示
+            self._logger.warning(get_name(), f"插件包外文件备份失败（不影响安装）: {e}")
+            return "；包外文件备份失败，详见日志"
+        if snapshot is None:
+            return ""
+        self._logger.warning(
+            get_name(),
+            f"插件目录内存在 {len(extra_files)} 个包外文件（运行时数据应存 DataProvider），"
+            f"已快照到 {snapshot}")
+        return (f"；已备份 {len(extra_files)} 个包外文件"
+                f"（data/plugin_backup/{plugin_id}/）")
+
+    def _backup_root(self) -> Path:
+        """包外文件快照根目录：与插件目录同级的项目 ``data/plugin_backup``"""
+        pm = self._plugin_manager or get_plugin_manager()
+        plugin_dir = getattr(pm, "thirdparty_plugin_dir", None) or \
+            getattr(pm, "official_plugin_dir", None)
+        if plugin_dir is None:
+            return Path(__file__).parent.parent.parent / "data" / "plugin_backup"
+        return Path(plugin_dir).parent / "data" / "plugin_backup"
 
     def _cleanup_temp_dir(self, temp_dir: Path):
         """清理临时目录"""

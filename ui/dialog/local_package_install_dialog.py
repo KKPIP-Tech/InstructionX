@@ -55,6 +55,13 @@ def _resolve_field(value) -> str:
     return resolve_i18n_field(value, get_language_manager().current_language())
 
 
+def _confirm(parent, title: str, text: str) -> bool:
+    """阻塞式确认对话框（UIKit Dialog，与插件管理对话框同款交互）"""
+    dialog = Dialog(parent, title=title)
+    dialog.set_text(text)
+    return dialog.exec() == QDialog.DialogCode.Accepted
+
+
 class _InspectWorker(QThread):
     """后台线程：识别本地插件包（解压 + 目录扫描）"""
 
@@ -428,10 +435,16 @@ class LocalPackageInstallDialog(QDialog):
         self.install_btn.setEnabled(selected > 0)
 
     def _on_install_clicked(self) -> None:
-        """安装勾选的插件（后台执行）"""
+        """安装勾选的插件（后台执行）
+
+        勾选项包含降级时先弹一次确认：降级可能造成数据不兼容或配置丢失，
+        与「检查更新 / 升级 / 降级」路径的保护保持一致。
+        """
         selected = self._selected_paths()
         if not selected:
             Message.info(self, tr(_TR_GROUP, "message.no_selection"))
+            return
+        if not self._confirm_downgrade(selected):
             return
         self._set_busy(tr(_TR_GROUP, "hint.installing"))
         self._install_worker = _InstallWorker(self._installer, self._zip_path, selected)
@@ -439,6 +452,36 @@ class LocalPackageInstallDialog(QDialog):
         self._install_worker.finished.connect(self._on_install_finished)
         self._install_worker.error.connect(self._on_worker_error)
         self._install_worker.start()
+
+    def _confirm_downgrade(self, selected: List[str]) -> bool:
+        """勾选项含降级时请求用户确认
+
+        Args:
+            selected: 已勾选的插件（包内相对路径或插件 id）
+
+        Returns:
+            bool: 是否继续安装（无降级项时直接返回 True）
+        """
+        downgrades = [plan for plan in self._selected_plans(selected)
+                      if plan.relation == "downgrade"]
+        if not downgrades:
+            return True
+        details = "\n".join(
+            f"  - {_resolve_field(plan.candidate.name)}："
+            f"{plan.prev_version} → {plan.candidate.version}"
+            for plan in downgrades)
+        return _confirm(self, tr(_TR_GROUP, "title.confirm_downgrade"),
+                        tr(_TR_GROUP, "message.downgrade_confirm", details=details))
+
+    def _selected_plans(self, selected: List[str]) -> List[LocalInstallPlan]:
+        """按勾选结果取出对应的安装计划"""
+        if not self._inspection:
+            return []
+        wanted = {item.strip("/") for item in selected}
+        return [plan for plan in self._inspection.plans
+                if plan.candidate.valid
+                and (plan.candidate.rel_path in wanted
+                     or plan.candidate.descriptor_id in wanted)]
 
     def _on_install_progress(self, message: str) -> None:
         """安装进度文本更新"""
