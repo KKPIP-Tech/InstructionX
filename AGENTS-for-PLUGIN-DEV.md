@@ -194,7 +194,9 @@ content  = data_provider.load_asset(relative)
 - **插件集仓库**：仓库根目录放置 `IXRepo.json`，各插件子目录各自放置 `IXPlugin.json`；
 - **兼容性说明**：安装器仍兼容旧式扁平单插件仓库（仓库根目录直接放置 `IXPlugin.json`、无 `IXRepo.json`，安装器会将整个仓库作为一个插件安装），但新建插件仓库一律采用「根目录 `IXRepo.json` + 插件子目录」形态；
 - **安装目录**：`KKPIP-Tech` 组织仓库 → `plugin/`（官方），其他所有来源 → `custom_plugin/`（第三方），与开发模式一一对应；
-- 框架同时支持**本地 zip 安装**（zip 包内必须包含 `IXPlugin.json`）；GitHub 安装与 Release 更新检查可经环境变量 `INSTRUCTIONX_GITHUB_TOKEN` 鉴权（提升限流阈值、访问私有仓库）。
+- 框架同时支持**本地 zip 安装**：可直接选择 GitHub 下载的仓库压缩包，框架会自动识别单插件 / 插件集
+  并适配任意层嵌套（无需手动解压、逐层翻目录、逐个打包）；GitHub 安装与 Release 更新检查可经环境变量
+  `INSTRUCTIONX_GITHUB_TOKEN` 鉴权（提升限流阈值、访问私有仓库）。
 
 #### 常见误用（禁止出现）
 
