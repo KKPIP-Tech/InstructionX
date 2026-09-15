@@ -111,8 +111,7 @@ class ProviderDetailPanel(QWidget):
         self._init_ui()
         # 语言切换实时跟随（Qt 对象销毁自动断开）
         self._retranslate_ui()
-        get_language_manager().language_changed.connect(
-            lambda _code: self._retranslate_ui())
+        get_language_manager().language_changed.connect(self._retranslate_ui)
 
     # ==================== 界面构建 ====================
 
