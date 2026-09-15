@@ -570,8 +570,10 @@ Interfaces using this font will fall back to a system font after uninstallation.
       <text key="result.title">Install Result</text>
       <text key="result.empty">No plugin was installed</text>
       <text key="result.item">{name}: {message}</text>
-      <text key="result.all_success">The following plugins were installed:\n{details}</text>
-      <text key="result.partial">Some plugins were not installed:\n{details}</text>
+      <text key="result.all_success"><![CDATA[The following plugins were installed:
+{details}]]></text>
+      <text key="result.partial"><![CDATA[Some plugins were not installed:
+{details}]]></text>
       <text key="result.ok">Got it</text>
       <text key="title.confirm_downgrade">Confirm Downgrade</text>
       <text key="message.downgrade_confirm"><![CDATA[The following plugins will be downgraded:

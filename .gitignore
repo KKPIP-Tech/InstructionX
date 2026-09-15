@@ -238,3 +238,8 @@ test/core/plugin/__pycache__/
 
 # 忽略 ShowDoc 文档目录
 ShowDoc/
+
+# DSH 本地配置与技能（本地工具资产，不入库）
+#   .dsh/skills/<skill-name>/SKILL.md 为本地安装的 Skills；
+#   与 temp/ 同理：仅供本机使用，避免污染仓库与团队共享的 skill 目录
+.dsh/

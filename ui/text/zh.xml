@@ -571,8 +571,10 @@
       <text key="result.title">安装结果</text>
       <text key="result.empty">没有插件被安装</text>
       <text key="result.item">{name}：{message}</text>
-      <text key="result.all_success">以下插件已安装：\n{details}</text>
-      <text key="result.partial">部分插件未能安装：\n{details}</text>
+      <text key="result.all_success"><![CDATA[以下插件已安装：
+{details}]]></text>
+      <text key="result.partial"><![CDATA[部分插件未能安装：
+{details}]]></text>
       <text key="result.ok">知道了</text>
       <text key="title.confirm_downgrade">确认降级</text>
       <text key="message.downgrade_confirm"><![CDATA[以下插件将被降级：

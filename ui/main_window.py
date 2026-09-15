@@ -245,7 +245,24 @@ class InstructionXMainWindow(QMainWindow):
         self._setup_tray()
 
         # 语言切换时集中重设主窗口文案（Qt 对象销毁时自动断开连接）
-        get_language_manager().language_changed.connect(self._retranslate_ui)
+        manager = get_language_manager()
+        manager.language_changed.connect(self._retranslate_ui)
+        # 技能面板的插件按钮名取自 plugin.plugin_name（插件可本地化该名称），
+        # 而按钮文案在创建时固化，故语言变化时需重建按钮（只重建按钮，
+        # 不重载插件、不触碰插件实例与工作区内容）；插件级语言覆盖同样会影响
+        # 该插件名的语言，故一并接线
+        manager.language_changed.connect(self._refresh_skill_names)
+        manager.plugin_language_changed.connect(self._refresh_skill_names)
+
+    def _refresh_skill_names(self, *_args) -> None:
+        """语言变化后按新语言重建技能面板按钮（保留激活插件的高亮）
+
+        Args:
+            *_args: 信号参数（框架语言代码 / 插件 UUID 与语言），此处不使用
+        """
+        panel = getattr(self, "skills_panel", None)
+        if panel is not None:
+            panel.retranslate_ui()
 
     # ===============================================================
     # GUI 界面

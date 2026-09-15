@@ -70,7 +70,7 @@ The framework itself ships no business functionality: every capability is plugge
 
 ### Internationalization (i18n)
 
-- **XML Language Files**: Both the framework and plugins follow a one-XML-file-per-language convention, with Chinese (default) and English built in
+- **XML Language Files**: Both the framework and plugins follow a one-XML-file-per-language convention, with Chinese (default), English, Russian and French built in
 - **Live Switching**: Switch the UI language instantly from the Edit → Language menu without restarting
 - **Fallback Chain**: Entries missing in the current language automatically fall back to the default language
 - **Per-Plugin Language Override**: Individual plugins may use a UI language different from the framework

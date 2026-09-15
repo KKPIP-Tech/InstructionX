@@ -1,0 +1,632 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  InstructionX 框架法语语言文件（fr — Français）
+  术语约定（与 zh.xml 分组/键名严格一一对应）：
+    1. 通用英文缩写与专有名词保留拉丁写法：API / API Key（UI 用 « Clé API »）/ LLM /
+       MCP / URL / ID / GitHub / OpenAI / Base URL（UI 用 « URL de base »）/ Release /
+       tag / streaming 等；
+    2. 法语专业术语统一译法：
+       plugin（插件）、fournisseur（提供方）、modèle（模型）、token（Token，
+       法语 AI 语境通用词，官方译法 « jeton » 未采用）、cache（缓存）、
+       embedding（嵌入）、conversation（会话）、groupe（分组）、police（字体）、
+       zone de notification（托盘，Windows 法语官方说法）、thème（主题）、
+       dépendances（依赖）、capacités（能力）；
+    3. 版本关系固定用词：Mise à jour（升级）/ Rétrogradation（降级）/
+       Réinstallation（重装）；
+    4. 计数文案规避法语单复数变化（框架 format_template 不支持复数规则），
+       统一采用「名词 + 冒号 + 数量」结构（如 « Plugins installés : {count} »、
+       « entrées : {count} »、« jours : {days} »），避免 « 1 plugin / 2 plugins » 类写法；
+    5. 动作按钮与菜单项用不定式（Enregistrer / Supprimer / Ouvrir），
+       状态与说明用无人称或名词句（Non défini / Test en cours），不使用 « vous »；
+    6. 法文排版：冒号、分号、叹号、问号前用不换行空格（U+00A0），
+       引号用 « » 且内侧加不换行空格，撇号用 ’（U+2019），百分号前用不换行空格；
+       嵌套引号外层 « »、内层 “ ”（如 « Cliquez sur “ Analyser ” »）。
+  版式约定（法语比中文长 1.5~2 倍，框架代码未因本语言做任何改动）：
+    1. 自带自适应的容器（模型编辑对话框、关闭确认对话框等）会按内容撑开，
+       文案用完整专业表述即可；
+    2. **固定宽度控件必须让文案装进既有宽度**，否则会被裁切；实测约束如下：
+       - 使用历史表格列（70/80px）：表头 QSS 左右内边距各 10px 且以粗体绘制，
+         实际可用宽度 ≈ 列宽 − 23px，故取 « Service »（« Fournisseur » 会溢出）、
+         « Heure »、« Modèle »、« Entrée »、« Sortie »、« Tokens »、« Cache »、
+         « Du cache »、« Durée »、« Flux »；
+       - GitHub 安装对话框「检查」按钮（80px）：« Vérifier »（« Analyser » 需 83px）；
+       - LLM 详情面板「检测」按钮（76px）与忙碌态：« Tester » / « Test… »；
+       - LLM 详情面板「重置」按钮（64px）：« Réinitialiser » 需 100px、« Réinit. »
+         需 70px，均放不下，故用法语通用缩写 « RAZ »（58px），完整语义由
+         detail.reset_tooltip 承载；
+       - 默认模型行标签（110px）：« Modèle de chat »、« Embeddings »；
+       - 分组编辑器按钮（56px）：« Haut » / « Bas »（« Descendre » 需 74px）；
+       - KPI 卡片标题与同比小字（约 97px）：« Tokens d’entrée »、« Tokens de sortie »、
+         « Taux de cache »、« vs période {pct:+.1f} % »（« vs période préc. » 会溢出）。
+  校验：.venv\Scripts\python.exe scripts/check_i18n_completeness.py
+       .venv\Scripts\python.exe temp\verify_language_texts.py （目标语言参数 fr）
+-->
+<texts language="fr">
+  <group name="common">
+    <text key="language.self_name">Français</text>
+    <text key="ok">OK</text>
+    <text key="cancel">Annuler</text>
+    <text key="save">Enregistrer</text>
+    <text key="close">Fermer</text>
+    <text key="yes">Oui</text>
+    <text key="no">Non</text>
+    <text key="error">Erreur</text>
+    <text key="warning">Avertissement</text>
+    <text key="success">Succès</text>
+    <text key="confirm">Confirmer</text>
+    <text key="delete">Supprimer</text>
+    <text key="refresh">Actualiser</text>
+    <text key="retry">Réessayer</text>
+    <text key="copy">Copier</text>
+    <text key="open">Ouvrir</text>
+    <text key="back">Retour</text>
+    <text key="loading">Chargement…</text>
+  </group>
+
+  <group name="dialog_about">
+    <text key="window.title">À propos</text>
+    <text key="logo.placeholder">Logo</text>
+    <text key="copyright">© 2025-2026 dakuang. Tous droits réservés.</text>
+    <text key="statement"><![CDATA[Ce logiciel est propriétaire.
+  L’utilisation commerciale au-delà des seuils définis nécessite une autorisation.
+
+  Proprietary software.
+  Commercial use requires authorization if thresholds are exceeded.]]></text>
+  </group>
+
+  <group name="dialog_close_confirm">
+    <text key="title">Confirmation de fermeture</text>
+    <text key="message"><![CDATA[Quitter l’application ou la réduire dans la zone de notification ?
+  Dans la zone de notification, les plugins et les tâches d’arrière-plan continuent de s’exécuter.]]></text>
+    <text key="button.exit">Quitter l’application</text>
+    <text key="button.minimize_to_tray">Réduire dans la zone de notification</text>
+  </group>
+
+  <group name="dialog_font_manager">
+    <text key="title">Gestion des polices</text>
+    <text key="search.placeholder">Rechercher une police…</text>
+    <text key="group.installed">Polices installées</text>
+    <text key="group.system">Polices système</text>
+    <text key="list.empty_hint">(Aucune police installée)</text>
+    <text key="preview.sample_text">InstructionX — aperçu de police 0123 ABCabc Éàçù</text>
+    <text key="preview.input_placeholder">Saisissez un texte d’aperçu…</text>
+    <text key="preview.size_label">Taille</text>
+    <text key="preview.hint">Sélectionnez une police dans la liste de gauche pour l’aperçu</text>
+    <text key="preview.resolved">Police actuelle : {family}</text>
+    <text key="preview.fallback">La police {family} est indisponible ; police système utilisée : {resolved}</text>
+    <text key="button.install">Installer une police…</text>
+    <text key="button.uninstall">Désinstaller</text>
+    <text key="install.dialog_title">Sélectionner un fichier de police</text>
+    <text key="install.file_filter">Fichiers de police (*.ttf *.otf *.ttc)</text>
+    <text key="message.install_failed"><![CDATA[Échec de l’installation : {name}
+  {error}]]></text>
+    <text key="message.install_success">Polices installées : {count}</text>
+    <text key="uninstall.title">Désinstaller la police</text>
+    <text key="uninstall.confirm"><![CDATA[Désinstaller la police “ {family} ” ?
+  Les interfaces utilisant cette police reviendront à la police système.]]></text>
+    <text key="uninstall.success">Police “ {family} ” désinstallée</text>
+    <text key="uninstall.failed">Échec de la désinstallation : police {family} introuvable</text>
+  </group>
+
+  <group name="dialog_github_install">
+    <text key="window.title">Installer un plugin depuis GitHub</text>
+    <text key="url.placeholder">https://github.com/owner/repo ou git@github.com:owner/repo.git</text>
+    <text key="button.check">Vérifier</text>
+    <text key="button.install">Installer</text>
+    <text key="button.select_all">Tout sélectionner</text>
+    <text key="button.deselect_all">Tout désélectionner</text>
+    <text key="page.empty_hint">Cliquez sur « Vérifier » pour analyser le dépôt GitHub</text>
+    <text key="page.invalid_hint">Ce dépôt ne contient aucun fichier de description de plugin valide</text>
+    <text key="info.author">Auteur : {author}</text>
+    <text key="info.deps">Dépendances : {deps}</text>
+    <text key="plugin.no_description">Aucune description</text>
+    <text key="dir.official">Répertoire des plugins officiels (plugin/)</text>
+    <text key="dir.thirdparty">Répertoire des plugins tiers (custom_plugin/)</text>
+    <text key="dir.will_install_to">Sera installé dans : {dir_desc}</text>
+    <text key="status.url_required">Saisissez l’URL du dépôt GitHub</text>
+    <text key="status.checking">Analyse du dépôt…</text>
+    <text key="status.repo_invalid">Dépôt non valide</text>
+    <text key="status.single_repo">Dépôt à plugin unique — vérifiez les informations puis cliquez sur « Installer »</text>
+    <text key="status.multi_repo">Dépôt multi-plugins — sélectionnez les plugins à installer (total : {count})</text>
+    <text key="status.error">Erreur : {error}</text>
+    <text key="status.installing">Installation…</text>
+    <text key="status.install_success">Installation terminée ! Plugins installés : {count}</text>
+    <text key="status.install_partial">Installation terminée : réussites — {success_count}, échecs — {fail_count}</text>
+    <text key="status.install_failed">Échec de l’installation : {error}</text>
+    <text key="message.select_plugins">Sélectionnez les plugins à installer</text>
+    <text key="result.ok_got_it">Compris</text>
+    <text key="result.title">Résultat de l’installation</text>
+    <text key="result.failed_title">Échec de l’installation</text>
+    <text key="result.all_success">Tout a réussi</text>
+    <text key="result.partial">Réussite partielle</text>
+    <text key="result.summary"><![CDATA[{outcome} :
+  {details}]]></text>
+  </group>
+
+  <group name="dialog_license">
+    <text key="title">Licences des composants</text>
+    <text key="search.placeholder">Rechercher un nom…</text>
+    <text key="list.empty">Aucune licence correspondante</text>
+    <text key="category.dependency">Dépendances</text>
+    <text key="detail.version">Version v{version}</text>
+    <text key="detail.read_failed">(Impossible de lire le fichier de licence)</text>
+    <text key="detail.file_not_found">(Fichier de licence introuvable : {path})</text>
+    <text key="button.copy_all">Copier le texte</text>
+    <text key="button.copied">Copié !</text>
+    <text key="button.open_folder">Ouvrir le dossier</text>
+    <text key="message.dir_not_exist">Le répertoire n’existe pas : {path}</text>
+  </group>
+
+  <group name="dialog_llm_settings">
+    <!-- ============ 主对话框（dialog.py） ============ -->
+    <text key="dialog.title">Paramètres LLM</text>
+    <text key="dialog.placeholder"><![CDATA[Aucun fournisseur
+  Cliquez sur « + Ajouter un fournisseur » en bas à gauche]]></text>
+
+    <!-- ============ 左栏列表面板（provider_list_panel.py） ============ -->
+    <text key="list.section_title">Services de modèles</text>
+    <text key="list.search_placeholder">Rechercher un fournisseur</text>
+    <text key="list.add_button">+ Ajouter un fournisseur</text>
+
+    <!-- ============ 详情面板（provider_detail_panel.py） ============ -->
+    <text key="detail.overlay_disabled"><![CDATA[Fournisseur désactivé
+  Activez l’interrupteur en haut à droite pour le configurer]]></text>
+    <text key="detail.menu.rename">Renommer</text>
+    <text key="detail.menu.delete_provider">Supprimer le fournisseur</text>
+    <text key="detail.delete_provider.message">Supprimer « {name} » ainsi que tous ses modèles ?</text>
+    <text key="detail.section.api_config">Configuration de l’API</text>
+    <text key="detail.section.default_model">Modèle par défaut</text>
+    <text key="detail.field.api_key">Clé API</text>
+    <text key="detail.field.api_host">Adresse de l’API</text>
+    <text key="detail.key_link">Obtenir une clé</text>
+    <text key="detail.key_placeholder">sk-...</text>
+    <text key="detail.key_placeholder_optional">sk-... (facultatif)</text>
+    <text key="detail.host_placeholder">https://...</text>
+    <text key="detail.eye_tooltip">Afficher / masquer la clé</text>
+    <!-- 「检测」按钮为固定 76px：« Vérifier » 需 100px，故用 « Tester »（59px） -->
+    <text key="detail.check.button">Tester</text>
+    <text key="detail.check.button_busy">Test…</text>
+    <text key="detail.check.status_checking">Test de la connexion…</text>
+    <text key="detail.check.status_ok">✓ Connexion établie · modèles : {count}</text>
+    <text key="detail.check.status_fail">✗ Échec de la connexion : {error}</text>
+    <!-- 「重置」按钮为固定 64px：« Réinitialiser » 需 100px、« Réinit. » 需 70px，
+         均放不下，故用法语通用缩写 « RAZ »（remise à zéro，58px），
+         完整语义由 detail.reset_tooltip 承载 -->
+    <text key="detail.reset_button">RAZ</text>
+    <text key="detail.reset_tooltip">Rétablir l’adresse d’API par défaut</text>
+    <text key="detail.badge.custom">Personnalisé</text>
+    <text key="detail.rename.title">Renommer le fournisseur</text>
+    <text key="detail.rename.label">Nom :</text>
+    <!-- 默认模型行标签为固定 110px：« Modèle de chat » 需 95px、« Embeddings » 需 73px -->
+    <text key="detail.default_model.chat">Modèle de chat</text>
+    <text key="detail.default_model.embedding">Embeddings</text>
+    <text key="detail.default_model.embedding_enable">Activer les embeddings</text>
+    <text key="detail.default_model.embedding_switch_tooltip">Activer / désactiver les embeddings de ce fournisseur</text>
+    <text key="detail.default_model.unset">(non défini)</text>
+    <text key="detail.refresh.status_busy">Récupération de la liste des modèles…</text>
+    <text key="detail.refresh.status_updated">✓ Mis à jour · modèles : {count}</text>
+    <text key="detail.refresh.fail_title">Échec de la récupération des modèles</text>
+    <text key="detail.refresh.fail_message"><![CDATA[Impossible de récupérer la liste des modèles via l’API :
+  {error}]]></text>
+    <text key="detail.health.no_models">Aucun modèle à tester. Ajoutez des modèles ou actualisez la liste.</text>
+
+    <!-- ============ 通用杂项 ============ -->
+    <text key="misc.unknown_error">Erreur inconnue</text>
+
+    <!-- ============ 模型分区（model_section.py） ============ -->
+    <text key="model.section.title">Modèles</text>
+    <text key="model.section.count">({count})</text>
+    <text key="model.section.empty_hint">Aucun modèle ; cliquez sur « + Ajouter » en haut à droite</text>
+    <text key="model.section.add">+ Ajouter</text>
+    <text key="model.section.refresh_tooltip">Récupérer la liste des modèles via l’API</text>
+    <text key="model.section.health">⚡ Tester</text>
+    <text key="model.section.health_tooltip">Tester la disponibilité de chaque modèle</text>
+    <text key="model.section.sync">⇅ Synchroniser</text>
+    <text key="model.section.sync_tooltip">Comparer la liste des modèles avec le serveur et la gérer</text>
+    <text key="model.section.manage">Gérer</text>
+    <text key="model.section.manage_done">Terminer</text>
+    <text key="model.section.select_all">Tout sélectionner</text>
+    <text key="model.section.delete_selected">Supprimer la sélection</text>
+    <text key="model.group_caption">{label} · {count}</text>
+    <text key="model.delete.title">Supprimer le modèle</text>
+    <text key="model.delete.message">Supprimer le modèle « {id} » ?</text>
+    <text key="model.delete.message_multi">Supprimer les modèles sélectionnés ({count}) ?</text>
+    <text key="model.type.chat">Chat</text>
+    <text key="model.type.vision">Images</text>
+    <text key="model.type.embedding">Embedding</text>
+    <text key="model.type.rerank">Reclassement</text>
+
+    <!-- ============ Provider 编辑器（provider_editor_dialog.py） ============ -->
+    <text key="editor.title_create">Ajouter un fournisseur</text>
+    <text key="editor.title_edit">Modifier le fournisseur</text>
+    <text key="editor.custom_choice.title">Service personnalisé compatible OpenAI</text>
+    <text key="editor.custom_choice.subtitle">Connecter tout service de modèles au protocole compatible OpenAI</text>
+    <text key="editor.custom_default_name">Service personnalisé</text>
+    <text key="editor.custom_subtitle_fallback">Connexion personnalisée</text>
+    <text key="editor.type_page.label">Choisissez le type de service de modèles</text>
+    <text key="editor.field.name">Nom</text>
+    <text key="editor.field.api_key">Clé API</text>
+    <text key="editor.field.api_key_optional">Clé API (facultatif)</text>
+    <text key="editor.field.api_key_keep_placeholder">Laisser vide pour ne pas modifier</text>
+    <text key="editor.form.hint_create_preset">Création de l’instance {name}</text>
+    <text key="editor.form.hint_create_custom">Création de l’instance {type_name}</text>
+    <text key="editor.form.hint_missing">L’instance n’existe pas</text>
+    <text key="editor.form.hint_edit">Modification de l’instance (adaptateur : {adapter})</text>
+    <text key="editor.warn.validation_title">Échec de la validation</text>
+    <text key="editor.warn.save_failed_title">Échec de l’enregistrement</text>
+    <text key="editor.warn.name_required">Saisissez un nom d’instance.</text>
+    <text key="editor.warn.base_url_required">Le service personnalisé compatible OpenAI nécessite une URL de base.</text>
+    <text key="editor.warn.instance_missing">L’instance à modifier n’existe pas ; elle a peut-être été supprimée.</text>
+
+    <!-- ============ 模型编辑对话框（model_edit_dialog.py） ============ -->
+    <text key="model_edit.title_create">Ajouter un modèle</text>
+    <text key="model_edit.title_edit">Modifier le modèle</text>
+    <text key="model_edit.field.id">ID du modèle</text>
+    <text key="model_edit.field.id_placeholder">par exemple glm-4-flash</text>
+    <text key="model_edit.field.id_readonly_tooltip">L’ID du modèle ne peut pas être modifié en mode édition</text>
+    <text key="model_edit.field.name">Nom affiché</text>
+    <text key="model_edit.field.name_placeholder">Laisser vide pour utiliser l’ID du modèle</text>
+    <text key="model_edit.field.group">Groupe</text>
+    <text key="model_edit.field.group_placeholder">Laisser vide pour déduire le groupe de l’ID du modèle</text>
+    <text key="model_edit.field.capabilities">Capacités</text>
+    <text key="model_edit.field.context_length">Longueur du contexte</text>
+    <text key="model_edit.field.context_tooltip">0 = non défini ; pas de 1K (1024) tokens</text>
+    <text key="model_edit.field.streaming">Prise en charge du streaming</text>
+    <text key="model_edit.field.price">Prix (par million de tokens ; 0 = non défini)</text>
+    <text key="model_edit.price.input">Entrée</text>
+    <text key="model_edit.price.output">Sortie</text>
+    <text key="model_edit.unset">Non défini</text>
+    <text key="model_edit.warn.id_required">Saisissez l’ID du modèle.</text>
+
+    <!-- ============ 健康检查对话框（health_check_dialog.py） ============ -->
+    <text key="health.title">Test de disponibilité des modèles</text>
+    <text key="health.header">Instance « {name} » · total de modèles : {total}</text>
+    <text key="health.empty">Aucun modèle à tester</text>
+    <text key="health.row.waiting">En attente</text>
+    <text key="health.row.checking">● Test en cours…</text>
+    <text key="health.row.cancelled">Annulé</text>
+    <text key="health.row.skipped">⚠ Ignoré · {reason}</text>
+    <text key="health.row.not_checked">Non testé</text>
+    <text key="health.row.ok">✓ Disponible · {latency} ms</text>
+    <text key="health.row.fail">✗ Échec · {error}</text>
+    <text key="health.summary_done">Test terminé : réussites — {ok} · échecs — {fail} · ignorés — {skip}</text>
+    <text key="health.summary_running">Réussites — {ok} · échecs — {fail} · ignorés — {skip} · restants — {remaining}</text>
+    <text key="health.summary_cancelled">Annulé : réussites — {ok} · échecs — {fail} · ignorés — {skip} · non testés — {unchecked}</text>
+
+    <!-- ============ 模型同步对话框（sync_models_dialog.py） ============ -->
+    <text key="sync.title">Synchronisation des modèles</text>
+    <text key="sync.group.new">Nouveaux</text>
+    <text key="sync.group.existing">Existants</text>
+    <text key="sync.group.invalid">Obsolètes</text>
+    <text key="sync.group_caption">{label} · {count}</text>
+    <text key="sync.search_placeholder">Rechercher un ID de modèle</text>
+    <text key="sync.add_selected">Ajouter la sélection à la liste</text>
+    <text key="sync.clean_selected">Supprimer les modèles obsolètes sélectionnés</text>
+    <text key="sync.hint.missing">L’instance de fournisseur n’existe pas ; synchronisation impossible.</text>
+    <text key="sync.hint.preset_catalog">Ce fournisseur utilise un catalogue de modèles prédéfini ; aucune synchronisation nécessaire.</text>
+    <text key="sync.hint.fetch_failed">Échec de la récupération de la liste distante : {error}. Seule la liste locale est affichée.</text>
+    <text key="sync.status.fetching">Récupération de la liste des modèles depuis le serveur…</text>
+    <text key="sync.status.summary">Modèles sur le serveur : {total} · nouveaux : {new} · obsolètes : {invalid}</text>
+    <text key="sync.empty">Aucun modèle</text>
+    <text key="sync.toast.add_none">Sélectionnez d’abord les nouveaux modèles à ajouter.</text>
+    <text key="sync.toast.clean_none">Sélectionnez d’abord les modèles obsolètes à supprimer.</text>
+    <text key="sync.toast.added">Modèles ajoutés à la liste : {count}.</text>
+    <text key="sync.toast.cleaned">Modèles obsolètes supprimés : {count}.</text>
+
+    <!-- ============ 反馈入口与通用控件（feedback.py / widgets.py） ============ -->
+    <text key="feedback.notice_ok">Compris</text>
+    <text key="widget.provider_switch.tooltip">Activer / désactiver ce fournisseur</text>
+    <text key="widget.model_switch.tooltip">Activer / désactiver ce modèle</text>
+    <text key="widget.model_row.delete_tooltip">Supprimer ce modèle</text>
+  </group>
+
+  <group name="dialog_plugin_management">
+    <!-- 窗口/对话框标题 -->
+    <text key="title.dialog">Gestion des plugins</text>
+    <text key="title.confirm_install">Confirmer l’installation</text>
+    <text key="title.install_result">Résultat de l’installation</text>
+    <text key="title.confirm_uninstall">Confirmer la désinstallation</text>
+    <text key="title.uninstall_failed">Échec de la désinstallation</text>
+    <text key="title.uninstall_done">Désinstallation terminée</text>
+    <text key="title.save_failed">Échec de l’enregistrement</text>
+    <text key="title.operation_failed">Échec de l’opération</text>
+
+    <!-- 页签与 scope 分类名 -->
+    <text key="tab.manage">Gestion des plugins</text>
+    <text key="tab.groups">Groupes et ordre</text>
+    <text key="scope.official">Plugins officiels</text>
+    <text key="scope.thirdparty">Plugins tiers</text>
+
+    <!-- 按钮（common 已有的 取消/关闭/刷新 直接复用 common 分组） -->
+    <text key="button.install_github">Installer depuis GitHub…</text>
+    <text key="button.install_zip">Installer un pack local…</text>
+    <text key="button.check_updates">Vérifier les mises à jour / rétrogradations…</text>
+    <text key="button.uninstall">Désinstaller…</text>
+    <text key="button.reset">Réinitialiser</text>
+    <text key="button.save_groups">Enregistrer groupes et ordre</text>
+    <text key="button.acknowledge">Compris</text>
+    <!-- 分组编辑器按钮为固定 56px：« Monter » 51px / « Descendre » 87px，
+         故统一用 « Haut » / « Bas »（与俄语 « Вверх » / « Вниз » 同构） -->
+    <text key="button.move_up">Haut</text>
+    <text key="button.move_down">Bas</text>
+    <text key="button.new_group">Nouveau groupe</text>
+    <text key="button.rename">Renommer</text>
+    <text key="button.set_icon">Définir l’icône</text>
+    <text key="button.delete_group">Supprimer le groupe</text>
+
+    <!-- 详情面板 -->
+    <text key="detail.no_selection">Aucun plugin sélectionné</text>
+    <text key="detail.name">Nom : {name}</text>
+    <text key="detail.version">Version : {version}</text>
+    <text key="detail.source">Source : {source}</text>
+
+    <!-- 通用兜底词（本分组内复用） -->
+    <text key="label.unknown">Inconnu</text>
+
+    <!-- 提示/结果消息 -->
+    <text key="message.select_plugin_first">Sélectionnez d’abord un plugin</text>
+    <text key="message.no_github_source"><![CDATA[Aucune source GitHub n’est enregistrée pour ce plugin ; la vérification des mises à jour est impossible.
+  Utilisez « Installer un pack local » pour mettre à jour ou rétrograder.]]></text>
+    <text key="message.no_releases">Aucune version Release trouvée pour ce dépôt</text>
+    <text key="message.no_plugin_installed">Aucun plugin installé : aucune correspondance dans la version sélectionnée</text>
+    <text key="message.invalid_source_url">URL du dépôt source non valide</text>
+    <text key="message.install_confirm"><![CDATA[{relation} du plugin « {name} »
+  Version actuelle : {current}
+  Version cible : {target}]]></text>
+    <text key="message.downgrade_warning"><![CDATA[
+
+  Attention : une rétrogradation peut entraîner une incompatibilité des données ou une perte de configuration !]]></text>
+    <text key="message.result_item">  - {name} : {message}</text>
+    <text key="message.result_partial"><![CDATA[Échecs partiels :
+  {details}]]></text>
+    <text key="message.result_all_success"><![CDATA[Tout a réussi :
+  {details}]]></text>
+    <text key="message.uninstall_confirm">Désinstaller le plugin « {name} » ?</text>
+    <text key="message.uninstall_official_warning"><![CDATA[
+
+  Ce plugin est officiel : il devra être réinstallé pour être restauré.]]></text>
+    <text key="message.uninstall_delete_data">Supprimer aussi les données du plugin (irréversible)</text>
+    <text key="message.uninstall_warnings"><![CDATA[
+
+  Avertissement :
+  {warnings}]]></text>
+    <text key="message.save_groups_failed">Impossible d’enregistrer la configuration des groupes. Vérifiez les droits d’accès et l’espace disque disponible.</text>
+    <text key="message.groups_saved">Groupes et ordre enregistrés</text>
+    <text key="message.operation_busy">Une autre opération est en cours, veuillez patienter</text>
+
+    <!-- 版本选择对话框 -->
+    <text key="version_select.title">Choisir une version — {name}</text>
+    <text key="version_select.current_version">Version actuelle : {version}</text>
+    <text key="version_select.unknown_version">Version inconnue</text>
+    <text key="version_select.item_format">{tag}  —  {version} ({relation})</text>
+    <text key="version_select.button.install_selected">Installer la version sélectionnée</text>
+    <text key="version_select.message.no_selection">Sélectionnez une version à installer</text>
+
+    <!-- 版本关系标签（_version_relation 内部标识的显示文案） -->
+    <text key="version_relation.upgrade">Mise à jour</text>
+    <text key="version_relation.downgrade">Rétrogradation</text>
+    <text key="version_relation.reinstall">Réinstallation</text>
+
+    <!-- 分组与排序编辑器 -->
+    <text key="group_editor.panel_column_title">Ordre du panneau (groupes / plugins)</text>
+    <text key="group_editor.available_label">Plugins sans groupe</text>
+    <text key="group_editor.member_label">Plugins du groupe</text>
+    <text key="group_editor.shuttle_title">Configuration du groupe : {icon} {name}</text>
+    <text key="group_editor.invalid_group">(groupe non valide) {id}</text>
+    <text key="group_editor.removed_plugin">(supprimé) {id}</text>
+    <text key="group_editor.prompt.new_group_title">Nouveau groupe</text>
+    <text key="group_editor.prompt.rename_group_title">Renommer le groupe</text>
+    <text key="group_editor.prompt.group_name_label">Nom du groupe :</text>
+    <text key="group_editor.prompt.set_icon_title">Définir l’icône</text>
+    <text key="group_editor.prompt.select_icon_label">Icône du groupe :</text>
+    <text key="group_editor.message.select_group_first">Sélectionnez d’abord un groupe dans la liste de gauche</text>
+    <text key="group_editor.message.select_target_group">Sélectionnez d’abord le groupe cible dans la liste de gauche</text>
+    <text key="group_editor.message.select_plugin_to_add">Sélectionnez un plugin dans « Plugins sans groupe »</text>
+
+    <!-- 每插件语言自定义（详情面板语言行 + 插件语言对话框） -->
+    <text key="button.language">Langue…</text>
+    <text key="detail.language">Langue : {language}</text>
+    <text key="language.none">Aucun pack de langue</text>
+    <text key="language.follow_framework">Comme l’interface ({language})</text>
+    <text key="language.unavailable_tooltip">Ce plugin ne fournit aucun pack de langue</text>
+    <text key="language.dialog_title">Langue du plugin {name}</text>
+    <text key="language.follow_option">Comme l’interface (par défaut)</text>
+  </group>
+
+  <group name="main_window">
+    <text key="menu.edit">Édition</text>
+    <text key="menu.edit.plugin_management">Gestion des plugins…</text>
+    <text key="menu.edit.font_management">Gestion des polices…</text>
+    <text key="menu.edit.toggle_theme">Changer de thème</text>
+    <text key="menu.edit.toggle_theme.tooltip">Clair → sombre → comme le système</text>
+    <text key="menu.edit.toggle_theme.current">Changer de thème ({label})</text>
+    <text key="menu.edit.language">Langue</text>
+    <text key="menu.edit.install_from_github">Installer un plugin depuis GitHub…</text>
+    <text key="menu.edit.install_from_github.status_tip">Installer un plugin depuis un dépôt GitHub</text>
+    <text key="menu.ai">IA</text>
+    <text key="menu.ai.llm_settings">Paramètres LLM…</text>
+    <text key="menu.ai.usage">Statistiques d’utilisation</text>
+    <text key="menu.help">Aide</text>
+    <text key="menu.help.about">À propos</text>
+    <text key="menu.help.licenses">Licences des composants</text>
+    <text key="dialog.usage.title">Statistiques d’utilisation</text>
+    <text key="work_area.load_error"><![CDATA[Impossible de charger le plugin : {name} <a href='retry'>Réessayer</a>]]></text>
+    <text key="work_area.load_error.tooltip">Échec du chargement. Cliquez sur « Réessayer » pour recharger le plugin</text>
+    <text key="theme.light">Clair</text>
+    <text key="theme.dark">Sombre</text>
+    <text key="theme.auto">Comme le système</text>
+    <text key="tray.unknown_plugin">Plugin inconnu</text>
+  </group>
+
+  <group name="skills_panel">
+    <text key="tab.official">Fonctions officielles</text>
+    <text key="tab.thirdparty">Fonctions tierces</text>
+    <text key="header.plugin_count">Plugins : {count}</text>
+    <text key="group.tooltip">Groupe : {name} (cliquer pour développer ou réduire)</text>
+  </group>
+
+  <group name="title_bar">
+    <text key="tooltip.minimize">Réduire</text>
+    <text key="tooltip.maximize_restore">Agrandir / restaurer</text>
+    <text key="accessibility.minimize">Réduire</text>
+    <text key="accessibility.maximize">Agrandir</text>
+    <text key="accessibility.close">Fermer</text>
+    <!-- 助记字母取法语词首字母，重复处沿用 Windows 法语习惯（« Réduire » 用 N） -->
+    <text key="context_menu.restore">Restaurer(R)</text>
+    <text key="context_menu.move">Déplacer(D)</text>
+    <text key="context_menu.minimize">Réduire(N)</text>
+    <text key="context_menu.maximize">Agrandir(A)</text>
+    <text key="context_menu.close">Fermer(F)</text>
+  </group>
+
+  <group name="tray">
+    <text key="tooltip">InstructionX - CE</text>
+    <text key="menu.show_main_window">Afficher la fenêtre principale</text>
+    <text key="menu.running_plugins">Plugins en cours d’exécution</text>
+    <text key="menu.running_tasks">Tâches d’arrière-plan</text>
+    <text key="menu.quit">Quitter</text>
+    <text key="menu.no_plugins">Aucun plugin chargé</text>
+    <text key="menu.no_tasks">Aucune tâche en cours</text>
+    <text key="menu.task_entry">{task_name} ({plugin_name})</text>
+    <text key="notify.minimize_title">InstructionX - CE</text>
+    <text key="notify.minimize_message">L’application est réduite dans la zone de notification et continue de s’exécuter en arrière-plan</text>
+  </group>
+
+  <group name="usage_panel">
+    <!-- 面板标题行 -->
+    <text key="header.title">Panneau d’utilisation de l’IA</text>
+    <text key="header.subtitle">Aperçu de l’utilisation de l’API LLM</text>
+    <!-- KPI 卡片标题（可用宽度约 97px，均为实测可容纳的短文案） -->
+    <text key="kpi.total_requests">Total requêtes</text>
+    <text key="kpi.input_tokens">Tokens d’entrée</text>
+    <text key="kpi.output_tokens">Tokens de sortie</text>
+    <text key="kpi.total_tokens">Total tokens</text>
+    <text key="kpi.cache_hit_rate">Taux de cache</text>
+    <text key="kpi.avg_duration">Durée moyenne</text>
+    <!-- KPI 同比小字：卡片可用宽度约 97px -->
+    <text key="kpi.delta_empty">vs période —</text>
+    <text key="kpi.delta">vs période {pct:+.1f} %</text>
+    <!-- 错误提示弹窗 -->
+    <text key="error.refresh_data"><![CDATA[Échec de l’actualisation des données d’utilisation :
+  {error}]]></text>
+    <text key="error.refresh_trend"><![CDATA[Échec de l’actualisation du graphique d’utilisation :
+  {error}]]></text>
+    <!-- 筛选工具行 -->
+    <text key="filter.all">Tous</text>
+    <text key="filter.provider">Fournisseur :</text>
+    <text key="filter.model">Modèle :</text>
+    <text key="filter.conversation_id">ID de conversation :</text>
+    <text key="filter.conversation_id_placeholder">Saisir un ID de conversation…</text>
+    <!-- 使用历史面板（表格列宽固定 70/80px，表头取短文案） -->
+    <text key="table.title">Historique d’utilisation</text>
+    <text key="table.header.time">Heure</text>
+    <text key="table.header.provider">Service</text>
+    <text key="table.header.model">Modèle</text>
+    <text key="table.header.input">Entrée</text>
+    <text key="table.header.output">Sortie</text>
+    <text key="table.header.total_tokens">Tokens</text>
+    <text key="table.header.cache_hit">Cache</text>
+    <text key="table.header.cached_tokens">Du cache</text>
+    <text key="table.header.duration">Durée</text>
+    <text key="table.header.stream">Flux</text>
+    <!-- 分页控件 -->
+    <text key="page.prev">Précédent</text>
+    <text key="page.next">Suivant</text>
+    <text key="page.initial">Page 1</text>
+    <text key="page.info">Page {current} sur {total} (entrées : {count})</text>
+    <!-- 历史面板无障碍名称 -->
+    <text key="a11y.provider_filter">Filtre par fournisseur</text>
+    <text key="a11y.model_filter">Filtre par modèle</text>
+    <text key="a11y.conversation_id_input">Champ de filtre par ID de conversation</text>
+    <text key="a11y.refresh">Actualiser les données d’utilisation</text>
+    <text key="a11y.table">Tableau d’utilisation</text>
+    <!-- 用量趋势面板 -->
+    <text key="trend.title">Évolution de l’utilisation</text>
+    <text key="trend.status">{start} — {end} · jours : {days}</text>
+    <!-- 图表坐标轴单位后缀（formatting.pick_token_scale） -->
+    <text key="chart.axis.million">(M)</text>
+    <text key="chart.axis.thousand">(k)</text>
+    <!-- 时间范围选项 -->
+    <text key="range.half_year">6 mois</text>
+    <text key="range.year">1 an</text>
+    <text key="range.custom">Personnalisé</text>
+    <text key="range.to">à</text>
+    <text key="range.apply">Appliquer</text>
+    <!-- 趋势指标选项 -->
+    <text key="metric.requests">Requêtes</text>
+    <text key="metric.input_tokens">Tokens d’entrée</text>
+    <text key="metric.output_tokens">Tokens de sortie</text>
+    <!-- 趋势面板无障碍名称 -->
+    <text key="a11y.range_combo">Sélection de la période</text>
+    <text key="a11y.start_date">Date de début</text>
+    <text key="a11y.end_date">Date de fin</text>
+    <text key="a11y.apply_range">Appliquer la période personnalisée</text>
+    <text key="a11y.metric_combo">Changement d’indicateur</text>
+  </group>
+
+  <group name="work_area">
+    <text key="placeholder">Cliquez sur un bouton de plugin ci-dessus pour l’afficher ici</text>
+  </group>
+
+  <!-- LLM 模型能力标签（core/llm/model_schema.py 的 capability_label()） -->
+  <group name="model_capability">
+    <text key="vision">Images</text>
+    <text key="web">Recherche web</text>
+    <text key="reasoning">Raisonnement</text>
+    <text key="tools">Outils</text>
+    <text key="embedding">Embedding</text>
+    <text key="rerank">Reclassement</text>
+  </group>
+
+  <group name="dialog_language">
+    <text key="title">Langue de l’interface</text>
+    <text key="note">Le changement de langue est immédiat. Chaque plugin peut avoir sa propre langue dans « Gestion des plugins » ; à défaut, la langue choisie ici s’applique.</text>
+  </group>
+
+  <group name="dialog_local_package_install">
+    <text key="window.title">Installer un pack de plugins local</text>
+    <text key="label.no_file">Choisissez une archive téléchargée depuis GitHub (ou le zip d’un plugin)</text>
+    <text key="button.choose_zip">Choisir une archive…</text>
+    <text key="button.install_selected">Installer la sélection</text>
+    <text key="button.close">Fermer</text>
+    <text key="button.select_all">Tout sélectionner</text>
+    <text key="button.deselect_all">Tout désélectionner</text>
+    <text key="hint.select_package">Après le choix de l’archive, les plugins sont détectés automatiquement : un plugin unique s’installe directement, un ensemble de plugins peut être coché et installé en une seule fois (les archives de dépôt à imbrication arbitraire sont prises en charge).</text>
+    <text key="hint.scanning">Analyse du contenu de l’archive…</text>
+    <text key="hint.installing">Installation en cours, ne fermez pas la fenêtre…</text>
+    <text key="source.single">Résultat : un seul plugin</text>
+    <text key="source.index">Résultat : ensemble de plugins (détecté via l’index IXRepo.json ; les plugins non déclarés ne sont pas cochés par défaut)</text>
+    <text key="source.scan">Résultat : ensemble de plugins (IXRepo.json introuvable ; plugins détectés par analyse des répertoires)</text>
+    <text key="invalid.title">Archive non reconnue</text>
+    <text key="invalid.hint">Vérifiez que l’archive contient IXPlugin.json (plugin unique) ; pour un ensemble de plugins, ajoutez de préférence IXRepo.json à la racine du dépôt.</text>
+    <text key="invalid.unknown">Contenu de l’archive non reconnu</text>
+    <text key="row.no_description">Aucune description</text>
+    <text key="row.invalid">Installation impossible : {reason}</text>
+    <text key="row.path">Chemin dans l’archive : {path}</text>
+    <text key="row.undeclared">Non déclaré dans IXRepo.json</text>
+    <text key="row.dependencies">Dépendances : {deps}</text>
+    <text key="scope.official">Répertoire officiel</text>
+    <text key="scope.thirdparty">Répertoire tiers</text>
+    <text key="relation.new">Nouvelle installation</text>
+    <text key="relation.upgrade">Mise à jour {prev} → {version}</text>
+    <text key="relation.downgrade">Rétrogradation {prev} → {version}</text>
+    <text key="relation.reinstall">Réinstallation {version}</text>
+    <text key="label.selection_summary">Sélection : {selected} sur {total} (non installables : {invalid})</text>
+    <text key="message.no_selection">Cochez au moins un plugin</text>
+    <text key="title.select_zip">Choisir un pack de plugins local</text>
+    <text key="file_dialog.zip_filter">Packs de plugins (*.zip)</text>
+    <text key="result.title">Résultat de l’installation</text>
+    <text key="result.empty">Aucun plugin installé</text>
+    <text key="result.item">{name} : {message}</text>
+    <text key="result.all_success"><![CDATA[Plugins installés :
+{details}]]></text>
+    <text key="result.partial"><![CDATA[Certains plugins n’ont pas été installés :
+{details}]]></text>
+    <text key="result.ok">Compris</text>
+    <text key="title.confirm_downgrade">Confirmer la rétrogradation</text>
+    <text key="message.downgrade_confirm"><![CDATA[Les plugins suivants vont être rétrogradés :
+{details}
+
+Attention : une rétrogradation peut entraîner une incompatibilité des données ou une perte de configuration ! Continuer ?]]></text>
+  </group>
+</texts>
