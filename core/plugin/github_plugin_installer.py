@@ -1,7 +1,9 @@
 """
 GitHub 插件安装器
 
-从 GitHub 仓库安装插件的核心逻辑，支持单插件和多插件仓库。
+从 GitHub 仓库安装插件的核心逻辑，支持单插件和多插件仓库；
+同时支持**本地插件包**（zip）：自动识别包内是单插件还是插件集，
+并适配任意层嵌套（GitHub 下载的仓库压缩包、用户二次打包等）。
 """
 
 import base64
@@ -23,6 +25,12 @@ from utils.logging_tools import LoggerManager, get_name
 from .dependency_manager import DependencyManager
 # 无循环依赖（manager 不反向依赖本模块），置顶导入
 from .manager import get_plugin_manager
+from .package_discovery import (
+    PACKAGE_KIND_INVALID,
+    PluginCandidate,
+    inspect_package,
+    validate_descriptor as validate_descriptor_rules,
+)
 from .plugin_identity import PluginIdentity
 from .plugin_version import PluginVersion
 
@@ -102,6 +110,45 @@ class ReleaseInfo:
     version: str = ""          # 从 IXPlugin.json 解析的插件版本，解析失败为空
     prerelease: bool = False
     published_at: str = ""
+
+
+@dataclass
+class LocalInstallPlan:
+    """本地插件包中单个插件的安装计划（识别阶段的预览结果）
+
+    Attributes:
+        candidate: 识别出的候选插件
+        relation: 与已安装版本的关系：new / upgrade / downgrade / reinstall
+        prev_version: 已安装版本（未安装时为空串）
+        target_scope: 目标范围：official / thirdparty
+        default_selected: 在安装对话框中是否默认勾选
+            （有索引时仅索引声明项默认勾选，无索引时全部默认勾选）
+    """
+
+    candidate: PluginCandidate
+    relation: str = "new"
+    prev_version: str = ""
+    target_scope: str = "thirdparty"
+    default_selected: bool = True
+
+
+@dataclass
+class LocalPackageInspection:
+    """本地插件包识别结果（对话框据此展示与勾选）
+
+    Attributes:
+        kind: single / multi / invalid
+        plans: 各插件的安装计划（含不可安装项，供界面提示原因）
+        warnings: 非致命提示（未声明插件、重复 ID、扫描截断等）
+        error: kind 为 invalid 时的中文诊断信息
+        has_index: 包内是否存在 IXRepo.json（决定默认勾选策略与来源提示）
+    """
+
+    kind: str
+    plans: List[LocalInstallPlan] = field(default_factory=list)
+    warnings: List[str] = field(default_factory=list)
+    error: str = ""
+    has_index: bool = False
 
 
 class GitHubPluginInstaller:
@@ -309,25 +356,13 @@ class GitHubPluginInstaller:
         """
         验证描述文件格式
 
+        规则实现已统一到 ``core.plugin.package_discovery.validate_descriptor``，
+        本地包识别与本次安装校验共用同一套规则，避免两处分叉。
+
         Returns:
             (is_valid, error_message)
         """
-        required_fields = ["id", "name", "version", "main"]
-        for field_name in required_fields:
-            if field_name not in descriptor:
-                return False, f"缺少必需字段: {field_name}"
-
-        # 验证 version 格式
-        version = descriptor.get("version", "")
-        if not re.match(r"^(release|pre-release|beta|alpha|internal)\.\d+\.\d+\.\d+$", version):
-            return False, f"版本号格式无效: {version}，期望格式: <类型>.<大>.<小>.<补丁>"
-
-        # 验证 id 格式
-        plugin_id = descriptor.get("id", "")
-        if not re.match(r"^[a-zA-Z0-9_-]+$", plugin_id):
-            return False, f"插件 ID 格式无效: {plugin_id}"
-
-        return True, ""
+        return validate_descriptor_rules(descriptor)
 
     def install_from_url(
         self,
@@ -835,22 +870,92 @@ class GitHubPluginInstaller:
 
     # ==================== 本地插件包安装 ====================
 
+    def inspect_local_package(self, zip_path) -> LocalPackageInspection:
+        """识别本地插件包：单插件 / 插件集 / 无效，并预演各插件的安装关系
+
+        只读操作：解压到临时目录 → 识别 → 清理；不写入插件目录、不改注册表。
+        识别与安装各自解压一次（换取接口无状态、避免临时目录泄漏）；插件包通常
+        只有数 MB，重复解压成本可接受。
+
+        Args:
+            zip_path: 本地插件包路径（.zip）
+
+        Returns:
+            LocalPackageInspection: 分类结果、逐个插件的安装计划与警告；
+            ``kind`` 为 ``invalid`` 时 ``error`` 含可诊断的具体原因
+        """
+        zip_path = Path(zip_path)
+        if not zip_path.exists():
+            return LocalPackageInspection(kind=PACKAGE_KIND_INVALID,
+                                          error=f"插件包不存在: {zip_path}")
+
+        temp_dir = Path(tempfile.mkdtemp(prefix="ix_plugin_zip_"))
+        try:
+            if not self._safe_extract_zip(zip_path, temp_dir):
+                return LocalPackageInspection(
+                    kind=PACKAGE_KIND_INVALID, error="插件包解压失败或内容不安全")
+            inspection = inspect_package(temp_dir)
+            if inspection.kind == PACKAGE_KIND_INVALID:
+                return LocalPackageInspection(
+                    kind=inspection.kind, warnings=list(inspection.warnings),
+                    error=inspection.error, has_index=inspection.has_index)
+            plans = [self._build_local_plan(temp_dir, candidate, inspection.has_index)
+                     for candidate in inspection.candidates]
+            return LocalPackageInspection(kind=inspection.kind, plans=plans,
+                                          warnings=list(inspection.warnings),
+                                          has_index=inspection.has_index)
+        finally:
+            self._cleanup_temp_dir(temp_dir)
+
+    def _build_local_plan(self, temp_dir: Path, candidate: PluginCandidate,
+                          has_index: bool) -> LocalInstallPlan:
+        """为单个候选构造安装计划（不可安装项不做关系预演）"""
+        if not candidate.valid:
+            return LocalInstallPlan(candidate=candidate, default_selected=False)
+
+        plugin_dir = self._plugin_dir_of(temp_dir, candidate)
+        target = self._resolve_zip_target_dir(plugin_dir)
+        relation, prev_version = self._detect_install_relation(
+            target, candidate.descriptor_id, candidate.version)
+        return LocalInstallPlan(
+            candidate=candidate,
+            relation=relation,
+            prev_version=prev_version,
+            target_scope=self._scope_of_target_dir(target),
+            # 有索引时仅索引声明项默认勾选（未声明项多为示例/工具目录，避免误装）；
+            # 无索引时全部默认勾选
+            default_selected=candidate.declared_in_index or not has_index,
+        )
+
+    @staticmethod
+    def _plugin_dir_of(temp_dir: Path, candidate: PluginCandidate) -> Path:
+        """候选插件在解压目录中的实际路径（rel_path 为空表示插件位于包根）"""
+        return temp_dir / candidate.rel_path if candidate.rel_path else temp_dir
+
     def install_from_zip(
         self,
         zip_path,
         target_dir: Path = None,
-        progress_callback=None
+        progress_callback=None,
+        selected_plugins: Optional[List[str]] = None
     ) -> List[InstallResult]:
-        """从本地 zip 插件包安装/升级/降级插件
+        """从本地 zip 插件包安装/升级/降级插件（支持单插件与插件集）
+
+        自动识别包内插件：单插件直接安装；插件集逐个安装（可用
+        ``selected_plugins`` 只装其中若干）。不可安装的候选（描述文件缺失/非法、
+        ID 重复、索引声明的目录不存在）会被跳过，不影响其余插件。
 
         Args:
             zip_path: 本地插件包路径（包含 IXPlugin.json 的 zip）
-            target_dir: 目标目录；为 None 时自动判定（已安装同 id 插件则沿用其
-                        目录，否则安装到第三方插件目录）
-            progress_callback: 进度回调
+            target_dir: 目标目录；为 None 时**逐个**自动判定（已安装同 id 插件则
+                        沿用其目录，否则安装到第三方插件目录）
+            progress_callback: 进度回调（逐插件调用）
+            selected_plugins: 只安装这些插件（按包内相对路径或插件 id 匹配，
+                        两侧均忽略首尾斜杠）；None 表示安装全部可安装候选
 
         Returns:
-            单元素 InstallResult 列表
+            List[InstallResult]: 每个插件一条结果（顺序与识别顺序一致）；
+            包无法识别时为单条错误结果；未选中任何插件时为空列表
         """
         zip_path = Path(zip_path)
         if not zip_path.exists():
@@ -858,29 +963,55 @@ class GitHubPluginInstaller:
 
         temp_dir = Path(tempfile.mkdtemp(prefix="ix_plugin_zip_"))
         try:
-            if not self._safe_extract_zip(zip_path, temp_dir):
-                return [InstallResult.error("插件包解压失败或内容不安全")]
-
-            plugin_root = self._locate_plugin_root(temp_dir)
-            if plugin_root is None:
-                return [InstallResult.error(f"插件包中未找到 {self.PLUGIN_DESCRIPTOR_FILE}")]
-
-            target = Path(target_dir) if target_dir else self._resolve_zip_target_dir(plugin_root)
-            return [self._install_plugin_dir(
-                plugin_root, target, "", "本地插件包", progress_callback,
-                source_type="local_zip"
-            )]
+            early_results, candidates = self._prepare_zip_install(
+                zip_path, temp_dir, selected_plugins)
+            if early_results:
+                return early_results
+            return [self._install_local_candidate(temp_dir, candidate, target_dir,
+                                                  progress_callback)
+                    for candidate in candidates]
         finally:
             self._cleanup_temp_dir(temp_dir)
 
-    def _locate_plugin_root(self, temp_dir: Path) -> Optional[Path]:
-        """在解压目录中定位插件根目录（包含 IXPlugin.json 的目录）"""
-        if (temp_dir / self.PLUGIN_DESCRIPTOR_FILE).exists():
-            return temp_dir
-        subdirs = [p for p in temp_dir.iterdir() if p.is_dir()]
-        if len(subdirs) == 1 and (subdirs[0] / self.PLUGIN_DESCRIPTOR_FILE).exists():
-            return subdirs[0]
-        return None
+    def _prepare_zip_install(self, zip_path: Path, temp_dir: Path,
+                             selected_plugins: Optional[List[str]]
+                             ) -> Tuple[List[InstallResult], List[PluginCandidate]]:
+        """解压插件包并筛出待安装候选
+
+        Returns:
+            Tuple[List[InstallResult], List[PluginCandidate]]:
+            (提前结束的结果, 待安装候选)；前者非空时应直接返回它
+        """
+        if not self._safe_extract_zip(zip_path, temp_dir):
+            return [InstallResult.error("插件包解压失败或内容不安全")], []
+        inspection = inspect_package(temp_dir)
+        if inspection.kind == PACKAGE_KIND_INVALID:
+            return [InstallResult.error(f"插件包无法识别：{inspection.error}")], []
+        return [], self._select_candidates(inspection.candidates, selected_plugins)
+
+    @staticmethod
+    def _select_candidates(candidates: Tuple[PluginCandidate, ...],
+                           selected_plugins: Optional[List[str]]) -> List[PluginCandidate]:
+        """筛选待安装候选：跳过不可安装项；``selected_plugins`` 为 None 时全选"""
+        installable = [c for c in candidates if c.valid]
+        if selected_plugins is None:
+            return installable
+        wanted = {str(item).strip("/") for item in selected_plugins}
+        return [c for c in installable
+                if c.rel_path in wanted or c.descriptor_id in wanted]
+
+    def _install_local_candidate(self, temp_dir: Path, candidate: PluginCandidate,
+                                 target_dir: Optional[Path],
+                                 progress_callback=None) -> InstallResult:
+        """安装单个候选插件（逐插件独立成败，互不阻断）"""
+        plugin_dir = self._plugin_dir_of(temp_dir, candidate)
+        target = Path(target_dir) if target_dir else self._resolve_zip_target_dir(plugin_dir)
+        dir_desc = ("本地插件包" if not candidate.rel_path
+                    else f"本地插件包 · {candidate.rel_path}")
+        return self._install_plugin_dir(
+            plugin_dir, target, "", dir_desc, progress_callback,
+            source_type="local_zip", source_path=candidate.rel_path
+        )
 
     def _resolve_zip_target_dir(self, plugin_root: Path) -> Path:
         """为本地插件包确定安装目录：已安装同 id 插件沿用原目录，否则进第三方目录"""
