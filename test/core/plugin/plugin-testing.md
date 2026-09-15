@@ -2,7 +2,7 @@
 
 > 插件系统核心模块的测试策略、测试用例和维护指南
 >
-> **本文档已按 `test/core/plugin/` 实际代码刷新（2026-09-14）**：7 个 `test_*.py`、31 个测试类、139 个 `def test_*` 测试函数，pytest 实测收集 **153 个用例**。§3 用例清单与代码双向核对，代码中每个测试函数在清单中有且仅有一行。
+> **本文档已按 `test/core/plugin/` 实际代码刷新（2026-09-15）**：10 个 `test_*.py`、44 个测试类、191 个 `def test_*` 测试函数，pytest 实测收集 **208 个用例**。§3 用例清单与代码双向核对，代码中每个测试函数在清单中有且仅有一行。
 
 ---
 
@@ -10,10 +10,10 @@
 
 - **被测模块**: `core/plugin/`
 - **测试目录**: `test/core/plugin/`
-- **测试文件数**: 7 个（`test_*.py`；同目录下 `conftest.py`、`__init__.py` 为辅助文件、不收集用例）
-- **测试类数**: 31 个
-- **测试函数数**: 139 个
-- **实测收集用例数**: 153 个
+- **测试文件数**: 10 个（`test_*.py`；同目录下 `conftest.py`、`__init__.py` 为辅助文件、不收集用例）
+- **测试类数**: 44 个
+- **测试函数数**: 191 个
+- **实测收集用例数**: 208 个
 
 实测命令（工作目录 = 项目根）：
 
@@ -21,7 +21,7 @@
 .venv\Scripts\python.exe -m pytest test/core/plugin --collect-only -q -p no:cacheprovider
 ```
 
-> 139 与 153 的差额来自参数化：`test_dependency_manager.py` 的 `TestDependencyManagerVersionConstraint::test_operators` 由 `@pytest.mark.parametrize` 展开为 15 例（139 − 1 + 15 = 153）。§3 清单按**测试函数**列行（共 139 行），统计口径中的「用例数」按 pytest 实际收集结果（153）计。
+> 191 与 208 的差额来自参数化：`test_dependency_manager.py` 的 `TestDependencyManagerVersionConstraint::test_operators` 由 `@pytest.mark.parametrize` 展开为 15 例（+14）、`test_package_discovery.py` 的 `TestDescriptorValidation::test_invalid_descriptor_marked_not_installable` 展开为 3 例（+2）、`test_local_package_install.py` 的 `TestTempDirectoryCleanup::test_temp_dir_removed` 展开为 2 例（+1），合计 191 + 17 = 208。§3 清单按**测试函数**列行（共 191 行），统计口径中的「用例数」按 pytest 实际收集结果（208）计。
 
 ### 1.1 测试文件分布
 
@@ -34,7 +34,10 @@
 | `test_plugin_version.py` | 6 | 30 | 30 | `PluginVersion` / `VersionType` 解析、比较、显示、字符串表示、哈希 |
 | `test_plugin_icon.py` | 3 | 23 | 23 | `PluginIcon` / `IconType` 工厂方法与 `load_icon()` 各分支 |
 | `test_dependency_manager.py` | 8 | 30 | 44 | `DependencyManager` 依赖检查/安装、版本约束比较、pip 调用、结果数据类 |
-| **合计** | **31** | **139** | **153** | — |
+| `test_package_discovery.py` | 5 | 23 | 25 | `inspect_package()` / `validate_descriptor()`：单插件/插件集/无效分类、包装层穿透、`IXRepo.json` 索引驱动、递归扫描规则、描述文件校验、诊断信息与深度上限 |
+| `test_local_package_install.py` | 6 | 20 | 21 | `GitHubPluginInstaller.install_from_zip()` / `inspect_local_package()`：单插件包、插件集一次安装与子集筛选、安装关系（新装/升级/降级）预演、默认勾选策略、无效包诊断、临时目录清理、包外文件快照集成 |
+| `test_plugin_backup.py` | 2 | 9 | 9 | `collect_extra_files()` / `snapshot_plugin_dir()`：包外文件检测与排除规则、整目录快照命名与内容、快照份数裁剪 |
+| **合计** | **44** | **191** | **208** | — |
 
 ### 1.2 覆盖范围
 
@@ -56,7 +59,10 @@
 | 版本管理 | 30 | 30 | `VersionType`（成员/优先级/显示名）、`PluginVersion.from_string()`, `to_string()`, `get_display_version()`、比较运算符、`__str__` / `__repr__` / 哈希 | §3.5.1–§3.5.6 |
 | 插件图标 | 23 | 23 | `IconType`、`PluginIcon.builtin()` / `from_file()` / `from_resource()` / `from_base64()` / `none()`、`load_icon()` | §3.6.1–§3.6.3 |
 | 依赖管理 | 30 | 44 | `DependencyManager.check_dependencies()`, `get_missing_dependencies()`, `install_dependencies()`, `_is_package_installed()`, `_parse_version_from_pip_show()`, `_check_version_constraint()`, `_normalize_version()`, `_pip_install()`；`DependencyCheckResult` / `DependencyInstallResult` | §3.7.1–§3.7.8 |
-| **合计** | **139** | **153** | — | — |
+| 本地插件包识别 | 23 | 25 | `inspect_package()`, `validate_descriptor()`；`PluginCandidate` / `PackageInspection`、`PACKAGE_KIND_*` / `MAX_DISCOVERY_DEPTH` 常量 | §3.8.1–§3.8.5 |
+| 本地包安装与关系预演 | 20 | 21 | `install_from_zip()`, `inspect_local_package()`；`LocalInstallPlan` / `LocalPackageInspection`、`selected_plugins` 筛选、注册表登记与包外文件备份集成 | §3.9.1–§3.9.6 |
+| 包外文件兜底快照 | 9 | 9 | `collect_extra_files()`, `snapshot_plugin_dir()`；`MAX_BACKUPS_PER_PLUGIN` | §3.10.1–§3.10.2 |
+| **合计** | **191** | **208** | — | — |
 
 ---
 
@@ -78,6 +84,9 @@
 - 版本测试使用 `PluginVersion.from_string()` 解析字符串版本
 - 图标测试使用 `minimal_png_bytes` / `minimal_png_base64` 构造最小 1×1 PNG 数据
 - 身份与配置测试在 `tmp_path` 下写临时文件（`.plugin_info.json`、`plugin_order.json`）
+- 本地包识别测试用 `make_plugin()` / `make_index()` 在 `tmp_path` 下构造包目录树（可覆盖描述文件内容）
+- 本地包安装测试用 `make_plugin_zip()` 现场生成 zip（可控制包装层目录名、插件目录与版本、`IXRepo.json` 索引、附加文件与描述内容）
+- 包外文件快照测试用 `make_dir()` 按 `{相对路径: 内容}` 构造新旧目录对照
 
 ### 2.3 关键 Fixtures
 
@@ -106,6 +115,10 @@ mock_logger              # 局部 fixture：patch 所在模块的 LoggerManager
 # test_plugin_icon.py
 minimal_png_bytes        # 最小 1×1 PNG 字节数据
 minimal_png_base64       # 上述 PNG 的 base64 字符串
+
+# test_local_package_install.py
+isolated_pm              # 官方/第三方插件目录与 config 全部指向 tmp_path 的 PluginManager
+installer                # 基于 isolated_pm 的 GitHubPluginInstaller
 ```
 
 ---
@@ -213,7 +226,7 @@ minimal_png_base64       # 上述 PNG 的 base64 字符串
 
 ### 3.2 `test_plugin_api_auto_register.py`
 
-> 测试类 1 个，测试函数 4 个，实测用例 4 个。被测对象：`core/plugin/manager.py` 的 `_auto_register_plugin_api()`；范围：自定义 Service 类名、公共方法过滤、空 Service 类、私有方法过滤。文件头 docstring 标注风险关联 R-01（见 §3.8），4 个用例的 docstring 均为中文原文引用。
+> 测试类 1 个，测试函数 4 个，实测用例 4 个。被测对象：`core/plugin/manager.py` 的 `_auto_register_plugin_api()`；范围：自定义 Service 类名、公共方法过滤、空 Service 类、私有方法过滤。文件头 docstring 标注风险关联 R-01（见 §3.11），4 个用例的 docstring 均为中文原文引用。
 
 #### 3.2.1 TestAutoRegisterAPI
 
@@ -460,7 +473,152 @@ minimal_png_base64       # 上述 PNG 的 base64 字符串
 
 ---
 
-### 3.8 风险关联（R-01）
+### 3.8 `test_package_discovery.py`
+
+> 测试类 5 个，测试函数 23 个，实测用例 25 个。被测对象：`core/plugin/package_discovery.py` 的 `inspect_package()`、`validate_descriptor()` 与 `PluginCandidate` / `PackageInspection`；范围：单插件/插件集/无效包分类、包装层穿透、`IXRepo.json` 索引驱动、目录扫描规则、描述文件校验、诊断信息与深度上限。
+>
+> 本文件测试函数与测试类均自带中文 docstring，说明为原文引用。
+>
+> `test_invalid_descriptor_marked_not_installable` 为参数化用例，由 `@pytest.mark.parametrize` 展开为 3 组（缺少必需字段 / 版本号格式无效 / ID 格式无效），故本类 4 个测试函数对应 6 个实测用例。
+
+#### 3.8.1 TestClassification
+
+| 用例函数名 | 说明 |
+|-----------|------|
+| `test_root_directory_is_single_plugin` | 描述文件位于包根 → single，且 rel_path 为空串 |
+| `test_github_style_wrapper_is_unwrapped` | GitHub 下载的 repo-main/ 包装层被穿透 → single |
+| `test_double_wrapper_is_unwrapped` | 用户二次打包（外层/仓库名/插件） → single |
+| `test_parallel_plugins_are_collection` | 并列多个插件目录 → multi |
+| `test_rel_path_is_relative_posix` | 候选的 rel_path 是相对包根的 posix 路径（非绝对路径） |
+
+#### 3.8.2 TestIndexDriven
+
+| 用例函数名 | 说明 |
+|-----------|------|
+| `test_index_order_and_declared_flag` | 索引项优先且按索引顺序，declared_in_index 为 True |
+| `test_undeclared_plugin_is_extra_candidate` | 索引未声明但实际存在的插件也作为候选，且带警告 |
+| `test_missing_declared_directory_reported` | 索引声明的目录不存在 → 该条目不可安装并给出原因（不静默丢弃） |
+| `test_index_path_escape_rejected` | 索引路径越出包根 → 拒绝并说明原因 |
+| `test_broken_index_falls_back_to_scan` | 索引文件损坏时退回目录扫描，并把原因作为警告 |
+
+#### 3.8.3 TestScanRules
+
+| 用例函数名 | 说明 |
+|-----------|------|
+| `test_deep_nesting_is_found` | monorepo 多层嵌套仍能命中（包装层下潜 + 递归扫描） |
+| `test_macos_noise_directory_ignored` | __MACOSX 等噪声目录不影响判定 |
+| `test_underscore_prefixed_directory_skipped` | 下划线前缀目录被跳过（与插件加载器约定一致） |
+| `test_inner_plugin_directory_not_scanned` | 插件目录内部再嵌套插件目录时不误判（命中即停止下潜） |
+| `test_duplicate_id_keeps_first_and_marks_rest` | 同一包内重复 ID：保留首个，其余标记不可安装 |
+| `test_depth_limit_truncates_with_warning` | 超过深度上限的插件不被识别，并给出截断警告 |
+
+#### 3.8.4 TestDescriptorValidation
+
+| 用例函数名 | 说明 |
+|-----------|------|
+| `test_invalid_descriptor_marked_not_installable` | 缺字段 / 版本号非法 / ID 非法 → 该候选不可安装并给出具体原因（参数化 3 组） |
+| `test_non_json_descriptor_reported` | 描述文件不是合法 JSON → 报告读取失败而非崩溃 |
+| `test_invalid_candidate_does_not_block_others` | 一个候选非法不影响同包内其他插件的识别 |
+| `test_validate_descriptor_accepts_valid_minimum` | 最小合法描述文件通过校验 |
+
+#### 3.8.5 TestDiagnostics
+
+| 用例函数名 | 说明 |
+|-----------|------|
+| `test_empty_package_is_invalid_with_stats` | 无任何插件 → invalid，诊断含扫描统计与指引 |
+| `test_missing_root_is_invalid` | 解压目录不存在 → invalid（不抛异常） |
+| `test_has_index_false_without_index_file` | 无索引文件的包 has_index 为 False（决定默认勾选策略） |
+
+---
+
+### 3.9 `test_local_package_install.py`
+
+> 测试类 6 个，测试函数 20 个，实测用例 21 个。被测对象：`core/plugin/github_plugin_installer.py` 的 `install_from_zip()` / `inspect_local_package()` 及 `LocalInstallPlan` / `LocalPackageInspection`；范围：单插件包安装（旧签名行为不变）、插件集一次安装与子集筛选、安装关系预演与默认勾选策略、无效包诊断、临时目录清理、包外文件快照集成。
+>
+> 本文件测试函数与测试类均自带中文 docstring，说明为原文引用。全部用例通过 `isolated_pm` fixture 把官方/第三方插件目录与配置指向 `tmp_path`，不触碰仓库真实 `plugin/`、`custom_plugin/`、`config/`。
+>
+> `test_temp_dir_removed` 为参数化用例，由 `@pytest.mark.parametrize` 展开为 2 组（success / invalid），故 §3.9.5 的 1 个测试函数对应 2 个实测用例。
+
+#### 3.9.1 TestSinglePluginPackage
+
+| 用例函数名 | 说明 |
+|-----------|------|
+| `test_install_single_plugin_zip` | 旧签名 install_from_zip(zip_path) 仍安装单个插件并登记注册表 |
+| `test_inspect_single_plugin` | 识别单插件包：kind=single、计划一项、默认勾选 |
+| `test_inspect_does_not_install` | 识别是只读操作：不产生插件目录、不改注册表 |
+
+#### 3.9.2 TestCollectionPackage
+
+| 用例函数名 | 说明 |
+|-----------|------|
+| `test_install_collection_in_one_call` | 插件集一次安装全部插件，并记录 source_type / source_path |
+| `test_install_subset_by_rel_path` | selected_plugins 按包内相对路径筛选，未选插件不落盘 |
+| `test_install_subset_by_descriptor_id` | selected_plugins 也可用插件 id 匹配（目录名与 id 不一致时） |
+| `test_empty_selection_installs_nothing` | 未选中任何插件时返回空列表且不落盘 |
+| `test_invalid_candidate_skipped_without_blocking` | 不可安装候选被跳过，其余插件照常安装 |
+
+#### 3.9.3 TestRelationsAndSelection
+
+| 用例函数名 | 说明 |
+|-----------|------|
+| `test_upgrade_relation_and_prev_version` | 已装低版本后识别为升级，并带出已装版本号 |
+| `test_downgrade_relation` | 已装高版本后识别为降级 |
+| `test_index_declared_selected_undeclared_not` | 有索引时：索引声明项默认勾选，未声明项默认不勾选 |
+| `test_no_index_selects_all_by_default` | 无索引时全部默认勾选 |
+
+#### 3.9.4 TestInvalidPackage
+
+| 用例函数名 | 说明 |
+|-----------|------|
+| `test_invalid_package_reports_diagnostics` | 无插件的压缩包 → invalid + 扫描统计与指引 |
+| `test_invalid_package_install_returns_error` | 对无效包执行安装 → 单条错误结果，且不产生任何插件目录 |
+| `test_missing_zip_reports_error` | zip 不存在 → 单条错误结果 |
+
+#### 3.9.5 TestTempDirectoryCleanup
+
+| 用例函数名 | 说明 |
+|-----------|------|
+| `test_temp_dir_removed` | 安装结束后安装器创建的临时目录必须被删除（参数化 2 组：成功 / 无效包） |
+
+#### 3.9.6 TestExtraFileBackup
+
+| 用例函数名 | 说明 |
+|-----------|------|
+| `test_upgrade_backs_up_extra_files` | 升级前发现包外文件 → 生成快照并在结果里提示 |
+| `test_no_backup_without_extra_files` | 无包外文件时不提示、不产生快照 |
+| `test_fresh_install_has_no_backup` | 全新安装（无旧目录）不触发快照 |
+| `test_backup_failure_does_not_block_install` | 快照失败时降级为提示，不影响安装成功 |
+
+---
+
+### 3.10 `test_plugin_backup.py`
+
+> 测试类 2 个，测试函数 9 个，实测用例 9 个。被测对象：`core/plugin/plugin_backup.py` 的 `collect_extra_files()`、`snapshot_plugin_dir()` 与 `MAX_BACKUPS_PER_PLUGIN`；范围：包外文件检测与排除规则（`.plugin_info.json`、字节码缓存）、整目录快照的命名与内容、旧目录缺失、版本号分隔符消毒、快照份数裁剪。
+>
+> 本文件测试函数与测试类均自带中文 docstring，说明为原文引用；无参数化，测试函数数与实测用例数一致。
+
+#### 3.10.1 TestCollectExtraFiles
+
+| 用例函数名 | 说明 |
+|-----------|------|
+| `test_detects_files_missing_from_package` | 旧目录中包内没有的文件被识别出来（按相对路径排序） |
+| `test_ignores_plugin_info_and_bytecode` | UUID 文件与字节码缓存不算包外文件 |
+| `test_identical_dirs_have_no_extra` | 新旧目录内容一致时无包外文件 |
+| `test_missing_old_dir_returns_empty` | 旧目录不存在时返回空列表（全新安装场景） |
+
+#### 3.10.2 TestSnapshotPluginDir
+
+| 用例函数名 | 说明 |
+|-----------|------|
+| `test_snapshot_copies_content_with_timestamp_and_version` | 快照包含旧目录内容，目录名带时间戳与版本号 |
+| `test_snapshot_keeps_plugin_info_and_skips_bytecode` | 快照保留 .plugin_info.json（追溯数据归属），忽略 __pycache__/pyc |
+| `test_missing_dir_returns_none` | 旧目录不存在时不产生快照 |
+| `test_version_separators_sanitized` | 版本号中的路径分隔符被消毒，不产生额外目录层级 |
+| `test_prunes_old_snapshots` | 快照份数超过上限时淘汰最旧的，只保留最近 MAX_BACKUPS_PER_PLUGIN 份 |
+
+---
+
+### 3.11 风险关联（R-01）
 
 | 风险 ID | 描述 | 用例编号 | 覆盖情况 | 状态 |
 |---------|------|---------|---------|------|
@@ -477,7 +635,7 @@ minimal_png_base64       # 上述 PNG 的 base64 字符串
 当 `core/plugin/` 添加新功能时：
 1. 在对应的测试文件中找到测试类（新模块则新建 `test_<模块名>.py`）
 2. 添加 `test_*` 测试函数，遵循现有命名规范（`test_<被测行为>_<预期结果>`）
-3. docstring 写明测试目的（建议中文），风格与所在文件现有一致；R-01 相关用例沿用 `TC-PLUGIN-0xx` 编号（见 §3.2、§3.8）
+3. docstring 写明测试目的（建议中文），风格与所在文件现有一致；R-01 相关用例沿用 `TC-PLUGIN-0xx` 编号（见 §3.2、§3.11）
 4. 使用 `create_minimal_plugin()` 创建测试插件，目录取自 `plugin_dir_from_test` / `tmp_path`
 5. 同步更新本文档 §3 清单——代码中每个 `def test_*` 在清单中有且仅有一行，说明按 §3 前言的中译/归纳规则填写，并核对 §1 的统计数字
 6. 运行以下命令确认收集数与执行结果：
