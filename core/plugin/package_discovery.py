@@ -93,7 +93,8 @@ class PluginCandidate:
         description: 描述，保留原始形式（可能为 None 或多语言字典）
         author / homepage: 作者与主页
         keywords / dependencies: 关键词与 Python 依赖声明
-        rel_path: 相对**包根**的 posix 路径，``""`` 表示插件就在包根本身
+        rel_path: 相对**传入的根目录**的 posix 路径（含包装层，如 ``repo-main/plugin-a``）；
+            ``""`` 表示插件就在根目录本身。调用方用 ``根目录 / rel_path`` 即可定位
         valid: 是否可安装（描述文件缺失/字段非法/重复 ID 时为 False）
         error: ``valid`` 为 False 时的中文原因
         declared_in_index: 是否由 ``IXRepo.json`` 索引声明
@@ -379,9 +380,15 @@ def _resolve_index_entry(root: Path, entry: Dict[str, Any]) -> Optional[Path]:
     return target
 
 
-def _candidates_from_index(root: Path, entries: List[Dict[str, Any]]
+def _candidates_from_index(root: Path, base_root: Path, entries: List[Dict[str, Any]]
                            ) -> Tuple[List[PluginCandidate], List[str]]:
-    """按索引构造候选：声明的目录缺失时给出不可安装候选而非静默丢弃"""
+    """按索引构造候选：声明的目录缺失时给出不可安装候选而非静默丢弃
+
+    Args:
+        root: 索引所在目录（索引中的 ``path`` 相对它解析）
+        base_root: 计算候选 ``rel_path`` 的基准目录（见 :func:`discover_plugins`）
+        entries: 索引中的 ``plugins`` 条目
+    """
     candidates: List[PluginCandidate] = []
     warnings: List[str] = []
     for entry in entries:
@@ -395,11 +402,13 @@ def _candidates_from_index(root: Path, entries: List[Dict[str, Any]]
         elif not _has_descriptor(plugin_dir):
             reason = f"索引声明的目录缺少 {PLUGIN_DESCRIPTOR_FILE}: {rel}"
         else:
-            candidates.append(_candidate_from_dir(plugin_dir, root, declared_in_index=True))
+            candidates.append(_candidate_from_dir(plugin_dir, base_root,
+                                                  declared_in_index=True))
             continue
         candidates.append(PluginCandidate(
             descriptor_id=declared_id, name=entry.get("name", ""),
-            rel_path=rel, valid=False, error=reason, declared_in_index=True))
+            rel_path=_rel_posix(plugin_dir or root, base_root), valid=False,
+            error=reason, declared_in_index=True))
         warnings.append(reason)
     return candidates, warnings
 
@@ -429,33 +438,38 @@ def _dedupe_by_id(candidates: List[PluginCandidate]) -> Tuple[List[PluginCandida
     return result, warnings
 
 
-def discover_plugins(root: Path) -> Tuple[List[PluginCandidate], List[str]]:
+def discover_plugins(root: Path, base_root: Optional[Path] = None
+                     ) -> Tuple[List[PluginCandidate], List[str]]:
     """识别包内的全部插件候选
 
     Args:
-        root: 包根（应为 :func:`unwrap_package_root` 处理后的目录）
+        root: 包根（通常为 :func:`unwrap_package_root` 处理后的目录）
+        base_root: 计算候选 ``rel_path`` 的基准目录；默认等于 ``root``。
+            传入**未穿透包装层的原始根**时，``rel_path`` 会带上包装层路径，
+            调用方用 ``原始根 / rel_path`` 即可正确定位插件目录。
 
     Returns:
         Tuple[List[PluginCandidate], List[str]]: (候选列表, 警告列表)
     """
+    base = base_root or root
     index_entries, index_warnings = _read_index(root)
     warnings = list(index_warnings)
 
     if index_entries:
-        candidates, warn = _candidates_from_index(root, index_entries)
+        candidates, warn = _candidates_from_index(root, base, index_entries)
         warnings.extend(warn)
         declared = {c.rel_path for c in candidates}
         scanned, warn, _ = _scan_plugin_dirs(root)
-        extra = [d for d in scanned if _rel_posix(d, root) not in declared]
+        extra = [d for d in scanned if _rel_posix(d, base) not in declared]
         if extra:
             warnings.append(
                 f"发现 {len(extra)} 个未在 {REPO_INDEX_FILE} 中声明的插件目录，"
-                f"默认不勾选：{', '.join(_rel_posix(d, root) for d in extra[:5])}")
-        candidates.extend(_candidate_from_dir(d, root) for d in extra)
+                f"默认不勾选：{', '.join(_rel_posix(d, base) for d in extra[:5])}")
+        candidates.extend(_candidate_from_dir(d, base) for d in extra)
     else:
         scanned, warn, _ = _scan_plugin_dirs(root)
         warnings.extend(warn)
-        candidates = [_candidate_from_dir(d, root) for d in scanned]
+        candidates = [_candidate_from_dir(d, base) for d in scanned]
 
     deduped, dedupe_warnings = _dedupe_by_id(candidates)
     warnings.extend(dedupe_warnings)
@@ -484,6 +498,9 @@ def _diagnose_empty(root: Path, stats: _ScanStats) -> str:
 def inspect_package(root: Path) -> PackageInspection:
     """识别解压目录：单插件 / 插件集 / 无效
 
+    候选的 ``rel_path`` 相对**传入的 root** 计算（含包装层路径），
+    因此调用方用 ``root / candidate.rel_path`` 即可定位插件目录。
+
     Args:
         root: 解压后的顶层目录
 
@@ -496,7 +513,7 @@ def inspect_package(root: Path) -> PackageInspection:
 
     package_root = unwrap_package_root(root)
     has_index = _has_index(package_root)
-    candidates, warnings = discover_plugins(package_root)
+    candidates, warnings = discover_plugins(package_root, base_root=root)
     if not candidates:
         _, _, stats = _scan_plugin_dirs(package_root)
         return PackageInspection(kind=PACKAGE_KIND_INVALID, warnings=tuple(warnings),
