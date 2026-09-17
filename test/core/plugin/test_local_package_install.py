@@ -25,7 +25,7 @@ import pytest
 
 from core.plugin.config_manager import PluginConfigManager
 from core.plugin.github_plugin_installer import GitHubPluginInstaller
-from core.plugin.manager import PluginManager
+from core.plugin.manager import SCOPE_OFFICIAL, SCOPE_THIRDPARTY, PluginManager
 from core.plugin.package_discovery import PACKAGE_KIND_INVALID
 from core.plugin.plugin_groups import PluginGroupStore
 from core.plugin.plugin_registry import PluginRegistry
@@ -366,3 +366,69 @@ class TestExtraFileBackup:
 
         assert results[0].success, "备份失败必须不影响安装"
         assert "备份失败" in results[0].message
+
+
+class TestTargetScope:
+    """目标范围（插件管理页当前 Tab）决定新插件的安装目录"""
+
+    def test_inspect_uses_target_scope(self, installer, tmp_path):
+        """识别预演的范围跟随 target_scope（官方 Tab）"""
+        zip_path = make_plugin_zip(tmp_path / "solo.zip",
+                                   plugins=[("plugin-a", "release.1.0.0")])
+
+        inspection = installer.inspect_local_package(zip_path, target_scope=SCOPE_OFFICIAL)
+
+        assert inspection.plans[0].target_scope == SCOPE_OFFICIAL
+        assert inspection.plans[0].relation == "new"
+
+    def test_inspect_defaults_to_thirdparty(self, installer, tmp_path):
+        """未指定范围时保持旧行为（第三方目录）"""
+        zip_path = make_plugin_zip(tmp_path / "solo.zip",
+                                   plugins=[("plugin-a", "release.1.0.0")])
+
+        inspection = installer.inspect_local_package(zip_path)
+
+        assert inspection.plans[0].target_scope == SCOPE_THIRDPARTY
+
+    def test_install_into_official_scope(self, installer, isolated_pm, tmp_path):
+        """target_scope=official 时装进官方目录，注册表登记为 official"""
+        zip_path = make_plugin_zip(tmp_path / "solo.zip",
+                                   plugins=[("plugin-a", "release.1.0.0")])
+
+        results = installer.install_from_zip(zip_path, target_scope=SCOPE_OFFICIAL)
+
+        assert len(results) == 1 and results[0].success
+        assert (isolated_pm.official_plugin_dir / "plugin-a").is_dir()
+        assert not (isolated_pm.thirdparty_plugin_dir / "plugin-a").exists()
+        assert isolated_pm.registry.find_by_descriptor(
+            SCOPE_OFFICIAL, "plugin-a") is not None
+
+    def test_target_dir_wins_over_scope(self, installer, isolated_pm, tmp_path):
+        """显式 target_dir 优先级高于 target_scope"""
+        zip_path = make_plugin_zip(tmp_path / "solo.zip",
+                                   plugins=[("plugin-a", "release.1.0.0")])
+        explicit_dir = tmp_path / "explicit"
+
+        results = installer.install_from_zip(
+            zip_path, target_dir=explicit_dir, target_scope=SCOPE_OFFICIAL)
+
+        assert len(results) == 1 and results[0].success
+        assert (explicit_dir / "plugin-a").is_dir()
+        assert not (isolated_pm.official_plugin_dir / "plugin-a").exists()
+
+    def test_installed_plugin_keeps_its_directory(self, installer, isolated_pm, tmp_path):
+        """已安装插件即使在另一侧范围下重复安装也保持原地，不产生第二份安装"""
+        first = make_plugin_zip(tmp_path / "v1.zip",
+                                plugins=[("plugin-a", "release.1.0.0")])
+        installer.install_from_zip(first, target_scope=SCOPE_OFFICIAL)
+
+        again = make_plugin_zip(tmp_path / "v2.zip",
+                                plugins=[("plugin-a", "release.2.0.0")])
+        results = installer.install_from_zip(again, target_scope=SCOPE_THIRDPARTY)
+
+        assert len(results) == 1 and results[0].success
+        assert (isolated_pm.official_plugin_dir / "plugin-a").is_dir()
+        assert not (isolated_pm.thirdparty_plugin_dir / "plugin-a").exists()
+        # 注册表分类未被改写
+        assert isolated_pm.registry.find_by_descriptor(
+            SCOPE_OFFICIAL, "plugin-a") is not None
