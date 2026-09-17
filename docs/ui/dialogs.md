@@ -161,7 +161,7 @@ dialog.deleteLater()
 
 ### 3.3 功能特性
 
-- **插件管理页**: 官方/第三方两个插件列表 + 右侧详情面板（名称/版本/来源/语言状态行）；工具栏提供「从 GitHub 安装插件…」（内嵌 `GitHubPluginInstallDialog`）、「安装本地插件包…」（打开 `LocalPackageInstallDialog`，自动识别单插件/插件集，见 §11）、「刷新」；详情面板提供「语言…」（打开 `PluginLanguageDialog` 设置每插件语言覆盖，插件无语言包时置灰并显示 tooltip，见 §10）、「检查更新 / 升级 / 降级…」（列出 GitHub Release 版本供选择，降级二次确认并警告数据不兼容风险）与「卸载…」（确认弹窗，可选「同时删除插件数据」）
+- **插件管理页**: 官方/第三方两个插件列表 + 右侧详情面板（名称/版本/来源/语言状态行）；工具栏提供「从 GitHub 安装插件…」（内嵌 `GitHubPluginInstallDialog`）、「安装本地插件包…」（打开 `LocalPackageInstallDialog`，自动识别单插件/插件集，**新插件装进当前 Tab 对应的目录**，见 §11）、「刷新」；详情面板提供「检查更新 / 升级 / 降级…」（列出 GitHub Release 版本供选择，降级二次确认并警告数据不兼容风险）、「卸载…」（确认弹窗，可选「同时删除插件数据」）、「语言…」（打开 `PluginLanguageDialog` 设置每插件语言覆盖，插件无语言包时置灰并显示 tooltip，见 §10）与**「移至官方插件 / 移至第三方插件」**（文案随当前 Tab 变化：在官方 Tab 显示「移至第三方插件」，反之显示「移至官方插件」；确认后调用 `PluginManager.move_plugin_to_scope()` 移动插件目录，UUID 与插件数据随目录保留，完成后自动刷新两个列表，见 [plugin-manager.md](../core/plugin-system/plugin-manager.md)）
 - **分组与排序页**: 官方/第三方各一个 `GroupEditorWidget`——左侧「面板顺序」为分组与未分组插件的统一混排列表（新建/重命名/设置图标/删除分组、上移/下移），右侧穿梭框编辑选中分组的组内成员与组内顺序；「保存分组与排序」统一提交两个 scope，「重置」放弃工作副本重新加载
 - **后台执行**: 下载/安装等耗时操作经 `_Worker`（QThread）后台执行，期间禁用对话框防止并发操作
 - **确认与提示**: 统一使用 UIKit Dialog / Message（模块级 `_confirm` / `_notice` / `_prompt_text` / `_prompt_item` 辅助函数），替代 QMessageBox / QInputDialog
@@ -563,6 +563,11 @@ dialog.exec()
 适配任意层嵌套（`repo-<branch>/`、用户二次打包、`macOS` 的 `__MACOSX` 干扰等），
 用户不必再解压、翻目录、逐个打包。
 
+**目标目录**由调用方传入：插件管理对话框把**当前 Tab** 对应的范围作为
+`target_scope` 交给本对话框（官方 Tab → `plugin/`，第三方 Tab → `custom_plugin/`），
+识别预览中的范围标签与最终落盘目录都据此显示；已安装同 id 插件仍沿用其原目录
+（升级/降级不搬家，避免同一插件出现两份安装）。
+
 识别规则矩阵与失败诊断见 [GitHub 插件安装器 §4.7](../core/plugin-system/plugin-installer.md)。
 
 ### 11.2 窗口属性
@@ -615,7 +620,9 @@ dialog.exec()
 ```python
 from ui.dialog.local_package_install_dialog import LocalPackageInstallDialog
 
-dialog = LocalPackageInstallDialog(parent_window, installer=installer)
+# target_scope：新插件的目标范围（通常取插件管理页当前 Tab 对应的范围）
+dialog = LocalPackageInstallDialog(parent_window, installer=installer,
+                                   target_scope="official")
 dialog.plugin_installed.connect(lambda results: self._refresh_after_change())
 dialog.exec()
 

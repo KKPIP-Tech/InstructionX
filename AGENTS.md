@@ -224,7 +224,8 @@ core/
                             #   ILLMService（i_llm_service.py，LLM 插件服务契约）、PluginServices（依赖注入容器）
   plugin/                   # 插件系统核心
     manager.py              # PluginManager 单例：加载/注册插件、热重载（完整卸载旧实例）、
-                            #   跨插件 API 注册、插件卸载（uninstall_plugin）、自定义分组与排序
+                            #   跨插件 API 注册、插件卸载（uninstall_plugin）、
+                            #   插件分类移动（move_plugin_to_scope，官方 ↔ 第三方）、自定义分组与排序
     plugin_identity.py      # 插件 UUID（优先 {插件目录}/.plugin_info.json，不可写时回退
                             #   data/plugin_identity/{插件目录名}.json；卸载时 delete() 清理）
     config_manager.py       # 插件显示顺序（config/plugin_order.json）
@@ -321,9 +322,12 @@ ui/                         # 界面层
                                #   每次关闭必问（无记忆选项），Esc/叉号等价于取消
     plugin_management_dialog.py  # 插件管理对话框：安装/升级/降级/卸载 + 分组与排序
                                  #   （替代原 plugin_order_dialog 的菜单入口）；
-                                 #   详情面板含「语言…」按钮与语言状态行（无语言包置灰）
+                                 #   详情面板含「语言…」按钮与语言状态行（无语言包置灰）、
+                                 #   「移至官方插件 / 移至第三方插件」按钮（文案随当前 Tab 变化）；
+                                 #   「安装本地插件包」按当前 Tab 决定目标目录
     local_package_install_dialog.py  # 本地插件包安装对话框：选 zip → 自动识别
-                                 #   单插件/插件集（任意层嵌套）→ 勾选后一次装完
+                                 #   单插件/插件集（任意层嵌套）→ 勾选后一次装完；
+                                 #   target_scope 决定新插件的目标目录（官方/第三方）
     language_dialog.py        # 界面语言选择对话框（编辑菜单「语言」打开，
                               #   选中即 LanguageManager.set_language 实时切换）
     plugin_language_dialog.py # 插件语言选择对话框（「跟随框架（默认）」+ 插件实际提供的语言，

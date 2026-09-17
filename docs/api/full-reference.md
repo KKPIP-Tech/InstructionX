@@ -144,6 +144,7 @@ from core.interfaces import ILocalizationFacade
 | `register_plugin(plugin, is_official)` | 手动注册插件 | None |
 | `unregister_plugin(plugin_name)` | 移除插件 | None |
 | `uninstall_plugin(plugin_id, remove_data=False)` | 完整卸载插件（六步流程：运行时卸载 → 注册表移除 → 删除目录 → 清理 UUID → 清理排序/分组/版本注册表/语言覆盖 → 可选删数据） | Dict（`{success, message, warnings}`） |
+| `move_plugin_to_scope(plugin_id, target_scope)` | 把已安装插件在官方 / 第三方目录之间移动（UUID 与数据随目录保留，分组排序记录清除；成功后由调用方 `reload_plugins()`） | Dict（`{success, message, warnings}`） |
 | `get_groups(scope)` | 获取指定 scope 的用户自定义分组列表（`"official"` / `"thirdparty"`） | List[PluginGroup] |
 | `save_groups(scope, groups, order=None)` | 保存分组配置与面板统一顺序（分组与未分组插件混排） | bool |
 | `get_sorted_plugins(scope)` | 按面板统一顺序返回渲染序列（分组与未分组插件混排） | List[tuple] |
@@ -167,8 +168,8 @@ from core.interfaces import ILocalizationFacade
 |------|------|------|
 | `inspect_repository(github_url)` | 检查 GitHub 仓库返回可安装插件列表 | RepoInspectionResult |
 | `install_from_url(github_url, ...)` | 从 GitHub URL 安装插件 | List[InstallResult] |
-| `inspect_local_package(zip_path)` | 识别本地插件包：单插件 / 插件集 / 无效，并预演各插件的安装关系（新装/升级/降级/重装）、目标范围与默认勾选；只读，不落盘 | LocalPackageInspection |
-| `install_from_zip(zip_path, target_dir=None, progress_callback=None, selected_plugins=None)` | 从本地 zip 安装/升级/降级插件（自动识别单插件与插件集；`selected_plugins` 按包内相对路径或插件 id 筛选，None 为全部可安装项） | List[InstallResult] |
+| `inspect_local_package(zip_path, target_scope=None)` | 识别本地插件包：单插件 / 插件集 / 无效，并预演各插件的安装关系（新装/升级/降级/重装）、目标范围（随 `target_scope`）与默认勾选；只读，不落盘 | LocalPackageInspection |
+| `install_from_zip(zip_path, target_dir=None, progress_callback=None, selected_plugins=None, target_scope=None)` | 从本地 zip 安装/升级/降级插件（自动识别单插件与插件集；`selected_plugins` 按包内相对路径或插件 id 筛选；`target_scope` 决定新插件的目标目录，已安装同 id 插件沿用原目录） | List[InstallResult] |
 | `get_available_versions(source_url, descriptor_path="")` | 列出远程仓库可用版本（按插件版本号降序，对每个 Release tag 经 Contents API 读取 `IXPlugin.json` 解析版本） | List[ReleaseInfo] |
 | `install_release(owner, repo, tag, target_dir, selected_plugins=None, progress_callback=None)` | 安装指定 GitHub Release tag 对应的插件版本（upgrade / downgrade / reinstall 自动检测） | List[InstallResult] |
 

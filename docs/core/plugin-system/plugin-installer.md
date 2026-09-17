@@ -270,7 +270,8 @@ def validate_descriptor(self, descriptor: Dict[str, Any]) -> Tuple[bool, str]:
 ### 4.5 inspect_local_package()
 
 ```python
-def inspect_local_package(self, zip_path) -> LocalPackageInspection:
+def inspect_local_package(self, zip_path,
+                          target_scope: Optional[str] = None) -> LocalPackageInspection:
     """
     识别本地插件包：单插件 / 插件集 / 无效，并预演各插件的安装关系
 
@@ -278,6 +279,8 @@ def inspect_local_package(self, zip_path) -> LocalPackageInspection:
 
     Args:
         zip_path: 本地插件包路径（.zip）
+        target_scope: 新插件的目标范围（official / thirdparty，通常取插件
+            管理页当前 Tab）；已安装同 id 插件仍沿用其原目录。None 时为第三方目录
 
     Returns:
         LocalPackageInspection: 分类结果、逐个插件的安装计划与警告；
@@ -286,7 +289,7 @@ def inspect_local_package(self, zip_path) -> LocalPackageInspection:
 ```
 
 - 识别与安装**各自解压一次**（换取接口无状态、避免跨调用持有临时目录造成泄漏）；插件包通常仅数 MB，成本可接受；
-- 每个计划含安装关系（新装/升级/降级/重装）、目标范围（官方/第三方）与默认勾选建议；
+- 每个计划含安装关系（新装/升级/降级/重装）、目标范围（官方/第三方，随 `target_scope` 变化）与默认勾选建议；
 - 识别失败时给出**可诊断**信息：已扫描目录数与层数、跳过的噪声目录数、是否发现索引，
   以及「请确认压缩包内包含 IXPlugin.json；若为插件集，建议在仓库根提供 IXRepo.json」的指引。
 
@@ -298,17 +301,20 @@ def install_from_zip(
     zip_path,
     target_dir: Path = None,
     progress_callback=None,
-    selected_plugins: Optional[List[str]] = None
+    selected_plugins: Optional[List[str]] = None,
+    target_scope: Optional[str] = None
 ) -> List[InstallResult]:
     """
     从本地 zip 插件包安装/升级/降级插件（支持单插件与插件集）
 
     Args:
         zip_path: 本地插件包路径
-        target_dir: 目标目录；为 None 时逐个自动判定
+        target_dir: 目标目录（优先级最高）；为 None 时按 target_scope 判定
         progress_callback: 进度回调（逐插件调用）
         selected_plugins: 只安装这些插件（按包内相对路径或插件 id 匹配，
             两侧均忽略首尾斜杠）；None 表示安装全部可安装候选
+        target_scope: 新插件的目标范围（official / thirdparty，通常取插件
+            管理页当前 Tab）；已安装同 id 插件仍沿用其原目录。None 时为第三方目录
 
     Returns:
         List[InstallResult]: 每个插件一条结果（顺序与识别顺序一致）；
@@ -349,10 +355,24 @@ def install_from_zip(
 
 ## 5. 安装目录规则
 
+### 5.1 GitHub 安装（按仓库 owner 判定）
+
 | GitHub 组织/用户 | 目标目录 |
 |----------------|---------|
 | `https://github.com/KKPIP-Tech/*` | `project_root/plugin/` |
 | 其他所有仓库 | `project_root/custom_plugin/` |
+
+### 5.2 本地插件包安装（按插件管理页当前 Tab 判定）
+
+| 当前 Tab | 目标目录 |
+|---------|---------|
+| 官方插件 | `project_root/plugin/` |
+| 第三方插件 | `project_root/custom_plugin/` |
+
+判定优先级：**显式 `target_dir`** > `target_scope`（当前 Tab）> 兜底第三方目录；
+**已安装同 id 插件始终沿用其所在目录**（升级/降级不搬家，避免同一插件在两处各留一份——
+两份会共用同一 UUID，卸载与更新会互相干扰）。插件安装后可用详情面板的
+「移至官方插件 / 移至第三方插件」按钮调整分类，见 [plugin-manager.md §move_plugin_to_scope()](plugin-manager.md)。
 
 ---
 
