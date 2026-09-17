@@ -167,6 +167,25 @@ class PluginRegistry:
             return self._save()
         return True
 
+    def set_scope(self, plugin_id: str, scope: str) -> bool:
+        """更新插件记录的分类（插件在官方 ↔ 第三方目录之间移动时调用）
+
+        只改 ``scope`` 字段：版本、来源与安装时间随插件目录一起保持不变。
+
+        Args:
+            plugin_id: 插件 UUID
+            scope: 新的分类（"official" / "thirdparty"）
+
+        Returns:
+            记录存在且保存成功返回 True；记录不存在返回 False
+        """
+        record = self._load()["plugins"].get(plugin_id)
+        if record is None:
+            self._logger.warning(get_name(), f"移动插件分类失败：注册表无记录 {plugin_id}")
+            return False
+        record["scope"] = scope
+        return self._save()
+
     # ==================== 回填 ====================
 
     def backfill(self, entries: List[Tuple[str, str, Path]]) -> int:

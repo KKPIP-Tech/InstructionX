@@ -37,6 +37,18 @@ from .tool_name import sanitize_tool_name  # noqa: F401
 
 from utils.logging_tools import LoggerManager, get_name
 
+# ===== 插件目录范围标识 =====
+#: 官方插件目录（``PluginManager.official_plugin_dir``）
+SCOPE_OFFICIAL = "official"
+#: 第三方插件目录（``PluginManager.thirdparty_plugin_dir``）
+SCOPE_THIRDPARTY = "thirdparty"
+
+#: 范围标识 → 中文描述（日志与返回值文案用；界面文案由 i18n 提供）
+_SCOPE_LABELS: Dict[str, str] = {
+    SCOPE_OFFICIAL: "官方插件",
+    SCOPE_THIRDPARTY: "第三方插件",
+}
+
 
 def get_plugin_manager() -> "PluginManager":
     """获取插件管理器单例实例
@@ -588,12 +600,7 @@ class PluginManager:
         self._unload_plugin_instance(plugin)
 
         # 2. 从注册表与列表移除
-        self._plugin_registry.pop(plugin_id, None)
-        self._plugin_name_to_id.pop(plugin_name, None)
-        if plugin in self._official_plugins:
-            self._official_plugins.remove(plugin)
-        if plugin in self._thirdparty_plugins:
-            self._thirdparty_plugins.remove(plugin)
+        self._detach_plugin(plugin)
 
         # 3. 删除插件目录
         if plugin_dir is not None and plugin_dir.exists():
@@ -620,6 +627,97 @@ class PluginManager:
 
         self._logger.info(get_name(), f'插件卸载完成: {plugin_name} ({plugin_id})')
         return {"success": True, "message": f"插件 {plugin_name} 已卸载", "warnings": warnings}
+
+    def move_plugin_to_scope(self, plugin_id: str, target_scope: str) -> Dict[str, Any]:
+        """把已安装插件移动到另一个插件目录（官方 ↔ 第三方）
+
+        流程：前置校验 → 运行时卸载 → 移动插件目录 → 更新注册表分类与分组/排序。
+        插件身份标识（目录内 ``.plugin_info.json``）随目录一起移动，UUID、插件数据
+        与语言覆盖均保持不变；插件在原分类中的分组与排序记录会被清除，移动后在
+        目标分类中作为未分组插件排在末尾。
+
+        调用方需在成功后重新加载插件（``reload_plugins()``）使插件在目标分类下
+        生效——插件管理对话框经 ``_refresh_after_change()`` 完成。
+
+        Args:
+            plugin_id: 插件 UUID
+            target_scope: 目标范围（``official`` / ``thirdparty``）
+
+        Returns:
+            {"success": bool, "message": str, "warnings": List[str]}
+        """
+        plugin = self._plugin_registry.get(plugin_id)
+        if plugin is None:
+            return {"success": False, "message": "插件不存在或未加载", "warnings": []}
+
+        plugin_name = plugin.plugin_name
+        source_dir = getattr(plugin, "_plugin_dir", None)
+        problem = self._check_move(source_dir, target_scope)
+        if problem:
+            return {"success": False, "message": problem, "warnings": []}
+
+        target_dir = Path(self._scope_directory(target_scope)) / Path(source_dir).name
+        self._logger.info(
+            get_name(), f'移动插件 {plugin_name} ({plugin_id}): {source_dir} → {target_dir}')
+
+        # 1. 运行时卸载并从内存表移除（与卸载流程一致，避免残留指向旧目录的实例）
+        self._unload_plugin_instance(plugin)
+        self._detach_plugin(plugin)
+
+        # 2. 移动插件目录；失败时重新扫描目录，尽量恢复到可用状态
+        error = self._move_plugin_directory(Path(source_dir), target_dir)
+        if error:
+            self.reload_plugins()
+            return {"success": False, "message": error, "warnings": []}
+
+        # 3. 注册表分类与分组/排序记录跟随移动
+        self.registry.set_scope(plugin_id, target_scope)
+        self._remove_from_order_config(plugin_id)
+        self.group_store.remove_plugin(plugin_id)
+        self._logger.info(get_name(), f'插件 {plugin_name} 已移至{_SCOPE_LABELS[target_scope]}')
+        return {"success": True,
+                "message": f"插件 {plugin_name} 已移至{_SCOPE_LABELS[target_scope]}",
+                "warnings": []}
+
+    def _check_move(self, source_dir: Optional[Path], target_scope: str) -> str:
+        """移动前置校验；返回空串表示可移动，否则返回中文失败原因"""
+        target_root = self._scope_directory(target_scope)
+        if target_root is None:
+            return f"未知的插件分类: {target_scope}"
+        if source_dir is None or not Path(source_dir).exists():
+            return "插件目录不存在，无法移动"
+        if Path(source_dir).parent == Path(target_root):
+            return f"插件已在{_SCOPE_LABELS[target_scope]}中"
+        if (Path(target_root) / Path(source_dir).name).exists():
+            return "目标分类中已存在同名插件目录，请先处理该目录"
+        return ""
+
+    def _scope_directory(self, scope: str) -> Optional[Path]:
+        """范围标识对应的插件目录；非法范围返回 None"""
+        if scope == SCOPE_OFFICIAL:
+            return self.official_plugin_dir
+        if scope == SCOPE_THIRDPARTY:
+            return self.thirdparty_plugin_dir
+        return None
+
+    def _detach_plugin(self, plugin: IPlugin) -> None:
+        """把插件实例从运行时表移除（卸载与移动共用）"""
+        self._plugin_registry.pop(plugin.plugin_id, None)
+        self._plugin_name_to_id.pop(plugin.plugin_name, None)
+        if plugin in self._official_plugins:
+            self._official_plugins.remove(plugin)
+        if plugin in self._thirdparty_plugins:
+            self._thirdparty_plugins.remove(plugin)
+
+    def _move_plugin_directory(self, source: Path, target: Path) -> str:
+        """移动插件目录；返回空串表示成功，否则返回中文失败原因"""
+        try:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(source), str(target))
+        except (OSError, shutil.Error) as e:
+            self._logger.error(get_name(), f"移动插件目录失败 {source} → {target}: {e}")
+            return f"移动插件目录失败: {e}"
+        return ""
 
     def _remove_from_order_config(self, plugin_id: str) -> None:
         """从 plugin_order.json 中移除指定插件 UUID"""
