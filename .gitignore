@@ -144,6 +144,9 @@ ENV/
 env.bak/
 venv.bak/
 
+# TUI 安装向导自身的工作目录（界面依赖虚拟环境 .tui/venv、语言偏好、升级下载残留）
+.tui/
+
 # Spyder project settings
 .spyderproject
 .spyproject

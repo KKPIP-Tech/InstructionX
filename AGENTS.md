@@ -75,11 +75,12 @@ python -m pytest test/ -q --tb=short -p no:cacheprovider
 - **注意**：`test/` 下当前仅保留 `test/core/data/test_data_provider.py` 一个有效测试文件（其余旧测试已在重构中删除，残留的 `__pycache__` 是过期产物，不要参考）。现有测试约定：中文 docstring、`tmp_path` fixture、测试单例类时需重置 `XxxManager._instance = None`。
 - UI 测试不配置 offscreen 平台，CI 跑在 `windows-latest` 上使用真实 GUI。
 - 项目还有一类**独立验证脚本**（非 pytest，放在 `scripts/`，用 `.venv\Scripts\python.exe scripts\<name>.py` 直接运行）：
-  - `smoke_*.py`：核心链路无网冒烟测试（LLM、task、utils、i18n、字体管理、插件管理：安装/升级/降级/卸载/分组、本地插件包自动识别与插件集一次安装、包外文件兜底备份）
+  - `smoke_*.py`：核心链路无网冒烟测试（LLM、task、utils、i18n、字体管理、插件管理：安装/升级/降级/卸载/分组、本地插件包自动识别与插件集一次安装、包外文件兜底备份）；`smoke_setup_wizard.py` 针对原生安装向导（`setup.ps1` / `setup.sh`：文案完整性、两平台界面逐行一致性、uv 命令口径、干跑安全、Python 向导已移除）
   - `check_i18n_completeness.py`：语言文件完整性校验（默认语言必须覆盖源码全部 `tr()` 调用，缺键 exit 1；其他语言缺键/孤立键 WARNING；支持 `--text-dir`/`--src-dir`/`--plugin-root`）
   - `screenshot_*.py`：对话框截图对比脚本（输出到 `scripts/screenshots/`）
   - `_mcp_smoke*.py`：真实 MCP SDK 冒烟测试
   - `demo_*.py`：功能演示脚本
+- **安装向导是原生脚本**（`setup.ps1` / `setup.sh`），不依赖 Python 与第三方库：任何改动都要**两个平台同步修改**并保持界面逐字一致，改完必须运行 `scripts/smoke_setup_wizard.py`（它会让两个脚本各渲染全部页面并逐行比对）。界面文字一律放进 `setup_text/*.txt`，脚本正文保持纯 ASCII（`setup.ps1` 另需保存为 UTF-8 with BOM，冒烟测试会检查）。
 - 另外，`scripts/` 下有 4 个 `test_*.py` 文件属 UI 验证脚本（`test_debug_cluster_framework_api_demo.py`、`test_long_running_task.py`、`test_model_edit_sync.py`、`test_provider_switch_rendering.py`），命名虽似 pytest 测试，但不在 `testpaths = ["test"]` 的收集范围内，需直接运行。
 
 ## CI / 部署
@@ -217,6 +218,15 @@ python -m pytest test/ -q --tb=short -p no:cacheprovider
 
 ```
 main.py                     # 应用入口
+setup.ps1                   # 安装向导 · Windows 原生 TUI（PowerShell 5.1，不依赖 Python / 第三方库）：
+                            #   环境总览 / 安装与修复 / 升级 / 环境管理 / 一键体检 / 清理卸载 / 启动（调试用途）/ 中英双语；
+                            #   首次安装成功自动创建桌面快捷方式（ui/logo.ico，pythonw 启动无控制台窗口），卸载时删除；
+                            #   支持 -Check 文本体检、-State 状态导出、-Preview 渲染、-Action 非交互动作、-DryRun/-Yes
+setup.sh                    # 安装向导 · macOS 原生 TUI（bash 3.2，同样不依赖 Python），界面与 setup.ps1 逐字一致；
+                            #   首次安装成功创建 ~/Desktop/InstructionX.app 启动器（logo.png 转 icns），卸载时删除
+setup.bat / setup.command   # Windows / macOS 双击入口（只调用上面的原生脚本；无 Python 也能跑）
+setup_text/                 # 向导中英双语文案（zh.txt / en.txt，两个脚本共用的唯一来源；
+                            #   脚本正文保持纯 ASCII，装饰字符由码位构造）
 core/
   __init__.py               # PEP-562 惰性导出，避免 import core 时拉起 PySide6
   version.py                # VERSION 常量（版本单一来源）
@@ -401,6 +411,8 @@ config/ data/ logs/         # 运行时生成：配置、数据、日志
 | `data/fonts/` | 框架安装字体的存储目录（字体文件 + `fonts.json` 注册表，schema v1：顶层 `version` + `fonts` 数组） |
 | `{插件目录}/.plugin_info.json` 或 `data/plugin_identity/{插件目录名}.json` | 插件 UUID（优先前者，插件目录不可写时回退后者） |
 | `logs/application.log` | 应用日志 |
+| `.tui/lang`、`.tui/work/` | 安装向导运行时目录（已在 `.gitignore` 忽略；向导为原生脚本，**不创建 `.tui/venv`**）：`lang` 记录界面语言偏好（下次启动时读取）；`work/` 为升级下载/解压的临时目录 |
+| `logs/tui_setup.log` | TUI 安装向导日志（与应用日志同目录，便于用户反馈问题时一并提供） |
 
 ### 环境变量
 
@@ -441,6 +453,7 @@ config/ data/ logs/         # 运行时生成：配置、数据、日志
 - LLM：`docs/core/llm-provider/`、`docs/plugins/llm-integration-guide.md`
 - MCP：`docs/core/mcp/overview.md`
 - API 参考：`docs/api/full-reference.md`
+- 安装与环境管理：`docs/tui-setup.md`（**原生**安装向导 `setup.ps1` / `setup.sh`：两平台界面规范、安装/升级/体检/清理策略、uv 命令口径、目录与日志约定）
 - 插件开发快速入门：根目录 `插件开发流程.md`（环境初始化 / 插件仓库配置 / AI 辅助提示词模板，面向插件开发者）
 
 **根目录历史设计报告**（已落地为正式文档，仅作决策溯源参考）：

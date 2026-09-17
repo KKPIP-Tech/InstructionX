@@ -83,20 +83,50 @@ The framework itself ships no business functionality: every capability is plugge
 
 ## Quick Start
 
-### Requirements
+### Option A: TUI wizard (recommended for non-developers)
 
-- Windows 10 / 11
+**Double-click** `setup.bat` (Windows) or `setup.command` (macOS).
+
+The wizard is a **native script** (Windows: PowerShell 5.1; macOS: the built-in bash) and needs
+**neither Python nor any third-party package** — so it also works on a machine that has no Python at all:
+
+```powershell
+# Windows (command line, optional flags)
+powershell -NoProfile -ExecutionPolicy Bypass -File setup.ps1            # open the Chinese/English wizard
+powershell -NoProfile -ExecutionPolicy Bypass -File setup.ps1 -Check     # environment health report only
+```
+
+```bash
+# macOS (command line, optional flags)
+./setup.sh            # open the Chinese/English wizard
+./setup.sh --check    # environment health report only
+```
+
+The wizard covers **install / repair, framework upgrade, environment management, health check,
+cleanup & uninstall, and launching the app**, with plain-language hints, automatic preparation of
+uv and Python 3.14, and a full log in `logs/tui_setup.log`.
+Both platforms render exactly the same interface.
+See [Setup Wizard](docs/tui-setup.md) (Chinese, with an English summary).
+
+### Option B: manual setup (developers)
+
+#### Requirements
+
+- Windows 10 / 11 (primary target platform; macOS also runs, with some system integrations limited)
 - Python 3.14 or higher
 - [uv](https://docs.astral.sh/uv/) (Python virtual environment & dependency manager)
 
-### Install uv
+#### Install uv
 
 ```bash
 # Windows (PowerShell)
 powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+
+# macOS / Linux
+curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
-### Install Dependencies
+#### Install Dependencies
 
 The first run of `uv run main.py` automatically creates a virtual environment and syncs dependencies from `uv.lock`; you may also install them explicitly first:
 
@@ -105,9 +135,9 @@ uv venv
 uv pip install -r requirements.txt
 ```
 
-> Note: Do **not** use `uv sync` — it strictly reconciles to `uv.lock` and **removes** extra packages installed in the environment (e.g., plugin dependencies installed via the framework's DependencyManager, or test dependencies).
+> Note: Do **not** use `uv sync` to repair an existing environment — it strictly reconciles to `uv.lock` and **removes** extra packages installed in the environment (e.g., plugin dependencies installed via the framework's DependencyManager, or test dependencies). For a **fresh** install (no `.venv` yet) you may use `uv sync --no-dev --no-install-project` (this is what the TUI wizard does).
 
-### Run
+#### Run
 
 ```bash
 uv run main.py

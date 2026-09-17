@@ -1,0 +1,8 @@
+# 安装向导脚本行尾钉死：bash 要求 LF、cmd 要求 CRLF，禁止 core.autocrlf 检出时转换
+# （Windows 上克隆若被转成 CRLF，setup.sh / setup.command 将无法被 bash 正确解析，
+#   冒烟测试 scripts/smoke_setup_wizard.py 会校验这些行尾约束）
+setup.sh            text eol=lf
+setup.command       text eol=lf
+setup.bat           text eol=crlf
+setup.ps1           text eol=lf
+setup_text/*.txt    text eol=lf
