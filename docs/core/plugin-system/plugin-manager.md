@@ -506,6 +506,33 @@ def uninstall_plugin(self, plugin_id: str, remove_data: bool = False) -> Dict[st
 
 `PluginIdentity(plugin_dir).delete()`：删除插件目录下优先生成的 `.plugin_info.json`，以及回退目录 `data/plugin_identity/{插件目录名}.json`（两者可能都存在）。
 
+#### move_plugin_to_scope()
+
+把已安装插件在 `plugin/`（官方）与 `custom_plugin/`（第三方）之间移动：
+
+```python
+def move_plugin_to_scope(self, plugin_id: str, target_scope: str) -> Dict[str, Any]:
+    """
+    流程：前置校验 → 运行时卸载 → 移动插件目录 → 更新注册表分类与分组/排序
+
+    - 插件身份标识（目录内 .plugin_info.json）随目录一起移动 ⇒ UUID、插件数据、
+      每插件语言覆盖、注册表版本/来源记录全部保持不变（数据不迁移、不丢失）；
+    - 原分类中的分组与排序记录被清除，移动后在目标分类中作为未分组插件排在末尾；
+    - 目标分类已存在同名目录、插件已在目标分类、插件未加载时拒绝并返回中文原因；
+    - 成功后**由调用方重新加载插件**（`reload_plugins()`）使插件在目标分类下生效，
+      插件管理对话框经 `_refresh_after_change()` 完成。
+
+    Args:
+        plugin_id: 插件 UUID
+        target_scope: 目标范围（"official" / "thirdparty"）
+
+    Returns:
+        Dict: {"success": bool, "message": str, "warnings": List[str]}
+    """
+```
+
+界面入口：插件管理对话框详情面板的「移至官方插件 / 移至第三方插件」按钮（文案随当前 Tab 变化）。
+
 ### 3.8.2 用户自定义分组与混排排序
 
 #### get_groups()

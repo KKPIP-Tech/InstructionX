@@ -286,6 +286,9 @@ Interfaces using this font will fall back to a system font after uninstallation.
       <text key="title.uninstall_done">Uninstall Completed</text>
       <text key="title.save_failed">Save Failed</text>
       <text key="title.operation_failed">Operation Failed</text>
+      <text key="title.confirm_move">Confirm Move</text>
+      <text key="title.move_done">Move Completed</text>
+      <text key="title.move_failed">Move Failed</text>
 
       <!-- 页签与 scope 分类名 -->
       <text key="tab.manage">Plugin Management</text>
@@ -303,6 +306,8 @@ Interfaces using this font will fall back to a system font after uninstallation.
       <text key="button.acknowledge">Got It</text>
       <text key="button.move_up">Move Up</text>
       <text key="button.move_down">Move Down</text>
+      <text key="button.move_to_official">Move to Official</text>
+      <text key="button.move_to_thirdparty">Move to Third-party</text>
       <text key="button.new_group">New Group</text>
       <text key="button.rename">Rename</text>
       <text key="button.set_icon">Set Icon</text>
@@ -348,6 +353,9 @@ Interfaces using this font will fall back to a system font after uninstallation.
       <text key="message.save_groups_failed">Unable to save the group configuration. Please check permissions and disk space.</text>
       <text key="message.groups_saved">Groups and order saved</text>
       <text key="message.operation_busy">Another operation is in progress, please wait</text>
+      <text key="message.move_confirm"><![CDATA[Move plugin "{name}" to {target}?
+  The plugin is unloaded first, then reloaded under the target category; its identity and data are preserved.]]></text>
+      <text key="message.moved">Plugin "{name}" moved to {target}</text>
 
       <!-- 版本选择对话框 -->
       <text key="version_select.title">Select Version - {name}</text>

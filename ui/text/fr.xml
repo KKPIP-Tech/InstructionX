@@ -26,18 +26,18 @@
        文案用完整专业表述即可；
     2. **固定宽度控件必须让文案装进既有宽度**，否则会被裁切；实测约束如下：
        - 使用历史表格列（70/80px）：表头 QSS 左右内边距各 10px 且以粗体绘制，
-         实际可用宽度 ≈ 列宽 − 23px，故取 « Service »（« Fournisseur » 会溢出）、
-         « Heure »、« Modèle »、« Entrée »、« Sortie »、« Tokens »、« Cache »、
-         « Du cache »、« Durée »、« Flux »；
-       - GitHub 安装对话框「检查」按钮（80px）：« Vérifier »（« Analyser » 需 83px）；
-       - LLM 详情面板「检测」按钮（76px）与忙碌态：« Tester » / « Test… »；
-       - LLM 详情面板「重置」按钮（64px）：« Réinitialiser » 需 100px、« Réinit. »
-         需 70px，均放不下，故用法语通用缩写 « RAZ »（58px），完整语义由
+         实际可用宽度 ≈ 列宽 − 23px，故取 « Service »（« Fournisseur » 会溢出）、
+         « Heure »、« Modèle »、« Entrée »、« Sortie »、« Tokens »、« Cache »、
+         « Du cache »、« Durée »、« Flux »；
+       - GitHub 安装对话框「检查」按钮（80px）：« Vérifier »（« Analyser » 需 83px）；
+       - LLM 详情面板「检测」按钮（76px）与忙碌态：« Tester » / « Test… »；
+       - LLM 详情面板「重置」按钮（64px）：« Réinitialiser » 需 100px、« Réinit. »
+         需 70px，均放不下，故用法语通用缩写 « RAZ »（58px），完整语义由
          detail.reset_tooltip 承载；
-       - 默认模型行标签（110px）：« Modèle de chat »、« Embeddings »；
-       - 分组编辑器按钮（56px）：« Haut » / « Bas »（« Descendre » 需 74px）；
-       - KPI 卡片标题与同比小字（约 97px）：« Tokens d’entrée »、« Tokens de sortie »、
-         « Taux de cache »、« vs période {pct:+.1f} % »（« vs période préc. » 会溢出）。
+       - 默认模型行标签（110px）：« Modèle de chat »、« Embeddings »；
+       - 分组编辑器按钮（56px）：« Haut » / « Bas »（« Descendre » 需 74px）；
+       - KPI 卡片标题与同比小字（约 97px）：« Tokens d’entrée »、« Tokens de sortie »、
+         « Taux de cache »、« vs période {pct:+.1f} % »（« vs période préc. » 会溢出）。
   校验：.venv\Scripts\python.exe scripts/check_i18n_completeness.py
        .venv\Scripts\python.exe temp\verify_language_texts.py （目标语言参数 fr）
 -->
@@ -189,8 +189,8 @@
     <text key="detail.check.status_checking">Test de la connexion…</text>
     <text key="detail.check.status_ok">✓ Connexion établie · modèles : {count}</text>
     <text key="detail.check.status_fail">✗ Échec de la connexion : {error}</text>
-    <!-- 「重置」按钮为固定 64px：« Réinitialiser » 需 100px、« Réinit. » 需 70px，
-         均放不下，故用法语通用缩写 « RAZ »（remise à zéro，58px），
+    <!-- 「重置」按钮为固定 64px：« Réinitialiser » 需 100px、« Réinit. » 需 70px，
+         均放不下，故用法语通用缩写 « RAZ »（remise à zéro，58px），
          完整语义由 detail.reset_tooltip 承载 -->
     <text key="detail.reset_button">RAZ</text>
     <text key="detail.reset_tooltip">Rétablir l’adresse d’API par défaut</text>
@@ -330,6 +330,9 @@
     <text key="title.uninstall_done">Désinstallation terminée</text>
     <text key="title.save_failed">Échec de l’enregistrement</text>
     <text key="title.operation_failed">Échec de l’opération</text>
+    <text key="title.confirm_move">Confirmer le déplacement</text>
+    <text key="title.move_done">Déplacement effectué</text>
+    <text key="title.move_failed">Échec du déplacement</text>
 
     <!-- 页签与 scope 分类名 -->
     <text key="tab.manage">Gestion des plugins</text>
@@ -349,6 +352,8 @@
          故统一用 « Haut » / « Bas »（与俄语 « Вверх » / « Вниз » 同构） -->
     <text key="button.move_up">Haut</text>
     <text key="button.move_down">Bas</text>
+    <text key="button.move_to_official">Déplacer vers les plugins officiels</text>
+    <text key="button.move_to_thirdparty">Déplacer vers les plugins tiers</text>
     <text key="button.new_group">Nouveau groupe</text>
     <text key="button.rename">Renommer</text>
     <text key="button.set_icon">Définir l’icône</text>
@@ -393,6 +398,9 @@
     <text key="message.save_groups_failed">Impossible d’enregistrer la configuration des groupes. Vérifiez les droits d’accès et l’espace disque disponible.</text>
     <text key="message.groups_saved">Groupes et ordre enregistrés</text>
     <text key="message.operation_busy">Une autre opération est en cours, veuillez patienter</text>
+    <text key="message.move_confirm"><![CDATA[Déplacer le plugin “ {name} ” vers la catégorie « {target} » ?
+  Le plugin est d’abord déchargé, puis rechargé dans la catégorie cible ; son identifiant et ses données sont conservés.]]></text>
+    <text key="message.moved">Plugin “ {name} ” déplacé vers la catégorie « {target} »</text>
 
     <!-- 版本选择对话框 -->
     <text key="version_select.title">Choisir une version — {name}</text>

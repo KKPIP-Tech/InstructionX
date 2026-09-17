@@ -9,6 +9,8 @@
 - **插件集 zip 自动识别与一次安装（GitHub 下载形态，含任意层嵌套）**
 - **插件集子集安装（selected_plugins）与 IXRepo.json 索引驱动的默认勾选策略**
 - **无法识别的压缩包给出可诊断信息而非笼统报错**
+- **本地插件包按 Tab 范围安装（官方 / 第三方）且已安装插件不搬家**
+- **插件在官方 / 第三方目录之间移动（move_plugin_to_scope）**
 - 插件卸载（目录、UUID 文件、注册表、分组、排序清理 + sys.modules 清理）
 - reload_plugins 热重载
 
@@ -363,6 +365,64 @@ def main() -> int:
               "已备份" not in results[0].message)
         check("无包外文件时不新增快照",
               len(sorted(backup_root.iterdir())) == 1)
+
+        print("== 13. 本地插件包按 Tab 范围安装（官方 / 第三方）==")
+        zip_official = work_dir / "official-tab.zip"
+        make_plugin_zip(zip_official, "demo-official", "release.1.0.0", "官方演示插件")
+        inspection = installer.inspect_local_package(zip_official, target_scope="official")
+        check("预演范围跟随 target_scope",
+              inspection.plans[0].target_scope == "official")
+        check("预演不落盘",
+              not (work_dir / "plugin" / "demo-official").exists())
+        results = installer.install_from_zip(zip_official, target_scope="official")
+        check("安装成功", len(results) == 1 and results[0].success)
+        check("装进官方插件目录",
+              (work_dir / "plugin" / "demo-official").is_dir())
+        check("第三方目录无副本",
+              not (work_dir / "custom_plugin" / "demo-official").exists())
+        check("注册表登记为 official",
+              pm.registry.find_by_descriptor("official", "demo-official") is not None)
+        # 已安装插件保持原地：即使传入另一侧范围也不搬家、不产生第二份安装
+        results = installer.install_from_zip(zip_official, target_scope="thirdparty")
+        check("已安装插件重复安装成功", len(results) == 1 and results[0].success)
+        check("已安装插件仍在官方目录",
+              (work_dir / "plugin" / "demo-official").is_dir())
+        check("已安装插件未在第三方生成副本",
+              not (work_dir / "custom_plugin" / "demo-official").exists())
+
+        print("== 14. 插件在官方 / 第三方之间移动 ==")
+        pm.reload_plugins()
+        uuid_move = find_uuid(pm, "demo-one")
+        identity_file = work_dir / "plugin" / "demo-one" / ".plugin_info.json"
+        check("移动前插件位于官方目录并已生成 UUID 文件", identity_file.is_file())
+        pm.group_store.save("official", [], [("plugin", uuid_move)])
+        result = pm.move_plugin_to_scope(uuid_move, "thirdparty")
+        check("移动返回成功", result["success"])
+        check("官方目录中已不存在",
+              not (work_dir / "plugin" / "demo-one").exists())
+        check("插件已出现在第三方目录",
+              (work_dir / "custom_plugin" / "demo-one").is_dir())
+        check("UUID 文件随目录一起移动",
+              (work_dir / "custom_plugin" / "demo-one" / ".plugin_info.json").is_file())
+        check("注册表分类已更新为 thirdparty",
+              (pm.registry.get(uuid_move) or {}).get("scope") == "thirdparty")
+        check("原分组/排序记录已清除",
+              not pm.group_store.load_order("official"))
+        pm.reload_plugins()
+        check("重新加载后归入第三方列表",
+              any(p.plugin_id == uuid_move for p in pm.get_thirdparty_plugins()))
+        check("重新加载后 UUID 保持不变", find_uuid(pm, "demo-one") == uuid_move)
+        # 已在目标分类中的插件再次移动应被拒绝
+        result = pm.move_plugin_to_scope(uuid_move, "thirdparty")
+        check("同分类移动被拒绝", not result["success"] and "已在" in result["message"])
+        # 目标分类存在同名目录时拒绝移动
+        (work_dir / "plugin" / "demo-one").mkdir(parents=True, exist_ok=True)
+        result = pm.move_plugin_to_scope(uuid_move, "official")
+        check("目标存在同名目录时被拒绝",
+              not result["success"] and "同名" in result["message"])
+        check("被拒绝时插件仍在原目录",
+              (work_dir / "custom_plugin" / "demo-one").is_dir())
+        shutil.rmtree(work_dir / "plugin" / "demo-one", ignore_errors=True)
     finally:
         # 关闭后台任务管理器线程池，避免进程悬挂
         try:

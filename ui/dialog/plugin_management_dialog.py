@@ -19,7 +19,7 @@ from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtGui import QColor, QFont
 
 from core.i18n import get_language_manager, tr
-from core.plugin.manager import PluginManager
+from core.plugin.manager import SCOPE_OFFICIAL, SCOPE_THIRDPARTY, PluginManager
 from core.plugin.github_plugin_installer import (
     GitHubPluginInstaller, InstallResult, ReleaseInfo,
 )
@@ -740,6 +740,9 @@ class PluginManagementDialog(QDialog):
         body.addWidget(self.scope_tabs, stretch=2)
         body.addWidget(self._build_detail_panel(), stretch=1)
         layout.addLayout(body, stretch=1)
+        # Tab 切换时同步详情面板「移动」按钮文案（官方 ↔ 第三方）
+        self.scope_tabs.currentChanged.connect(self._update_move_button_text)
+        self._update_move_button_text()
         return tab
 
     def _build_detail_panel(self) -> QFrame:
@@ -768,9 +771,13 @@ class PluginManagementDialog(QDialog):
         self.language_btn = Button(tr(_I18N_GROUP, "button.language"),
                                    variant="default")
         self.language_btn.clicked.connect(self._on_language_settings)
+        # 移动按钮：文案随当前 Tab 变化（官方 → 移至第三方 / 第三方 → 移至官方）
+        self.move_btn = Button("", variant="default")
+        self.move_btn.clicked.connect(self._on_move_plugin)
         layout.addWidget(self.update_btn)
         layout.addWidget(self.uninstall_btn)
         layout.addWidget(self.language_btn)
+        layout.addWidget(self.move_btn)
         layout.addStretch()
 
         # 插件有效语言变化时刷新语言行；接收方为 self（QObject），
@@ -911,8 +918,13 @@ class PluginManagementDialog(QDialog):
         dialog.exec()
 
     def _on_install_zip(self) -> None:
-        """打开本地插件包安装对话框（自动识别单插件 / 插件集并勾选安装）"""
-        dialog = LocalPackageInstallDialog(self, installer=self.installer)
+        """打开本地插件包安装对话框（自动识别单插件 / 插件集并勾选安装）
+
+        新插件的目标目录跟随**当前 Tab**（官方插件 / 第三方插件）；已安装同 id
+        插件仍沿用其原目录，不因 Tab 切换而搬家。
+        """
+        dialog = LocalPackageInstallDialog(self, installer=self.installer,
+                                           target_scope=self._current_scope())
         dialog.plugin_installed.connect(lambda _results: self._refresh_after_change())
         dialog.exec()
 
@@ -1037,6 +1049,52 @@ class PluginManagementDialog(QDialog):
                           warnings="\n".join(result["warnings"]))
         _notice(self, tr(_I18N_GROUP, "title.uninstall_done"), message)
         self._refresh_after_change()
+
+    # ==================== 移动插件分类 ====================
+
+    def _other_scope(self) -> str:
+        """当前 Tab 之外的另一侧范围（移动按钮的目标分类）"""
+        if self._current_scope() == SCOPE_OFFICIAL:
+            return SCOPE_THIRDPARTY
+        return SCOPE_OFFICIAL
+
+    def _update_move_button_text(self) -> None:
+        """按当前 Tab 重设「移动」按钮文案：在哪一侧就提供「移至另一侧」"""
+        if self._current_scope() == SCOPE_OFFICIAL:
+            self.move_btn.setText(tr(_I18N_GROUP, "button.move_to_thirdparty"))
+        else:
+            self.move_btn.setText(tr(_I18N_GROUP, "button.move_to_official"))
+
+    def _on_move_plugin(self) -> None:
+        """把选中插件移动到另一个插件目录（官方 ↔ 第三方）"""
+        uuid = self._selected_plugin_id()
+        if uuid is None:
+            Message.info(self, tr(_I18N_GROUP, "message.select_plugin_first"))
+            return
+        target_scope = self._other_scope()
+        if target_scope == SCOPE_OFFICIAL:
+            target_name = tr(_I18N_GROUP, "scope.official")
+        else:
+            target_name = tr(_I18N_GROUP, "scope.thirdparty")
+        record = self.pm.registry.get(uuid) or {}
+        name = record.get("name", uuid)
+        if not self._confirm_move(name, target_name):
+            return
+
+        result = self.pm.move_plugin_to_scope(uuid, target_scope)
+        if not result["success"]:
+            _notice(self, tr(_I18N_GROUP, "title.move_failed"), result["message"])
+            return
+        _notice(self, tr(_I18N_GROUP, "title.move_done"),
+                tr(_I18N_GROUP, "message.moved", name=name, target=target_name))
+        self._refresh_after_change()
+
+    def _confirm_move(self, name: str, target_name: str) -> bool:
+        """移动前确认（插件会卸载并重新加载，先让用户明确知晓）"""
+        dialog = Dialog(self, title=tr(_I18N_GROUP, "title.confirm_move"))
+        dialog.set_text(tr(_I18N_GROUP, "message.move_confirm",
+                           name=name, target=target_name))
+        return dialog.exec() == QDialog.DialogCode.Accepted
 
     # ==================== 分组与排序保存 ====================
 

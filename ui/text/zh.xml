@@ -287,6 +287,9 @@
       <text key="title.uninstall_done">卸载完成</text>
       <text key="title.save_failed">保存失败</text>
       <text key="title.operation_failed">操作失败</text>
+      <text key="title.confirm_move">确认移动</text>
+      <text key="title.move_done">移动完成</text>
+      <text key="title.move_failed">移动失败</text>
   
       <!-- 页签与 scope 分类名 -->
       <text key="tab.manage">插件管理</text>
@@ -304,6 +307,8 @@
       <text key="button.acknowledge">知道了</text>
       <text key="button.move_up">上移</text>
       <text key="button.move_down">下移</text>
+      <text key="button.move_to_official">移至官方插件</text>
+      <text key="button.move_to_thirdparty">移至第三方插件</text>
       <text key="button.new_group">新建分组</text>
       <text key="button.rename">重命名</text>
       <text key="button.set_icon">设置图标</text>
@@ -349,6 +354,9 @@
       <text key="message.save_groups_failed">无法保存分组配置，请检查权限和磁盘空间。</text>
       <text key="message.groups_saved">分组与排序已保存</text>
       <text key="message.operation_busy">正在执行其他操作，请稍候</text>
+      <text key="message.move_confirm"><![CDATA[将插件「{name}」移至{target}？
+  插件会先卸载，移动后在目标分类下重新加载；插件身份标识与数据保持不变。]]></text>
+      <text key="message.moved">插件「{name}」已移至{target}</text>
   
       <!-- 版本选择对话框 -->
       <text key="version_select.title">选择版本 - {name}</text>

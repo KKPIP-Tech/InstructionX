@@ -319,6 +319,9 @@
     <text key="title.uninstall_done">Удаление завершено</text>
     <text key="title.save_failed">Не удалось сохранить</text>
     <text key="title.operation_failed">Операция не выполнена</text>
+    <text key="title.confirm_move">Подтверждение перемещения</text>
+    <text key="title.move_done">Перемещение выполнено</text>
+    <text key="title.move_failed">Не удалось переместить</text>
 
     <!-- 页签与 scope 分类名 -->
     <text key="tab.manage">Управление плагинами</text>
@@ -336,6 +339,8 @@
     <text key="button.acknowledge">Понятно</text>
     <text key="button.move_up">Вверх</text>
     <text key="button.move_down">Вниз</text>
+    <text key="button.move_to_official">Переместить в официальные</text>
+    <text key="button.move_to_thirdparty">Переместить в сторонние</text>
     <text key="button.new_group">Новая группа</text>
     <text key="button.rename">Переименовать</text>
     <text key="button.set_icon">Задать значок</text>
@@ -380,6 +385,9 @@
     <text key="message.save_groups_failed">Не удалось сохранить группы. Проверьте права доступа и свободное место на диске.</text>
     <text key="message.groups_saved">Группы и порядок сохранены</text>
     <text key="message.operation_busy">Выполняется другая операция, подождите</text>
+    <text key="message.move_confirm"><![CDATA[Переместить плагин «{name}» в раздел «{target}»?
+  Плагин будет выгружен, затем загружен заново в целевом разделе; идентификатор и данные сохранятся.]]></text>
+    <text key="message.moved">Плагин «{name}» перемещён в раздел «{target}»</text>
 
     <!-- 版本选择对话框 -->
     <text key="version_select.title">Выбор версии — {name}</text>
