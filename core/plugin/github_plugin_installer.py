@@ -24,7 +24,11 @@ from core.i18n import DEFAULT_LANGUAGE, I18nSettingsStore, resolve_i18n_field
 from utils.logging_tools import LoggerManager, get_name
 from .dependency_manager import DependencyManager
 # 无循环依赖（manager 不反向依赖本模块），置顶导入
-from .manager import get_plugin_manager
+from .manager import (
+    SCOPE_OFFICIAL,
+    SCOPE_THIRDPARTY,
+    get_plugin_manager,
+)
 from .package_discovery import (
     PACKAGE_KIND_INVALID,
     PluginCandidate,
@@ -856,8 +860,8 @@ class GitHubPluginInstaller:
         """判断目标目录属于官方还是第三方插件目录"""
         pm = self._plugin_manager or get_plugin_manager()
         if Path(target_dir) == Path(pm.official_plugin_dir):
-            return "official"
-        return "thirdparty"
+            return SCOPE_OFFICIAL
+        return SCOPE_THIRDPARTY
 
     def _detect_install_relation(self, target_dir: Path, descriptor_id: str,
                                  new_version: str) -> Tuple[str, str]:
@@ -922,7 +926,8 @@ class GitHubPluginInstaller:
 
     # ==================== 本地插件包安装 ====================
 
-    def inspect_local_package(self, zip_path) -> LocalPackageInspection:
+    def inspect_local_package(self, zip_path,
+                              target_scope: Optional[str] = None) -> LocalPackageInspection:
         """识别本地插件包：单插件 / 插件集 / 无效，并预演各插件的安装关系
 
         只读操作：解压到临时目录 → 识别 → 清理；不写入插件目录、不改注册表。
@@ -931,6 +936,9 @@ class GitHubPluginInstaller:
 
         Args:
             zip_path: 本地插件包路径（.zip）
+            target_scope: 新插件的目标范围（``official`` / ``thirdparty``，通常取
+                插件管理页当前 Tab）；已安装同 id 插件仍沿用其原目录。为 None 时
+                按既有规则（第三方目录）
 
         Returns:
             LocalPackageInspection: 分类结果、逐个插件的安装计划与警告；
@@ -951,7 +959,8 @@ class GitHubPluginInstaller:
                 return LocalPackageInspection(
                     kind=inspection.kind, warnings=list(inspection.warnings),
                     error=inspection.error, has_index=inspection.has_index)
-            plans = [self._build_local_plan(temp_dir, candidate, inspection.has_index)
+            plans = [self._build_local_plan(temp_dir, candidate, inspection.has_index,
+                                           target_scope)
                      for candidate in inspection.candidates]
             return LocalPackageInspection(kind=inspection.kind, plans=plans,
                                           warnings=list(inspection.warnings),
@@ -960,13 +969,14 @@ class GitHubPluginInstaller:
             self._cleanup_temp_dir(temp_dir)
 
     def _build_local_plan(self, temp_dir: Path, candidate: PluginCandidate,
-                          has_index: bool) -> LocalInstallPlan:
+                          has_index: bool,
+                          target_scope: Optional[str] = None) -> LocalInstallPlan:
         """为单个候选构造安装计划（不可安装项不做关系预演）"""
         if not candidate.valid:
             return LocalInstallPlan(candidate=candidate, default_selected=False)
 
         plugin_dir = self._plugin_dir_of(temp_dir, candidate)
-        target = self._resolve_zip_target_dir(plugin_dir)
+        target = self._resolve_zip_target_dir(plugin_dir, target_scope)
         relation, prev_version = self._detect_install_relation(
             target, candidate.descriptor_id, candidate.version)
         return LocalInstallPlan(
@@ -989,7 +999,8 @@ class GitHubPluginInstaller:
         zip_path,
         target_dir: Path = None,
         progress_callback=None,
-        selected_plugins: Optional[List[str]] = None
+        selected_plugins: Optional[List[str]] = None,
+        target_scope: Optional[str] = None
     ) -> List[InstallResult]:
         """从本地 zip 插件包安装/升级/降级插件（支持单插件与插件集）
 
@@ -999,11 +1010,13 @@ class GitHubPluginInstaller:
 
         Args:
             zip_path: 本地插件包路径（包含 IXPlugin.json 的 zip）
-            target_dir: 目标目录；为 None 时**逐个**自动判定（已安装同 id 插件则
-                        沿用其目录，否则安装到第三方插件目录）
+            target_dir: 目标目录（优先级最高）；为 None 时按 ``target_scope`` 判定
             progress_callback: 进度回调（逐插件调用）
             selected_plugins: 只安装这些插件（按包内相对路径或插件 id 匹配，
                         两侧均忽略首尾斜杠）；None 表示安装全部可安装候选
+            target_scope: 新插件的目标范围（``official`` / ``thirdparty``，通常取
+                插件管理页当前 Tab）；已安装同 id 插件仍沿用其原目录，为 None 时
+                按既有规则（第三方目录）
 
         Returns:
             List[InstallResult]: 每个插件一条结果（顺序与识别顺序一致）；
@@ -1020,7 +1033,7 @@ class GitHubPluginInstaller:
             if early_results:
                 return early_results
             return [self._install_local_candidate(temp_dir, candidate, target_dir,
-                                                  progress_callback)
+                                                  progress_callback, target_scope)
                     for candidate in candidates]
         finally:
             self._cleanup_temp_dir(temp_dir)
@@ -1054,10 +1067,12 @@ class GitHubPluginInstaller:
 
     def _install_local_candidate(self, temp_dir: Path, candidate: PluginCandidate,
                                  target_dir: Optional[Path],
-                                 progress_callback=None) -> InstallResult:
+                                 progress_callback=None,
+                                 target_scope: Optional[str] = None) -> InstallResult:
         """安装单个候选插件（逐插件独立成败，互不阻断）"""
         plugin_dir = self._plugin_dir_of(temp_dir, candidate)
-        target = Path(target_dir) if target_dir else self._resolve_zip_target_dir(plugin_dir)
+        target = (Path(target_dir) if target_dir
+                  else self._resolve_zip_target_dir(plugin_dir, target_scope))
         dir_desc = ("本地插件包" if not candidate.rel_path
                     else f"本地插件包 · {candidate.rel_path}")
         return self._install_plugin_dir(
@@ -1065,20 +1080,54 @@ class GitHubPluginInstaller:
             source_type="local_zip", source_path=candidate.rel_path
         )
 
-    def _resolve_zip_target_dir(self, plugin_root: Path) -> Path:
-        """为本地插件包确定安装目录：已安装同 id 插件沿用原目录，否则进第三方目录"""
+    def _resolve_zip_target_dir(self, plugin_root: Path,
+                                target_scope: Optional[str] = None) -> Path:
+        """为本地插件包确定安装目录
+
+        规则（优先级从高到低）：
+        1. 已安装同 id 插件 → 沿用其所在目录：升级/降级不搬家，避免同一插件在两处
+           各留一份（两份会共用同一 UUID，卸载与更新会互相干扰）；
+        2. 调用方指定的 ``target_scope``（插件管理页当前 Tab 对应的范围）；
+        3. 兜底 → 第三方插件目录（保持未指定范围时的既有行为）。
+
+        Args:
+            plugin_root: 插件在解压目录中的根目录（读其 IXPlugin.json 取 id）
+            target_scope: ``official`` / ``thirdparty``；其他取值按兜底处理
+
+        Returns:
+            Path: 目标插件目录
+        """
         pm = self._plugin_manager or get_plugin_manager()
+        descriptor_id = self._read_descriptor_id(plugin_root)
+        installed_dir = self._installed_directory_of(pm, descriptor_id)
+        if installed_dir is not None:
+            return installed_dir
+        if target_scope == SCOPE_OFFICIAL:
+            return Path(pm.official_plugin_dir)
+        return Path(pm.thirdparty_plugin_dir)
+
+    def _installed_directory_of(self, pm, descriptor_id: str) -> Optional[Path]:
+        """已安装同 id 插件所在目录；未安装或 id 为空时返回 None"""
+        if not descriptor_id:
+            return None
+        for scope, directory in self._scope_directories(pm):
+            if pm.registry.find_by_descriptor(scope, descriptor_id):
+                return Path(directory)
+        return None
+
+    @staticmethod
+    def _scope_directories(pm) -> Tuple[Tuple[str, Path], ...]:
+        """(范围标识, 目录) 列表，顺序为官方 → 第三方"""
+        return ((SCOPE_OFFICIAL, Path(pm.official_plugin_dir)),
+                (SCOPE_THIRDPARTY, Path(pm.thirdparty_plugin_dir)))
+
+    def _read_descriptor_id(self, plugin_root: Path) -> str:
+        """读取插件目录描述文件中的 id（缺失/损坏返回空串）"""
         try:
             with open(plugin_root / self.PLUGIN_DESCRIPTOR_FILE, "r", encoding="utf-8") as f:
-                descriptor_id = json.load(f).get("id", "")
+                return json.load(f).get("id", "")
         except (OSError, json.JSONDecodeError):
-            descriptor_id = ""
-        if descriptor_id:
-            for scope, directory in (("official", pm.official_plugin_dir),
-                                     ("thirdparty", pm.thirdparty_plugin_dir)):
-                if pm.registry.find_by_descriptor(scope, descriptor_id):
-                    return Path(directory)
-        return Path(pm.thirdparty_plugin_dir)
+            return ""
 
     # ==================== GitHub Release 升级/降级 ====================
 

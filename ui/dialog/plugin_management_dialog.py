@@ -911,8 +911,13 @@ class PluginManagementDialog(QDialog):
         dialog.exec()
 
     def _on_install_zip(self) -> None:
-        """打开本地插件包安装对话框（自动识别单插件 / 插件集并勾选安装）"""
-        dialog = LocalPackageInstallDialog(self, installer=self.installer)
+        """打开本地插件包安装对话框（自动识别单插件 / 插件集并勾选安装）
+
+        新插件的目标目录跟随**当前 Tab**（官方插件 / 第三方插件）；已安装同 id
+        插件仍沿用其原目录，不因 Tab 切换而搬家。
+        """
+        dialog = LocalPackageInstallDialog(self, installer=self.installer,
+                                           target_scope=self._current_scope())
         dialog.plugin_installed.connect(lambda _results: self._refresh_after_change())
         dialog.exec()
 

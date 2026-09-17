@@ -68,15 +68,18 @@ class _InspectWorker(QThread):
     finished = Signal(object)      # LocalPackageInspection
     error = Signal(str)
 
-    def __init__(self, installer: GitHubPluginInstaller, zip_path: str):
+    def __init__(self, installer: GitHubPluginInstaller, zip_path: str,
+                 target_scope: Optional[str] = None):
         super().__init__()
         self._installer = installer
         self._zip_path = zip_path
+        self._target_scope = target_scope
 
     def run(self) -> None:
         """执行识别，结果或异常经信号送回 UI 线程"""
         try:
-            self.finished.emit(self._installer.inspect_local_package(self._zip_path))
+            self.finished.emit(self._installer.inspect_local_package(
+                self._zip_path, target_scope=self._target_scope))
         except Exception as e:  # noqa: BLE001 —— 线程内异常必须转为信号，不能抛出
             _logger.error(get_name(), f"识别本地插件包失败: {e}")
             self.error.emit(str(e))
@@ -90,11 +93,13 @@ class _InstallWorker(QThread):
     error = Signal(str)
 
     def __init__(self, installer: GitHubPluginInstaller, zip_path: str,
-                 selected_plugins: List[str]):
+                 selected_plugins: List[str],
+                 target_scope: Optional[str] = None):
         super().__init__()
         self._installer = installer
         self._zip_path = zip_path
         self._selected_plugins = selected_plugins
+        self._target_scope = target_scope
 
     def run(self) -> None:
         """执行安装，结果或异常经信号送回 UI 线程"""
@@ -103,6 +108,7 @@ class _InstallWorker(QThread):
                 self._zip_path,
                 progress_callback=self.progress.emit,
                 selected_plugins=self._selected_plugins,
+                target_scope=self._target_scope,
             )
             self.finished.emit(results)
         except Exception as e:  # noqa: BLE001 —— 线程内异常必须转为信号，不能抛出
@@ -122,15 +128,20 @@ class LocalPackageInstallDialog(QDialog):
 
     plugin_installed = Signal(list)
 
-    def __init__(self, parent=None, installer: Optional[GitHubPluginInstaller] = None):
+    def __init__(self, parent=None, installer: Optional[GitHubPluginInstaller] = None,
+                 target_scope: Optional[str] = None):
         """初始化对话框
 
         Args:
             parent: 父窗口
             installer: 安装器实例；为 None 时自建（便于测试注入）
+            target_scope: 新插件的目标范围（``official`` / ``thirdparty``）；
+                由插件管理页传入当前 Tab 对应的范围，None 时按安装器既有规则
+                （第三方目录）。已安装同 id 插件仍沿用其原目录
         """
         super().__init__(parent)
         self._installer = installer or GitHubPluginInstaller()
+        self._target_scope = target_scope
         self._zip_path: str = ""
         self._inspection: Optional[LocalPackageInspection] = None
         self._rows: List[CheckBox] = []
@@ -292,7 +303,8 @@ class LocalPackageInstallDialog(QDialog):
         self.hint_label.setText(tr(_TR_GROUP, "hint.scanning"))
         self.pages.setCurrentIndex(_PAGE_HINT)
         self._set_busy(tr(_TR_GROUP, "hint.scanning"))
-        self._inspect_worker = _InspectWorker(self._installer, zip_path)
+        self._inspect_worker = _InspectWorker(self._installer, zip_path,
+                                              self._target_scope)
         self._inspect_worker.finished.connect(self._on_inspect_finished)
         self._inspect_worker.error.connect(self._on_worker_error)
         self._inspect_worker.start()
@@ -447,7 +459,8 @@ class LocalPackageInstallDialog(QDialog):
         if not self._confirm_downgrade(selected):
             return
         self._set_busy(tr(_TR_GROUP, "hint.installing"))
-        self._install_worker = _InstallWorker(self._installer, self._zip_path, selected)
+        self._install_worker = _InstallWorker(self._installer, self._zip_path, selected,
+                                              self._target_scope)
         self._install_worker.progress.connect(self._on_install_progress)
         self._install_worker.finished.connect(self._on_install_finished)
         self._install_worker.error.connect(self._on_worker_error)
