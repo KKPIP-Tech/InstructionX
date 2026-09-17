@@ -9,13 +9,13 @@
 ## 1. 测试概述
 
 **被测模块**: `ui/`
-**测试文件数**: 10 个
-**测试类数量**: 16 个（另含 10 个模块级测试函数）
-**测试用例总数**: 86 个
+**测试文件数**: 12 个
+**测试类数量**: 21 个（另含 10 个模块级测试函数）
+**测试用例总数**: 101 个
 
 > 实测命令（工作目录为项目根）：
 > `.venv\Scripts\python.exe -m pytest test/ui_tests --collect-only -q -p no:cacheprovider`
-> → `86 tests collected`。本文档的统计与用例清单均以该命令的收集结果为准。
+> → `101 tests collected`。本文档的统计与用例清单均以该命令的收集结果为准。
 
 ### 1.1 测试文件分布
 
@@ -23,6 +23,8 @@
 |---------|-----------|---------|
 | `test_main_window.py` | 10 | `InstructionXMainWindow` 菜单方法、主布局装配、主题循环与保存、技能点击、缩放方向 |
 | `test_skills_panel.py` | 10 | `SkillsPanel` 技能按钮装载、分组控件渲染、点击信号、激活态、页签切换 |
+| `test_skills_panel_i18n.py` | 6 | 技能面板插件名跟随界面语言：按钮重建、激活态与展开状态保持、名称未变时不重建 |
+| `test_plugin_management_move.py` | 9 | 插件管理对话框「移至官方/第三方插件」按钮文案与移动、安装本地插件包的目标范围跟随当前 Tab |
 | `test_app_identity.py` | 6 | 应用标识常量（组织名/应用名）与 `main.py` 接线一致性、图形 API 统一顺序 |
 | `test_close_event_dispatch.py` | 6 | 主窗口 `closeEvent` 的三种关闭选择分发、`_force_quit` 直退、防重入 |
 | `llm_settings/test_provider_detail_panel.py` | 11 | `ProviderDetailPanel` 自动保存语义、停用遮罩、地址重置、连接检测 |
@@ -31,7 +33,7 @@
 | `llm_settings/test_model_edit_dialog.py` | 8 | `ModelEditDialog` 统一 schema 输出、能力标签互斥、编辑模式字段往返 |
 | `llm_settings/test_model_toggle_regression.py` | 4 | 模型开关交互三个关联缺陷的回归（选中跳回、模型丢失、悬挂订阅） |
 | `usage_panel/test_trend_chart_render.py` | 11 | `TrendPanel` 与 UIKit 图表引擎集成（alpha-v1.0.3 同步新增）：渲染分流、缓存失效、视觉回归、边界 |
-| **合计** | **86** | — |
+| **合计** | **101** | — |
 
 ### 1.2 覆盖范围
 
@@ -39,6 +41,11 @@
 |---------|-------|-------|------------|
 | `test_main_window.py` | （模块级测试） | 10 | `InstructionXMainWindow`：`_create_menus()`、`_create_main_layout()`、`_cycle_theme()`、`_on_skill_clicked()`、`_get_resize_direction()` |
 | `test_skills_panel.py` | （模块级测试） | 10 | `SkillsPanel`、`SkillButton`、`PluginGroupWidget` |
+| `test_skills_panel_i18n.py` | `TestLocalizedPluginNameFollows` | 3 | 多语言插件名变化后按钮重建、激活态与分组展开状态保持 |
+| `test_skills_panel_i18n.py` | `TestStaticPluginNameUntouched` | 3 | 插件名未变化时不重建、无管理器时空操作 |
+| `test_plugin_management_move.py` | `TestMoveButtonText` | 3 | 详情面板「移动」按钮文案随当前 Tab 变化 |
+| `test_plugin_management_move.py` | `TestMovePlugin` | 4 | 移动插件目录、列表刷新、未选中提示、失败提示 |
+| `test_plugin_management_move.py` | `TestLocalInstallScope` | 2 | 打开本地插件包安装对话框时传入当前 Tab 的范围 |
 | `test_app_identity.py` | `TestOrganizationName` | 4 | 组织名常量、`main.py` 的组织名/应用名接线 |
 | `test_app_identity.py` | `TestGraphicsApiUnification` | 2 | `main()` 中 `QQuickWindow.setGraphicsApi(OpenGL)` 调用与顺序 |
 | `test_close_event_dispatch.py` | `TestCloseEventDispatch` | 6 | `closeEvent` / `_ask_close_choice` / `_minimize_to_tray` 分发 |
@@ -60,7 +67,7 @@
 | `usage_panel/test_trend_chart_render.py` | `TestRenderRouting` | 5 | 全量 `set_option` 与增量 `set_stream_data` 的选择逻辑 |
 | `usage_panel/test_trend_chart_render.py` | `TestCacheInvalidation` | 3 | 静态层缓存失效与视觉回归（`@pytest.mark.ui`） |
 | `usage_panel/test_trend_chart_render.py` | `TestBoundaries` | 3 | 单日区间、跨年区间、无记录序列 |
-| **合计** | **16 个测试类 + 2 个模块级分组** | **86** | — |
+| **合计** | **21 个测试类 + 2 个模块级分组** | **101** | — |
 
 ---
 
@@ -372,6 +379,58 @@ _make_panel(qtbot, ...)          # 各 llm_settings / usage_panel 测试内构�
 | `test_single_day_range_renders` | 自定义单日区间不抛异常且正常全量渲染 |
 | `test_cross_year_range_option_payload` | 跨年区间的 option 载荷正确（year 取起始年、range 覆盖两整年） |
 | `test_update_series_without_records` | 公开入口在无用量记录时仍能出图（全零序列）并更新状态文本 |
+
+---
+
+### 3.11 `test_skills_panel_i18n.py`（6 个用例）
+
+> 被测对象：`ui/skills_panel/panel.py` 的技能按钮重建逻辑——多语言插件名（`IXPlugin.json` 的 `name` 字典）在界面语言切换后是否跟随。使用 `_StubPlugin` / `_StubManager` / `_StubGroup` 替身隔离插件管理器。
+
+#### 3.11.1 `TestLocalizedPluginNameFollows`（名称变化时重建）
+
+| 用例函数名 | 说明 |
+|-----------|------|
+| `test_button_rebuilt_with_new_name` | 语言切换后按钮文案使用新语言的插件名 |
+| `test_active_highlight_restored` | 重建后原激活态（高亮）保持 |
+| `test_group_expansion_preserved` | 重建后分组展开状态保持 |
+
+#### 3.11.2 `TestStaticPluginNameUntouched`（名称未变化时不动）
+
+| 用例函数名 | 说明 |
+|-----------|------|
+| `test_no_rebuild_when_name_unchanged` | 插件名未变化时不重建按钮 |
+| `test_group_expansion_kept_when_name_unchanged` | 名称未变化时分组展开状态不受影响 |
+| `test_no_manager_is_noop` | 未设置插件管理器时刷新为空操作 |
+
+---
+
+### 3.12 `test_plugin_management_move.py`（9 个用例）
+
+> 被测对象：`ui/dialog/plugin_management_dialog.py` 详情面板的「移至官方插件 / 移至第三方插件」按钮与本地插件包安装的范围接线。使用隔离的 `PluginManager`（目录指向 `tmp_path`）与最小假插件；模态提示在用例内替换为直接返回（`_confirm_move` 恒同意、`_notice` 记录）。
+
+#### 3.12.1 `TestMoveButtonText`（按钮文案随 Tab 变化）
+
+| 用例函数名 | 说明 |
+|-----------|------|
+| `test_official_tab_offers_move_to_thirdparty` | 官方 Tab 下按钮文案为「移至第三方插件」 |
+| `test_thirdparty_tab_offers_move_to_official` | 第三方 Tab 下按钮文案为「移至官方插件」 |
+| `test_button_text_follows_tab_switch` | 切换 Tab 时文案实时更新 |
+
+#### 3.12.2 `TestMovePlugin`（点击按钮执行移动）
+
+| 用例函数名 | 说明 |
+|-----------|------|
+| `test_move_plugin_to_thirdparty` | 官方 Tab 下点击后插件移动到第三方目录并刷新列表 |
+| `test_move_plugin_back_to_official` | 第三方 Tab 下点击后插件移动回官方目录 |
+| `test_move_without_selection_moves_nothing` | 未选择插件时只提示、不移动任何目录 |
+| `test_move_failure_is_reported` | 核心层拒绝移动时提示失败且目录位置不变 |
+
+#### 3.12.3 `TestLocalInstallScope`（安装本地插件包的范围接线）
+
+| 用例函数名 | 说明 |
+|-----------|------|
+| `test_install_zip_passes_official_scope` | 官方 Tab 下打开本地安装对话框时传入 official |
+| `test_install_zip_passes_thirdparty_scope` | 第三方 Tab 下打开本地安装对话框时传入 thirdparty |
 
 ---
 

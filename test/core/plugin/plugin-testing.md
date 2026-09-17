@@ -2,7 +2,7 @@
 
 > 插件系统核心模块的测试策略、测试用例和维护指南
 >
-> **本文档已按 `test/core/plugin/` 实际代码刷新（2026-09-15）**：10 个 `test_*.py`、44 个测试类、191 个 `def test_*` 测试函数，pytest 实测收集 **208 个用例**。§3 用例清单与代码双向核对，代码中每个测试函数在清单中有且仅有一行。
+> **本文档已按 `test/core/plugin/` 实际代码刷新（2026-09-15）**：11 个 `test_*.py`、48 个测试类、208 个 `def test_*` 测试函数，pytest 实测收集 **225 个用例**。§3 用例清单与代码双向核对，代码中每个测试函数在清单中有且仅有一行。
 
 ---
 
@@ -10,10 +10,10 @@
 
 - **被测模块**: `core/plugin/`
 - **测试目录**: `test/core/plugin/`
-- **测试文件数**: 10 个（`test_*.py`；同目录下 `conftest.py`、`__init__.py` 为辅助文件、不收集用例）
-- **测试类数**: 44 个
-- **测试函数数**: 191 个
-- **实测收集用例数**: 208 个
+- **测试文件数**: 11 个（`test_*.py`；同目录下 `conftest.py`、`__init__.py` 为辅助文件、不收集用例）
+- **测试类数**: 48 个
+- **测试函数数**: 208 个
+- **实测收集用例数**: 225 个
 
 实测命令（工作目录 = 项目根）：
 
@@ -21,7 +21,7 @@
 .venv\Scripts\python.exe -m pytest test/core/plugin --collect-only -q -p no:cacheprovider
 ```
 
-> 191 与 208 的差额来自参数化：`test_dependency_manager.py` 的 `TestDependencyManagerVersionConstraint::test_operators` 由 `@pytest.mark.parametrize` 展开为 15 例（+14）、`test_package_discovery.py` 的 `TestDescriptorValidation::test_invalid_descriptor_marked_not_installable` 展开为 3 例（+2）、`test_local_package_install.py` 的 `TestTempDirectoryCleanup::test_temp_dir_removed` 展开为 2 例（+1），合计 191 + 17 = 208。§3 清单按**测试函数**列行（共 191 行），统计口径中的「用例数」按 pytest 实际收集结果（208）计。
+> 208 与 225 的差额来自参数化：`test_dependency_manager.py` 的 `TestDependencyManagerVersionConstraint::test_operators` 由 `@pytest.mark.parametrize` 展开为 15 例（+14）、`test_package_discovery.py` 的 `TestDescriptorValidation::test_invalid_descriptor_marked_not_installable` 展开为 3 例（+2）、`test_local_package_install.py` 的 `TestTempDirectoryCleanup::test_temp_dir_removed` 展开为 2 例（+1），合计 208 + 17 = 225。§3 清单按**测试函数**列行（共 208 行），统计口径中的「用例数」按 pytest 实际收集结果（225）计。
 
 ### 1.1 测试文件分布
 
@@ -35,9 +35,10 @@
 | `test_plugin_icon.py` | 3 | 23 | 23 | `PluginIcon` / `IconType` 工厂方法与 `load_icon()` 各分支 |
 | `test_dependency_manager.py` | 8 | 30 | 44 | `DependencyManager` 依赖检查/安装、版本约束比较、pip 调用、结果数据类 |
 | `test_package_discovery.py` | 5 | 23 | 25 | `inspect_package()` / `validate_descriptor()`：单插件/插件集/无效分类、包装层穿透、`IXRepo.json` 索引驱动、递归扫描规则、描述文件校验、诊断信息与深度上限 |
-| `test_local_package_install.py` | 6 | 20 | 21 | `GitHubPluginInstaller.install_from_zip()` / `inspect_local_package()`：单插件包、插件集一次安装与子集筛选、安装关系（新装/升级/降级）预演、默认勾选策略、无效包诊断、临时目录清理、包外文件快照集成 |
+| `test_local_package_install.py` | 7 | 25 | 26 | `GitHubPluginInstaller.install_from_zip()` / `inspect_local_package()`：单插件包、插件集一次安装与子集筛选、安装关系（新装/升级/降级）预演、默认勾选策略、无效包诊断、临时目录清理、**目标范围（官方/第三方）与已安装插件不搬家**、包外文件快照集成 |
 | `test_plugin_backup.py` | 2 | 9 | 9 | `collect_extra_files()` / `snapshot_plugin_dir()`：包外文件检测与排除规则、整目录快照命名与内容、快照份数裁剪 |
-| **合计** | **44** | **191** | **208** | — |
+| `test_plugin_move.py` | 3 | 12 | 12 | `PluginManager.move_plugin_to_scope()` / `_scope_directory()`：目录移动、UUID 随迁、注册表分类更新、分组排序清理、拒绝路径（未加载/非法范围/同分类/同名目录/移动失败回滚） |
+| **合计** | **48** | **208** | **225** | — |
 
 ### 1.2 覆盖范围
 
@@ -61,8 +62,10 @@
 | 依赖管理 | 30 | 44 | `DependencyManager.check_dependencies()`, `get_missing_dependencies()`, `install_dependencies()`, `_is_package_installed()`, `_parse_version_from_pip_show()`, `_check_version_constraint()`, `_normalize_version()`, `_pip_install()`；`DependencyCheckResult` / `DependencyInstallResult` | §3.7.1–§3.7.8 |
 | 本地插件包识别 | 23 | 25 | `inspect_package()`, `validate_descriptor()`；`PluginCandidate` / `PackageInspection`、`PACKAGE_KIND_*` / `MAX_DISCOVERY_DEPTH` 常量 | §3.8.1–§3.8.5 |
 | 本地包安装与关系预演 | 20 | 21 | `install_from_zip()`, `inspect_local_package()`；`LocalInstallPlan` / `LocalPackageInspection`、`selected_plugins` 筛选、注册表登记与包外文件备份集成 | §3.9.1–§3.9.6 |
+| 本地安装目标范围 | 5 | 5 | `inspect_local_package(target_scope=...)`, `install_from_zip(target_scope=...)`；`SCOPE_OFFICIAL` / `SCOPE_THIRDPARTY`、`target_dir` 优先级、已安装插件沿用原目录 | §3.9.7 `TestTargetScope` |
 | 包外文件兜底快照 | 9 | 9 | `collect_extra_files()`, `snapshot_plugin_dir()`；`MAX_BACKUPS_PER_PLUGIN` | §3.10.1–§3.10.2 |
-| **合计** | **191** | **208** | — | — |
+| 插件分类移动 | 12 | 12 | `move_plugin_to_scope()`, `_scope_directory()`；注册表 `set_scope()`、UUID 文件随迁、分组排序清理、拒绝路径与移动失败回滚 | §3.11.1–§3.11.3 |
+| **合计** | **208** | **225** | — | — |
 
 ---
 
@@ -226,7 +229,7 @@ installer                # 基于 isolated_pm 的 GitHubPluginInstaller
 
 ### 3.2 `test_plugin_api_auto_register.py`
 
-> 测试类 1 个，测试函数 4 个，实测用例 4 个。被测对象：`core/plugin/manager.py` 的 `_auto_register_plugin_api()`；范围：自定义 Service 类名、公共方法过滤、空 Service 类、私有方法过滤。文件头 docstring 标注风险关联 R-01（见 §3.11），4 个用例的 docstring 均为中文原文引用。
+> 测试类 1 个，测试函数 4 个，实测用例 4 个。被测对象：`core/plugin/manager.py` 的 `_auto_register_plugin_api()`；范围：自定义 Service 类名、公共方法过滤、空 Service 类、私有方法过滤。文件头 docstring 标注风险关联 R-01（见 §3.12），4 个用例的 docstring 均为中文原文引用。
 
 #### 3.2.1 TestAutoRegisterAPI
 
@@ -533,7 +536,7 @@ installer                # 基于 isolated_pm 的 GitHubPluginInstaller
 
 ### 3.9 `test_local_package_install.py`
 
-> 测试类 6 个，测试函数 20 个，实测用例 21 个。被测对象：`core/plugin/github_plugin_installer.py` 的 `install_from_zip()` / `inspect_local_package()` 及 `LocalInstallPlan` / `LocalPackageInspection`；范围：单插件包安装（旧签名行为不变）、插件集一次安装与子集筛选、安装关系预演与默认勾选策略、无效包诊断、临时目录清理、包外文件快照集成。
+> 测试类 7 个，测试函数 25 个，实测用例 26 个。被测对象：`core/plugin/github_plugin_installer.py` 的 `install_from_zip()` / `inspect_local_package()` 及 `LocalInstallPlan` / `LocalPackageInspection`；范围：单插件包安装（旧签名行为不变）、插件集一次安装与子集筛选、安装关系预演与默认勾选策略、目标范围（官方/第三方）与已安装插件不搬家、无效包诊断、临时目录清理、包外文件快照集成。
 >
 > 本文件测试函数与测试类均自带中文 docstring，说明为原文引用。全部用例通过 `isolated_pm` fixture 把官方/第三方插件目录与配置指向 `tmp_path`，不触碰仓库真实 `plugin/`、`custom_plugin/`、`config/`。
 >
@@ -589,6 +592,16 @@ installer                # 基于 isolated_pm 的 GitHubPluginInstaller
 | `test_fresh_install_has_no_backup` | 全新安装（无旧目录）不触发快照 |
 | `test_backup_failure_does_not_block_install` | 快照失败时降级为提示，不影响安装成功 |
 
+#### 3.9.7 TestTargetScope
+
+| 用例函数名 | 说明 |
+|-----------|------|
+| `test_inspect_uses_target_scope` | 识别预演的范围跟随 target_scope（官方 Tab → official） |
+| `test_inspect_defaults_to_thirdparty` | 未指定范围时保持旧行为（第三方目录） |
+| `test_install_into_official_scope` | target_scope=official 时装进官方目录，注册表登记为 official |
+| `test_target_dir_wins_over_scope` | 显式 target_dir 优先级高于 target_scope |
+| `test_installed_plugin_keeps_its_directory` | 已安装插件即使在另一侧范围下重复安装也保持原地，不产生第二份安装 |
+
 ---
 
 ### 3.10 `test_plugin_backup.py`
@@ -618,7 +631,42 @@ installer                # 基于 isolated_pm 的 GitHubPluginInstaller
 
 ---
 
-### 3.11 风险关联（R-01）
+### 3.11 `test_plugin_move.py`
+
+> 测试类 3 个，测试函数 12 个，实测用例 12 个。被测对象：`core/plugin/manager.py` 的 `PluginManager.move_plugin_to_scope()` / `_scope_directory()`、`_check_move()` 与 `core/plugin/plugin_registry.py` 的 `PluginRegistry.set_scope()`；范围：官方 ↔ 第三方目录移动的正常路径（目录、UUID 文件、注册表分类、分组/排序记录、重新加载后的归属）、拒绝路径（未加载、非法范围、同分类、同名目录冲突）与移动失败的恢复。
+>
+> 本文件测试类与测试函数均自带中文 docstring，说明为原文引用；无参数化，测试函数数与实测用例数一致。全部用例使用隔离的 `PluginManager`（目录指向 `tmp_path`）与最小假插件（`make_fake_plugin()`），不触碰仓库真实 `plugin/`、`custom_plugin/`、`config/`。
+
+#### 3.11.1 TestScopeDirectory
+
+| 用例函数名 | 说明 |
+|-----------|------|
+| `test_known_scopes` | official / thirdparty 解析到对应目录 |
+| `test_unknown_scope_returns_none` | 非法范围返回 None（由调用方转为失败结果） |
+
+#### 3.11.2 TestMoveSuccess
+
+| 用例函数名 | 说明 |
+|-----------|------|
+| `test_move_official_to_thirdparty` | 移动后目录、注册表分类与加载列表全部跟随目标分类 |
+| `test_uuid_preserved_after_move` | UUID 随目录迁移保持不变（插件数据与语言覆盖以 UUID 为键） |
+| `test_move_back_to_official` | 第三方 → 官方往返移动 |
+| `test_sort_and_group_records_cleared` | 原分类的排序与分组记录被清除（移动后按未分组处理） |
+| `test_registry_entry_fields_preserved` | 移动只改 scope：版本 / 来源 / 安装时间保持不变 |
+
+#### 3.11.3 TestMoveRejected
+
+| 用例函数名 | 说明 |
+|-----------|------|
+| `test_plugin_not_loaded` | 插件未加载（UUID 不存在）时返回失败 |
+| `test_unknown_target_scope` | 目标范围非法时返回失败 |
+| `test_same_scope_rejected` | 插件已在目标分类中时返回失败（不重复移动） |
+| `test_same_name_directory_conflict` | 目标分类已存在同名目录时拒绝，插件留在原目录 |
+| `test_directory_move_failure` | 目录移动抛错时返回失败，并重新扫描目录恢复插件列表 |
+
+---
+
+### 3.12 风险关联（R-01）
 
 | 风险 ID | 描述 | 用例编号 | 覆盖情况 | 状态 |
 |---------|------|---------|---------|------|
@@ -635,7 +683,7 @@ installer                # 基于 isolated_pm 的 GitHubPluginInstaller
 当 `core/plugin/` 添加新功能时：
 1. 在对应的测试文件中找到测试类（新模块则新建 `test_<模块名>.py`）
 2. 添加 `test_*` 测试函数，遵循现有命名规范（`test_<被测行为>_<预期结果>`）
-3. docstring 写明测试目的（建议中文），风格与所在文件现有一致；R-01 相关用例沿用 `TC-PLUGIN-0xx` 编号（见 §3.2、§3.11）
+3. docstring 写明测试目的（建议中文），风格与所在文件现有一致；R-01 相关用例沿用 `TC-PLUGIN-0xx` 编号（见 §3.2、§3.12）
 4. 使用 `create_minimal_plugin()` 创建测试插件，目录取自 `plugin_dir_from_test` / `tmp_path`
 5. 同步更新本文档 §3 清单——代码中每个 `def test_*` 在清单中有且仅有一行，说明按 §3 前言的中译/归纳规则填写，并核对 §1 的统计数字
 6. 运行以下命令确认收集数与执行结果：
