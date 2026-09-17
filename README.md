@@ -77,20 +77,48 @@ InstructionX 是一个基于 PySide6 的**插件式桌面应用框架**。它将
 
 ## 快速开始
 
-### 环境要求
+### 方式一：TUI 向导（推荐给非开发用户）
 
-- Windows 10 / 11
+**双击**根目录的 `setup.bat`（Windows）或 `setup.command`（macOS）即可。
+
+向导是**原生脚本**（Windows：PowerShell 5.1；macOS：系统自带 bash），
+**不依赖 Python 与任何第三方库**——所以「电脑上连 Python 都没有」也能用它完成安装：
+
+```powershell
+# Windows（命令行，可选参数）
+powershell -NoProfile -ExecutionPolicy Bypass -File setup.ps1            # 打开中文/英文向导
+powershell -NoProfile -ExecutionPolicy Bypass -File setup.ps1 -Check     # 只做环境体检并打印报告
+```
+
+```bash
+# macOS（命令行，可选参数）
+./setup.sh            # 打开中文/英文向导
+./setup.sh --check    # 只做环境体检并打印报告
+```
+
+向导提供**安装 / 修复环境、升级框架、环境管理、一键体检、清理与卸载、启动应用**，
+全程中文提示（可切英文），自动准备 uv 与 Python 3.14，失败时给出具体建议，
+过程日志写入 `logs/tui_setup.log`。两个平台的界面逐字一致，详见 [安装向导](docs/tui-setup.md)。
+
+### 方式二：手动安装（开发者）
+
+#### 环境要求
+
+- Windows 10 / 11（框架主要目标平台；macOS 亦可运行，部分系统集成能力受限）
 - Python 3.14 或更高版本
 - [uv](https://docs.astral.sh/uv/)（Python 虚拟环境与依赖管理器）
 
-### 安装 uv
+#### 安装 uv
 
 ```bash
 # Windows（PowerShell）
 powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+
+# macOS / Linux
+curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
-### 安装依赖
+#### 安装依赖
 
 首次运行 `uv run main.py` 时会自动创建虚拟环境并按 `uv.lock` 同步依赖；也可先显式安装：
 
@@ -99,9 +127,9 @@ uv venv
 uv pip install -r requirements.txt
 ```
 
-> 注意：请勿使用 `uv sync` —— 它会严格对齐 `uv.lock` 并**移除**环境中额外安装的包（如插件经框架 DependencyManager 安装的依赖、测试依赖等）。
+> 注意：请勿使用 `uv sync` 修复既有环境 —— 它会严格对齐 `uv.lock` 并**移除**环境中额外安装的包（如插件经框架 DependencyManager 安装的依赖、测试依赖等）。仅在**全新安装**（`.venv` 尚不存在）时可用 `uv sync --no-dev --no-install-project`（TUI 向导即采用此策略）。
 
-### 运行
+#### 运行
 
 ```bash
 uv run main.py
