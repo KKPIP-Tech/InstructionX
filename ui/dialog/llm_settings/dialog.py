@@ -58,8 +58,7 @@ class LLMSettingsDialog(QDialog):
         install_focus_halo(self)
         # 语言切换实时跟随：Qt 对象销毁时自动断开连接
         self._retranslate_ui()
-        get_language_manager().language_changed.connect(
-            lambda _code: self._retranslate_ui())
+        get_language_manager().language_changed.connect(self._retranslate_ui)
 
     # ==================== 界面构建 ====================
 

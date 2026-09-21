@@ -9,10 +9,10 @@
 [![Python](https://img.shields.io/badge/Python-3.14+-blue.svg)](https://www.python.org/)
 [![PySide6](https://img.shields.io/badge/PySide6-6.10+-green.svg)](https://doc.qt.io/qtforpython/)
 [![Platform](https://img.shields.io/badge/Platform-Windows%2010%2F11-lightgrey.svg)](#)
-[![Version](https://img.shields.io/badge/Alpha-1.1.0%20CE-red.svg)](#)
+[![Version](https://img.shields.io/badge/Alpha-1.1.1%20CE-red.svg)](#)
 [![License](https://img.shields.io/badge/License-AGPL--3.0%2B%20%2B%20%C2%A77%20Terms-blue.svg)](LICENSE)
 
-[中文版](README.md) | English Version
+[中文版](README.md) | English Version | [Version française](README_FR.md) | [Русская версия](README_RU.md)
 
 </div>
 
@@ -37,7 +37,7 @@ The framework itself ships no business functionality: every capability is plugge
 ### Plugin System
 
 - **Lifecycle Management**: Hot-load / hot-unload / hot-reload plugins without restarting the application; uninstalling automatically cleans up associated data such as the plugin identity and language overrides
-- **Installation & Updates**: The built-in GitHub installer supports single-plugin repositories (IXPlugin.json) and multi-plugin repositories (IXRepo.json), with background installation and progress display; local zip installation and GitHub Release upgrade/downgrade with version-relation detection are supported; repositories under the KKPIP-Tech organization are automatically classified as official plugins
+- **Installation & Updates**: The built-in GitHub installer supports single-plugin repositories (IXPlugin.json) and multi-plugin repositories (IXRepo.json), with background installation and progress display; local zip installation (single-plugin/multi-plugin packages and multi-level nesting inside the archive are detected automatically, an upgrade/reinstall/downgrade preview is shown before install, and downgrades require a second confirmation) and GitHub Release upgrade/downgrade with version-relation detection are supported; repositories under the KKPIP-Tech organization are automatically classified as official plugins
 - **Versioning & Identity Governance**: Semantic plugin versions (alpha / beta / pre-release / release) and a per-plugin UUID identity; the installed-plugin registry records version / source / install time as the basis for upgrades and update checks; Python dependencies declared by plugins are installed automatically by the framework (uv first, pip as fallback)
 - **Cross-Plugin Collaboration**: Declaring `service_api` automatically registers cross-plugin APIs and exposes them as MCP tools; plugins can also register tools directly with the LLM via `llm_tools`
 - **Panel Organization**: The skills panel supports custom groups, folding, and mixed ordering; plugin UI state is cached when switching plugins and fully restored on return
@@ -70,7 +70,7 @@ The framework itself ships no business functionality: every capability is plugge
 
 ### Internationalization (i18n)
 
-- **XML Language Files**: Both the framework and plugins follow a one-XML-file-per-language convention, with Chinese (default) and English built in
+- **XML Language Files**: Both the framework and plugins follow a one-XML-file-per-language convention, with Chinese (default), English, Russian and French built in
 - **Live Switching**: Switch the UI language instantly from the Edit → Language menu without restarting
 - **Fallback Chain**: Entries missing in the current language automatically fall back to the default language
 - **Per-Plugin Language Override**: Individual plugins may use a UI language different from the framework
@@ -83,20 +83,50 @@ The framework itself ships no business functionality: every capability is plugge
 
 ## Quick Start
 
-### Requirements
+### Option A: TUI wizard (recommended for non-developers)
 
-- Windows 10 / 11
+**Double-click** `setup.bat` (Windows) or `setup.command` (macOS).
+
+The wizard is a **native script** (Windows: PowerShell 5.1; macOS: the built-in bash) and needs
+**neither Python nor any third-party package** — so it also works on a machine that has no Python at all:
+
+```powershell
+# Windows (command line, optional flags)
+powershell -NoProfile -ExecutionPolicy Bypass -File setup.ps1            # open the Chinese/English wizard
+powershell -NoProfile -ExecutionPolicy Bypass -File setup.ps1 -Check     # environment health report only
+```
+
+```bash
+# macOS (command line, optional flags)
+./setup.sh            # open the Chinese/English wizard
+./setup.sh --check    # environment health report only
+```
+
+The wizard covers **install / repair, framework upgrade, environment management, health check,
+cleanup & uninstall, and launching the app**, with plain-language hints, automatic preparation of
+uv and Python 3.14, and a full log in `logs/tui_setup.log`.
+Both platforms render exactly the same interface.
+See [Setup Wizard](docs/tui-setup.md) (Chinese, with an English summary).
+
+### Option B: manual setup (developers)
+
+#### Requirements
+
+- Windows 10 / 11 (primary target platform; macOS also runs, with some system integrations limited)
 - Python 3.14 or higher
 - [uv](https://docs.astral.sh/uv/) (Python virtual environment & dependency manager)
 
-### Install uv
+#### Install uv
 
 ```bash
 # Windows (PowerShell)
 powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+
+# macOS / Linux
+curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
-### Install Dependencies
+#### Install Dependencies
 
 The first run of `uv run main.py` automatically creates a virtual environment and syncs dependencies from `uv.lock`; you may also install them explicitly first:
 
@@ -105,9 +135,9 @@ uv venv
 uv pip install -r requirements.txt
 ```
 
-> Note: Do **not** use `uv sync` — it strictly reconciles to `uv.lock` and **removes** extra packages installed in the environment (e.g., plugin dependencies installed via the framework's DependencyManager, or test dependencies).
+> Note: Do **not** use `uv sync` to repair an existing environment — it strictly reconciles to `uv.lock` and **removes** extra packages installed in the environment (e.g., plugin dependencies installed via the framework's DependencyManager, or test dependencies). For a **fresh** install (no `.venv` yet) you may use `uv sync --no-dev --no-install-project` (this is what the TUI wizard does).
 
-### Run
+#### Run
 
 ```bash
 uv run main.py
@@ -293,7 +323,8 @@ python -m pytest test/ -q --tb=short -p no:cacheprovider
 | matplotlib | Usage statistics and UIKit MarkdownView LaTeX formula rendering | >= 3.10 |
 | packaging | Plugin dependency version checking | >= 23.0 |
 | qrcode[pil] | UIKit QRCodeView component | >= 7.4 |
-| InstructionX_UIKit | UI theme & component library | Built-in (alpha-v1.0.2) |
+| numpy | UIKit charts engine (large-data pipeline / downsampling) | >= 2.0 |
+| InstructionX_UIKit | UI theme & component library | Built-in (alpha-v1.0.3) |
 
 ## License
 

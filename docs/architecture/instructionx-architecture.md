@@ -597,7 +597,7 @@ InstructionXMainWindow (Frameless, Transparent)
 | `LLMSettingsDialog` | LLM Provider/Model 配置 | 左列表+右详情双栏布局；保存后调用 `get_llm_provider().reload_config()` |
 | `PluginManagementDialog` | 插件统一管理（安装/升级/降级/卸载/分组与排序） | 编辑 > 插件管理...（Ctrl+P）打开；`plugins_changed` 信号触发技能面板刷新与工作区清空 |
 | `PluginOrderDialog`（遗留） | 插件显示顺序管理 | 遗留代码，无菜单入口、无实际调用方；排序功能已迁入 `PluginManagementDialog` 的「分组与排序」页 |
-| `UsagePanel` | 用量查询 | UIKit ChartWidget 日历热力趋势图（heatmap + calendar，近半年/近一年/自定义范围与指标切换，悬停显示日期，高度自适应，已从 QtCharts 迁移）；KPI 卡片含同比；按日期/Provider/Model/对话ID 过滤，存储层分页 |
+| `UsagePanel` | 用量查询 | UIKit ChartWidget 日历热力趋势图（heatmap + calendar，近半年/近一年/自定义范围与指标切换，悬停显示日期，高度自适应，已从 QtCharts 迁移；结构未变时经 `set_stream_data` 增量刷新，区间/指标变化走全量 `set_option` 并调用 `invalidate_all_caches()` 失效层级缓存）；KPI 卡片含同比；按日期/Provider/Model/对话ID 过滤，存储层分页 |
 | `GitHubPluginInstallDialog` | 从 GitHub 安装插件 | QThread 后台克隆；`plugin_installed` 信号触发 UI 刷新 |
 
 ### 4.5 主题系统（`ui/uikit_theme.py` + `ui/InstructionX_UIKit/`）

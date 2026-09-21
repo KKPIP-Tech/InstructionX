@@ -559,6 +559,11 @@ multi-plugin-repo/
 
 每个子目录必须有自己独立的 IXPlugin.json，IXRepo.json 仅作为索引，不能替代子目录描述文件。
 
+> **本地安装兼容性**：用户下载仓库 zip 后可直接用「安装本地插件包」安装——即使**没有** `IXRepo.json`，
+> 框架也会递归扫描出全部含 `IXPlugin.json` 的子目录并识别为插件集（见
+> [插件安装器 §4.7](plugin-installer.md)）。但仍**强烈建议提供** `IXRepo.json`：它决定安装列表的
+> 顺序与默认勾选（索引声明项默认勾选，未声明项默认不勾选并标注提示），可避免把示例/工具目录误装。
+
 ### 4.3 常见误用清单
 
 - `id` 含空格或中文字符（违反 `^[a-zA-Z0-9_-]+$`，安装会被拒绝）；
@@ -567,7 +572,10 @@ multi-plugin-repo/
 - `dependencies` 声明了未实际使用的包，或把 Python 标准库写进依赖；
 - 发布后修改 `id`，导致老用户无法升级；
 - 描述文件名大小写错误（如 `ixplugin.json`）；
-- 多插件仓库只在根目录放一个 IXPlugin.json，子目录缺少独立描述文件。
+- 多插件仓库只在根目录放一个 IXPlugin.json，子目录缺少独立描述文件；
+- **把运行时数据写进插件目录**（如把采样记录、缓存、用户配置写进 `{插件目录}/` 或其中的 `assets/`）
+  ——插件目录按程序包处理，安装/升级/降级/重装会整目录替换，这些数据必然丢失；
+  正确做法见 §5.2（`DataProvider` 的 `set_plugin_data` / `save_asset`）。
 
 ### 4.4 安装目录规则
 
@@ -576,7 +584,10 @@ multi-plugin-repo/
 | `KKPIP-Tech` | `plugin/`（官方插件目录） |
 | 其他所有 | `custom_plugin/`（第三方插件目录） |
 
-除 GitHub 一键安装外，框架还支持**本地 zip 安装**（zip 内须包含 IXPlugin.json）。
+除 GitHub 一键安装外，框架还支持**本地 zip 安装**：直接选择 GitHub 下载的仓库压缩包即可，
+框架会自动识别包内是单插件还是插件集，并适配任意层嵌套（`repo-<branch>/`、二次打包、
+`__MACOSX` 干扰等），插件集可勾选后一次装完——**无需手动解压、逐层翻目录、逐个打包**
+（识别规则见[插件安装器 §4.7](plugin-installer.md)）。
 
 从 GitHub 安装或检查 Release 更新时，可设置环境变量 `INSTRUCTIONX_GITHUB_TOKEN` 提供 GitHub API Token 用于鉴权，提升 API 限流阈值并支持私有仓库。
 
@@ -636,6 +647,23 @@ class Service:
             default
         )
 ```
+
+**存放位置规范（重要）**：插件目录按「程序包」处理——安装 / 升级 / 降级 / 重装会用包内容
+**整目录替换**（仅保留 `.plugin_info.json` 以保证 UUID 稳定）。因此：
+
+| 数据 | 正确位置 | 说明 |
+|------|---------|------|
+| 配置 / 状态 / 统计（结构化） | `DataProvider.set_plugin_data` / `get_plugin_data`（PRIVATE 命名空间） | 以插件 UUID 为键，升级/降级/重装均不丢失 |
+| 采样记录 / 导出 / 缓存（文件） | `DataProvider.save_asset(plugin_id, filename, content)` → `get_asset_path()` / `load_asset()` | 落在 `<项目>/data/assets/plugins/{插件ID}/`，带路径穿越防护 |
+| 大文件流式写 | 先 `save_asset(plugin_id, name, b"")` 建占位 → `get_asset_path(相对路径)` 拿绝对路径追加 | `get_asset_path()` 要求文件已存在 |
+| 随包发布的默认配置 | `<插件目录>/config/*.json`（只读） | 只能作为默认值来源，用户可改的部分必须落 DataProvider |
+| ❌ 运行时数据写入插件目录 | —— | 下次升级即丢失；框架仅在安装时**兜底快照**（见下），不保证 |
+
+> **兜底保护**：安装/升级/降级/重装前，若检测到插件目录内存在**包外文件**（新包中不存在的文件，
+> 排除 `.plugin_info.json`、`__pycache__`、`*.pyc`），框架会把整个旧目录快照到
+> `<项目>/data/plugin_backup/{插件ID}/{时间戳}_{版本}/`（每插件保留最近 3 份），并在安装结果里
+> 提示「已备份 N 个包外文件」。该快照**只供人工取回、不会自动恢复**（避免旧代码/旧配置污染新版本），
+> 请勿把它当成数据持久化方案。
 
 ### 5.3 发布/订阅
 

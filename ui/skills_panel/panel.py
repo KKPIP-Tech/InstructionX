@@ -26,6 +26,10 @@ class SkillsPanel(QWidget):
         super().__init__(parent=parent)
         self.plugin_manager = None
         self._active_button = None  # 当前激活的按钮
+        self._active_plugin = None  # 当前激活插件（重建按钮后据此恢复高亮）
+        #: 面板上已渲染的插件显示名快照（插件实例 id → plugin_name），
+        #: 语言变化时据此判断是否真的需要重建按钮
+        self._rendered_names: dict = {}
         self._logger = LoggerManager()
         self._init_ui()
 
@@ -209,6 +213,10 @@ class SkillsPanel(QWidget):
 
         # 创建技能按钮
         skill_btn = SkillButton(icon, name, description, self)
+        # 重建按钮（语言切换 / 插件集合刷新）后恢复激活插件的高亮
+        if plugin is self._active_plugin:
+            skill_btn.set_active(True)
+            self._active_button = skill_btn
 
         # 绑定点击事件，传递按钮和插件对象
         skill_btn.clicked.connect(lambda checked=False, btn=skill_btn, p=plugin: self._on_skill_clicked(btn, p))
@@ -224,6 +232,7 @@ class SkillsPanel(QWidget):
         if button and isinstance(button, SkillButton):
             button.set_active(True)
             self._active_button = button
+            self._active_plugin = plugin
 
         self.skill_clicked.emit(plugin)
 
@@ -254,8 +263,21 @@ class SkillsPanel(QWidget):
             # 更新当前标签页的计数
             self._switch_tab(self.stacked_widget.currentIndex())
 
+            # 记录本次渲染时各插件的显示名，供语言变化时判断是否需要重建
+            self._rendered_names = self._collect_plugin_names()
+
         except Exception as e:
             self._logger.error(get_name(), f'从插件管理器加载技能失败: {e}')
+
+    def _collect_plugin_names(self) -> dict:
+        """收集当前各插件显示名快照（键为插件实例 id，值为 plugin_name）"""
+        names = {}
+        for scope in ("official", "thirdparty"):
+            for item in self.plugin_manager.get_sorted_plugins(scope):
+                plugins = item[2] if item[0] == "group" else (item[1],)
+                for plugin in plugins:
+                    names[id(plugin)] = plugin.plugin_name
+        return names
 
     def _add_group_widget(self, layout, group, plugins):
         """向布局添加一个分组折叠控件
@@ -293,6 +315,52 @@ class SkillsPanel(QWidget):
         用于当工作区被清空时，取消所有按钮的高亮
         """
         self._clear_all_active_states()
+
+    def retranslate_ui(self):
+        """语言变化后按新语言重建技能按钮（插件名未变则完全不动面板）
+
+        插件显示名来自 ``plugin.plugin_name``：本地化取词的插件（如 RoboSpine）
+        名字会随语言变化，而多数插件用的是固定品牌名（如 ``"Blueprint\\nOpenCV"``），
+        此时重建只会得到同样的文案。故先比对显示名快照，**只有确实变化才重建**
+        ——否则会白白重置用户的分组展开状态与滚动位置。
+
+        重建只涉及按钮（``load_skills_from_manager``），不重载插件、不触碰插件
+        实例与工作区内容；展开状态与激活高亮在重建后恢复。
+        """
+        if self.plugin_manager is None:
+            return
+        if self._collect_plugin_names() == self._rendered_names:
+            return
+        expanded_groups = self._expanded_group_ids()
+        self.load_skills_from_manager()
+        self._restore_expanded_groups(expanded_groups)
+
+    def _group_widgets(self) -> list:
+        """收集面板内全部分组控件（官方 + 第三方页）"""
+        widgets = []
+        for layout in (self.official_layout, self.thirdparty_layout):
+            for index in range(layout.count()):
+                item = layout.itemAt(index)
+                widget = item.widget() if item else None
+                if isinstance(widget, PluginGroupWidget):
+                    widgets.append(widget)
+        return widgets
+
+    def _expanded_group_ids(self) -> set:
+        """当前处于展开状态的分组 id 集合（重建按钮时保留用户的展开状态）"""
+        return {w.group.id for w in self._group_widgets() if w.is_expanded()}
+
+    def _restore_expanded_groups(self, group_ids: set) -> None:
+        """重建后恢复分组的展开状态
+
+        Args:
+            group_ids: 需要展开的分组 id 集合
+        """
+        if not group_ids:
+            return
+        for widget in self._group_widgets():
+            if widget.group.id in group_ids:
+                widget.set_expanded(True)
 
     def refresh_skills(self):
         """刷新技能列表"""

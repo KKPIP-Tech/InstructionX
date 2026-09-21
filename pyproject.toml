@@ -16,6 +16,9 @@ dependencies = [
     "mcp>=1.28.1,<2",
     "orjson>=3.11.0,<4",
     "matplotlib>=3.10",
+    # numpy：UIKit 图表引擎（alpha-v1.0.3 起）在模块导入期即依赖，用于大规模
+    # 数据的紧凑存储、向量化降采样与坐标映射、分层采样金字塔
+    "numpy>=2.0",
     "packaging>=23.0",
     "qrcode[pil]>=7.4",
     # macOS Dock 图标设置（仅 macOS 安装，见 utils/macos_dock_icon.py）

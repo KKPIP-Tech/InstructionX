@@ -78,8 +78,7 @@ class ProviderListPanel(QWidget):
         self.destroyed.connect(self._on_destroyed)
         # 语言切换实时跟随（Qt 对象销毁自动断开）；_retranslate_ui 内含首次 reload
         self._retranslate_ui()
-        get_language_manager().language_changed.connect(
-            lambda _code: self._retranslate_ui())
+        get_language_manager().language_changed.connect(self._retranslate_ui)
 
     # ==================== 界面构建 ====================
 

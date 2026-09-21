@@ -9,10 +9,10 @@
 [![Python](https://img.shields.io/badge/Python-3.14+-blue.svg)](https://www.python.org/)
 [![PySide6](https://img.shields.io/badge/PySide6-6.10+-green.svg)](https://doc.qt.io/qtforpython/)
 [![Platform](https://img.shields.io/badge/Platform-Windows%2010%2F11-lightgrey.svg)](#)
-[![Version](https://img.shields.io/badge/Alpha-1.1.0%20CE-red.svg)](#)
+[![Version](https://img.shields.io/badge/Alpha-1.1.1%20CE-red.svg)](#)
 [![License](https://img.shields.io/badge/License-AGPL--3.0%2B%20%2B%20%C2%A77%20Terms-blue.svg)](LICENSE)
 
-中文版 | [English Version](README_EN.md)
+中文版 | [English Version](README_EN.md) | [Version française](README_FR.md) | [Русская версия](README_RU.md)
 
 </div>
 
@@ -31,7 +31,7 @@ InstructionX 是一个基于 PySide6 的**插件式桌面应用框架**。它将
 ### 插件系统
 
 - **生命周期管理**：插件热加载 / 热卸载 / 热重载，无需重启应用；卸载时自动清理插件身份标识与语言覆盖等关联数据
-- **安装与更新**：内置 GitHub 安装器支持单插件仓库（IXPlugin.json）与多插件仓库（IXRepo.json），后台安装并显示进度；支持本地 zip 安装、GitHub Release 升级 / 降级与版本关系检测；KKPIP-Tech 组织仓库自动归类为官方插件
+- **安装与更新**：内置 GitHub 安装器支持单插件仓库（IXPlugin.json）与多插件仓库（IXRepo.json），后台安装并显示进度；支持本地 zip 安装（自动识别单插件 / 多插件包与压缩包内多层嵌套，安装前预览升级 / 重装 / 降级关系，降级需二次确认）、GitHub Release 升级 / 降级与版本关系检测；KKPIP-Tech 组织仓库自动归类为官方插件
 - **版本与身份治理**：语义化插件版本（alpha / beta / pre-release / release）与每插件 UUID 身份标识；已安装插件注册表记录版本 / 来源 / 安装时间，作为升级与更新检查依据；插件声明的 Python 依赖由框架自动安装（优先 uv，回退 pip）
 - **跨插件协作**：插件声明 `service_api` 即自动注册跨插件 API 并同步暴露为 MCP 工具；插件亦可通过 `llm_tools` 直接向 LLM 注册工具
 - **面板组织**：技能面板支持自定义分组、折叠与混排顺序；切换插件时自动缓存界面状态，返回时完整恢复
@@ -64,33 +64,61 @@ InstructionX 是一个基于 PySide6 的**插件式桌面应用框架**。它将
 
 ### 多语言（i18n）
 
-- **XML 语言文件**：框架与插件均采用「一个语言一个 XML 文件」的约定，内置中文（默认）与英文
+- **XML 语言文件**：框架与插件均采用「一个语言一个 XML 文件」的约定，内置中文（默认）、英文、俄语与法语
 - **实时切换**：编辑菜单「语言」即时切换界面语言，无需重启
 - **回退链取词**：当前语言缺失条目自动回退至默认语言
 - **每插件语言覆盖**：单个插件可使用与框架不同的界面语言
 
 ### 界面体系
 
-- **InstructionX_UIKit 组件库**：58 个组件 + 13 种布局 + 52 个动画，含原生图表引擎、蓝图节点图与 Mermaid 渲染；light / dark / auto 三种全局主题模式，设计令牌（Design Tokens）随主题实时换肤
+- **InstructionX_UIKit 组件库**：58 个组件 + 13 种布局 + 52 个动画，含原生图表引擎（GL/软件双视口）、蓝图节点图、仿 VS Code 代码编辑器与 Mermaid 渲染；light / dark / auto 三种全局主题模式，设计令牌（Design Tokens）随主题实时换肤
 - **字体管理器**：应用级字体安装 / 卸载 / 预览（进程内生效，不写系统字体目录），字体缺失时自动回退系统字体
 - **系统托盘**：托盘菜单实时呈现运行中的插件与后台任务；关闭主窗口时弹出确认对话框，可选择退出程序或最小化到托盘
 
 ## 快速开始
 
-### 环境要求
+### 方式一：TUI 向导（推荐给非开发用户）
 
-- Windows 10 / 11
+**双击**根目录的 `setup.bat`（Windows）或 `setup.command`（macOS）即可。
+
+向导是**原生脚本**（Windows：PowerShell 5.1；macOS：系统自带 bash），
+**不依赖 Python 与任何第三方库**——所以「电脑上连 Python 都没有」也能用它完成安装：
+
+```powershell
+# Windows（命令行，可选参数）
+powershell -NoProfile -ExecutionPolicy Bypass -File setup.ps1            # 打开中文/英文向导
+powershell -NoProfile -ExecutionPolicy Bypass -File setup.ps1 -Check     # 只做环境体检并打印报告
+```
+
+```bash
+# macOS（命令行，可选参数）
+./setup.sh            # 打开中文/英文向导
+./setup.sh --check    # 只做环境体检并打印报告
+```
+
+向导提供**安装 / 修复环境、升级框架、环境管理、一键体检、清理与卸载、启动应用**，
+全程中文提示（可切英文），自动准备 uv 与 Python 3.14，失败时给出具体建议，
+过程日志写入 `logs/tui_setup.log`。两个平台的界面逐字一致，详见 [安装向导](docs/tui-setup.md)。
+
+### 方式二：手动安装（开发者）
+
+#### 环境要求
+
+- Windows 10 / 11（框架主要目标平台；macOS 亦可运行，部分系统集成能力受限）
 - Python 3.14 或更高版本
 - [uv](https://docs.astral.sh/uv/)（Python 虚拟环境与依赖管理器）
 
-### 安装 uv
+#### 安装 uv
 
 ```bash
 # Windows（PowerShell）
 powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+
+# macOS / Linux
+curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
-### 安装依赖
+#### 安装依赖
 
 首次运行 `uv run main.py` 时会自动创建虚拟环境并按 `uv.lock` 同步依赖；也可先显式安装：
 
@@ -99,9 +127,9 @@ uv venv
 uv pip install -r requirements.txt
 ```
 
-> 注意：请勿使用 `uv sync` —— 它会严格对齐 `uv.lock` 并**移除**环境中额外安装的包（如插件经框架 DependencyManager 安装的依赖、测试依赖等）。
+> 注意：请勿使用 `uv sync` 修复既有环境 —— 它会严格对齐 `uv.lock` 并**移除**环境中额外安装的包（如插件经框架 DependencyManager 安装的依赖、测试依赖等）。仅在**全新安装**（`.venv` 尚不存在）时可用 `uv sync --no-dev --no-install-project`（TUI 向导即采用此策略）。
 
-### 运行
+#### 运行
 
 ```bash
 uv run main.py
@@ -287,7 +315,8 @@ python -m pytest test/ -q --tb=short -p no:cacheprovider
 | matplotlib | 用量统计与 UIKit MarkdownView LaTeX 公式渲染 | >= 3.10 |
 | packaging | 插件依赖版本检查 | >= 23.0 |
 | qrcode[pil] | UIKit QRCodeView 组件 | >= 7.4 |
-| InstructionX_UIKit | 界面主题与组件库 | 内置（alpha-v1.0.2） |
+| numpy | UIKit 图表引擎（大数据管线/降采样） | >= 2.0 |
+| InstructionX_UIKit | 界面主题与组件库 | 内置（alpha-v1.0.3） |
 
 ## 许可证
 

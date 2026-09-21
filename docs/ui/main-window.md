@@ -212,10 +212,11 @@ graph TB
 - **打开方式**: 通过 **AI > 用量查询** 菜单，在模态对话框中展示
 - **布局**: 整体内容置于 `QScrollArea` 垂直滚动区内；KPI 卡片为固定高度（92px）；趋势面板高度按热力图内容自适应（单元格边长 = 可用宽度 / 周数，上限 28px，范围切换与窗口宽度变化时同步调整）；历史面板高度随当前页行数自适应（行高 27px，保证整页记录完整显示）；窗口缩小时页面整体上下滚动，各区块高度不变
 - **功能**: 提供 Token 用量统计、趋势图表和明细查询
+- **渲染后端**: 趋势图控件自 UIKit alpha-v1.0.3 起在**构造期**即创建绘制视口（GL 可用时为 `QOpenGLWidget`，不可用或 offscreen 平台自动回退软件渲染）。面板在对话框 `exec()` 之前构造，GL 子控件入树早于顶层窗口可见，因此不会触发 §4 所述「GL 子控件加入已可见顶层窗口 → 原生句柄重建」的闪烁问题
 - **组件**:
   - 顶部标题行（主标题 + 副标题）
   - KPI 卡片区（总请求数、输入 Token、输出 Token、总 Token、缓存命中率、平均耗时，含「较上周期 ±x.x%」同比）
-  - 用量趋势面板（UIKit ChartWidget 日历热力图，GitHub 贡献图风格：行=星期、列=周序；近半年 / 近一年 / 自定义范围；请求数 / 输入 Token / 输出 Token 指标切换；悬停提示显示「日期: 当日值」；无 visualMap 指示条与图例；色带为 UIKit 令牌 primary.subtle→primary，随主题换肤。面板经引擎公开扩展点注册了两个扩展：系列类型 `calendarHeatmap`（hit_test 让 tooltip 行名回退为日期）与组件 `monthLabels`（补画跨年月份标签），均未修改组件库）
+  - 用量趋势面板（UIKit ChartWidget 日历热力图，GitHub 贡献图风格：行=星期、列=周序；近半年 / 近一年 / 自定义范围；请求数 / 输入 Token / 输出 Token 指标切换；悬停提示显示「日期: 当日值」；无 visualMap 指示条与图例；色带为 UIKit 令牌 primary.subtle→primary，随主题换肤。面板经引擎公开扩展点仅注册了系列类型 `calendarHeatmap`（hit_test 让 tooltip 行名回退为日期），未修改组件库；渲染按「结构是否变化」分流——指标或区间变化走 `set_option` 全量重建，仅数值刷新走 `set_stream_data` 增量通路（不重建 option / 坐标系 / 渲染器），增量写入失败自动回退全量重建；全量重建后必须调用 `invalidate_all_caches()`，原因见 `docs/utils/uikit-theme.md` §6.2）
   - 使用历史面板（Provider / Model / 对话ID 筛选 + 明细表格 + 分页）
   - 明细表格（10 列：时间、Provider、Model、输入、输出、总Token、缓存命中、缓存Token、耗时、流式；按时间倒序，最新记录在第 1 页）
   - 分页控件（每页 50 条）
@@ -358,7 +359,7 @@ def _create_main_layout(self) -> None:
     self.skills_panel.skill_clicked.connect(self._on_skill_clicked)
 ```
 
-> **蓝图 GL 视口预热**（`_prewarm_blueprint_viewport`）：UIKit 蓝图画布的绘制视口在 GL 可用时基于 `QOpenGLWidget`；若其在顶层窗口**可见之后**才加入窗口树，Qt 会重建顶层原生窗口句柄，表现为整个窗口短暂关闭后重开一次（Qt 固有行为，见 UIKit USAGE.md §8.6）。插件的蓝图画布均在主窗口显示后才创建，因此主窗口在构造阶段预创建一个隐藏画布并长期持有（`self._blueprint_prewarm_canvas`），让顶层原生句柄首次创建时即按「含 GL 子控件」的方式建立，后续插件画布加入时不再触发重建。软件渲染回退环境（无 GL / offscreen）自动跳过；预热失败仅记录 WARNING 日志，不影响启动。
+> **蓝图 GL 视口预热**（`_prewarm_blueprint_viewport`）：UIKit 蓝图画布的绘制视口在 GL 可用时基于 `QOpenGLWidget`；若其在顶层窗口**可见之后**才加入窗口树，Qt 会重建顶层原生窗口句柄，表现为整个窗口短暂关闭后重开一次（Qt 固有行为，见 UIKit USAGE.md §9.6）。插件的蓝图画布均在主窗口显示后才创建，因此主窗口在构造阶段预创建一个隐藏画布并长期持有（`self._blueprint_prewarm_canvas`），让顶层原生句柄首次创建时即按「含 GL 子控件」的方式建立，后续插件画布加入时不再触发重建。软件渲染回退环境（无 GL / offscreen）自动跳过；预热失败仅记录 WARNING 日志，不影响启动。
 >
 > **图形 API 统一**：与预热配套的启动前置条件是 `main.py` 在 `QApplication` 创建之前调用 `QQuickWindow.setGraphicsApi(QSGRendererInterface.GraphicsApi.OpenGL)`——GL 视口会把顶层窗口合成锁定为 OpenGL，而 UIKit Mermaid 交互查看器（QWebEngineView）基于 Qt Quick RHI（Windows 默认 D3D11），同一顶层窗口混用两种图形 API 会刷 "QQuickWidget: Failed to get a QRhi" 且窗口闪烁，故统一为 OpenGL（与上游 UIKit demo 入口一致）。
 
@@ -476,7 +477,7 @@ cursor_map = {
 
 #### 关于对话框
 
-通过 **帮助 > 关于** 打开，显示应用 Logo、名称（InstructionX - CE）、版本号（Alpha 1.1.0）、版权声明和专有软件声明。
+通过 **帮助 > 关于** 打开，显示应用 Logo、名称（InstructionX - CE）、版本号（Alpha 1.1.1）、版权声明和专有软件声明。
 
 ```python
 # 文件顶部导入：from ui.dialog.about_dialog import AboutDialog

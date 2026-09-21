@@ -12,10 +12,10 @@
 - 多厂商 LLM 集成（MiniMax、SiliconFlow、智谱 GLM、Ollama、OpenAI 兼容接口等），多会话管理、工具调用自动化（ToolCallExecutor）、多模态、用量统计
 - MCP 协议双向支持（内置 MCP Server 暴露插件 API；MCP Client 连接外部 MCP Server）
 - SQLite WAL 数据持久化层（DataProvider）、后台任务系统（BackgroundTaskManager）
-- InstructionX_UIKit 主题与组件体系（`ui/InstructionX_UIKit` 组件库：设计令牌 + light/dark/auto 全局主题，58 组件 + 原生图表引擎）、字体管理器（`core/font` 子系统：字体安装/卸载/预览/系统字体回退，框架不自带字体）
+- InstructionX_UIKit 主题与组件体系（`ui/InstructionX_UIKit` 组件库：设计令牌 + light/dark/auto 全局主题，58 组件 + 原生图表引擎 + 仿 VS Code 代码编辑器）、字体管理器（`core/font` 子系统：字体安装/卸载/预览/系统字体回退，框架不自带字体）
 - 多国语言（i18n）支持（`core/i18n` 子系统：XML 语言文件 + 回退链取词、界面语言实时切换、每插件语言覆盖；日志文案保持中文不国际化）
 
-- 应用标识：`InstructionX - CE`（组织名 `KKPIP-Tech`），当前版本 **Alpha 1.1.0**
+- 应用标识：`InstructionX - CE`（组织名 `KKPIP-Tech`），当前版本 **Alpha 1.1.1**
 - **版本号单一来源为 `core/version.py` 的 `VERSION` 常量**（pyproject 通过 AST 静态读取，修改版本只改这里）
 - 平台：**仅支持 Windows 10/11**，Python **>= 3.14**
 - 许可证：**GNU AGPL v3（或更高版本）+ §7 附加条款（署名与品牌标识保留 §7b、商标不授权 §7e）+ 双重许可**（闭源 SaaS、嵌入第三方商业产品、第三方服务后端、白标、批量捆绑销售需商业授权），详见 `LICENSE`
@@ -31,7 +31,8 @@
 | orjson | JSON 序列化（SQLite 后端） |
 | matplotlib | 用量统计与 UIKit MarkdownView LaTeX 公式渲染（math_render 异步渲染中枢）使用；旧用量面板图表曾使用，现用量面板已改用 UIKit 原生图表引擎 |
 | packaging | 插件依赖版本检查 |
-| qrcode[pil] >= 7.4 | InstructionX_UIKit 组件库 QRCodeView 组件依赖（库规定唯一允许的第三方依赖） |
+| qrcode[pil] >= 7.4 | InstructionX_UIKit 组件库 QRCodeView 组件依赖 |
+| numpy >= 2.0 | InstructionX_UIKit 图表引擎依赖（alpha-v1.0.3 起在模块导入期即依赖）：大规模数据的紧凑存储、向量化降采样与坐标映射、分层采样金字塔 |
 | pyobjc-framework-Cocoa >= 11.0 | 仅 macOS（`sys_platform == "darwin"` 条件依赖）：运行时设置 Dock 栏应用图标（`utils/macos_dock_icon.py`） |
 
 - 依赖单一来源是 `pyproject.toml` 的 `[project].dependencies`；`requirements.txt` 与其保持同步（供 `uv pip install -r requirements.txt` / `pip install -r requirements.txt` 直接安装使用），**改依赖时两处都要改**。
@@ -74,11 +75,12 @@ python -m pytest test/ -q --tb=short -p no:cacheprovider
 - **注意**：`test/` 下当前仅保留 `test/core/data/test_data_provider.py` 一个有效测试文件（其余旧测试已在重构中删除，残留的 `__pycache__` 是过期产物，不要参考）。现有测试约定：中文 docstring、`tmp_path` fixture、测试单例类时需重置 `XxxManager._instance = None`。
 - UI 测试不配置 offscreen 平台，CI 跑在 `windows-latest` 上使用真实 GUI。
 - 项目还有一类**独立验证脚本**（非 pytest，放在 `scripts/`，用 `.venv\Scripts\python.exe scripts\<name>.py` 直接运行）：
-  - `smoke_*.py`：核心链路无网冒烟测试（LLM、task、utils、i18n、字体管理、插件管理：安装/升级/降级/卸载/分组）
+  - `smoke_*.py`：核心链路无网冒烟测试（LLM、task、utils、i18n、字体管理、插件管理：安装/升级/降级/卸载/分组、本地插件包自动识别与插件集一次安装、包外文件兜底备份）；`smoke_setup_wizard.py` 针对原生安装向导（`setup.ps1` / `setup.sh`：文案完整性、两平台界面逐行一致性、uv 命令口径、干跑安全、Python 向导已移除）
   - `check_i18n_completeness.py`：语言文件完整性校验（默认语言必须覆盖源码全部 `tr()` 调用，缺键 exit 1；其他语言缺键/孤立键 WARNING；支持 `--text-dir`/`--src-dir`/`--plugin-root`）
   - `screenshot_*.py`：对话框截图对比脚本（输出到 `scripts/screenshots/`）
   - `_mcp_smoke*.py`：真实 MCP SDK 冒烟测试
   - `demo_*.py`：功能演示脚本
+- **安装向导是原生脚本**（`setup.ps1` / `setup.sh`），不依赖 Python 与第三方库：任何改动都要**两个平台同步修改**并保持界面逐字一致，改完必须运行 `scripts/smoke_setup_wizard.py`（它会让两个脚本各渲染全部页面并逐行比对）。界面文字一律放进 `setup_text/*.txt`，脚本正文保持纯 ASCII（`setup.ps1` 另需保存为 UTF-8 with BOM，冒烟测试会检查）。
 - 另外，`scripts/` 下有 4 个 `test_*.py` 文件属 UI 验证脚本（`test_debug_cluster_framework_api_demo.py`、`test_long_running_task.py`、`test_model_edit_sync.py`、`test_provider_switch_rendering.py`），命名虽似 pytest 测试，但不在 `testpaths = ["test"]` 的收集范围内，需直接运行。
 
 ## CI / 部署
@@ -216,6 +218,15 @@ python -m pytest test/ -q --tb=short -p no:cacheprovider
 
 ```
 main.py                     # 应用入口
+setup.ps1                   # 安装向导 · Windows 原生 TUI（PowerShell 5.1，不依赖 Python / 第三方库）：
+                            #   环境总览 / 安装与修复 / 升级 / 环境管理 / 一键体检 / 清理卸载 / 启动（调试用途）/ 中英双语；
+                            #   首次安装成功自动创建桌面快捷方式（ui/logo.ico，pythonw 启动无控制台窗口），卸载时删除；
+                            #   支持 -Check 文本体检、-State 状态导出、-Preview 渲染、-Action 非交互动作、-DryRun/-Yes
+setup.sh                    # 安装向导 · macOS 原生 TUI（bash 3.2，同样不依赖 Python），界面与 setup.ps1 逐字一致；
+                            #   首次安装成功创建 ~/Desktop/InstructionX.app 启动器（logo.png 转 icns），卸载时删除
+setup.bat / setup.command   # Windows / macOS 双击入口（只调用上面的原生脚本；无 Python 也能跑）
+setup_text/                 # 向导中英双语文案（zh.txt / en.txt，两个脚本共用的唯一来源；
+                            #   脚本正文保持纯 ASCII，装饰字符由码位构造）
 core/
   __init__.py               # PEP-562 惰性导出，避免 import core 时拉起 PySide6
   version.py                # VERSION 常量（版本单一来源）
@@ -223,7 +234,8 @@ core/
                             #   ILLMService（i_llm_service.py，LLM 插件服务契约）、PluginServices（依赖注入容器）
   plugin/                   # 插件系统核心
     manager.py              # PluginManager 单例：加载/注册插件、热重载（完整卸载旧实例）、
-                            #   跨插件 API 注册、插件卸载（uninstall_plugin）、自定义分组与排序
+                            #   跨插件 API 注册、插件卸载（uninstall_plugin）、
+                            #   插件分类移动（move_plugin_to_scope，官方 ↔ 第三方）、自定义分组与排序
     plugin_identity.py      # 插件 UUID（优先 {插件目录}/.plugin_info.json，不可写时回退
                             #   data/plugin_identity/{插件目录名}.json；卸载时 delete() 清理）
     config_manager.py       # 插件显示顺序（config/plugin_order.json）
@@ -235,7 +247,12 @@ core/
     plugin_version.py       # PluginVersion（如 release.1.0.0）、VersionType
     dependency_manager.py   # 插件 Python 依赖检查/自动安装（优先 uv，回退 pip）
     github_plugin_installer.py  # 插件安装器：GitHub 一键安装（IXPlugin.json / IXRepo.json）、
-                            #   本地 zip 安装、GitHub Release 升级/降级、版本关系检测与注册表登记
+                            #   本地 zip 安装（自动识别单插件/插件集，见 package_discovery.py）、
+                            #   GitHub Release 升级/降级、版本关系检测与注册表登记
+    package_discovery.py    # 本地插件包识别（纯文件系统）：包装层穿透、IXRepo.json 索引驱动、
+                            #   递归扫描 IXPlugin.json、候选校验与去重、失败诊断
+    plugin_backup.py        # 插件目录「包外文件」兜底：替换前检测插件目录内新包没有的文件，
+                            #   整目录快照到 data/plugin_backup/{插件ID}/（每插件留最近 3 份）
   data/                     # 数据持久化层
     data_provider.py        # DataProvider 单例：PRIVATE/PUBLIC 双命名空间、发布订阅、内存缓存
     sqlite_backend.py       # SQLite WAL 后端（默认），schema 迁移
@@ -292,12 +309,15 @@ ui/                         # 界面层
   uikit_theme.py            # 全局主题入口：apply_uikit_theme(app, light/dark/auto) +
                             #   current_theme_mode() + 排除区（标题栏/技能面板/工作区）兼容 QSS 附录
   InstructionX_UIKit/       # PySide6 组件库（独立仓库 KKPIP-Tech/InstructionX_UIKit 的同步副本，
-                            #   alpha-v1.0.2：tokens/theme 主题系统 + 58 组件（含 MarkdownView
+                            #   alpha-v1.0.3：tokens/theme 主题系统 + 58 组件（含 MarkdownView
                             #   Markdown 渲染组件与 math_render 公式渲染中枢）+ 13 布局
-                            #   （含 chat_conversation 流式对话布局）+ 52 动画 + 原生图表引擎 +
-                            #   蓝图节点图（含 GL/软件双绘制视口 viewport.py）+ mermaid/ 子包
-                            #   （官方 mermaid.js WebEngine 渲染 + 自绘降级 + 交互查看器）；
-                            #   主项目不修改库内文件）
+                            #   （含 chat_conversation 流式对话布局）+ 52 动画 + 原生图表引擎
+                            #   （alpha-v1.0.3 起：GL/软件双绘制视口 charts/viewport.py + 大数据
+                            #   紧凑存储/降采样/采样金字塔 + 流式实时入口 set_stream_data）+
+                            #   蓝图节点图（含 GL/软件双绘制视口 blueprint/viewport.py）+
+                            #   code_editor/ 仿 VS Code 代码编辑器（含并排/内联 DiffEditor）+
+                            #   mermaid/ 子包（官方 mermaid.js WebEngine 渲染 + 自绘降级 +
+                            #   交互查看器）；主项目不修改库内文件）
   skills_panel/             # 插件技能面板（含 plugin_group_widget.py 分组折叠控件：
                             #   文件夹形式收起、点击行内向右展开、展开区区分背景）
   work_area/                # 插件 Widget 宿主区（切换插件时缓存 UI 状态）
@@ -312,7 +332,12 @@ ui/                         # 界面层
                                #   每次关闭必问（无记忆选项），Esc/叉号等价于取消
     plugin_management_dialog.py  # 插件管理对话框：安装/升级/降级/卸载 + 分组与排序
                                  #   （替代原 plugin_order_dialog 的菜单入口）；
-                                 #   详情面板含「语言…」按钮与语言状态行（无语言包置灰）
+                                 #   详情面板含「语言…」按钮与语言状态行（无语言包置灰）、
+                                 #   「移至官方插件 / 移至第三方插件」按钮（文案随当前 Tab 变化）；
+                                 #   「安装本地插件包」按当前 Tab 决定目标目录
+    local_package_install_dialog.py  # 本地插件包安装对话框：选 zip → 自动识别
+                                 #   单插件/插件集（任意层嵌套）→ 勾选后一次装完；
+                                 #   target_scope 决定新插件的目标目录（官方/第三方）
     language_dialog.py        # 界面语言选择对话框（编辑菜单「语言」打开，
                               #   选中即 LanguageManager.set_language 实时切换）
     plugin_language_dialog.py # 插件语言选择对话框（「跟随框架（默认）」+ 插件实际提供的语言，
@@ -344,7 +369,8 @@ config/ data/ logs/         # 运行时生成：配置、数据、日志
 - **接口与实现分离**：共享类型统一定义在 `core/interfaces/`，其他模块从这里 re-export，避免循环导入。
 - **关闭行为约定**：`main.py` 已 `setQuitOnLastWindowClosed(False)`，「关窗即退出」的隐式链路被切断，退出时机完全由代码显式控制（`QApplication.quit()`）；主窗口 `closeEvent` 统一拦截全部关闭路径（自绘叉子 / 标题栏右键 / Alt+F4 / 任务栏右键关闭），每次弹出 `CloseConfirmDialog` 询问「退出程序 / 最小化到托盘 / 取消」（无记忆选项）；托盘菜单「退出」与 Windows 注销/关机（`commitDataRequest` 回调置 `_force_quit`）走静默直退，不弹窗、不阻塞系统关机。
 - 后台任务回调在**工作线程**执行，更新 UI 必须通过 `utils/thread_utils.py` 封送到 UI 线程。
-- **蓝图 GL 视口预热**：主窗口构造期（`show()` 之前）调用 `_prewarm_blueprint_viewport()` 预创建一个隐藏蓝图画布并长期持有——蓝图画布的 GL 视口基于 `QOpenGLWidget`，若在窗口可见后才加入窗口树会触发顶层原生句柄重建（窗口短暂关闭重开）；预热让原生句柄首次创建时即按含 GL 子控件的方式建立（详见 `docs/ui/main-window.md` §4 与 UIKit USAGE.md §8.6）。
+- **蓝图 GL 视口预热**：主窗口构造期（`show()` 之前）调用 `_prewarm_blueprint_viewport()` 预创建一个隐藏蓝图画布并长期持有——蓝图画布的 GL 视口基于 `QOpenGLWidget`，若在窗口可见后才加入窗口树会触发顶层原生句柄重建（窗口短暂关闭重开）；预热让原生句柄首次创建时即按含 GL 子控件的方式建立（详见 `docs/ui/main-window.md` §4 与 UIKit USAGE.md §9.6）。
+- **图表 GL 视口**：UIKit 图表引擎（alpha-v1.0.3 起）的 `ChartWidget` 在构造期即创建绘制视口，GL 可用时为 `QOpenGLWidget`（不可用/offscreen 自动回退软件渲染）。框架内唯一的图表使用方是 `ui/usage_panel/trend_chart.py`，其控件在对话框 `exec()` 之前构造，不触发上述原生句柄重建。
 
 ### 插件开发约定（重要）
 
@@ -374,6 +400,8 @@ config/ data/ logs/         # 运行时生成：配置、数据、日志
 | `config/plugin_order.json` | 插件显示顺序（未分组插件之间的顺序） |
 | `config/plugin_groups.json` | 用户自定义分组（schema v2：official/thirdparty 各自含 groups 分组数组 + order 面板统一顺序（分组与未分组插件混排）；v1 自动迁移） |
 | `config/plugin_registry.json` | 已安装插件注册表（schema v1：顶层显式 `version: 1`（`PluginRegistry.SCHEMA_VERSION`），插件条目含版本/来源/安装时间，升级降级与更新检查依据；启动时自动回填） |
+| `data/plugin_backup/{插件ID}/{时间戳}_{版本}/` | 插件目录「包外文件」兜底快照（安装/升级/降级/重装前自动生成，每插件保留最近 3 份，仅人工取回、不自动恢复；见 `core/plugin/plugin_backup.py`） |
+| `data/assets/plugins/{插件ID}/` | 插件资产文件（`DataProvider.save_asset` 写入，插件存放运行时文件数据的规范位置） |
 | `config/i18n.json` | 框架语言设置（schema v1：`default_language` 开发者设定用户不可改 + `current_language` 用户选择；原子写，损坏备份 `.json.corrupt.bak` 重建） |
 | `config/plugin_languages.json` | 每插件语言覆盖（schema v1：`overrides` {插件UUID: 语言代码}，无键=跟随框架；卸载插件自动清除） |
 | `data/data.db` | 插件数据（SQLite + WAL；另有 `-wal`/`-shm` 伴生文件） |
@@ -383,6 +411,8 @@ config/ data/ logs/         # 运行时生成：配置、数据、日志
 | `data/fonts/` | 框架安装字体的存储目录（字体文件 + `fonts.json` 注册表，schema v1：顶层 `version` + `fonts` 数组） |
 | `{插件目录}/.plugin_info.json` 或 `data/plugin_identity/{插件目录名}.json` | 插件 UUID（优先前者，插件目录不可写时回退后者） |
 | `logs/application.log` | 应用日志 |
+| `.tui/lang`、`.tui/work/` | 安装向导运行时目录（已在 `.gitignore` 忽略；向导为原生脚本，**不创建 `.tui/venv`**）：`lang` 记录界面语言偏好（下次启动时读取）；`work/` 为升级下载/解压的临时目录 |
+| `logs/tui_setup.log` | TUI 安装向导日志（与应用日志同目录，便于用户反馈问题时一并提供） |
 
 ### 环境变量
 
@@ -423,6 +453,7 @@ config/ data/ logs/         # 运行时生成：配置、数据、日志
 - LLM：`docs/core/llm-provider/`、`docs/plugins/llm-integration-guide.md`
 - MCP：`docs/core/mcp/overview.md`
 - API 参考：`docs/api/full-reference.md`
+- 安装与环境管理：`docs/tui-setup.md`（**原生**安装向导 `setup.ps1` / `setup.sh`：两平台界面规范、安装/升级/体检/清理策略、uv 命令口径、目录与日志约定）
 - 插件开发快速入门：根目录 `插件开发流程.md`（环境初始化 / 插件仓库配置 / AI 辅助提示词模板，面向插件开发者）
 
 **根目录历史设计报告**（已落地为正式文档，仅作决策溯源参考）：

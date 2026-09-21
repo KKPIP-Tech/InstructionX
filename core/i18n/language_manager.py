@@ -13,7 +13,7 @@ import threading
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 
-from PySide6.QtCore import QObject, Signal
+from PySide6.QtCore import QLibraryInfo, QObject, QTranslator, Signal
 
 from utils.logging_tools import LoggerManager, get_name
 
@@ -96,6 +96,36 @@ class LanguageManager(QObject):
         # 日志去重集合：缺失的语言文件 / 缺失的键只各警告一次
         self._warned_missing_files: Set[str] = set()
         self._warned_missing_keys: Set[Tuple[str, str, str]] = set()
+        #: 已装载的 Qt 原生翻译器（切语言时先摘旧的，见 _install_qt_translations）
+        self._qt_translator: Optional[QTranslator] = None
+        self._install_qt_translations(self._current_language)
+
+    # ==================== Qt 原生文案（可选增强） ====================
+
+    def _install_qt_translations(self, code: str) -> None:
+        """装载 Qt 自带控件的翻译（QFileDialog 等原生对话框文案）
+
+        框架的 XML 语言包只覆盖自身文案：不装 Qt 翻译时，「选择导出目录」这类
+        原生对话框在俄语界面下仍显示英文（Open/Cancel/File name），与界面其余
+        部分不一致。此处按语言代码装载 PySide6 随附的 ``qtbase_<code>.qm``；
+        没有对应文件时静默跳过（英文兜底），不影响语言切换本身。
+
+        Args:
+            code: 目标语言代码（如 ``ru``）
+        """
+        from PySide6.QtWidgets import QApplication   # 延迟：无 GUI 场景不拉起
+        app = QApplication.instance()
+        if app is None:
+            return
+        if self._qt_translator is not None:
+            app.removeTranslator(self._qt_translator)
+            self._qt_translator = None
+        translator = QTranslator()
+        translations = QLibraryInfo.path(QLibraryInfo.LibraryPath.TranslationsPath)
+        if not translator.load(f"qtbase_{code}", translations):
+            return
+        app.installTranslator(translator)
+        self._qt_translator = translator
 
     # ==================== 框架文案取词 ====================
 
@@ -207,6 +237,7 @@ class LanguageManager(QObject):
             return True
         self._current_language = code
         self._store.save_framework_settings(self._default_language, code)
+        self._install_qt_translations(code)
         self._logger.info(get_name(), f"界面语言已切换: {code}")
         self.language_changed.emit(code)
         return True

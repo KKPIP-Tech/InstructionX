@@ -1080,7 +1080,7 @@ class Service:
 
 | 文件 | 核心职责 |
 |------|---------|
-| `InstructionX_UIKit/` | UIKit 组件库（设计令牌 + ThemeManager + 组件/布局/图表，同步副本不修改） |
+| `InstructionX_UIKit/` | UIKit 组件库（alpha-v1.0.3 同步副本：设计令牌 + ThemeManager + 组件/布局/动画/图表引擎/代码编辑器，主项目不修改库内文件） |
 | `uikit_bootstrap.py` | sys.path 引导（使 UIKit 以顶层包可导入） |
 | `uikit_theme.py` | 全局主题入口（apply_uikit_theme + 排除区兼容附录） |
 | `main_window.py` | InstructionXMainWindow 主窗口 |

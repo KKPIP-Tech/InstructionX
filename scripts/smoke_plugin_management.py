@@ -6,6 +6,11 @@
 - 自定义分组保存与「分组 → 组内 → 未分组」排序
 - 本地 zip 插件包安装 / 升级 / 降级 / 重装关系检测
 - 无公共根目录的 zip 插件包安装
+- **插件集 zip 自动识别与一次安装（GitHub 下载形态，含任意层嵌套）**
+- **插件集子集安装（selected_plugins）与 IXRepo.json 索引驱动的默认勾选策略**
+- **无法识别的压缩包给出可诊断信息而非笼统报错**
+- **本地插件包按 Tab 范围安装（官方 / 第三方）且已安装插件不搬家**
+- **插件在官方 / 第三方目录之间移动（move_plugin_to_scope）**
 - 插件卸载（目录、UUID 文件、注册表、分组、排序清理 + sys.modules 清理）
 - reload_plugins 热重载
 
@@ -18,6 +23,7 @@ import sys
 import tempfile
 import zipfile
 from pathlib import Path
+from typing import Dict, List, Optional, Tuple
 
 # ===== 项目根目录加入搜索路径 =====
 PROJECT_ROOT = Path(__file__).parent.parent
@@ -87,6 +93,38 @@ def make_plugin_zip(zip_path: Path, dir_name: str, version: str,
         zf.writestr(f"{prefix}entrance.py", FAKE_ENTRANCE.format(name=name))
         descriptor = {"id": dir_name, "name": name, "version": version, "main": "entrance.py"}
         zf.writestr(f"{prefix}IXPlugin.json", json.dumps(descriptor, ensure_ascii=False))
+
+
+def make_multi_plugin_zip(zip_path: Path, root: str,
+                          plugins: List[Tuple[str, str, str]],
+                          index_entries: Optional[List[Dict]] = None) -> None:
+    """制作插件集 zip（GitHub 仓库形态：root/ 下并列多个插件目录）
+
+    Args:
+        zip_path: 目标 zip 路径
+        root: 仓库根目录名（GitHub 下载的 zip 为 ``<repo>-<branch>``，空串表示无包装层）
+        plugins: [(目录名, 版本, 显示名), ...]
+        index_entries: 非 None 时写入 IXRepo.json（索引驱动场景）
+    """
+    prefix_root = f"{root}/" if root else ""
+    with zipfile.ZipFile(zip_path, "w") as zf:
+        for dir_name, version, name in plugins:
+            prefix = f"{prefix_root}{dir_name}/"
+            zf.writestr(f"{prefix}__init__.py", "")
+            zf.writestr(f"{prefix}entrance.py", FAKE_ENTRANCE.format(name=name))
+            descriptor = {"id": dir_name, "name": name, "version": version,
+                          "main": "entrance.py"}
+            zf.writestr(f"{prefix}IXPlugin.json", json.dumps(descriptor, ensure_ascii=False))
+        if index_entries is not None:
+            index = {"version": 1, "plugins": index_entries}
+            zf.writestr(f"{prefix_root}IXRepo.json", json.dumps(index, ensure_ascii=False))
+
+
+def make_plain_zip(zip_path: Path, files: Dict[str, str]) -> None:
+    """制作不含任何插件描述文件的普通 zip（用于无效包诊断用例）"""
+    with zipfile.ZipFile(zip_path, "w") as zf:
+        for rel_path, content in files.items():
+            zf.writestr(rel_path, content)
 
 
 def build_isolated_manager(work_dir: Path) -> PluginManager:
@@ -229,6 +267,162 @@ def main() -> int:
         print("== 7. 卸载后重载一致性 ==")
         pm.reload_plugins()
         check("重载后剩余 2 个插件", len(pm.get_all_plugins()) == 2)
+
+        print("== 8. 插件集 zip 自动识别与一次安装（GitHub 下载形态） ==")
+        # 用户下载的 GitHub 仓库 zip：repo-main/ 下并列多个插件目录
+        zip_collection = work_dir / "collection.zip"
+        make_multi_plugin_zip(zip_collection, "repo-main", [
+            ("demo-five", "release.1.0.0", "演示插件五"),
+            ("demo-six", "release.1.0.0", "演示插件六"),
+        ])
+        inspection = installer.inspect_local_package(zip_collection)
+        check("识别为插件集", inspection.kind == "multi")
+        check("识别到 2 个插件", len(inspection.plans) == 2)
+        check("无索引时全部默认勾选",
+              all(plan.default_selected for plan in inspection.plans))
+        check("识别阶段不做安装（目录尚未出现）",
+              not (work_dir / "custom_plugin" / "demo-five").exists())
+        results = installer.install_from_zip(zip_collection)
+        check("插件集一次安装 2 个插件",
+              len(results) == 2 and all(r.success for r in results))
+        check("插件集成员均已落盘",
+              (work_dir / "custom_plugin" / "demo-five").exists()
+              and (work_dir / "custom_plugin" / "demo-six").exists())
+        check("注册表记录来源为本地插件包",
+              (pm.registry.find_by_descriptor("thirdparty", "demo-five") or (None, {}))[1]
+              .get("source_type") == "local_zip")
+        check("注册表记录包内相对路径",
+              (pm.registry.find_by_descriptor("thirdparty", "demo-five") or (None, {}))[1]
+              .get("source_path") == "demo-five")
+
+        print("== 9. 插件集子集安装（selected_plugins） ==")
+        zip_subset = work_dir / "collection-subset.zip"
+        make_multi_plugin_zip(zip_subset, "repo-main", [
+            ("demo-seven", "release.1.0.0", "演示插件七"),
+            ("demo-eight", "release.1.0.0", "演示插件八"),
+        ])
+        results = installer.install_from_zip(
+            zip_subset, selected_plugins=["demo-seven"])
+        check("仅安装所选插件",
+              len(results) == 1 and results[0].plugin_id == "demo-seven")
+        check("未选插件未落盘",
+              not (work_dir / "custom_plugin" / "demo-eight").exists())
+
+        print("== 10. IXRepo.json 索引驱动的默认勾选策略 ==")
+        zip_indexed = work_dir / "collection-indexed.zip"
+        make_multi_plugin_zip(
+            zip_indexed, "repo-main",
+            [("demo-nine", "release.1.0.0", "演示插件九"),
+             ("demo-extra", "release.1.0.0", "未声明插件")],
+            index_entries=[{"id": "demo-nine", "name": "演示插件九", "path": "demo-nine"}])
+        inspection = installer.inspect_local_package(zip_indexed)
+        selected_map = {plan.candidate.descriptor_id: plan.default_selected
+                        for plan in inspection.plans}
+        check("索引声明项默认勾选", selected_map.get("demo-nine") is True)
+        check("未声明项默认不勾选", selected_map.get("demo-extra") is False)
+        check("给出未声明提示",
+              any("未在" in w and "声明" in w for w in inspection.warnings))
+        results = installer.install_from_zip(zip_indexed)
+        check("未指定 selected_plugins 时仍安装全部可安装项",
+              len(results) == 2 and all(r.success for r in results))
+
+        print("== 11. 无效包给出可诊断信息 ==")
+        zip_invalid = work_dir / "not-a-plugin.zip"
+        make_plain_zip(zip_invalid, {"repo-main/README.md": "hello",
+                                     "repo-main/docs/guide.md": "guide"})
+        inspection = installer.inspect_local_package(zip_invalid)
+        check("无插件包识别为 invalid", inspection.kind == "invalid")
+        check("诊断含扫描统计与指引",
+              "已扫描到" in inspection.error and "IXPlugin.json" in inspection.error)
+        results = installer.install_from_zip(zip_invalid)
+        check("无效包安装返回单条错误结果",
+              len(results) == 1 and not results[0].success)
+        check("无效包不产生任何插件目录",
+              not any((work_dir / "custom_plugin" / name).exists()
+                      for name in ("repo-main", "docs")))
+
+        print("== 12. 插件目录内包外文件的兜底备份 ==")
+        # 模拟「插件把运行时数据写进自己目录」（规范要求改存 DataProvider）
+        installed_dir = work_dir / "custom_plugin" / "demo-five"
+        (installed_dir / "runtime.dat").write_text("runtime", encoding="utf-8")
+        zip_upgrade = work_dir / "demo-five-2.0.0.zip"
+        make_plugin_zip(zip_upgrade, "demo-five", "release.2.0.0", "演示插件五")
+        results = installer.install_from_zip(zip_upgrade)
+        check("升级成功", results[0].success)
+        check("结果提示已备份包外文件",
+              "已备份 1 个包外文件" in results[0].message)
+        backup_root = work_dir / "data" / "plugin_backup" / "demo-five"
+        snapshots = sorted(backup_root.iterdir()) if backup_root.is_dir() else []
+        check("已生成快照", len(snapshots) == 1)
+        check("快照内含包外数据文件",
+              bool(snapshots) and (snapshots[0] / "runtime.dat").is_file())
+        check("升级后新目录内不再有包外数据文件",
+              not (installed_dir / "runtime.dat").exists())
+        zip_upgrade2 = work_dir / "demo-five-3.0.0.zip"
+        make_plugin_zip(zip_upgrade2, "demo-five", "release.3.0.0", "演示插件五")
+        results = installer.install_from_zip(zip_upgrade2)
+        check("无包外文件时不提示备份",
+              "已备份" not in results[0].message)
+        check("无包外文件时不新增快照",
+              len(sorted(backup_root.iterdir())) == 1)
+
+        print("== 13. 本地插件包按 Tab 范围安装（官方 / 第三方）==")
+        zip_official = work_dir / "official-tab.zip"
+        make_plugin_zip(zip_official, "demo-official", "release.1.0.0", "官方演示插件")
+        inspection = installer.inspect_local_package(zip_official, target_scope="official")
+        check("预演范围跟随 target_scope",
+              inspection.plans[0].target_scope == "official")
+        check("预演不落盘",
+              not (work_dir / "plugin" / "demo-official").exists())
+        results = installer.install_from_zip(zip_official, target_scope="official")
+        check("安装成功", len(results) == 1 and results[0].success)
+        check("装进官方插件目录",
+              (work_dir / "plugin" / "demo-official").is_dir())
+        check("第三方目录无副本",
+              not (work_dir / "custom_plugin" / "demo-official").exists())
+        check("注册表登记为 official",
+              pm.registry.find_by_descriptor("official", "demo-official") is not None)
+        # 已安装插件保持原地：即使传入另一侧范围也不搬家、不产生第二份安装
+        results = installer.install_from_zip(zip_official, target_scope="thirdparty")
+        check("已安装插件重复安装成功", len(results) == 1 and results[0].success)
+        check("已安装插件仍在官方目录",
+              (work_dir / "plugin" / "demo-official").is_dir())
+        check("已安装插件未在第三方生成副本",
+              not (work_dir / "custom_plugin" / "demo-official").exists())
+
+        print("== 14. 插件在官方 / 第三方之间移动 ==")
+        pm.reload_plugins()
+        uuid_move = find_uuid(pm, "demo-one")
+        identity_file = work_dir / "plugin" / "demo-one" / ".plugin_info.json"
+        check("移动前插件位于官方目录并已生成 UUID 文件", identity_file.is_file())
+        pm.group_store.save("official", [], [("plugin", uuid_move)])
+        result = pm.move_plugin_to_scope(uuid_move, "thirdparty")
+        check("移动返回成功", result["success"])
+        check("官方目录中已不存在",
+              not (work_dir / "plugin" / "demo-one").exists())
+        check("插件已出现在第三方目录",
+              (work_dir / "custom_plugin" / "demo-one").is_dir())
+        check("UUID 文件随目录一起移动",
+              (work_dir / "custom_plugin" / "demo-one" / ".plugin_info.json").is_file())
+        check("注册表分类已更新为 thirdparty",
+              (pm.registry.get(uuid_move) or {}).get("scope") == "thirdparty")
+        check("原分组/排序记录已清除",
+              not pm.group_store.load_order("official"))
+        pm.reload_plugins()
+        check("重新加载后归入第三方列表",
+              any(p.plugin_id == uuid_move for p in pm.get_thirdparty_plugins()))
+        check("重新加载后 UUID 保持不变", find_uuid(pm, "demo-one") == uuid_move)
+        # 已在目标分类中的插件再次移动应被拒绝
+        result = pm.move_plugin_to_scope(uuid_move, "thirdparty")
+        check("同分类移动被拒绝", not result["success"] and "已在" in result["message"])
+        # 目标分类存在同名目录时拒绝移动
+        (work_dir / "plugin" / "demo-one").mkdir(parents=True, exist_ok=True)
+        result = pm.move_plugin_to_scope(uuid_move, "official")
+        check("目标存在同名目录时被拒绝",
+              not result["success"] and "同名" in result["message"])
+        check("被拒绝时插件仍在原目录",
+              (work_dir / "custom_plugin" / "demo-one").is_dir())
+        shutil.rmtree(work_dir / "plugin" / "demo-one", ignore_errors=True)
     finally:
         # 关闭后台任务管理器线程池，避免进程悬挂
         try:
