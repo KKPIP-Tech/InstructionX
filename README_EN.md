@@ -9,10 +9,10 @@
 [![Python](https://img.shields.io/badge/Python-3.14+-blue.svg)](https://www.python.org/)
 [![PySide6](https://img.shields.io/badge/PySide6-6.10+-green.svg)](https://doc.qt.io/qtforpython/)
 [![Platform](https://img.shields.io/badge/Platform-Windows%2010%2F11-lightgrey.svg)](#)
-[![Version](https://img.shields.io/badge/Alpha-1.1.0%20CE-red.svg)](#)
+[![Version](https://img.shields.io/badge/Alpha-1.1.1%20CE-red.svg)](#)
 [![License](https://img.shields.io/badge/License-AGPL--3.0%2B%20%2B%20%C2%A77%20Terms-blue.svg)](LICENSE)
 
-[中文版](README.md) | English Version
+[中文版](README.md) | English Version | [Version française](README_FR.md) | [Русская версия](README_RU.md)
 
 </div>
 
