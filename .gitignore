@@ -215,6 +215,7 @@ __marimo__/
 .config/
 .claude/
 .kimi/
+.kimi-code/
 temp/
 /data/
 .mcp_sdk_temp/
