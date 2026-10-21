@@ -184,6 +184,16 @@ dialog.plugins_changed.connect(self._on_plugins_changed)
 dialog.exec()
 ```
 
+### 3.6 插件启动失败提示
+
+主窗口首次显示后会读取 `PluginManager.get_plugin_load_failures()`。存在失败项
+时使用 UIKit `Dialog.info()` 显示「插件加载失败」提示框，逐项列出插件名称、
+目录、失败原因、缺失依赖/模块和简要错误信息。
+
+触发场景包括：启动依赖自动安装失败、插件入口无效、入口导入异常和缺少
+Python 模块。`docs/`、`assets/`、`.github/` 等不含插件特征文件的普通资源
+目录会被静默跳过，不会触发提示。
+
 ---
 
 ## 4. PluginOrderDialog 插件排序对话框（遗留）

@@ -178,12 +178,6 @@ cython_debug/
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
 
-# Abstra
-# Abstra is an AI-powered process automation framework.
-# Ignore directories containing user credentials, local state, and settings.
-# Learn more at https://abstra.io/docs
-.abstra/
-
 # Visual Studio Code
 #  Visual Studio Code specific template is maintained in a separate VisualStudioCode.gitignore 
 #  that can be found at https://github.com/github/gitignore/blob/main/Global/VisualStudioCode.gitignore
@@ -197,13 +191,6 @@ cython_debug/
 # PyPI configuration file
 .pypirc
 
-# Cursor
-#  Cursor is an AI-powered code editor. `.cursorignore` specifies files/directories to
-#  exclude from AI features like autocomplete and code analysis. Recommended for sensitive data
-#  refer to https://docs.cursor.com/context/ignore-files
-.cursorignore
-.cursorindexingignore
-
 # Marimo
 marimo/_static/
 marimo/_lsp/
@@ -212,11 +199,9 @@ __marimo__/
 # VS Code
 .vscode
 
+# 项目运行时产物（本机生成的缓存、日志与临时数据，不入库）
 .config/
-.claude/
-.kimi/
 temp/
-/data/
 .mcp_sdk_temp/
 logs/
 
@@ -233,10 +218,67 @@ config/*
 # 含插件仓库根的 IXRepo.json/README.md 等顶层文件)
 plugin/*
 custom_plugin/*
-.playwright-mcp/
 
 # 忽略 ShowDoc 文档目录
 ShowDoc/
+
+# ============================================================
+# AI 编码 Agent / 编程助手的工作目录与本地状态
+# （各工具的会话记录、缓存、索引、本地技能均为本机资产，不入库；
+#    需要团队共享的规则与说明请统一放 AGENTS.md / docs/）
+# ============================================================
+
+# OpenAI Codex（CLI / 桌面版，含项目级技能 .codex/skills/）
+.codex/
+
+# Anthropic Claude Code
+.claude/
+
+# Moonshot Kimi Code
+.kimi/
+.kimi-code/
+
+# Google Gemini CLI
+.gemini/
+
+# 阿里 Qwen Code
+.qwen/
+
+# 字节 Trae / 腾讯 CodeBuddy / 阿里 iFlow
+.trae/
+.codebuddy/
+.iflow/
+
+# Cursor（.cursorignore/.cursorindexingignore 为其 AI 索引排除配置）
+.cursor/
+.cursorignore
+.cursorindexingignore
+
+# Windsurf / Codeium
+.windsurf/
+.codeium/
+
+# Cline / Roo Code / Kilo Code
+.cline/
+.roo/
+.kilocode/
+
+# Augment Code / Continue / opencode
+.augment/
+.continue/
+.opencode/
+
+# Aider（会话历史与仓库缓存）
+.aider/
+.aider.chat.history.md
+.aider.input.history
+.aider.tags.cache.*
+
+# Abstra（AI 流程自动化框架的本机状态）
+.abstra/
+
+# Playwright MCP（浏览器自动化的会话输出）
+.playwright-mcp/
 
 # DSH 本地配置与技能（本地工具资产，不入库）
 #   .dsh/skills/<skill-name>/SKILL.md 为本地安装的 Skills；

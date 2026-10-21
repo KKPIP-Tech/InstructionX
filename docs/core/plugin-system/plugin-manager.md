@@ -60,13 +60,33 @@ manager = get_plugin_manager()
 
 ```python
 def load_plugins(self) -> None:
-    """加载所有插件（包括官方插件和第三方插件），并回填版本注册表"""
+    """加载所有插件（包括官方插件和第三方插件），并校准版本注册表"""
     self.load_official_plugins()
     self.load_thirdparty_plugins()
     self._backfill_registry()
 ```
 
-> **说明**：`_backfill_registry()` 会在加载完成后扫描已加载插件，为注册表（`config/plugin_registry.json`）中缺失记录的插件回填版本/来源信息；回填失败仅记录警告日志，不影响插件加载主流程（见 `core/plugin/manager.py` 的 `_backfill_registry()` 方法）。
+> **说明**：`_backfill_registry()` 会在加载完成后调用
+> `PluginRegistry.reconcile()`，以每个插件目录中的 `IXPlugin.json` 为准校准
+> 注册表（`config/plugin_registry.json`）的版本、名称和描述 ID。用户绕过插件
+> 管理器直接替换插件目录后，下一次启动或重载也会同步实际版本；已有 GitHub
+> 来源 URL、可见性和 Key 绑定保持不变。校准失败仅记录警告日志，不影响插件
+> 加载主流程。
+
+> **插件候选目录**：`plugin/` 与 `custom_plugin/` 下的直接子目录只有包含
+> `IXPlugin.json`、`entrance.py` 或 `.plugin_info.json` 时才被视为插件。
+> `docs/`、`assets/`、`.github/` 等普通资源目录会被静默跳过，不进入失败提示。
+
+#### get_plugin_load_failures()
+
+```python
+def get_plugin_load_failures(self) -> List[PluginLoadFailure]:
+    """获取最近一次插件加载产生的失败列表副本。"""
+```
+
+`load_plugins()` 开始时会清空失败列表。依赖安装失败、入口无效、入口导入
+异常和缺少 Python 模块都会形成 `PluginLoadFailure`；主窗口首次显示后读取
+该列表并弹出用户可见提示框，不再只写日志。
 
 #### load_official_plugins()
 
@@ -705,6 +725,11 @@ class PluginManager:
 
         # 已安装插件注册表（版本/来源，用于升级降级）
         self.registry = PluginRegistry()
+
+        # 启动依赖准备、入口加载与结构化失败列表
+        self._dependency_preparer = PluginDependencyPreparer()
+        self._module_loader = PluginModuleLoader()
+        self._plugin_load_failures: List[PluginLoadFailure] = []
 
         # 用户自定义分组存储
         self.group_store = PluginGroupStore()
