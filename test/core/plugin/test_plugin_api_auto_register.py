@@ -15,7 +15,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from core.plugin.manager import PluginManager
-from test.conftest_utils import create_minimal_plugin
+from conftest_utils import create_minimal_plugin
 
 
 # ============================================================================
