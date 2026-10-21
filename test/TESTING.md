@@ -24,13 +24,13 @@
 | core.github | 8 | 117 | PAT 安全存储、DPAPI、多 Key CRUD、API 状态映射、私有仓库安装、来源绑定与重新绑定 |
 | core.llm | 18 | 283 | LLMProvider, ConversationManager, Config, Types, Exceptions, ToolCallExecutor, PluginService, 适配器注册表, 模型 schema, 用量记录 |
 | core.mcp | 6 | 93 | Manager, Client, Server, Bridge, Config, PluginInterface |
-| core.plugin | 11 | 225 | Manager, Identity, ConfigManager, Version, DependencyManager, 插件 API 自动注册, 插件图标, 本地插件包识别, 本地包安装与关系预演（含目标范围）, 包外文件快照, 插件分类移动 |
+| core.plugin | 13 | 250 | Manager, Identity, ConfigManager, Version, DependencyManager, 启动依赖恢复/入口失败诊断/资源目录过滤, 注册表版本校准, 插件 API 自动注册, 插件图标, 本地插件包识别, 本地包安装与关系预演（含目标范围）, 包外文件快照, 插件分类移动 |
 | core.task | 4 | 72 | BackgroundTaskManager, TaskModel, TaskStorage, 优雅关闭 |
 | core（版本号） | 1 | 9 | `core/version.py` 单一来源与 pyproject 动态版本约束 |
-| ui_tests | 15 | 124 | MainWindow, SkillsPanel（含语言跟随）, GitHub Key 管理/编辑/主动重新绑定, 私有安装提示, LLM 设置对话框, 用量趋势面板, 插件管理移动分类与安装范围 |
+| ui_tests | 16 | 129 | MainWindow（含插件启动失败提示）, SkillsPanel（含语言跟随）, GitHub Key 管理/编辑/主动重新绑定, 私有安装提示, LLM 设置对话框, 用量趋势面板, 插件管理移动分类与安装范围 |
 | uikit | 2 | 33 | 蓝图节点注册表命名空间隔离；UIKit 同步副本守卫（版本钉子/导入契约/新增能力） |
 | utils | 5 | 29 | LoggerManager, 线程工具, 旧样式表兼容与主题 |
-| **合计** | **72** | **1037** | — |
+| **合计** | **75** | **1067** | — |
 
 ### 1.3 测试环境要求
 
@@ -47,7 +47,7 @@
 
 ```
        ┌─────────────────────────────────┐
-       │        UI Tests (10)           │  ← qtbot, 模拟用户交互
+       │        UI Tests (16)           │  ← qtbot, 模拟用户交互
        │   test/ui_tests/test_*.py      │
        └─────────────────────────────────┘
                        │
