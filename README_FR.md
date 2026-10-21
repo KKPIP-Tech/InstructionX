@@ -37,7 +37,7 @@ Le framework n'intègre aucune fonctionnalité métier : toutes les capacités s
 ### Système de plugins
 
 - **Gestion du cycle de vie** : chargement / déchargement / rechargement à chaud des plugins sans redémarrer l'application ; la désinstallation nettoie automatiquement les données associées, telles que l'identité du plugin et les surcharges linguistiques
-- **Installation et mises à jour** : l'installateur GitHub intégré prend en charge les dépôts monoplugin (IXPlugin.json) et multiplugins (IXRepo.json), avec installation en arrière-plan et affichage de la progression ; installation locale depuis un zip (détection automatique des paquets monoplugin / multiplugins et des niveaux d'imbrication multiples dans l'archive, aperçu des relations mise à niveau / réinstallation / rétrogradation avant l'installation, la rétrogradation exigeant une confirmation supplémentaire), mise à niveau / rétrogradation via GitHub Release avec détection des relations de version ; les dépôts de l'organisation KKPIP-Tech sont automatiquement classés comme plugins officiels
+- **Installation et mises à jour** : dépôts GitHub publics et privés, plusieurs PAT nommés, avertissements explicites pour les sources privées, réassociation après expiration, archives ZIP locales et mises à jour Release
 - **Gouvernance des versions et des identités** : versions sémantiques des plugins (alpha / beta / pre-release / release) et identité UUID propre à chaque plugin ; le registre des plugins installés consigne la version / la provenance / la date d'installation et sert de base aux mises à niveau et aux vérifications de mise à jour ; les dépendances Python déclarées par les plugins sont installées automatiquement par le framework (uv en priorité, pip en repli)
 - **Collaboration inter-plugins** : déclarer `service_api` enregistre automatiquement des API inter-plugins et les expose comme outils MCP ; les plugins peuvent également enregistrer des outils directement auprès du LLM via `llm_tools`
 - **Organisation du panneau** : le panneau de compétences prend en charge des groupes personnalisés, le repli et un ordre mixte ; l'état de l'interface d'un plugin est mis en cache lors du changement de plugin et intégralement restauré au retour
@@ -270,6 +270,7 @@ Les fichiers suivants sont générés à l'exécution ; ne modifiez pas leur str
 | `config/plugin_order.json` | Ordre d'affichage des plugins non groupés |
 | `config/plugin_groups.json` | Groupes de plugins personnalisés et ordre du panneau |
 | `config/plugin_registry.json` | Registre des plugins installés (base des mises à niveau / rétrogradations) |
+| `config/github_keys.json` | Métadonnées et identifiants GitHub PAT chiffrés par DPAPI |
 | `config/i18n.json` | Paramètres de langue du framework |
 | `config/plugin_languages.json` | Surcharges linguistiques par plugin |
 | `data/data.db` | Données des plugins (SQLite + WAL) |
@@ -285,7 +286,7 @@ Les fichiers suivants sont générés à l'exécution ; ne modifiez pas leur str
 |----------|------|
 | `INSTRUCTIONX_DATAPROVIDER_BACKEND` | Backend de la couche de données : `sqlite` (par défaut) / `json` |
 | `INSTRUCTIONX_MCP_CONFIG` | Remplace le chemin du fichier de configuration MCP |
-| `INSTRUCTIONX_GITHUB_TOKEN` | Jeton d'API GitHub : relève les limites de débit pour l'installation de plugins et les vérifications de mise à jour |
+| `INSTRUCTIONX_GITHUB_TOKEN` | Entrée de compatibilité ; préférez les clés protégées par DPAPI dans Édition → Gestion des clés GitHub |
 | `INSTRUCTIONX_LOG_DIR` | Remplace le répertoire de sortie des journaux |
 | `INSTRUCTIONX_LOG_LEVEL` | Remplace le niveau de journalisation (`DEBUG` / `INFO` / `WARNING` / `ERROR` / `CRITICAL`) |
 | `DEVELOPMENT_MODE` | Bascule du mode développement |

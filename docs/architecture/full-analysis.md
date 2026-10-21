@@ -1023,6 +1023,17 @@ class Service:
 | `plugin_version.py` | PluginVersion 版本解析与比较 |
 | `plugin_icon.py` | PluginIcon 图标处理（5 种来源） |
 
+#### GitHub 私有仓库访问 (`core/github/`)
+
+| 文件 | 核心职责 |
+|------|---------|
+| `credential.py` | PAT、Key 验证状态、仓库可见性数据模型 |
+| `secret_vault.py` | Windows DPAPI 凭据加密与测试内存后端 |
+| `key_store.py` | `config/github_keys.json` 原子持久化、损坏恢复 |
+| `key_manager.py` | 多 Key CRUD、默认 Key、身份和仓库验证 |
+| `api_client.py` | GitHub REST API、Bearer 鉴权、zipball 与错误映射 |
+| `source_binding.py` | 插件来源可见性解析、Key 重新绑定与失败回滚语义 |
+
 #### 数据层 (`core/data/`)
 
 | 文件 | 核心职责 |
@@ -1114,7 +1125,8 @@ class Service:
 |------|------|
 | `config/plugin_order.json` | `{official_plugins: [uuid], thirdparty_plugins: [uuid]}` |
 | `config/plugin_groups.json` | schema v2：`{version: 2, official: {groups, order}, thirdparty: {groups, order}}`（分组定义 + 面板统一顺序，分组与未分组插件混排） |
-| `config/plugin_registry.json` | 已安装插件注册表：`{version, plugins: {uuid: {descriptor_id, name, scope, version, installed_at, source_type, source_url}}}`（升级降级与更新检查依据） |
+| `config/plugin_registry.json` | 已安装插件注册表 schema v2：`{version: 2, plugins: {uuid: {descriptor_id, name, scope, version, installed_at, source_type, source_url, source_visibility, source_key_id}}}`（升级降级与更新检查依据） |
+| `config/github_keys.json` | 多个命名 GitHub PAT：DPAPI 密文、账号、类型、验证状态、可选过期信息和默认 Key |
 | `config/llm_providers.json` | schema v2：`{version: 2, providers: {instance_id: {preset_id, adapter, api_key, base_url, chat_model, order, ...}}}` |
 | `config/llm_models_cache.json` | `{instance_id: [ModelInfo] 或 {timestamp, models}}`（键为实例 id） |
 | `config/mcp_config.json` | `{server: {...}, remote_servers: [...]}` |

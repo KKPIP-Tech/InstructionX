@@ -37,7 +37,7 @@ The framework itself ships no business functionality: every capability is plugge
 ### Plugin System
 
 - **Lifecycle Management**: Hot-load / hot-unload / hot-reload plugins without restarting the application; uninstalling automatically cleans up associated data such as the plugin identity and language overrides
-- **Installation & Updates**: The built-in GitHub installer supports single-plugin repositories (IXPlugin.json) and multi-plugin repositories (IXRepo.json), with background installation and progress display; local zip installation (single-plugin/multi-plugin packages and multi-level nesting inside the archive are detected automatically, an upgrade/reinstall/downgrade preview is shown before install, and downgrades require a second confirmation) and GitHub Release upgrade/downgrade with version-relation detection are supported; repositories under the KKPIP-Tech organization are automatically classified as official plugins
+- **Installation & Updates**: Public and private GitHub repositories, multiple named PATs, explicit private-source warnings, Key rebinding after expiration, local zip installation, and GitHub Release upgrade/downgrade are supported
 - **Versioning & Identity Governance**: Semantic plugin versions (alpha / beta / pre-release / release) and a per-plugin UUID identity; the installed-plugin registry records version / source / install time as the basis for upgrades and update checks; Python dependencies declared by plugins are installed automatically by the framework (uv first, pip as fallback)
 - **Cross-Plugin Collaboration**: Declaring `service_api` automatically registers cross-plugin APIs and exposes them as MCP tools; plugins can also register tools directly with the LLM via `llm_tools`
 - **Panel Organization**: The skills panel supports custom groups, folding, and mixed ordering; plugin UI state is cached when switching plugins and fully restored on return
@@ -274,6 +274,7 @@ The following files are generated at runtime; do not modify their structure manu
 | `config/plugin_order.json` | Display order of ungrouped plugins |
 | `config/plugin_groups.json` | User-defined plugin groups and panel ordering |
 | `config/plugin_registry.json` | Installed plugin registry (basis for upgrade/downgrade) |
+| `config/github_keys.json` | Metadata and DPAPI-encrypted credentials for multiple GitHub PATs |
 | `config/i18n.json` | Framework language settings |
 | `config/plugin_languages.json` | Per-plugin language overrides |
 | `data/data.db` | Plugin data (SQLite + WAL) |
@@ -289,7 +290,7 @@ The following files are generated at runtime; do not modify their structure manu
 |----------|---------|
 | `INSTRUCTIONX_DATAPROVIDER_BACKEND` | Data layer backend: `sqlite` (default) / `json` |
 | `INSTRUCTIONX_MCP_CONFIG` | Override the MCP configuration file path |
-| `INSTRUCTIONX_GITHUB_TOKEN` | GitHub API token: raises rate limits for plugin installation / update checks |
+| `INSTRUCTIONX_GITHUB_TOKEN` | Legacy GitHub token entry; prefer DPAPI-protected keys in Edit → GitHub Key Management |
 | `INSTRUCTIONX_LOG_DIR` | Override the log output directory |
 | `INSTRUCTIONX_LOG_LEVEL` | Override the log level (`DEBUG` / `INFO` / `WARNING` / `ERROR` / `CRITICAL`) |
 | `DEVELOPMENT_MODE` | Development mode toggle |

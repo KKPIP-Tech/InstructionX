@@ -589,7 +589,7 @@ multi-plugin-repo/
 `__MACOSX` 干扰等），插件集可勾选后一次装完——**无需手动解压、逐层翻目录、逐个打包**
 （识别规则见[插件安装器 §4.7](plugin-installer.md)）。
 
-从 GitHub 安装或检查 Release 更新时，可设置环境变量 `INSTRUCTIONX_GITHUB_TOKEN` 提供 GitHub API Token 用于鉴权，提升 API 限流阈值并支持私有仓库。
+从 GitHub 安装或检查 Release 更新时，推荐在「编辑 → GitHub Key 管理」中配置多个带名称的 PAT。框架使用 Windows DPAPI 加密保存 Token，并在私有插件注册表中绑定稳定 Key UUID。安装界面的「不使用 Key」只执行匿名访问；私有仓库必须由用户显式选择 Key。环境变量 `INSTRUCTIONX_GITHUB_TOKEN` 仅作为底层历史调用兼容入口保留。
 
 ---
 

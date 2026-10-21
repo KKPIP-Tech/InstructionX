@@ -71,6 +71,10 @@ def _create_menus(self) -> None:
     self._action_language.triggered.connect(self._open_language_dialog)
     self._menu_edit.addAction(self._action_language)
 
+    self._action_github_keys = QAction(self)
+    self._action_github_keys.triggered.connect(self._open_github_key_manager)
+    self._menu_edit.addAction(self._action_github_keys)
+
     self._menu_edit.addSeparator()
 
     self._action_github_install = QAction(self)
@@ -94,6 +98,8 @@ def _create_menus(self) -> None:
 ```
 
 **AI 菜单** (`_create_ai_menu`) 包含以下菜单项：
+
+**编辑菜单中的 GitHub Key 管理**：打开 `GitHubKeyManagerDialog`，支持多 PAT 命名、验证、默认 Key、删除和失效状态查看。安装对话框与插件管理工具栏也提供同一入口。
 
 ```python
 def _create_ai_menu(self, menu_bar):
