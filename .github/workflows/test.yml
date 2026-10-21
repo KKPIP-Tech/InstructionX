@@ -2,20 +2,53 @@ name: test
 
 on:
   push:
-    branches: [dev, main]
   pull_request:
+  workflow_dispatch:
+  schedule:
+    # 每周一 03:17（Asia/Shanghai）重新审计依赖并运行回归
+    - cron: "17 19 * * 0"
+
+permissions:
+  contents: read
+
+concurrency:
+  # 每个提交独立排队执行，不因同一分支后续提交而取消
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.sha }}
 
 jobs:
   pytest:
     runs-on: windows-latest
+    timeout-minutes: 30
+    env:
+      PYTHONUTF8: "1"
+      PYTHONIOENCODING: "utf-8"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.14"
-      - name: Install dependencies
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.10.4"
+          enable-cache: true
+      - name: Validate lockfile
+        run: uv lock --check
+      - name: Install locked dependencies
+        run: uv sync --locked --extra test
+      - name: Audit locked runtime dependencies
+        shell: pwsh
         run: |
-          python -m pip install --upgrade pip
-          pip install -e ".[test]"
+          $requirements = Join-Path $env:RUNNER_TEMP "security-requirements.txt"
+          uv export --frozen --no-dev --no-emit-project --format requirements-txt --no-hashes --output-file $requirements
+          uvx --from pip-audit==2.10.1 pip-audit -r $requirements --no-deps --disable-pip -s osv --timeout 30 --progress-spinner off
       - name: Run tests
-        run: python -m pytest test/ -q --tb=short -p no:cacheprovider
+        run: uv run --frozen python -m pytest test/ -q --tb=short -p no:cacheprovider
+      - name: Upload failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-failure-diagnostics
+          path: |
+            logs/
+          if-no-files-found: ignore

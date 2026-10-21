@@ -26,8 +26,8 @@
 | 依赖 | 用途 |
 |------|------|
 | PySide6 >= 6.10 | Qt GUI 框架 |
-| requests / aiohttp | HTTP / 异步 HTTP |
-| mcp >= 1.28.1, < 2 | MCP 协议（FastMCP） |
+| requests >= 2.32 / aiohttp >= 3.14.5 | HTTP / 异步 HTTP（aiohttp 设安全最低版本） |
+| mcp >= 1.30.0, < 2 | MCP 协议（FastMCP） |
 | orjson | JSON 序列化（SQLite 后端） |
 | matplotlib | 用量统计与 UIKit MarkdownView LaTeX 公式渲染（math_render 异步渲染中枢）使用；旧用量面板图表曾使用，现用量面板已改用 UIKit 原生图表引擎 |
 | packaging | 插件依赖版本检查 |
@@ -37,6 +37,7 @@
 
 - 依赖单一来源是 `pyproject.toml` 的 `[project].dependencies`；`requirements.txt` 与其保持同步（供 `uv pip install -r requirements.txt` / `pip install -r requirements.txt` 直接安装使用），**改依赖时两处都要改**。
 - 环境管理使用 **uv**（存在 `uv.lock`、`.python-version`、`.venv/`）。
+- 传递依赖安全下限记录在 `pyproject.toml` 的 `[tool.uv].constraint-dependencies`，只约束解析结果，不扩大公开运行依赖。
 
 ## 构建与运行命令
 
@@ -86,7 +87,8 @@ python -m pytest test/ -q --tb=short -p no:cacheprovider
 
 ## CI / 部署
 
-- 唯一工作流：`.github/workflows/test.yml`，push 到 `dev`/`main` 及所有 PR 触发，在 `windows-latest` + Python 3.14 上执行 `pip install -e ".[test]"` 后跑 pytest。
+- 唯一工作流：`.github/workflows/test.yml`，任意分支 push、所有 PR、手动触发及每周一定时触发；在 `windows-latest` + Python 3.14 上校验 `uv.lock`、安装锁定依赖、执行 OSV 漏洞审计并运行 pytest。
+- `.github/dependabot.yml` 每周检查 Python 与 GitHub Actions 依赖，安全更新按组创建 PR。
 - 无打包/发布流程；本项目以源码方式直接运行。
 
 ## 框架开发流程与注意事项（重要）
@@ -465,6 +467,7 @@ config/ data/ logs/         # 运行时生成：配置、数据、日志
 - 多语言（i18n）：`docs/core/i18n/overview.md`
 - LLM：`docs/core/llm-provider/`、`docs/plugins/llm-integration-guide.md`
 - MCP：`docs/core/mcp/overview.md`
+- 依赖安全：`docs/security/dependency-management.md`
 - API 参考：`docs/api/full-reference.md`
 - 安装与环境管理：`docs/tui-setup.md`（**原生**安装向导 `setup.ps1` / `setup.sh`：两平台界面规范、安装/升级/体检/清理策略、uv 命令口径、目录与日志约定）
 - 插件开发快速入门：根目录 `插件开发流程.md`（环境初始化 / 插件仓库配置 / AI 辅助提示词模板，面向插件开发者）

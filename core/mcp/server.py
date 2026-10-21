@@ -14,6 +14,10 @@ from typing import Any, Dict, List, Optional, Callable
 import logging
 
 from core.plugin.manager import PluginManager
+from core.mcp.config import (
+    DEFAULT_MCP_MAX_SESSIONS,
+    DEFAULT_MCP_SESSION_IDLE_TIMEOUT,
+)
 
 # ===== 可选依赖：MCP SDK / uvicorn / anyio（缺失时置 None，运行时检查）=====
 try:
@@ -117,6 +121,10 @@ class MCPHostServer:
         host: HTTP 监听地址，默认 "127.0.0.1"
         port: HTTP 监听端口，默认 8765
         auth_token: HTTP 模式 Bearer 认证令牌，默认 None（不启用认证）
+        session_idle_timeout: Streamable HTTP 空闲会话超时秒数；
+                              None 表示禁用空闲回收
+        max_sessions: Streamable HTTP 同时保留的最大会话数；
+                      None 表示不限制
     """
 
     def __init__(
@@ -125,6 +133,9 @@ class MCPHostServer:
         host: str = "127.0.0.1",
         port: int = 8765,
         auth_token: Optional[str] = None,
+        session_idle_timeout: Optional[float] = (
+            DEFAULT_MCP_SESSION_IDLE_TIMEOUT),
+        max_sessions: Optional[int] = DEFAULT_MCP_MAX_SESSIONS,
     ):
         if auth_token is not None:
             # 启动前校验令牌可编码性，非法时以中文文案 fail-fast
@@ -133,6 +144,9 @@ class MCPHostServer:
         self._host = host
         self._port = port
         self._auth_token = auth_token
+        self._session_idle_timeout = self._validate_session_idle_timeout(
+            session_idle_timeout)
+        self._max_sessions = self._validate_max_sessions(max_sessions)
         self._running = False
         self._thread: Optional[threading.Thread] = None
         # uvicorn Server 实例（HTTP 模式），用于真正的关停
@@ -144,10 +158,34 @@ class MCPHostServer:
         # 记录已注册的工具：tool_name -> {plugin_id, method_name}
         self._tool_registry: Dict[str, Dict[str, str]] = {}
 
+    @staticmethod
+    def _validate_session_idle_timeout(value):
+        """校验会话空闲超时为可选正数。"""
+        if value is None:
+            return None
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, (int, float))
+            or value <= 0
+        ):
+            raise ValueError(
+                "session_idle_timeout 必须是大于 0 的数字，或设置为 None 禁用限制")
+        return float(value)
+
+    @staticmethod
+    def _validate_max_sessions(value):
+        """校验最大会话数为可选正整数。"""
+        if value is None:
+            return None
+        if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+            raise ValueError(
+                "max_sessions 必须是大于 0 的整数，或设置为 None 禁用限制")
+        return value
+
     def _init_fastmcp(self) -> Any:
         """延迟初始化 FastMCP（避免在主线程事件循环外创建）
 
-        mcp 1.29.1（实测，约束 mcp>=1.28.1,<2） 中 host/port 需传给 FastMCP 构造器，
+        mcp 1.30.0（约束 mcp>=1.30.0,<2） 中 host/port 需传给 FastMCP 构造器，
         FastMCP.run() 只接受 transport/mount_path 参数。
 
         Raises:
@@ -157,7 +195,13 @@ class MCPHostServer:
             raise RuntimeError(
                 "缺少 MCP SDK 依赖（请执行 pip install mcp），无法启动 MCP Server。"
             )
-        return FastMCP(self._name, host=self._host, port=self._port)
+        return FastMCP(
+            self._name,
+            host=self._host,
+            port=self._port,
+            session_idle_timeout=self._session_idle_timeout,
+            max_sessions=self._max_sessions,
+        )
 
     def _warn_if_insecure(self) -> None:
         """非回环地址且未配置认证令牌时给出强烈警告"""
@@ -277,7 +321,7 @@ class MCPHostServer:
     ) -> None:
         """直接注册工具到 FastMCP
 
-        mcp 1.29.1（实测，约束 mcp>=1.28.1,<2）：ToolManager.add_tool() 内部通过
+        mcp 1.30.0（约束 mcp>=1.30.0,<2）：ToolManager.add_tool() 内部通过
         Tool.from_function() 构建 Tool 并放入 _tools 字典；
         对外展示的 parameters 可在构建后覆盖为调用方提供的 JSON Schema。
         同名工具会被显式替换并记录 warning，注册失败记录 error。
@@ -393,7 +437,7 @@ class MCPHostServer:
 
         self._running = True
         try:
-            # mcp 1.29.1（实测，约束 mcp>=1.28.1,<2）：run() 只接受 transport/mount_path，
+            # mcp 1.30.0（约束 mcp>=1.30.0,<2）：run() 只接受 transport/mount_path，
             # host/port 已在构造器传入
             self._fastmcp.run(transport="stdio")
         except Exception as e:

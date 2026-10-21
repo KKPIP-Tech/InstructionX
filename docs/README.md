@@ -29,6 +29,9 @@ docs/
 │   │   # 注：IPlugin/IPluginInfo 详见 plugin-system/iplugin.md
 │   │   # 注：IDataProvider/ITaskManager/ILLMService 在 overview.md 中详解
 │   │
+│   ├── security/                    # 安全与供应链
+│   │   └── dependency-management.md # Python 依赖漏洞、升级与审计策略
+│   │
 │   ├── plugin-system/               # 插件系统
 │   │   ├── overview.md              # 插件系统概述
 │   │   ├── iplugin.md               # IPlugin 接口

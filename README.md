@@ -310,8 +310,8 @@ python -m pytest test/ -q --tb=short -p no:cacheprovider
 |------|------|------|
 | Python | 编程语言 | >= 3.14 |
 | PySide6 | Qt GUI 框架 | >= 6.10 |
-| mcp | MCP 协议（FastMCP） | >= 1.28.1, < 2 |
-| requests / aiohttp | HTTP / 异步 HTTP | >= 2.32 / >= 3.11 |
+| mcp | MCP 协议（FastMCP） | >= 1.30.0, < 2 |
+| requests / aiohttp | HTTP / 异步 HTTP | >= 2.32 / >= 3.14.5 |
 | orjson | 高性能 JSON 序列化 | >= 3.11.0, < 4 |
 | matplotlib | 用量统计与 UIKit MarkdownView LaTeX 公式渲染 | >= 3.10 |
 | packaging | 插件依赖版本检查 | >= 23.0 |
