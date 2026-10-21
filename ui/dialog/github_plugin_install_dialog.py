@@ -18,19 +18,28 @@ from PySide6.QtGui import QFont
 from core.plugin.github_plugin_installer import (
     GitHubPluginInstaller, InstallResult, RepoInspectionResult, PluginInfo
 )
+from core.github import (
+    GitHubKeyManager,
+    GitHubRepositoryVisibility,
+    NO_KEY_ID,
+    get_github_key_manager,
+)
 from core.plugin.manager import get_plugin_manager
 from core.i18n import get_language_manager, resolve_i18n_field, tr
 from utils.logging_tools import LoggerManager, get_name
 from InstructionX_UIKit import T, set_property
 from InstructionX_UIKit.components import (
-    Button, CheckBox, Dialog, LineEdit, Message,
+    Button, CheckBox, ComboBox, Dialog, LineEdit, Message,
 )
+from ui.dialog.github_key_manager_dialog import GitHubKeyManagerDialog
+from ui.dialog.github_private_repo_notice import PrivateRepositoryNotice
 
 # 模块级日志器（LoggerManager 为单例）
 _logger = LoggerManager()
 
 # i18n 文案分组名
 _TR_GROUP = "dialog_github_install"
+INFO_STACK_MIN_HEIGHT = 240
 
 
 def _info_result_dialog(parent, title: str, text: str) -> None:
@@ -56,14 +65,20 @@ class GitHubFetchWorker(QThread):
     finished = Signal(RepoInspectionResult)
     error = Signal(str)
 
-    def __init__(self, installer: GitHubPluginInstaller, url: str):
+    def __init__(
+        self,
+        installer: GitHubPluginInstaller,
+        url: str,
+        key_id: str,
+    ):
         super().__init__()
         self.installer = installer
         self.url = url
+        self.key_id = key_id
 
     def run(self):
         try:
-            result = self.installer.inspect_repository(self.url)
+            result = self.installer.inspect_repository(self.url, self.key_id)
             self.finished.emit(result)
         except Exception as e:
             self.error.emit(str(e))
@@ -80,13 +95,15 @@ class GitHubInstallWorker(QThread):
         installer: GitHubPluginInstaller,
         url: str,
         selected_plugins: List[str],
-        install_dir: str
+        install_dir: str,
+        key_id: str,
     ):
         super().__init__()
         self.installer = installer
         self.url = url
         self.selected_plugins = selected_plugins
         self.install_dir = install_dir
+        self.key_id = key_id
 
     def run(self):
         try:
@@ -102,7 +119,8 @@ class GitHubInstallWorker(QThread):
                 selected_plugins=self.selected_plugins,
                 official_dir=official_dir,
                 thirdparty_dir=thirdparty_dir,
-                progress_callback=on_progress
+                progress_callback=on_progress,
+                key_id=self.key_id,
             )
             self.finished.emit(results)
         except Exception as e:
@@ -178,9 +196,14 @@ class GitHubPluginInstallDialog(QDialog):
     _CLOSE_POLL_INTERVAL_MS = 200
     _CLOSE_WAIT_TIMEOUT_MS = 3000
 
-    def __init__(self, parent=None):
+    def __init__(
+        self,
+        parent=None,
+        key_manager: Optional[GitHubKeyManager] = None,
+    ):
         super().__init__(parent)
-        self.installer = GitHubPluginInstaller()
+        self._key_manager = key_manager or get_github_key_manager()
+        self.installer = GitHubPluginInstaller(key_manager=self._key_manager)
         self.repo_result: Optional[RepoInspectionResult] = None
         self.fetch_worker: Optional[GitHubFetchWorker] = None
         self.install_worker: Optional[GitHubInstallWorker] = None
@@ -192,14 +215,23 @@ class GitHubPluginInstallDialog(QDialog):
         self.setWindowTitle(tr(_TR_GROUP, "window.title"))
         self.setMinimumSize(600, 450)
         self.setModal(True)
-
         main_layout = QVBoxLayout(self)
         main_layout.setSpacing(15)
         main_layout.setContentsMargins(20, 20, 20, 20)
+        main_layout.addLayout(self._build_url_row())
+        main_layout.addLayout(self._build_key_row())
+        self._build_status_area(main_layout)
+        self.info_stack = QStackedWidget()
+        self.info_stack.setMinimumHeight(INFO_STACK_MIN_HEIGHT)
+        main_layout.addWidget(self.info_stack, 1)
+        self._build_info_pages()
+        self._build_progress_area(main_layout)
+        main_layout.addLayout(self._build_action_buttons())
+        self._reload_key_options()
 
-        # ========== URL 输入区 ==========
+    def _build_url_row(self) -> QHBoxLayout:
+        """构建 GitHub URL 输入行。"""
         url_layout = QHBoxLayout()
-
         url_label = QLabel("GitHub URL:")
         url_label.setFixedWidth(80)
         self.url_input = LineEdit(
@@ -211,20 +243,34 @@ class GitHubPluginInstallDialog(QDialog):
         url_layout.addWidget(url_label)
         url_layout.addWidget(self.url_input, 1)
         url_layout.addWidget(self.check_btn)
+        return url_layout
 
-        main_layout.addLayout(url_layout)
+    def _build_key_row(self) -> QHBoxLayout:
+        """构建 GitHub Key 选择和管理的输入行。"""
+        key_layout = QHBoxLayout()
+        key_label = QLabel(tr(_TR_GROUP, "key.label"))
+        key_label.setFixedWidth(80)
+        self.key_combo = ComboBox()
+        self.key_combo.setMinimumWidth(300)
+        self.manage_keys_btn = Button(
+            tr(_TR_GROUP, "button.manage_keys"), variant="default")
+        self.manage_keys_btn.clicked.connect(self._on_manage_keys)
+        key_layout.addWidget(key_label)
+        key_layout.addWidget(self.key_combo, 1)
+        key_layout.addWidget(self.manage_keys_btn)
+        return key_layout
 
-        # ========== 状态提示 ==========
+    def _build_status_area(self, main_layout: QVBoxLayout) -> None:
+        """构建状态和私有仓库提示区。"""
         self.status_label = QLabel("")
         set_property(self.status_label, "role", "secondary")
         self.status_label.setWordWrap(True)
         main_layout.addWidget(self.status_label)
+        self.private_notice = PrivateRepositoryNotice()
+        main_layout.addWidget(self.private_notice)
 
-        # ========== 插件信息区（堆叠窗口） ==========
-        self.info_stack = QStackedWidget()
-        main_layout.addWidget(self.info_stack, 1)
-
-        # 空状态页面
+    def _build_info_pages(self) -> None:
+        """构建空态、单插件、多插件和无效仓库页面。"""
         self.empty_widget = QLabel(tr(_TR_GROUP, "page.empty_hint"))
         self.empty_widget.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.empty_widget.setStyleSheet(
@@ -232,24 +278,18 @@ class GitHubPluginInstallDialog(QDialog):
             f" border: 1px dashed {T('color.border.strong')}; padding: 50px;"
         )
         self.info_stack.addWidget(self.empty_widget)
-
-        # 单插件页面
         self.single_plugin_widget = QScrollArea()
         self.single_plugin_widget.setWidgetResizable(True)
         self.single_plugin_content = QWidget()
         self.single_plugin_layout = QVBoxLayout(self.single_plugin_content)
         self.single_plugin_widget.setWidget(self.single_plugin_content)
         self.info_stack.addWidget(self.single_plugin_widget)
-
-        # 多插件页面
         self.multi_plugin_widget = QScrollArea()
         self.multi_plugin_widget.setWidgetResizable(True)
         self.multi_plugin_content = QWidget()
         self.multi_plugin_layout = QVBoxLayout(self.multi_plugin_content)
         self.multi_plugin_widget.setWidget(self.multi_plugin_content)
         self.info_stack.addWidget(self.multi_plugin_widget)
-
-        # 无效仓库页面
         self.invalid_widget = QLabel(tr(_TR_GROUP, "page.invalid_hint"))
         self.invalid_widget.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.invalid_widget.setStyleSheet(
@@ -257,7 +297,8 @@ class GitHubPluginInstallDialog(QDialog):
         )
         self.info_stack.addWidget(self.invalid_widget)
 
-        # ========== 安装目录提示 ==========
+    def _build_progress_area(self, main_layout: QVBoxLayout) -> None:
+        """构建安装目录提示和进度条。"""
         self.install_dir_label = QLabel("")
         self.install_dir_label.setStyleSheet(
             f"color: {T('color.primary')}; padding: 5px;"
@@ -267,17 +308,15 @@ class GitHubPluginInstallDialog(QDialog):
         )
         self.install_dir_label.setVisible(False)
         main_layout.addWidget(self.install_dir_label)
-
-        # ========== 进度条 ==========
         self.progress_bar = QProgressBar()
         self.progress_bar.setVisible(False)
-        self.progress_bar.setRange(0, 0)  # 不确定模式
+        self.progress_bar.setRange(0, 0)
         main_layout.addWidget(self.progress_bar)
 
-        # ========== 按钮区 ==========
+    def _build_action_buttons(self) -> QHBoxLayout:
+        """构建取消和安装按钮行。"""
         btn_layout = QHBoxLayout()
         btn_layout.addStretch()
-
         self.cancel_btn = Button(tr("common", "cancel"), variant="default")
         self.cancel_btn.setFixedWidth(100)
         self.cancel_btn.clicked.connect(self.reject)
@@ -287,11 +326,9 @@ class GitHubPluginInstallDialog(QDialog):
         self.install_btn.setEnabled(False)
         self.install_btn.clicked.connect(self._on_install)
         self.install_btn.setDefault(True)
-
         btn_layout.addWidget(self.cancel_btn)
         btn_layout.addWidget(self.install_btn)
-
-        main_layout.addLayout(btn_layout)
+        return btn_layout
 
     def _set_info_page(self, page_name: str):
         """切换信息页面"""
@@ -303,6 +340,33 @@ class GitHubPluginInstallDialog(QDialog):
         }
         if page_name in page_map:
             self.info_stack.setCurrentIndex(page_map[page_name])
+
+    def _reload_key_options(self):
+        """刷新 Key 下拉框并保留原选择。"""
+        previous = self.key_combo.currentData()
+        self.key_combo.clear()
+        self.key_combo.addItem(tr(_TR_GROUP, "key.no_key"), NO_KEY_ID)
+        for view in self._key_manager.list_keys():
+            label = tr(
+                _TR_GROUP,
+                "key.option",
+                name=view.name,
+                account=view.account_login or tr(_TR_GROUP, "key.unknown_account"),
+            )
+            self.key_combo.addItem(label, view.id)
+        index = self.key_combo.findData(previous)
+        self.key_combo.setCurrentIndex(index if index >= 0 else 0)
+
+    def _current_key_id(self) -> str:
+        """返回当前选择的 Key ID。"""
+        return self.key_combo.currentData() or NO_KEY_ID
+
+    def _on_manage_keys(self):
+        """打开 Key 管理器并刷新选项。"""
+        dialog = GitHubKeyManagerDialog(
+            self._key_manager, parent=self)
+        dialog.exec()
+        self._reload_key_options()
 
     def _on_check_repo(self):
         """检查仓库按钮点击"""
@@ -319,7 +383,9 @@ class GitHubPluginInstallDialog(QDialog):
         )
         self._set_info_page("empty")
 
-        self.fetch_worker = GitHubFetchWorker(self.installer, url)
+        self.private_notice.clear()
+        self.fetch_worker = GitHubFetchWorker(
+            self.installer, url, self._current_key_id())
         self.fetch_worker.finished.connect(self._on_repo_checked)
         self.fetch_worker.error.connect(self._on_fetch_error)
         self.fetch_worker.start()
@@ -339,22 +405,9 @@ class GitHubPluginInstallDialog(QDialog):
             return
 
         self.repo_result = result
+        self._update_private_notice(result)
 
-        # 自动判定安装目录
-        url = self.url_input.text().strip()
-        parsed = self.installer.parse_github_url(url)
-        if parsed:
-            owner, _ = parsed
-            if owner == GitHubPluginInstaller.KKPIP_TECH_ORG:
-                dir_desc = tr(_TR_GROUP, "dir.official")
-                self._auto_install_dir = "official"
-            else:
-                dir_desc = tr(_TR_GROUP, "dir.thirdparty")
-                self._auto_install_dir = "thirdparty"
-        else:
-            dir_desc = tr(_TR_GROUP, "dir.thirdparty")
-            self._auto_install_dir = "thirdparty"
-
+        dir_desc = self._choose_install_directory()
         self.install_dir_label.setText(
             tr(_TR_GROUP, "dir.will_install_to", dir_desc=dir_desc))
         self.install_dir_label.setVisible(True)
@@ -370,6 +423,41 @@ class GitHubPluginInstallDialog(QDialog):
                 tr(_TR_GROUP, "status.multi_repo", count=len(result.plugins)))
 
         self.install_btn.setEnabled(True)
+
+    def _choose_install_directory(self) -> str:
+        """按仓库 owner 设置安装目录并返回展示文案。"""
+        parsed = self.installer.parse_github_url(
+            self.url_input.text().strip())
+        owner = parsed[0] if parsed else ""
+        if owner == GitHubPluginInstaller.KKPIP_TECH_ORG:
+            self._auto_install_dir = "official"
+            return tr(_TR_GROUP, "dir.official")
+        self._auto_install_dir = "thirdparty"
+        return tr(_TR_GROUP, "dir.thirdparty")
+
+    def _update_private_notice(self, result: RepoInspectionResult):
+        """按仓库可见性显示或清除私有提示。"""
+        repository = result.repository
+        if (
+            repository is None
+            or repository.visibility is not GitHubRepositoryVisibility.PRIVATE
+        ):
+            self.private_notice.clear()
+            return
+        key_name = repository.auth_key_name or tr(
+            _TR_GROUP, "key.unknown_name")
+        account = repository.auth_account_login or tr(
+            _TR_GROUP, "key.unknown_account")
+        self.private_notice.set_repository(
+            self.url_input.text().strip(), key_name, account)
+        QTimer.singleShot(0, self._expand_for_private_notice)
+
+    def _expand_for_private_notice(self) -> None:
+        """提示完整展开后增加窗口高度，不压缩插件列表区域。"""
+        self.private_notice._fit_content_height()
+        required_height = self.sizeHint().height()
+        if self.height() < required_height:
+            self.resize(self.width(), required_height)
 
     def _on_fetch_error(self, error: str):
         """获取仓库信息出错"""
@@ -466,18 +554,13 @@ class GitHubPluginInstallDialog(QDialog):
         install_dir = getattr(self, "_auto_install_dir", "thirdparty")
 
         # 确定要安装的插件
-        selected_plugins = None
-        if self.repo_result.repo_type == "multi":
-            selected_plugins = []
-            for checkbox in self.plugin_checkboxes:
-                if checkbox.isChecked():
-                    plugin_path = checkbox.property("plugin_path")
-                    if plugin_path:
-                        selected_plugins.append(plugin_path)
+        selection_valid, selected_plugins = self._selected_install_paths()
+        if not selection_valid:
+            Message.warning(self, tr(_TR_GROUP, "message.select_plugins"))
+            return
 
-            if not selected_plugins:
-                Message.warning(self, tr(_TR_GROUP, "message.select_plugins"))
-                return
+        if not self._confirm_private_install():
+            return
 
         # 禁用按钮，开始安装
         self.install_btn.setEnabled(False)
@@ -487,12 +570,48 @@ class GitHubPluginInstallDialog(QDialog):
         self.status_label.setText(tr(_TR_GROUP, "status.installing"))
 
         self.install_worker = GitHubInstallWorker(
-            self.installer, url, selected_plugins, install_dir
+            self.installer, url, selected_plugins, install_dir,
+            self._current_key_id(),
         )
         self.install_worker.finished.connect(self._on_install_finished)
         self.install_worker.error.connect(self._on_install_error)
         self.install_worker.progress.connect(self._on_install_progress)
         self.install_worker.start()
+
+    def _selected_install_paths(self):
+        """返回多插件选择校验结果和路径列表。"""
+        if self.repo_result.repo_type != "multi":
+            return True, None
+        selected = [
+            checkbox.property("plugin_path")
+            for checkbox in self.plugin_checkboxes
+            if checkbox.isChecked()
+            and checkbox.property("plugin_path")
+        ]
+        return bool(selected), selected
+
+    def _confirm_private_install(self) -> bool:
+        """私有仓库安装前显示仓库与 Key 的显式确认。"""
+        repository = self.repo_result.repository if self.repo_result else None
+        if (
+            repository is None
+            or repository.visibility is not GitHubRepositoryVisibility.PRIVATE
+        ):
+            return True
+        dialog = Dialog(
+            self,
+            title=tr(_TR_GROUP, "private.confirm_title"),
+        )
+        dialog.set_text(tr(
+            _TR_GROUP,
+            "private.confirm_text",
+            url=self.url_input.text().strip(),
+            key_name=repository.auth_key_name or tr(
+                _TR_GROUP, "key.unknown_name"),
+            account=repository.auth_account_login or tr(
+                _TR_GROUP, "key.unknown_account"),
+        ))
+        return dialog.exec() == QDialog.DialogCode.Accepted
 
     def _on_install_finished(self, results: List[InstallResult]):
         """安装完成"""

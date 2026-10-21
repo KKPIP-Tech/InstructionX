@@ -115,6 +115,12 @@
     <text key="button.install">Installer</text>
     <text key="button.select_all">Tout sélectionner</text>
     <text key="button.deselect_all">Tout désélectionner</text>
+    <text key="key.label">Clé GitHub :</text>
+    <text key="key.no_key">Ne pas utiliser de clé</text>
+    <text key="key.option">{name} ({account})</text>
+    <text key="key.unknown_account">Compte inconnu</text>
+    <text key="key.unknown_name">Clé inconnue</text>
+    <text key="button.manage_keys">Gérer les clés…</text>
     <text key="page.empty_hint">Cliquez sur « Vérifier » pour analyser le dépôt GitHub</text>
     <text key="page.invalid_hint">Ce dépôt ne contient aucun fichier de description de plugin valide</text>
     <text key="info.author">Auteur : {author}</text>
@@ -141,6 +147,82 @@
     <text key="result.partial">Réussite partielle</text>
     <text key="result.summary"><![CDATA[{outcome} :
   {details}]]></text>
+    <text key="private.confirm_title">Confirmer l’installation depuis un dépôt privé</text>
+    <text key="private.confirm_text"><![CDATA[Vous allez installer un plugin depuis un dépôt GitHub privé :
+  {url}
+
+  Clé d’accès : {key_name}
+  Compte GitHub : {account}
+
+  Le contenu d’un dépôt privé peut inclure du code sous licence. Confirmez que vous êtes autorisé à l’installer et à l’utiliser.]]></text>
+  </group>
+
+  <group name="github_private_repo">
+      <text key="title">🔒 Dépôt privé</text>
+      <text key="detail"><![CDATA[{url}
+  Clé d’accès : {key_name} ({account})
+  Ce plugin provient d’un dépôt privé. Il sera lié à cette clé, nécessaire pour les mises à jour.]]></text>
+      <text key="unknown_account">Compte inconnu</text>
+  </group>
+
+  <group name="github_key_editor">
+      <text key="title.add">Ajouter une clé GitHub</text>
+      <text key="title.edit">Modifier la clé GitHub</text>
+      <text key="name.label">Nom de la clé</text>
+      <text key="name.placeholder">Par exemple : Compte professionnel</text>
+      <text key="token.label">Jeton d’accès personnel GitHub</text>
+      <text key="token.placeholder">Collez un PAT GitHub</text>
+      <text key="token.keep_placeholder">Laissez vide pour conserver le jeton actuel</text>
+      <text key="permissions.hint"><![CDATA[Un PAT Fine-grained est recommandé, avec l’accès Contents: Read-only au dépôt cible.
+  Un PAT classique nécessite généralement le scope repo, plus étendu. Les dépôts d’organisation peuvent aussi demander une autorisation SAML SSO.]]></text>
+      <text key="button.save">Vérifier et enregistrer</text>
+      <text key="error.name_required">Saisissez un nom de clé</text>
+      <text key="error.token_required">Saisissez un jeton GitHub</text>
+  </group>
+
+  <group name="github_key_manager">
+      <text key="title">Gestion des clés GitHub</text>
+      <text key="table.empty">Aucune clé GitHub ajoutée</text>
+      <text key="button.add">Ajouter une clé</text>
+      <text key="button.edit">Modifier</text>
+      <text key="button.verify">Vérifier</text>
+      <text key="button.set_default">Définir par défaut</text>
+      <text key="button.delete">Supprimer</text>
+      <text key="column.name">Nom</text>
+      <text key="column.account">Compte GitHub</text>
+      <text key="column.kind">Type</text>
+      <text key="column.status">État</text>
+      <text key="column.expires">Expiration</text>
+      <text key="column.last_verified">Dernière vérification</text>
+      <text key="column.default">Défaut</text>
+      <text key="kind.fine_grained">Fine-grained</text>
+      <text key="kind.classic">Classique</text>
+      <text key="kind.unknown">Inconnu</text>
+      <text key="status.untested">Non vérifiée</text>
+      <text key="status.valid">Valide</text>
+      <text key="status.invalid">Non valide</text>
+      <text key="expires.unavailable">Non fourni par GitHub</text>
+      <text key="account.unknown">Non vérifié</text>
+      <text key="never_verified">—</text>
+      <text key="yes">Oui</text>
+      <text key="status.verifying">Vérification de la clé GitHub…</text>
+      <text key="message.verify_success">Clé GitHub vérifiée</text>
+      <text key="message.verify_failed">Échec de la vérification de la clé GitHub : {error}</text>
+      <text key="title.delete">Supprimer la clé GitHub</text>
+      <text key="message.delete_confirm">Supprimer la clé « {name} » ? {count} plugin(s) l’utilisent actuellement.</text>
+      <text key="message.delete_affected">Plugins concernés : {names}
+  Ces plugins devront être associés à une nouvelle clé GitHub avant toute mise à jour.</text>
+  </group>
+
+  <group name="github_key_rebind">
+      <text key="title">Réassocier une clé GitHub</text>
+      <text key="message.unavailable"><![CDATA[La clé GitHub actuelle est indisponible :
+  {error}]]></text>
+      <text key="message.select_key">Sélectionnez une clé GitHub autorisée à accéder au dépôt privé cible.</text>
+      <text key="button.manage">Gérer les clés…</text>
+      <text key="button.rebind">Vérifier et réassocier</text>
+      <text key="key.label">{name} ({account})</text>
+      <text key="unknown_account">Compte inconnu</text>
   </group>
 
   <group name="dialog_license">
@@ -343,7 +425,9 @@
     <!-- 按钮（common 已有的 取消/关闭/刷新 直接复用 common 分组） -->
     <text key="button.install_github">Installer depuis GitHub…</text>
     <text key="button.install_zip">Installer un pack local…</text>
+    <text key="button.github_keys">Gestion des clés GitHub…</text>
     <text key="button.check_updates">Vérifier les mises à jour / rétrogradations…</text>
+    <text key="button.rebind_github_key">Réassocier une clé GitHub…</text>
     <text key="button.uninstall">Désinstaller…</text>
     <text key="button.reset">Réinitialiser</text>
     <text key="button.save_groups">Enregistrer groupes et ordre</text>
@@ -364,6 +448,13 @@
     <text key="detail.name">Nom : {name}</text>
     <text key="detail.version">Version : {version}</text>
     <text key="detail.source">Source : {source}</text>
+    <text key="detail.github_access">Accès : {visibility}</text>
+    <text key="detail.github_key">Clé de mise à jour : {key}</text>
+    <text key="github_visibility.public">Dépôt public</text>
+    <text key="github_visibility.private">Dépôt privé</text>
+    <text key="github_visibility.unknown">Inconnu ; vérification requise</text>
+    <text key="github_key.missing">Supprimée ou indisponible</text>
+    <text key="github_key.none">Non associée</text>
 
     <!-- 通用兜底词（本分组内复用） -->
     <text key="label.unknown">Inconnu</text>
@@ -375,6 +466,9 @@
     <text key="message.no_releases">Aucune version Release trouvée pour ce dépôt</text>
     <text key="message.no_plugin_installed">Aucun plugin installé : aucune correspondance dans la version sélectionnée</text>
     <text key="message.invalid_source_url">URL du dépôt source non valide</text>
+    <text key="message.github_key_unavailable">Impossible d’utiliser la clé source du plugin : {error}</text>
+    <text key="message.github_key_unavailable_generic">La source du plugin est indisponible ; la clé GitHub ne peut pas être réassociée.</text>
+    <text key="message.private_update_notice">🔒 Mise à jour d’un dépôt privé. La clé « {key_name} » sera utilisée.</text>
     <text key="message.install_confirm"><![CDATA[{relation} du plugin « {name} »
   Version actuelle : {current}
   Version cible : {target}]]></text>
@@ -405,6 +499,7 @@
     <!-- 版本选择对话框 -->
     <text key="version_select.title">Choisir une version — {name}</text>
     <text key="version_select.current_version">Version actuelle : {version}</text>
+      <text key="version_select.private_notice">🔒 Mise à jour d’un dépôt privé avec la clé « {key_name} ».</text>
     <text key="version_select.unknown_version">Version inconnue</text>
     <text key="version_select.item_format">{tag}  —  {version} ({relation})</text>
     <text key="version_select.button.install_selected">Installer la version sélectionnée</text>
@@ -449,6 +544,7 @@
     <text key="menu.edit.toggle_theme.tooltip">Clair → sombre → comme le système</text>
     <text key="menu.edit.toggle_theme.current">Changer de thème ({label})</text>
     <text key="menu.edit.language">Langue</text>
+    <text key="menu.edit.github_keys">Gestion des clés GitHub…</text>
     <text key="menu.edit.install_from_github">Installer un plugin depuis GitHub…</text>
     <text key="menu.edit.install_from_github.status_tip">Installer un plugin depuis un dépôt GitHub</text>
     <text key="menu.ai">IA</text>

@@ -29,6 +29,7 @@ from ui.dialog.about_dialog import AboutDialog
 from ui.dialog.license_dialog import LicenseDialog
 from ui.dialog.font_manager_dialog import FontManagerDialog
 from ui.dialog.github_plugin_install_dialog import GitHubPluginInstallDialog
+from ui.dialog.github_key_manager_dialog import GitHubKeyManagerDialog
 from ui.dialog.language_dialog import LanguageDialog
 from ui.dialog.llm_settings import LLMSettingsDialog
 from ui.work_area.work_area import WorkArea
@@ -37,6 +38,7 @@ from ui.usage_panel import UsagePanel
 from ui.tray import TrayIconManager
 from ui.dialog.close_confirm_dialog import CloseChoice, CloseConfirmDialog
 from core.plugin.manager import PluginManager
+from core.github import get_github_key_manager
 from core.data.data_provider import DataProvider, DataNamespace
 from core.interfaces import IPlugin, TaskStatus
 from core.task.background_task import BackgroundTaskManager
@@ -304,6 +306,10 @@ class InstructionXMainWindow(QMainWindow):
         self._action_language.triggered.connect(self._open_language_dialog)
         self._menu_edit.addAction(self._action_language)
 
+        self._action_github_keys = QAction(self)
+        self._action_github_keys.triggered.connect(self._open_github_key_manager)
+        self._menu_edit.addAction(self._action_github_keys)
+
         # 分隔线
         self._menu_edit.addSeparator()
 
@@ -343,6 +349,8 @@ class InstructionXMainWindow(QMainWindow):
         self._menu_theme_action.setToolTip(
             tr("main_window", "menu.edit.toggle_theme.tooltip"))
         self._action_language.setText(tr("main_window", "menu.edit.language"))
+        self._action_github_keys.setText(
+            tr("main_window", "menu.edit.github_keys"))
         self._action_github_install.setText(
             tr("main_window", "menu.edit.install_from_github"))
         self._action_github_install.setStatusTip(
@@ -467,6 +475,15 @@ class InstructionXMainWindow(QMainWindow):
     def _open_language_dialog(self):
         """打开界面语言选择对话框（确定后实时切换语言）"""
         dialog = LanguageDialog(self)
+        dialog.exec()
+
+    def _open_github_key_manager(self):
+        """打开 GitHub Key 管理器。"""
+        dialog = GitHubKeyManagerDialog(
+            get_github_key_manager(),
+            self.plugin_manager.registry,
+            self,
+        )
         dialog.exec()
 
     def _on_plugins_changed(self):

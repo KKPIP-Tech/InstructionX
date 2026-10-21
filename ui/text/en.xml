@@ -76,6 +76,12 @@ Interfaces using this font will fall back to a system font after uninstallation.
       <text key="button.install">Install</text>
       <text key="button.select_all">Select All</text>
       <text key="button.deselect_all">Deselect All</text>
+      <text key="key.label">GitHub Key:</text>
+      <text key="key.no_key">Do not use a key</text>
+      <text key="key.option">{name} ({account})</text>
+      <text key="key.unknown_account">Unknown account</text>
+      <text key="key.unknown_name">Unknown key</text>
+      <text key="button.manage_keys">Manage Keys...</text>
       <text key="page.empty_hint">Click the "Check" button to analyze a GitHub repository</text>
       <text key="page.invalid_hint">This repository does not contain a valid plugin manifest</text>
       <text key="info.author">Author: {author}</text>
@@ -102,6 +108,82 @@ Interfaces using this font will fall back to a system font after uninstallation.
       <text key="result.partial">partially completed</text>
       <text key="result.summary"><![CDATA[Installation {outcome}:
   {details}]]></text>
+      <text key="private.confirm_title">Confirm Private Repository Plugin</text>
+      <text key="private.confirm_text"><![CDATA[You are about to install a plugin from a private GitHub repository:
+  {url}
+
+  Access key: {key_name}
+  GitHub account: {account}
+
+  Private repository content may contain licensed code. Confirm that you are authorized to install and use it.]]></text>
+  </group>
+
+  <group name="github_private_repo">
+      <text key="title">🔒 Private repository</text>
+      <text key="detail"><![CDATA[{url}
+  Access key: {key_name} ({account})
+  This plugin comes from a private repository. It will be bound to this key, which is required for updates.]]></text>
+      <text key="unknown_account">Unknown account</text>
+  </group>
+
+  <group name="github_key_editor">
+      <text key="title.add">Add GitHub Key</text>
+      <text key="title.edit">Edit GitHub Key</text>
+      <text key="name.label">Key name</text>
+      <text key="name.placeholder">For example: Work account</text>
+      <text key="token.label">GitHub Personal Access Token</text>
+      <text key="token.placeholder">Paste a GitHub PAT</text>
+      <text key="token.keep_placeholder">Leave blank to keep the current token</text>
+      <text key="permissions.hint"><![CDATA[A Fine-grained PAT is recommended with Contents: Read-only access to the target repository.
+  Classic PATs normally require the repo scope, which grants broader access. Organization repositories may also require SAML SSO authorization.]]></text>
+      <text key="button.save">Verify and Save</text>
+      <text key="error.name_required">Enter a key name</text>
+      <text key="error.token_required">Enter a GitHub token</text>
+  </group>
+
+  <group name="github_key_manager">
+      <text key="title">GitHub Key Management</text>
+      <text key="table.empty">No GitHub keys have been added</text>
+      <text key="button.add">Add Key</text>
+      <text key="button.edit">Edit</text>
+      <text key="button.verify">Verify</text>
+      <text key="button.set_default">Set Default</text>
+      <text key="button.delete">Delete</text>
+      <text key="column.name">Name</text>
+      <text key="column.account">GitHub Account</text>
+      <text key="column.kind">Type</text>
+      <text key="column.status">Status</text>
+      <text key="column.expires">Expiration</text>
+      <text key="column.last_verified">Last Verified</text>
+      <text key="column.default">Default</text>
+      <text key="kind.fine_grained">Fine-grained</text>
+      <text key="kind.classic">Classic</text>
+      <text key="kind.unknown">Unknown</text>
+      <text key="status.untested">Not verified</text>
+      <text key="status.valid">Valid</text>
+      <text key="status.invalid">Invalid</text>
+      <text key="expires.unavailable">Not provided by GitHub</text>
+      <text key="account.unknown">Not verified</text>
+      <text key="never_verified">—</text>
+      <text key="yes">Yes</text>
+      <text key="status.verifying">Verifying GitHub Key...</text>
+      <text key="message.verify_success">GitHub Key verified</text>
+      <text key="message.verify_failed">GitHub Key verification failed: {error}</text>
+      <text key="title.delete">Delete GitHub Key</text>
+      <text key="message.delete_confirm">Delete key "{name}"? {count} plugin(s) currently use it.</text>
+      <text key="message.delete_affected">Affected plugins: {names}
+  Those plugins will require a new GitHub Key before they can be updated.</text>
+  </group>
+
+  <group name="github_key_rebind">
+      <text key="title">Rebind GitHub Key</text>
+      <text key="message.unavailable"><![CDATA[The current GitHub Key is unavailable:
+  {error}]]></text>
+      <text key="message.select_key">Select a GitHub Key with access to the target private repository.</text>
+      <text key="button.manage">Manage Keys...</text>
+      <text key="button.rebind">Verify and Rebind</text>
+      <text key="key.label">{name} ({account})</text>
+      <text key="unknown_account">Unknown account</text>
   </group>
 
   <group name="dialog_license">
@@ -299,7 +381,9 @@ Interfaces using this font will fall back to a system font after uninstallation.
       <!-- 按钮（common 已有的 取消/关闭/刷新 直接复用 common 分组） -->
       <text key="button.install_github">Install Plugin from GitHub…</text>
       <text key="button.install_zip">Install Local Plugin Package…</text>
+      <text key="button.github_keys">GitHub Key Management...</text>
       <text key="button.check_updates">Check Updates / Upgrade / Downgrade…</text>
+      <text key="button.rebind_github_key">Rebind GitHub Key...</text>
       <text key="button.uninstall">Uninstall…</text>
       <text key="button.reset">Reset</text>
       <text key="button.save_groups">Save Groups &amp; Order</text>
@@ -318,6 +402,13 @@ Interfaces using this font will fall back to a system font after uninstallation.
       <text key="detail.name">Name: {name}</text>
       <text key="detail.version">Version: {version}</text>
       <text key="detail.source">Source: {source}</text>
+      <text key="detail.github_access">Access: {visibility}</text>
+      <text key="detail.github_key">Update Key: {key}</text>
+      <text key="github_visibility.public">Public repository</text>
+      <text key="github_visibility.private">Private repository</text>
+      <text key="github_visibility.unknown">Unknown; check required</text>
+      <text key="github_key.missing">Deleted or unavailable</text>
+      <text key="github_key.none">Not bound</text>
 
       <!-- 通用兜底词（本分组内复用） -->
       <text key="label.unknown">Unknown</text>
@@ -330,6 +421,9 @@ Interfaces using this font will fall back to a system font after uninstallation.
       <text key="message.no_releases">No Release versions found for this repository</text>
       <text key="message.no_plugin_installed">No plugin was installed: no matching plugin found in the selected version</text>
       <text key="message.invalid_source_url">Invalid source repository URL</text>
+      <text key="message.github_key_unavailable">Unable to use the plugin source key: {error}</text>
+      <text key="message.github_key_unavailable_generic">The plugin source is unavailable, so the GitHub Key cannot be rebound.</text>
+      <text key="message.private_update_notice">🔒 Private repository update. The key "{key_name}" will be used.</text>
       <text key="message.install_confirm"><![CDATA[Will {relation} plugin "{name}"
   Current version: {current}
   Target version: {target}]]></text>
@@ -360,6 +454,7 @@ Interfaces using this font will fall back to a system font after uninstallation.
       <!-- 版本选择对话框 -->
       <text key="version_select.title">Select Version - {name}</text>
       <text key="version_select.current_version">Current version: {version}</text>
+      <text key="version_select.private_notice">🔒 Private repository update using key "{key_name}".</text>
       <text key="version_select.unknown_version">Unknown version</text>
       <text key="version_select.item_format">{tag}  —  {version} ({relation})</text>
       <text key="version_select.button.install_selected">Install Selected Version</text>
@@ -404,6 +499,7 @@ Interfaces using this font will fall back to a system font after uninstallation.
       <text key="menu.edit.toggle_theme.tooltip">Light → Dark → Follow System</text>
       <text key="menu.edit.toggle_theme.current">Toggle Theme ({label})</text>
       <text key="menu.edit.language">Language</text>
+      <text key="menu.edit.github_keys">GitHub Key Management...</text>
       <text key="menu.edit.install_from_github">Install Plugin from GitHub...</text>
       <text key="menu.edit.install_from_github.status_tip">Install plugins from a GitHub repository</text>
       <text key="menu.ai">AI</text>

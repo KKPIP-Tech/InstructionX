@@ -107,6 +107,12 @@
     <text key="button.install">Установить</text>
     <text key="button.select_all">Выбрать все</text>
     <text key="button.deselect_all">Снять выделение</text>
+    <text key="key.label">Ключ GitHub:</text>
+    <text key="key.no_key">Не использовать ключ</text>
+    <text key="key.option">{name} ({account})</text>
+    <text key="key.unknown_account">Неизвестная учётная запись</text>
+    <text key="key.unknown_name">Неизвестный ключ</text>
+    <text key="button.manage_keys">Управление ключами…</text>
     <text key="page.empty_hint">Нажмите «Анализ», чтобы проверить репозиторий GitHub</text>
     <text key="page.invalid_hint">Репозиторий не содержит корректного файла описания плагина</text>
     <text key="info.author">Автор: {author}</text>
@@ -133,6 +139,82 @@
     <text key="result.partial">Частично выполнено</text>
     <text key="result.summary"><![CDATA[{outcome}:
   {details}]]></text>
+    <text key="private.confirm_title">Подтвердите установку из приватного репозитория</text>
+    <text key="private.confirm_text"><![CDATA[Будет установлен плагин из приватного репозитория GitHub:
+  {url}
+
+  Ключ доступа: {key_name}
+  Учётная запись GitHub: {account}
+
+  Содержимое приватного репозитория может включать лицензированный код. Подтвердите право на установку и использование.]]></text>
+  </group>
+
+  <group name="github_private_repo">
+      <text key="title">🔒 Приватный репозиторий</text>
+      <text key="detail"><![CDATA[{url}
+  Ключ доступа: {key_name} ({account})
+  Плагин получен из приватного репозитория. Он будет привязан к этому ключу, необходимому для обновлений.]]></text>
+      <text key="unknown_account">Неизвестная учётная запись</text>
+  </group>
+
+  <group name="github_key_editor">
+      <text key="title.add">Добавить ключ GitHub</text>
+      <text key="title.edit">Изменить ключ GitHub</text>
+      <text key="name.label">Имя ключа</text>
+      <text key="name.placeholder">Например: Рабочая учётная запись</text>
+      <text key="token.label">Личный токен доступа GitHub</text>
+      <text key="token.placeholder">Вставьте PAT GitHub</text>
+      <text key="token.keep_placeholder">Оставьте пустым, чтобы сохранить текущий токен</text>
+      <text key="permissions.hint"><![CDATA[Рекомендуется Fine-grained PAT с доступом Contents: Read-only к целевому репозиторию.
+  Классическому PAT обычно требуется область repo с более широкими правами. Для репозиториев организации может потребоваться авторизация SAML SSO.]]></text>
+      <text key="button.save">Проверить и сохранить</text>
+      <text key="error.name_required">Введите имя ключа</text>
+      <text key="error.token_required">Введите токен GitHub</text>
+  </group>
+
+  <group name="github_key_manager">
+      <text key="title">Управление ключами GitHub</text>
+      <text key="table.empty">Ключи GitHub не добавлены</text>
+      <text key="button.add">Добавить ключ</text>
+      <text key="button.edit">Изменить</text>
+      <text key="button.verify">Проверить</text>
+      <text key="button.set_default">Сделать основным</text>
+      <text key="button.delete">Удалить</text>
+      <text key="column.name">Имя</text>
+      <text key="column.account">Учётная запись GitHub</text>
+      <text key="column.kind">Тип</text>
+      <text key="column.status">Состояние</text>
+      <text key="column.expires">Срок действия</text>
+      <text key="column.last_verified">Последняя проверка</text>
+      <text key="column.default">Основной</text>
+      <text key="kind.fine_grained">Fine-grained</text>
+      <text key="kind.classic">Классический</text>
+      <text key="kind.unknown">Неизвестно</text>
+      <text key="status.untested">Не проверен</text>
+      <text key="status.valid">Действителен</text>
+      <text key="status.invalid">Недействителен</text>
+      <text key="expires.unavailable">GitHub не предоставляет</text>
+      <text key="account.unknown">Не проверена</text>
+      <text key="never_verified">—</text>
+      <text key="yes">Да</text>
+      <text key="status.verifying">Проверка ключа GitHub…</text>
+      <text key="message.verify_success">Ключ GitHub проверен</text>
+      <text key="message.verify_failed">Не удалось проверить ключ GitHub: {error}</text>
+      <text key="title.delete">Удалить ключ GitHub</text>
+      <text key="message.delete_confirm">Удалить ключ «{name}»? Сейчас его используют плагинов: {count}.</text>
+      <text key="message.delete_affected">Затронутые плагины: {names}
+  Для их обновления потребуется привязать новый ключ GitHub.</text>
+  </group>
+
+  <group name="github_key_rebind">
+      <text key="title">Перепривязать ключ GitHub</text>
+      <text key="message.unavailable"><![CDATA[Текущий ключ GitHub недоступен:
+  {error}]]></text>
+      <text key="message.select_key">Выберите ключ GitHub с доступом к целевому приватному репозиторию.</text>
+      <text key="button.manage">Управление ключами…</text>
+      <text key="button.rebind">Проверить и привязать</text>
+      <text key="key.label">{name} ({account})</text>
+      <text key="unknown_account">Неизвестная учётная запись</text>
   </group>
 
   <group name="dialog_license">
@@ -332,7 +414,9 @@
     <!-- 按钮（common 已有的 取消/关闭/刷新 直接复用 common 分组） -->
     <text key="button.install_github">Установить с GitHub…</text>
     <text key="button.install_zip">Установить локальный пакет…</text>
+    <text key="button.github_keys">Управление ключами GitHub…</text>
     <text key="button.check_updates">Проверить обновления / откат…</text>
+    <text key="button.rebind_github_key">Перепривязать ключ GitHub…</text>
     <text key="button.uninstall">Удалить…</text>
     <text key="button.reset">Сбросить</text>
     <text key="button.save_groups">Сохранить группы и порядок</text>
@@ -351,6 +435,13 @@
     <text key="detail.name">Имя: {name}</text>
     <text key="detail.version">Версия: {version}</text>
     <text key="detail.source">Источник: {source}</text>
+    <text key="detail.github_access">Доступ: {visibility}</text>
+    <text key="detail.github_key">Ключ обновления: {key}</text>
+    <text key="github_visibility.public">Публичный репозиторий</text>
+    <text key="github_visibility.private">Приватный репозиторий</text>
+    <text key="github_visibility.unknown">Неизвестно, требуется проверка</text>
+    <text key="github_key.missing">Удалён или недоступен</text>
+    <text key="github_key.none">Не привязан</text>
 
     <!-- 通用兜底词（本分组内复用） -->
     <text key="label.unknown">Неизвестно</text>
@@ -362,6 +453,9 @@
     <text key="message.no_releases">Для этого репозитория не найдено ни одной версии Release</text>
     <text key="message.no_plugin_installed">Плагины не установлены: в выбранной версии не найдено подходящих плагинов</text>
     <text key="message.invalid_source_url">Недействительный URL репозитория-источника</text>
+    <text key="message.github_key_unavailable">Не удалось использовать ключ источника плагина: {error}</text>
+    <text key="message.github_key_unavailable_generic">Источник плагина недоступен, поэтому ключ GitHub нельзя перепривязать.</text>
+    <text key="message.private_update_notice">🔒 Обновление из приватного репозитория. Будет использован ключ «{key_name}».</text>
     <text key="message.install_confirm"><![CDATA[{relation} плагина «{name}»
   Текущая версия: {current}
   Целевая версия: {target}]]></text>
@@ -392,6 +486,7 @@
     <!-- 版本选择对话框 -->
     <text key="version_select.title">Выбор версии — {name}</text>
     <text key="version_select.current_version">Текущая версия: {version}</text>
+      <text key="version_select.private_notice">🔒 Обновление из приватного репозитория с ключом «{key_name}».</text>
     <text key="version_select.unknown_version">Неизвестная версия</text>
     <text key="version_select.item_format">{tag}  —  {version} ({relation})</text>
     <text key="version_select.button.install_selected">Установить выбранную версию</text>
@@ -436,6 +531,7 @@
     <text key="menu.edit.toggle_theme.tooltip">Светлая → тёмная → как в системе</text>
     <text key="menu.edit.toggle_theme.current">Сменить тему ({label})</text>
     <text key="menu.edit.language">Язык</text>
+    <text key="menu.edit.github_keys">Управление ключами GitHub…</text>
     <text key="menu.edit.install_from_github">Установить плагин с GitHub…</text>
     <text key="menu.edit.install_from_github.status_tip">Установка плагина из репозитория GitHub</text>
     <text key="menu.ai">ИИ</text>
