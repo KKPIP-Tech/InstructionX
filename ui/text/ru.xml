@@ -719,4 +719,23 @@
 
 Внимание: откат может привести к несовместимости данных или потере настроек! Продолжить?]]></text>
   </group>
+  <group name="plugin_startup">
+      <text key="title">Не удалось загрузить плагины</text>
+      <text key="message"><![CDATA[Следующие плагины не удалось загрузить:
+{details}
+
+InstructionX попытался автоматически установить объявленные плагинами зависимости. Проверьте файлы плагина, доступ к сети и настройки uv/pip либо установите зависимости вручную и перезапустите InstructionX.]]></text>
+      <text key="item"><![CDATA[• {name} (путь: {path})
+{reason}]]></text>
+      <text key="reason.dependency_check_failed">Ошибка при проверке зависимостей плагина</text>
+      <text key="reason.dependency_install_failed">Не удалось автоматически установить зависимости плагина</text>
+      <text key="reason.missing_dependencies">Всё ещё отсутствуют: {dependencies}</text>
+      <text key="reason.invalid_plugin_entry">Недопустимая точка входа плагина</text>
+      <text key="reason.missing_module">При импорте плагина отсутствует обязательный модуль Python</text>
+      <text key="reason.missing_module_name">Отсутствует модуль: {module}</text>
+      <text key="reason.import_failed">Не удалось импортировать точку входа плагина</text>
+      <text key="reason.unexpected_error">При загрузке плагина возникло исключение</text>
+      <text key="reason.detail">Подробности: {detail}</text>
+      <text key="button.acknowledge">Понятно</text>
+  </group>
 </texts>

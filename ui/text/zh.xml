@@ -686,4 +686,23 @@
 
 警告：降级可能导致数据不兼容或配置丢失！是否继续？]]></text>
   </group>
+  <group name="plugin_startup">
+      <text key="title">插件加载失败</text>
+      <text key="message"><![CDATA[以下插件未能加载：
+{details}
+
+框架已尝试自动安装插件声明的依赖。请检查插件文件、网络环境以及 uv/pip 配置；也可以在手动安装依赖后重启 InstructionX。]]></text>
+      <text key="item"><![CDATA[• {name}（路径：{path}）
+{reason}]]></text>
+      <text key="reason.dependency_check_failed">检查插件依赖时发生错误</text>
+      <text key="reason.dependency_install_failed">无法自动安装插件依赖</text>
+      <text key="reason.missing_dependencies">仍缺少依赖：{dependencies}</text>
+      <text key="reason.invalid_plugin_entry">插件入口无效</text>
+      <text key="reason.missing_module">插件导入时缺少 Python 模块</text>
+      <text key="reason.missing_module_name">缺少模块：{module}</text>
+      <text key="reason.import_failed">插件入口导入失败</text>
+      <text key="reason.unexpected_error">插件加载时发生异常</text>
+      <text key="reason.detail">详细信息：{detail}</text>
+      <text key="button.acknowledge">知道了</text>
+  </group>
 </texts>

@@ -685,4 +685,23 @@ Interfaces using this font will fall back to a system font after uninstallation.
 
 Warning: downgrading may cause data incompatibility or configuration loss. Continue?]]></text>
   </group>
+  <group name="plugin_startup">
+      <text key="title">Plugin Load Failed</text>
+      <text key="message"><![CDATA[The following plugins could not be loaded:
+{details}
+
+InstructionX attempted to install the dependencies declared by the plugins. Check the plugin files, network access, and uv/pip configuration, or install the dependencies manually and restart InstructionX.]]></text>
+      <text key="item"><![CDATA[• {name} (path: {path})
+{reason}]]></text>
+      <text key="reason.dependency_check_failed">An error occurred while checking plugin dependencies</text>
+      <text key="reason.dependency_install_failed">Plugin dependencies could not be installed automatically</text>
+      <text key="reason.missing_dependencies">Still missing: {dependencies}</text>
+      <text key="reason.invalid_plugin_entry">Invalid plugin entry point</text>
+      <text key="reason.missing_module">A required Python module is missing during plugin import</text>
+      <text key="reason.missing_module_name">Missing module: {module}</text>
+      <text key="reason.import_failed">The plugin entry point failed to import</text>
+      <text key="reason.unexpected_error">An exception occurred while loading the plugin</text>
+      <text key="reason.detail">Details: {detail}</text>
+      <text key="button.acknowledge">Got it</text>
+  </group>
 </texts>

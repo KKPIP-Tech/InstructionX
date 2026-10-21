@@ -733,4 +733,23 @@
 
 Attention : une rétrogradation peut entraîner une incompatibilité des données ou une perte de configuration ! Continuer ?]]></text>
   </group>
+  <group name="plugin_startup">
+      <text key="title">Échec du chargement des plugins</text>
+      <text key="message"><![CDATA[Les plugins suivants n’ont pas pu être chargés :
+{details}
+
+InstructionX a tenté d’installer automatiquement les dépendances déclarées. Vérifiez les fichiers du plugin, l’accès réseau et la configuration uv/pip, ou installez les dépendances manuellement puis redémarrez InstructionX.]]></text>
+      <text key="item"><![CDATA[• {name} (chemin : {path})
+{reason}]]></text>
+      <text key="reason.dependency_check_failed">Une erreur est survenue lors de la vérification des dépendances</text>
+      <text key="reason.dependency_install_failed">Impossible d’installer automatiquement les dépendances du plugin</text>
+      <text key="reason.missing_dependencies">Dépendances toujours manquantes : {dependencies}</text>
+      <text key="reason.invalid_plugin_entry">Point d’entrée du plugin invalide</text>
+      <text key="reason.missing_module">Un module Python requis est absent lors de l’import du plugin</text>
+      <text key="reason.missing_module_name">Module manquant : {module}</text>
+      <text key="reason.import_failed">Échec de l’import du point d’entrée du plugin</text>
+      <text key="reason.unexpected_error">Une exception est survenue pendant le chargement du plugin</text>
+      <text key="reason.detail">Détails : {detail}</text>
+      <text key="button.acknowledge">J’ai compris</text>
+  </group>
 </texts>
