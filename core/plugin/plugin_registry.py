@@ -14,7 +14,7 @@ from typing import Dict, List, Optional, Tuple
 
 from utils.logging_tools import LoggerManager, get_name
 
-from core.i18n import DEFAULT_LANGUAGE, resolve_i18n_field
+from .plugin_startup import PluginDescriptorSnapshot, read_plugin_descriptor
 
 SOURCE_VISIBILITY_PUBLIC = "public"
 SOURCE_VISIBILITY_PRIVATE = "private"
@@ -347,25 +347,161 @@ class PluginRegistry:
             self._logger.info(get_name(), f"插件注册表回填 {added} 条记录")
         return added
 
+    def reconcile(self, entries: List[Tuple[str, str, Path]]) -> int:
+        """以插件目录中的描述文件校准已安装记录。
+
+        与 :meth:`backfill` 只补缺失记录不同，本方法会更新已有记录的
+        ``version``、``name``、``descriptor_id`` 与 ``scope``，用于识别用户
+        绕过插件管理器手动替换目录后的实际版本。来源 URL、可见性与 Key
+        绑定等安装元数据保持不变。
+
+        Args:
+            entries: ``(插件 UUID, scope, 插件目录)`` 三元组列表。
+
+        Returns:
+            int: 新增、更新或清理旧记录的数量。
+        """
+        data = self._load()
+        changed = 0
+        for plugin_id, scope, plugin_dir in entries:
+            snapshot = read_plugin_descriptor(plugin_dir)
+            if snapshot is None or not plugin_id:
+                continue
+            changed += self._reconcile_entry(
+                data["plugins"], plugin_id, scope, snapshot)
+        if changed:
+            if self._save():
+                self._logger.info(
+                    get_name(),
+                    f"插件注册表已按插件文件校准 {changed} 条记录",
+                )
+            else:
+                self._logger.warning(
+                    get_name(), "插件注册表校准已更新内存，但写回磁盘失败")
+        return changed
+
+    def _reconcile_entry(
+        self,
+        plugins: Dict,
+        plugin_id: str,
+        scope: str,
+        snapshot: PluginDescriptorSnapshot,
+    ) -> int:
+        """校准单条插件记录并清理同描述 ID 的历史 UUID。"""
+        stale = self._find_stale_records(
+            plugins, plugin_id, scope, snapshot.descriptor_id)
+        current = plugins.get(plugin_id)
+        if current is None:
+            record = self._descriptor_record_from_snapshot(scope, snapshot)
+            self._copy_source_fields(
+                record, self._latest_stale(plugins, stale))
+            plugins[plugin_id] = record
+            self._delete_records(plugins, stale)
+            return 1
+        changed = self._update_descriptor_fields(current, scope, snapshot)
+        self._delete_records(plugins, stale)
+        return 1 if changed or stale else 0
+
+    @staticmethod
+    def _find_stale_records(
+        plugins: Dict,
+        plugin_id: str,
+        scope: str,
+        descriptor_id: str,
+    ) -> List[str]:
+        """查找同范围、同描述 ID 但 UUID 已变化的历史记录。"""
+        return [
+            key for key, value in plugins.items()
+            if key != plugin_id
+            and value.get("scope") == scope
+            and value.get("descriptor_id") == descriptor_id
+        ]
+
+    @staticmethod
+    def _delete_records(plugins: Dict, keys: List[str]) -> None:
+        """删除指定注册表记录。"""
+        for key in keys:
+            plugins.pop(key, None)
+
+    @staticmethod
+    def _latest_stale(plugins: Dict, keys: List[str]) -> Optional[Dict]:
+        """获取最近安装的历史记录，用于继承来源绑定。"""
+        records = [
+            plugins[key]
+            for key in keys
+            if key in plugins
+        ]
+        return max(
+            records,
+            key=lambda item: item.get("installed_at", ""),
+            default=None,
+        )
+
+    @staticmethod
+    def _copy_source_fields(target: Dict, source: Optional[Dict]) -> None:
+        """把历史来源元数据复制到 UUID 变化后的新记录。"""
+        if source is None:
+            return
+        for field in (
+            "source_type",
+            "source_url",
+            "source_path",
+            "source_visibility",
+            "source_key_id",
+        ):
+            target[field] = source.get(field, target[field])
+
+    def _update_descriptor_fields(
+        self,
+        record: Dict,
+        scope: str,
+        snapshot: PluginDescriptorSnapshot,
+    ) -> bool:
+        """用描述文件更新现有记录的展示与版本字段。"""
+        before = (
+            record.get("descriptor_id"),
+            record.get("name"),
+            record.get("version"),
+            record.get("scope"),
+        )
+        after = (
+            snapshot.descriptor_id,
+            snapshot.name,
+            snapshot.version,
+            scope,
+        )
+        if before == after:
+            return False
+        (
+            record["descriptor_id"],
+            record["name"],
+            record["version"],
+            record["scope"],
+        ) = after
+        if before[2] != after[2]:
+            self._logger.info(
+                get_name(),
+                f"插件 {after[0]} 版本已由 {before[2]} 校准为 {after[2]}",
+            )
+        return True
+
     def _read_descriptor_record(self, scope: str, plugin_dir: Path) -> Optional[Dict]:
         """从插件目录的 IXPlugin.json 构建回填记录"""
-        desc_file = plugin_dir / self.DESCRIPTOR_FILE
-        if not desc_file.exists():
+        snapshot = read_plugin_descriptor(plugin_dir)
+        if snapshot is None:
             return None
-        try:
-            with open(desc_file, "r", encoding="utf-8") as f:
-                desc = json.load(f)
-        except (OSError, json.JSONDecodeError) as e:
-            self._logger.warning(get_name(), f"回填读取描述文件失败 {desc_file}: {e}")
-            return None
+        return self._descriptor_record_from_snapshot(scope, snapshot)
+
+    @staticmethod
+    def _descriptor_record_from_snapshot(
+        scope: str, snapshot: PluginDescriptorSnapshot
+    ) -> Dict:
+        """把描述快照转换为新的注册表记录。"""
         return {
-            "descriptor_id": desc.get("id", plugin_dir.name),
-            # name 支持多语言字典形式（IXPlugin.json schema 扩展）；
-            # 注册表持久化需要字符串，此处按框架默认语言解析（回填场景无用户语言上下文）
-            "name": resolve_i18n_field(
-                desc.get("name", plugin_dir.name), DEFAULT_LANGUAGE) or plugin_dir.name,
+            "descriptor_id": snapshot.descriptor_id,
+            "name": snapshot.name,
             "scope": scope,
-            "version": desc.get("version", "release.0.0.0"),
+            "version": snapshot.version,
             "installed_at": datetime.now(timezone.utc).isoformat(),
             "source_type": "unknown",
             "source_url": "",

@@ -12,7 +12,6 @@ import shutil
 import inspect
 import traceback
 import importlib
-import importlib.util
 from enum import Enum
 from pathlib import Path
 from typing import List, Dict, Optional, Any, Callable, Tuple
@@ -26,6 +25,14 @@ from .plugin_identity import PluginIdentity
 from .plugin_info_interface import IPluginInfo
 from .plugin_registry import PluginRegistry
 from .plugin_groups import PluginGroup, PluginGroupStore
+from .plugin_module_loader import PluginModuleLoadError, PluginModuleLoader
+from .plugin_startup import (
+    FAILURE_UNEXPECTED,
+    PluginDependencyPreparer,
+    PluginLoadFailure,
+    is_plugin_candidate,
+    read_plugin_descriptor,
+)
 from core.interfaces.plugin_services import PluginServices
 from core.interfaces.i_llm_service import ILLMService
 from core.font import get_font_manager
@@ -116,6 +123,11 @@ class PluginManager:
         # 已安装插件注册表（版本/来源，用于升级降级）
         self.registry = PluginRegistry()
 
+        # 启动阶段依赖准备与入口模块加载（各自保持独立职责）
+        self._dependency_preparer = PluginDependencyPreparer()
+        self._module_loader = PluginModuleLoader()
+        self._plugin_load_failures: List[PluginLoadFailure] = []
+
         # 用户自定义分组存储
         self.group_store = PluginGroupStore()
 
@@ -181,23 +193,28 @@ class PluginManager:
             return None
 
     def load_plugins(self):
-        """加载所有插件（包括官方插件和第三方插件），并回填版本注册表"""
+        """加载所有插件，并校准版本注册表与记录加载失败。"""
+        self._plugin_load_failures.clear()
         self.load_official_plugins()
         self.load_thirdparty_plugins()
         self._backfill_registry()
 
     def _backfill_registry(self) -> None:
-        """扫描已加载插件，为注册表中缺失记录的插件回填版本信息"""
+        """用已加载插件的实际描述文件校准注册表版本与来源记录。"""
         entries: List[Tuple[str, str, Path]] = []
         for plugin in self._official_plugins:
             entries.append((plugin.plugin_id, "official", plugin._plugin_dir))
         for plugin in self._thirdparty_plugins:
             entries.append((plugin.plugin_id, "thirdparty", plugin._plugin_dir))
         try:
-            self.registry.backfill(entries)
+            self.registry.reconcile(entries)
         except Exception as e:
-            # 回填失败不影响插件加载主流程
-            self._logger.warning(get_name(), f'插件注册表回填失败: {e}')
+            # 注册表校准失败不影响插件加载主流程
+            self._logger.warning(get_name(), f'插件注册表校准失败: {e}')
+
+    def get_plugin_load_failures(self) -> List[PluginLoadFailure]:
+        """获取最近一次插件加载产生的失败列表副本。"""
+        return list(self._plugin_load_failures)
 
     def load_official_plugins(self) -> List[IPlugin]:
         """
@@ -246,124 +263,106 @@ class PluginManager:
         return self._thirdparty_plugins
 
     def _load_plugin_from_directory(self, plugin_dir: Path) -> Optional[IPlugin]:
-        """
-        从指定目录动态加载插件
-
-        加载流程：
-        1. 检查并创建 __init__.py 使目录成为 Python 包
-        2. 动态导入 entrance.py 模块
-        3. 查找并实例化继承自 IPlugin 的类
-        4. 生成或加载插件唯一标识符
-        5. 调用插件生命周期回调
-
-        Args:
-            plugin_dir: 插件目录路径
-
-        Returns:
-            插件实例，加载失败时返回 None
-        """
-        try:
-            # 检查入口文件是否存在
-            entrance_file = plugin_dir / "entrance.py"
-
-            if not entrance_file.exists():
-                self._logger.warning(get_name(), f'No entrance.py found in {plugin_dir}')
-                return None
-
-            # 确保插件目录有 __init__.py 文件
-            init_file = plugin_dir / "__init__.py"
-            if not init_file.exists():
-                init_file.write_text("")
-
-            # 将插件目录添加到 Python 模块搜索路径
-            parent_dir = str(plugin_dir.parent)
-            if parent_dir not in sys.path:
-                sys.path.insert(0, parent_dir)
-
-            # 动态导入 entrance.py 模块
-            module_name = f"{plugin_dir.name}.entrance"
-            spec = importlib.util.spec_from_file_location(module_name, entrance_file)
-            if spec is None or spec.loader is None:
-                self._logger.warning(get_name(), f'Could not load spec for {entrance_file}')
-                return None
-
-            # 设置包上下文
-            module = importlib.util.module_from_spec(spec)
-            module.__package__ = plugin_dir.name
-            module.__path__ = [str(plugin_dir)]
-
-            sys.modules[module_name] = module
-            sys.modules[plugin_dir.name] = importlib.import_module(plugin_dir.name)
-
-            spec.loader.exec_module(module)
-
-            # 在模块中查找 IPlugin 的子类
-            # 排除：core.interfaces.IPlugin（框架基类）和 core.plugin.plugin_interface.IPlugin（中间基类）
-            plugin_class = None
-            for attr_name in dir(module):
-                attr = getattr(module, attr_name)
-                if (not isinstance(attr, type) or not issubclass(attr, IPlugin)):
-                    continue
-                # 排除框架级 IPlugin 类（来自 core.interfaces 或 core.plugin.plugin_interface）
-                if attr is IPlugin:
-                    continue
-                if getattr(attr, '__module__', '') == 'core.plugin.plugin_interface':
-                    continue
-                plugin_class = attr
-                break
-
-            if plugin_class is None:
-                self._logger.warning(get_name(), f'No IPlugin subclass found in {entrance_file}')
-                return None
-
-            # 生成或加载唯一标识符
-            identity = PluginIdentity(plugin_dir)
-            plugin_id = identity.load_or_create_id()
-
-            # 注册插件语言包（无 text/ 目录时返回 False，属正常情形，无需分支处理）
-            get_language_manager().register_plugin_texts(plugin_id, plugin_dir)
-
-            # 创建插件服务依赖注入容器
-            services = self._create_plugin_services(plugin_id)
-
-            # 实例化插件（尝试注入 services）
-            sig = inspect.signature(plugin_class)
-            params = [p.name for p in sig.parameters.values()]
-            if 'services' in params:
-                plugin_instance = plugin_class(services=services)
-            else:
-                plugin_instance = plugin_class()
-
-            plugin_instance._plugin_dir = plugin_dir  # 用于 _load_plugin_info() 直接定位文件
-            plugin_instance._plugin_id = plugin_id
-            plugin_instance._services = services  # 注入 services 以实例属性方式访问
-
-            # 调用插件加载完成回调（不传参数保证向后兼容旧插件）
-            plugin_instance.on_plugin_loaded()
-
-            # 维护注册表映射
-            plugin_instance._plugin_name = plugin_instance.plugin_name
-            if (plugin_instance.plugin_name in self._plugin_name_to_id and
-                    self._plugin_name_to_id[plugin_instance.plugin_name] != plugin_id):
-                self._logger.warning(
-                    get_name(),
-                    f'Duplicate plugin name "{plugin_instance.plugin_name}": '
-                    f'{self._plugin_name_to_id[plugin_instance.plugin_name]} overwritten by {plugin_id}'
-                )
-            self._plugin_registry[plugin_id] = plugin_instance
-            self._plugin_name_to_id[plugin_instance.plugin_name] = plugin_id
-
-            # 尝试自动注册插件 API
-            self._auto_register_plugin_api(plugin_dir, plugin_id)
-
-            return plugin_instance
-
-        except Exception as e:
-            self._logger.error(
-                get_name(),
-                f'Error loading plugin from {plugin_dir}: {e}\n{traceback.format_exc()}'
+        """准备依赖并加载插件，失败时记录可供界面展示的原因。"""
+        if not is_plugin_candidate(plugin_dir):
+            self._logger.debug(
+                get_name(), f"跳过非插件资源目录: {plugin_dir}")
+            return None
+        descriptor = read_plugin_descriptor(plugin_dir)
+        preparation = self._dependency_preparer.prepare(descriptor)
+        if not preparation.ready:
+            self._record_plugin_load_failure(
+                plugin_dir,
+                preparation.reason,
+                preparation.detail,
+                preparation.missing_dependencies,
             )
             return None
+        try:
+            plugin_class = self._module_loader.load(plugin_dir)
+            return self._initialize_plugin_instance(plugin_class, plugin_dir)
+        except PluginModuleLoadError as exc:
+            self._record_plugin_load_failure(
+                plugin_dir,
+                exc.reason,
+                exc.detail,
+                missing_module=exc.missing_module,
+            )
+        except Exception as exc:
+            self._logger.error(
+                get_name(),
+                f'Error loading plugin from {plugin_dir}: {exc}\n'
+                f'{traceback.format_exc()}',
+            )
+            self._record_plugin_load_failure(
+                plugin_dir, FAILURE_UNEXPECTED, str(exc))
+        return None
+
+    def _initialize_plugin_instance(
+        self, plugin_class: type[IPlugin], plugin_dir: Path
+    ) -> IPlugin:
+        """创建插件实例、注入服务并完成插件注册。"""
+        plugin_id = PluginIdentity(plugin_dir).load_or_create_id()
+        get_language_manager().register_plugin_texts(plugin_id, plugin_dir)
+        services = self._create_plugin_services(plugin_id)
+        plugin_instance = self._create_plugin_instance(plugin_class, services)
+        plugin_instance._plugin_dir = plugin_dir
+        plugin_instance._plugin_id = plugin_id
+        plugin_instance._services = services
+        plugin_instance.on_plugin_loaded()
+        self._register_loaded_plugin(plugin_instance, plugin_id)
+        self._auto_register_plugin_api(plugin_dir, plugin_id)
+        return plugin_instance
+
+    @staticmethod
+    def _create_plugin_instance(plugin_class, services) -> IPlugin:
+        """按旧插件兼容规则决定是否通过构造器注入 services。"""
+        params = inspect.signature(plugin_class).parameters
+        if 'services' in params:
+            return plugin_class(services=services)
+        return plugin_class()
+
+    def _register_loaded_plugin(
+        self, plugin_instance: IPlugin, plugin_id: str
+    ) -> None:
+        """维护插件实例、名称映射并处理重名告警。"""
+        plugin_name = plugin_instance.plugin_name
+        previous_id = self._plugin_name_to_id.get(plugin_name)
+        if previous_id is not None and previous_id != plugin_id:
+            self._logger.warning(
+                get_name(),
+                f'Duplicate plugin name "{plugin_name}": '
+                f'{previous_id} overwritten by {plugin_id}',
+            )
+        plugin_instance._plugin_name = plugin_name
+        self._plugin_registry[plugin_id] = plugin_instance
+        self._plugin_name_to_id[plugin_name] = plugin_id
+
+    def _record_plugin_load_failure(
+        self,
+        plugin_dir: Path,
+        reason: str,
+        detail: str,
+        missing_dependencies: tuple[str, ...] = (),
+        missing_module: str = "",
+    ) -> None:
+        """记录插件加载失败并写入上下文日志。"""
+        descriptor = read_plugin_descriptor(plugin_dir)
+        plugin_name = descriptor.name if descriptor else plugin_dir.name
+        failure = PluginLoadFailure(
+            plugin_name=plugin_name,
+            plugin_dir=plugin_dir,
+            reason=reason,
+            detail=detail,
+            missing_dependencies=missing_dependencies,
+            missing_module=missing_module,
+        )
+        self._plugin_load_failures.append(failure)
+        self._logger.error(
+            get_name(),
+            f"插件加载失败 {plugin_name} ({plugin_dir}): "
+            f"reason={reason}, detail={detail}",
+        )
     
     def get_official_plugins(self) -> List[IPlugin]:
         """获取所有官方插件实例列表"""
