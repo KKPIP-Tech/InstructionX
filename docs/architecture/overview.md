@@ -381,6 +381,8 @@ InstructionX/
 │   │   ├── config_manager.py
 │   │   ├── plugin_groups.py   # 用户自定义分组存储（config/plugin_groups.json）
 │   │   ├── plugin_registry.py # 已安装插件注册表（config/plugin_registry.json）
+│   │   ├── plugin_startup.py  # 启动依赖准备、插件候选识别与失败诊断
+│   │   ├── plugin_module_loader.py # 插件入口导入与 IPlugin 子类发现
 │   │   ├── tool_name.py       # 工具命名/清洗工具
 │   │   ├── dependency_manager.py  # 插件依赖管理
 │   │   └── github_plugin_installer.py  # GitHub 插件安装器

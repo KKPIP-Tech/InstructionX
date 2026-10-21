@@ -1018,6 +1018,8 @@ class Service:
 | `config_manager.py` | PluginConfigManager，插件排序持久化 |
 | `plugin_groups.py` | PluginGroup + PluginGroupStore，用户自定义分组存储（config/plugin_groups.json） |
 | `plugin_registry.py` | 已安装插件注册表（config/plugin_registry.json：版本/来源/安装时间，升级降级依据） |
+| `plugin_startup.py` | 启动依赖准备、插件候选目录识别与结构化失败诊断 |
+| `plugin_module_loader.py` | 插件入口导入与 IPlugin 子类发现 |
 | `tool_name.py` | 工具命名/清洗工具 |
 | `plugin_identity.py` | PluginIdentity，UUID 生成/持久化 |
 | `plugin_version.py` | PluginVersion 版本解析与比较 |

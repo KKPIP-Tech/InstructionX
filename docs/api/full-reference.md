@@ -132,6 +132,7 @@ from core.interfaces import ILocalizationFacade
 | `load_plugins()` | 加载所有插件 | None |
 | `load_official_plugins()` | 加载官方插件 | List[IPlugin] |
 | `load_thirdparty_plugins()` | 加载第三方插件 | List[IPlugin] |
+| `get_plugin_load_failures()` | 获取最近一次加载的依赖/入口失败列表 | List[PluginLoadFailure] |
 | `get_all_plugins()` | 获取所有插件 | List[IPlugin] |
 | `get_plugin_by_id(plugin_id)` | 根据 UUID 获取插件 | Optional[IPlugin] |
 | `get_plugin_by_name(name)` | 根据名称获取插件 | Optional[IPlugin] |
@@ -159,6 +160,12 @@ from core.interfaces import ILocalizationFacade
 | `get_api_description(plugin_id, method_name=None)` | 获取 API 结构化描述 | Dict |
 | `call_plugin_method(caller_id, plugin_id, method_name, **kwargs)` | 跨插件调用 | Any |
 | `get_all_function_tools()` | 获取 MCP 工具列表 | List[Dict]（工具名 `sanitize_tool_name(f"{plugin_id}__{method_name}")`） |
+
+启动加载会先由 `core/plugin/plugin_startup.py` 读取 `IXPlugin.json.dependencies`
+并安装缺失依赖，再由 `core/plugin/plugin_module_loader.py` 导入插件入口。
+依赖安装失败、入口无效、导入异常和缺少模块都会形成结构化失败项；主窗口首次
+显示后统一弹出提示框。`docs/`、`assets/` 等不含插件特征文件的资源目录会被
+静默跳过，不会被误报为插件。
 
 #### GitHubPluginInstaller 主要 API
 
