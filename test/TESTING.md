@@ -21,15 +21,16 @@
 |------|-----------|-----------|---------|
 | core.data | 1 | 36 | DataProvider 全部公开 API（含单例/注册表/迁移/LRU/并发/资源路径） |
 | core.font | 1 | 16 | FontManager 安装/卸载/注册表持久化/系统字体回退 |
+| core.github | 8 | 117 | PAT 安全存储、DPAPI、多 Key CRUD、API 状态映射、私有仓库安装、来源绑定与重新绑定 |
 | core.llm | 18 | 283 | LLMProvider, ConversationManager, Config, Types, Exceptions, ToolCallExecutor, PluginService, 适配器注册表, 模型 schema, 用量记录 |
 | core.mcp | 6 | 93 | Manager, Client, Server, Bridge, Config, PluginInterface |
 | core.plugin | 11 | 225 | Manager, Identity, ConfigManager, Version, DependencyManager, 插件 API 自动注册, 插件图标, 本地插件包识别, 本地包安装与关系预演（含目标范围）, 包外文件快照, 插件分类移动 |
 | core.task | 4 | 72 | BackgroundTaskManager, TaskModel, TaskStorage, 优雅关闭 |
 | core（版本号） | 1 | 9 | `core/version.py` 单一来源与 pyproject 动态版本约束 |
-| ui_tests | 12 | 101 | MainWindow, SkillsPanel（含语言跟随）, 关闭事件分发, 应用标识, LLM 设置对话框（列表/详情/编辑器/模型编辑）, 用量趋势面板渲染通路, 插件管理移动分类与安装范围 |
+| ui_tests | 15 | 124 | MainWindow, SkillsPanel（含语言跟随）, GitHub Key 管理/编辑/主动重新绑定, 私有安装提示, LLM 设置对话框, 用量趋势面板, 插件管理移动分类与安装范围 |
 | uikit | 2 | 33 | 蓝图节点注册表命名空间隔离；UIKit 同步副本守卫（版本钉子/导入契约/新增能力） |
 | utils | 5 | 29 | LoggerManager, 线程工具, 旧样式表兼容与主题 |
-| **合计** | **61** | **897** | — |
+| **合计** | **72** | **1037** | — |
 
 ### 1.3 测试环境要求
 
