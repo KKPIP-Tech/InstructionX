@@ -589,7 +589,21 @@ SkillsPanel.load_skills_from_manager()   # 按分组+顺序重新渲染
   `DataProvider.set_plugin_data` 或 `save_asset`（见 `plugin-development.md` §5.2）。
 - **卸载**：插件管理对话框「卸载…」，官方与第三方插件均可卸载；可选同时删除插件数据（DataProvider）。卸载会清理插件目录、UUID 文件、排序/分组/注册表记录、API/MCP 注册与 `sys.modules` 缓存。
 - **pip 依赖**：安装/升级时自动安装缺失依赖（优先 uv，回退 pip）；卸载时**不自动卸载依赖**（可能被其他插件使用）。
-- **GitHub Token**：设置环境变量 `INSTRUCTIONX_GITHUB_TOKEN` 可提升 API 限流阈值并支持私有仓库。
+- **GitHub Key**：支持多个可命名 PAT、默认 Key、Windows DPAPI 加密存储、验证状态和环境变量兼容；私有插件在注册表绑定稳定的 Key UUID。
+
+### 9.1 GitHub 私有仓库与 Key 生命周期
+
+- **PAT 类型**：推荐 Fine-grained PAT，仅授权目标仓库的 `Contents: Read-only` 权限；经典 PAT 通常需要 `repo` scope。组织仓库可能需要额外完成 SAML SSO 授权。
+- **身份验证**：新增或替换 Key 时调用 `GET /user`，保存 GitHub 登录名、Token 类型和可获得的过期信息。普通 PAT 的过期时间通常不由 GitHub REST API 返回，界面显示「GitHub 未提供」，不得猜测。
+- **安全存储**：Token 使用 Windows DPAPI 加密后写入 `config/github_keys.json`，密钥绑定当前 Windows 用户；跨用户或跨机器无法解密时要求重新录入。日志、插件 API 和工作线程信号均不得包含 Token。
+- **仓库判定**：先通过 `GET /repos/{owner}/{repo}` 获取 `private`、默认分支和权限。未认证 404 表示仓库可能私有或不存在；认证后 404 表示 Key 无权限或仓库不存在；401 表示 Key 无效或已过期。
+- **私有下载**：仓库和 Release 均使用 `GET /repos/{owner}/{repo}/zipball/{ref}` 流式下载，Authorization 只发送到 `api.github.com`，跨主机重定向不继续携带凭据。
+- **Key 选择语义**：安装页第一项为「不使用 Key」，只执行匿名请求；需要私有访问时必须由用户显式选择某个命名 Key。安装流程不会静默尝试默认 Key 或全部 Key。
+- **兼容入口**：底层 API 在完全未传 `key_id` 的历史调用中仍可回退到默认 Key 或 `INSTRUCTIONX_GITHUB_TOKEN`；界面发送专用“无 Key”标识时不会回退。
+- **绑定字段**：`config/plugin_registry.json` schema v2 新增 `source_visibility`（`public/private/unknown`）和 `source_key_id`。旧 schema v1 迁移时补默认值并保留 `.migrated-v1.bak`。
+- **重新绑定**：绑定 Key 被删除、失效、无法解密或无仓库权限时，插件详情和更新流程提供「重新绑定 GitHub Key」。只有新 Key 验证目标仓库成功后才覆盖旧绑定；取消或验证失败不修改原记录。重新绑定成功后继续原更新操作。
+- **显式提示**：私有仓库检查结果、安装确认和更新确认均显示仓库 URL、Key 名称与 GitHub 账号。公共仓库不显示私有警告。
+- **真实验收脚本**：设置 `INSTRUCTIONX_TEST_GITHUB_PRIVATE_TOKEN` 与 `INSTRUCTIONX_TEST_GITHUB_PRIVATE_REPO=owner/repo` 后运行 `scripts/smoke_github_private_live.py`；脚本只使用 `temp/` 临时配置与插件目录，不输出 Token。
 
 ---
 

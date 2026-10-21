@@ -166,12 +166,14 @@ from core.interfaces import ILocalizationFacade
 
 | 方法 | 说明 | 返回 |
 |------|------|------|
-| `inspect_repository(github_url)` | 检查 GitHub 仓库返回可安装插件列表 | RepoInspectionResult |
-| `install_from_url(github_url, ...)` | 从 GitHub URL 安装插件 | List[InstallResult] |
+| `inspect_repository(github_url, key_id="")` | 检查 GitHub 仓库，返回插件列表、仓库可见性和所用 Key | RepoInspectionResult |
+| `install_from_url(github_url, ..., key_id="")` | 从 GitHub URL 安装插件，私有仓库使用指定或绑定 Key | List[InstallResult] |
 | `inspect_local_package(zip_path, target_scope=None)` | 识别本地插件包：单插件 / 插件集 / 无效，并预演各插件的安装关系（新装/升级/降级/重装）、目标范围（随 `target_scope`）与默认勾选；只读，不落盘 | LocalPackageInspection |
 | `install_from_zip(zip_path, target_dir=None, progress_callback=None, selected_plugins=None, target_scope=None)` | 从本地 zip 安装/升级/降级插件（自动识别单插件与插件集；`selected_plugins` 按包内相对路径或插件 id 筛选；`target_scope` 决定新插件的目标目录，已安装同 id 插件沿用原目录） | List[InstallResult] |
-| `get_available_versions(source_url, descriptor_path="")` | 列出远程仓库可用版本（按插件版本号降序，对每个 Release tag 经 Contents API 读取 `IXPlugin.json` 解析版本） | List[ReleaseInfo] |
-| `install_release(owner, repo, tag, target_dir, selected_plugins=None, progress_callback=None)` | 安装指定 GitHub Release tag 对应的插件版本（upgrade / downgrade / reinstall 自动检测） | List[InstallResult] |
+| `get_available_versions(source_url, descriptor_path="", key_id="")` | 使用绑定 Key 列出远程仓库可用版本（按插件版本号降序） | List[ReleaseInfo] |
+| `install_release(owner, repo, tag, target_dir, selected_plugins=None, progress_callback=None, key_id="")` | 使用绑定 Key 安装指定 GitHub Release tag | List[InstallResult] |
+
+`core/github/` 同时提供 `GitHubKeyManager`、`PluginSourceKeyBinder` 和 `GitHubApiClient`；这些是框架内部服务，不加入面向插件的 `PluginServices`。
 
 ### 2.2 IPlugin
 

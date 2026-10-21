@@ -77,6 +77,12 @@
       <text key="button.install">安装</text>
       <text key="button.select_all">全选</text>
       <text key="button.deselect_all">取消全选</text>
+      <text key="key.label">GitHub Key:</text>
+      <text key="key.no_key">不使用 Key</text>
+      <text key="key.option">{name}（{account}）</text>
+      <text key="key.unknown_account">未知账号</text>
+      <text key="key.unknown_name">未知 Key</text>
+      <text key="button.manage_keys">管理 Key…</text>
       <text key="page.empty_hint">点击「检查」按钮分析 GitHub 仓库</text>
       <text key="page.invalid_hint">该仓库不包含有效的插件描述文件</text>
       <text key="info.author">作者: {author}</text>
@@ -103,6 +109,82 @@
       <text key="result.partial">部分完成</text>
       <text key="result.summary"><![CDATA[安装{outcome}：
   {details}]]></text>
+      <text key="private.confirm_title">确认安装私有仓库插件</text>
+      <text key="private.confirm_text"><![CDATA[即将安装 GitHub 私有仓库插件：
+  {url}
+
+  访问 Key：{key_name}
+  GitHub 账号：{account}
+
+  私有仓库内容可能包含授权代码，请确认你有权安装和使用该插件。]]></text>
+  </group>
+
+  <group name="github_private_repo">
+      <text key="title">🔒 私有仓库</text>
+      <text key="detail"><![CDATA[{url}
+  访问 Key：{key_name}（{account}）
+  该插件来自私有仓库，安装后将绑定此 Key，更新时需要该 Key 或具备同等权限的 Key。]]></text>
+      <text key="unknown_account">未知账号</text>
+  </group>
+
+  <group name="github_key_editor">
+      <text key="title.add">添加 GitHub Key</text>
+      <text key="title.edit">编辑 GitHub Key</text>
+      <text key="name.label">Key 名称</text>
+      <text key="name.placeholder">例如：工作账号</text>
+      <text key="token.label">GitHub Personal Access Token</text>
+      <text key="token.placeholder">粘贴 GitHub PAT</text>
+      <text key="token.keep_placeholder">留空以保留原 Token</text>
+      <text key="permissions.hint"><![CDATA[推荐使用 Fine-grained PAT，仅授权目标仓库的 Contents: Read-only 权限。
+  经典 PAT 通常需要 repo scope，权限范围更宽。组织仓库可能还需要完成 SAML SSO 授权。]]></text>
+      <text key="button.save">验证并保存</text>
+      <text key="error.name_required">请输入 Key 名称</text>
+      <text key="error.token_required">请输入 GitHub Token</text>
+  </group>
+
+  <group name="github_key_manager">
+      <text key="title">GitHub Key 管理</text>
+      <text key="table.empty">尚未添加 GitHub Key</text>
+      <text key="button.add">添加 Key</text>
+      <text key="button.edit">编辑</text>
+      <text key="button.verify">验证</text>
+      <text key="button.set_default">设为默认</text>
+      <text key="button.delete">删除</text>
+      <text key="column.name">名称</text>
+      <text key="column.account">GitHub 账号</text>
+      <text key="column.kind">类型</text>
+      <text key="column.status">状态</text>
+      <text key="column.expires">过期时间</text>
+      <text key="column.last_verified">最近验证</text>
+      <text key="column.default">默认</text>
+      <text key="kind.fine_grained">Fine-grained</text>
+      <text key="kind.classic">Classic</text>
+      <text key="kind.unknown">未知</text>
+      <text key="status.untested">未验证</text>
+      <text key="status.valid">有效</text>
+      <text key="status.invalid">失效</text>
+      <text key="expires.unavailable">GitHub 未提供</text>
+      <text key="account.unknown">未验证</text>
+      <text key="never_verified">—</text>
+      <text key="yes">是</text>
+      <text key="status.verifying">正在验证 GitHub Key…</text>
+      <text key="message.verify_success">GitHub Key 验证成功</text>
+      <text key="message.verify_failed">GitHub Key 验证失败：{error}</text>
+      <text key="title.delete">删除 GitHub Key</text>
+      <text key="message.delete_confirm">确定删除 Key「{name}」吗？当前有 {count} 个插件绑定此 Key。</text>
+      <text key="message.delete_affected">受影响插件：{names}
+  删除后这些插件的更新将需要重新绑定 GitHub Key。</text>
+  </group>
+
+  <group name="github_key_rebind">
+      <text key="title">重新绑定 GitHub Key</text>
+      <text key="message.unavailable"><![CDATA[当前 GitHub Key 不可用：
+  {error}]]></text>
+      <text key="message.select_key">请选择具有目标私有仓库权限的 GitHub Key。</text>
+      <text key="button.manage">管理 Key…</text>
+      <text key="button.rebind">验证并重新绑定</text>
+      <text key="key.label">{name}（{account}）</text>
+      <text key="unknown_account">未知账号</text>
   </group>
 
   <group name="dialog_license">
@@ -300,7 +382,9 @@
       <!-- 按钮（common 已有的 取消/关闭/刷新 直接复用 common 分组） -->
       <text key="button.install_github">从 GitHub 安装插件…</text>
       <text key="button.install_zip">安装本地插件包…</text>
+      <text key="button.github_keys">GitHub Key 管理…</text>
       <text key="button.check_updates">检查更新 / 升级 / 降级…</text>
+      <text key="button.rebind_github_key">重新绑定 GitHub Key…</text>
       <text key="button.uninstall">卸载…</text>
       <text key="button.reset">重置</text>
       <text key="button.save_groups">保存分组与排序</text>
@@ -319,6 +403,13 @@
       <text key="detail.name">名称: {name}</text>
       <text key="detail.version">版本: {version}</text>
       <text key="detail.source">来源: {source}</text>
+      <text key="detail.github_access">访问权限: {visibility}</text>
+      <text key="detail.github_key">更新 Key: {key}</text>
+      <text key="github_visibility.public">公共仓库</text>
+      <text key="github_visibility.private">私有仓库</text>
+      <text key="github_visibility.unknown">未知，需检查</text>
+      <text key="github_key.missing">已删除或不可用</text>
+      <text key="github_key.none">未绑定</text>
   
       <!-- 通用兜底词（本分组内复用） -->
       <text key="label.unknown">未知</text>
@@ -331,6 +422,9 @@
       <text key="message.no_releases">未获取到该仓库的 Release 版本</text>
       <text key="message.no_plugin_installed">没有插件被安装：所选版本中未找到匹配的插件</text>
       <text key="message.invalid_source_url">来源仓库 URL 无效</text>
+      <text key="message.github_key_unavailable">无法使用插件来源 Key：{error}</text>
+      <text key="message.github_key_unavailable_generic">插件来源不可用，无法重新绑定 GitHub Key。</text>
+      <text key="message.private_update_notice">🔒 私有仓库更新，将使用 Key「{key_name}」。</text>
       <text key="message.install_confirm"><![CDATA[将{relation}插件「{name}」
   当前版本: {current}
   目标版本: {target}]]></text>
@@ -361,6 +455,7 @@
       <!-- 版本选择对话框 -->
       <text key="version_select.title">选择版本 - {name}</text>
       <text key="version_select.current_version">当前版本: {version}</text>
+      <text key="version_select.private_notice">🔒 私有仓库更新，将使用 Key「{key_name}」。</text>
       <text key="version_select.unknown_version">未知版本</text>
       <text key="version_select.item_format">{tag}  —  {version}（{relation}）</text>
       <text key="version_select.button.install_selected">安装所选版本</text>
@@ -405,6 +500,7 @@
       <text key="menu.edit.toggle_theme.tooltip">浅色 → 深色 → 跟随系统</text>
       <text key="menu.edit.toggle_theme.current">切换主题 ({label})</text>
       <text key="menu.edit.language">语言</text>
+      <text key="menu.edit.github_keys">GitHub Key 管理...</text>
       <text key="menu.edit.install_from_github">从 GitHub 安装插件...</text>
       <text key="menu.edit.install_from_github.status_tip">从 GitHub 仓库安装插件</text>
       <text key="menu.ai">AI</text>

@@ -23,12 +23,22 @@ from core.plugin.manager import SCOPE_OFFICIAL, SCOPE_THIRDPARTY, PluginManager
 from core.plugin.github_plugin_installer import (
     GitHubPluginInstaller, InstallResult, ReleaseInfo,
 )
+from core.github import (
+    GitHubCredentialVaultError,
+    GitHubKeyNotFoundError,
+    GitHubKeyManager,
+    PluginSourceKeyBinder,
+    PluginSourceKeyResolution,
+    get_github_key_manager,
+)
 from core.plugin.plugin_groups import (
     PluginGroup, GROUP_ICON_CHOICES,
     ITEM_TYPE_GROUP, ITEM_TYPE_PLUGIN,
 )
 from core.plugin.plugin_version import PluginVersion
 from ui.dialog.github_plugin_install_dialog import GitHubPluginInstallDialog
+from ui.dialog.github_key_manager_dialog import GitHubKeyManagerDialog
+from ui.dialog.github_key_rebind_dialog import GitHubKeyRebindDialog
 from ui.dialog.local_package_install_dialog import LocalPackageInstallDialog
 from ui.dialog.plugin_language_dialog import PluginLanguageDialog
 from utils.logging_tools import LoggerManager, get_name
@@ -42,6 +52,11 @@ _logger = LoggerManager()
 
 # 本对话框的 i18n 分组名（键定义见 ui/text/zh.xml 的同名分组）
 _I18N_GROUP = "dialog_plugin_management"
+_VISIBILITY_KEYS = {
+    "public": "github_visibility.public",
+    "private": "github_visibility.private",
+    "unknown": "github_visibility.unknown",
+}
 
 
 def _confirm(parent, title: str, text: str) -> bool:
@@ -167,7 +182,9 @@ class VersionSelectDialog(QDialog):
     """版本选择对话框：列出 Release 版本供升级/降级选择"""
 
     def __init__(self, plugin_name: str, current_version: str,
-                 releases: List[ReleaseInfo], parent=None):
+                 releases: List[ReleaseInfo], parent=None,
+                 source_visibility: str = "unknown",
+                 key_name: str = ""):
         """初始化版本选择对话框
 
         Args:
@@ -175,10 +192,14 @@ class VersionSelectDialog(QDialog):
             current_version: 当前安装版本
             releases: 可选版本列表
             parent: 父窗口
+            source_visibility: 插件来源可见性
+            key_name: 私有来源使用的 Key 名称
         """
         super().__init__(parent)
         self.selected: Optional[ReleaseInfo] = None
         self._releases = releases
+        self._source_visibility = source_visibility
+        self._key_name = key_name
         self.setWindowTitle(tr(_I18N_GROUP, "version_select.title", name=plugin_name))
         self.setMinimumSize(460, 360)
         self._init_ui(plugin_name, current_version)
@@ -190,6 +211,16 @@ class VersionSelectDialog(QDialog):
         layout.addWidget(QLabel(tr(
             _I18N_GROUP, "version_select.current_version",
             version=current_version or unknown)))
+        if self._source_visibility == "private":
+            notice = QLabel(tr(
+                _I18N_GROUP,
+                "version_select.private_notice",
+                key_name=self._key_name or tr(_I18N_GROUP, "github_key.none"),
+            ))
+            notice.setWordWrap(True)
+            notice.setStyleSheet(
+                f"color: {T('color.warning')}; font-weight: bold;")
+            layout.addWidget(notice)
 
         self.list_widget = QListWidget()
         for rel in self._releases:
@@ -685,7 +716,11 @@ class PluginManagementDialog(QDialog):
         """
         super().__init__(parent)
         self.pm = plugin_manager
-        self.installer = GitHubPluginInstaller(plugin_manager)
+        self._key_manager: GitHubKeyManager = get_github_key_manager()
+        self.installer = GitHubPluginInstaller(
+            plugin_manager, key_manager=self._key_manager)
+        self._source_binder = PluginSourceKeyBinder(
+            plugin_manager.registry, self._key_manager)
         self._worker: Optional[_Worker] = None
         self._plugin_lists: Dict[str, QListWidget] = {}
         self._group_editors: Dict[str, GroupEditorWidget] = {}
@@ -721,6 +756,7 @@ class PluginManagementDialog(QDialog):
         for text, handler in (
                 (tr(_I18N_GROUP, "button.install_github"), self._on_install_github),
                 (tr(_I18N_GROUP, "button.install_zip"), self._on_install_zip),
+                (tr(_I18N_GROUP, "button.github_keys"), self._on_github_key_manager),
                 (tr("common", "refresh"), self._on_refresh)):
             btn = Button(text, variant="default")
             btn.clicked.connect(handler)
@@ -750,18 +786,31 @@ class PluginManagementDialog(QDialog):
         panel = QFrame()
         panel.setFrameShape(QFrame.Shape.StyledPanel)
         layout = QVBoxLayout(panel)
+        self._build_detail_labels(layout)
+        layout.addSpacing(10)
+        self._build_detail_actions(layout)
+        layout.addStretch()
+        get_language_manager().plugin_language_changed.connect(
+            self._on_plugin_language_changed)
+        return panel
 
+    def _build_detail_labels(self, layout: QVBoxLayout) -> None:
+        """构建详情文本标签。"""
         self.detail_name = QLabel(tr(_I18N_GROUP, "detail.no_selection"))
         self.detail_name.setWordWrap(True)
         self.detail_version = QLabel("")
         self.detail_source = QLabel("")
         self.detail_source.setWordWrap(True)
+        self.detail_access = QLabel("")
+        self.detail_key = QLabel("")
         self.detail_language = QLabel("")
         for label in (self.detail_name, self.detail_version,
-                      self.detail_source, self.detail_language):
+                      self.detail_source, self.detail_access,
+                      self.detail_key, self.detail_language):
             layout.addWidget(label)
-        layout.addSpacing(10)
 
+    def _build_detail_actions(self, layout: QVBoxLayout) -> None:
+        """构建详情面板操作按钮。"""
         self.update_btn = Button(tr(_I18N_GROUP, "button.check_updates"),
                                  variant="default")
         self.update_btn.clicked.connect(self._on_check_updates)
@@ -771,20 +820,19 @@ class PluginManagementDialog(QDialog):
         self.language_btn = Button(tr(_I18N_GROUP, "button.language"),
                                    variant="default")
         self.language_btn.clicked.connect(self._on_language_settings)
+        self.rebind_btn = Button(
+            tr(_I18N_GROUP, "button.rebind_github_key"),
+            variant="default",
+        )
+        self.rebind_btn.clicked.connect(self._on_rebind_github_key)
         # 移动按钮：文案随当前 Tab 变化（官方 → 移至第三方 / 第三方 → 移至官方）
         self.move_btn = Button("", variant="default")
         self.move_btn.clicked.connect(self._on_move_plugin)
         layout.addWidget(self.update_btn)
         layout.addWidget(self.uninstall_btn)
         layout.addWidget(self.language_btn)
+        layout.addWidget(self.rebind_btn)
         layout.addWidget(self.move_btn)
-        layout.addStretch()
-
-        # 插件有效语言变化时刷新语言行；接收方为 self（QObject），
-        # 对话框销毁时 Qt 自动断开连接，无需手动 disconnect
-        get_language_manager().plugin_language_changed.connect(
-            self._on_plugin_language_changed)
-        return panel
 
     def _build_groups_tab(self) -> QWidget:
         """构建「分组与排序」页"""
@@ -846,7 +894,10 @@ class PluginManagementDialog(QDialog):
             self.detail_name.setText(tr(_I18N_GROUP, "detail.no_selection"))
             self.detail_version.setText("")
             self.detail_source.setText("")
+            self.detail_access.setText("")
+            self.detail_key.setText("")
             self._update_language_row(None)
+            self.rebind_btn.setEnabled(False)
             return
         uuid = item.data(Qt.ItemDataRole.UserRole)
         record = self.pm.registry.get(uuid) or {}
@@ -857,7 +908,35 @@ class PluginManagementDialog(QDialog):
             _I18N_GROUP, "detail.version", version=record.get('version', unknown)))
         source = record.get("source_url") or record.get("source_type", unknown)
         self.detail_source.setText(tr(_I18N_GROUP, "detail.source", source=source))
+        self._update_github_binding_text(record)
         self._update_language_row(uuid)
+
+    def _update_github_binding_text(self, record: dict) -> None:
+        """刷新详情面板中的 GitHub 可见性与 Key 信息。"""
+        is_github = record.get("source_type") == "github"
+        self.rebind_btn.setEnabled(is_github)
+        if not is_github:
+            self.detail_access.setText("")
+            self.detail_key.setText("")
+            return
+        visibility = record.get("source_visibility", "unknown")
+        visibility_key = _VISIBILITY_KEYS.get(
+            visibility, "github_visibility.unknown")
+        self.detail_access.setText(tr(
+            _I18N_GROUP, "detail.github_access",
+            visibility=tr(_I18N_GROUP, visibility_key),
+        ))
+        key_id = record.get("source_key_id", "")
+        if not key_id:
+            self.detail_key.setText("")
+            return
+        try:
+            key_view = self._key_manager.get_key_view(key_id)
+            key_name = key_view.name
+        except (GitHubKeyNotFoundError, GitHubCredentialVaultError):
+            key_name = tr(_I18N_GROUP, "github_key.missing")
+        self.detail_key.setText(tr(
+            _I18N_GROUP, "detail.github_key", key=key_name))
 
     # ==================== 每插件语言自定义 ====================
 
@@ -917,6 +996,12 @@ class PluginManagementDialog(QDialog):
         dialog.plugin_installed.connect(lambda _results: self._refresh_after_change())
         dialog.exec()
 
+    def _on_github_key_manager(self) -> None:
+        """打开 GitHub Key 管理器。"""
+        dialog = GitHubKeyManagerDialog(
+            self._key_manager, self.pm.registry, self)
+        dialog.exec()
+
     def _on_install_zip(self) -> None:
         """打开本地插件包安装对话框（自动识别单插件 / 插件集并勾选安装）
 
@@ -941,9 +1026,29 @@ class PluginManagementDialog(QDialog):
 
         source_path = record.get("source_path", "")
         descriptor_path = f"{source_path}/IXPlugin.json" if source_path else ""
-        source_url = record["source_url"]
         self._run_background(
-            lambda: self.installer.get_available_versions(source_url, descriptor_path),
+            lambda: self._source_binder.resolve(uuid),
+            lambda resolution: self._on_source_resolved(
+                uuid, descriptor_path, resolution),
+        )
+
+    def _on_source_resolved(
+        self,
+        uuid: str,
+        descriptor_path: str,
+        resolution: PluginSourceKeyResolution,
+    ) -> None:
+        """来源 Key 可用后检查 Release，失效时进入重新绑定。"""
+        if not resolution.available:
+            if self._prompt_rebind(uuid, resolution):
+                self._on_check_updates()
+            return
+        self._run_background(
+            lambda: self.installer.get_available_versions(
+                self.pm.registry.get(uuid)["source_url"],
+                descriptor_path,
+                resolution.key_id,
+            ),
             lambda releases: self._on_versions_fetched(uuid, releases),
         )
 
@@ -954,7 +1059,15 @@ class PluginManagementDialog(QDialog):
             return
         record = self.pm.registry.get(uuid) or {}
         current = record.get("version", "")
-        dialog = VersionSelectDialog(record.get("name", ""), current, releases, self)
+        key_name = self._bound_key_name(record.get("source_key_id", ""))
+        dialog = VersionSelectDialog(
+            record.get("name", ""),
+            current,
+            releases,
+            self,
+            record.get("source_visibility", "unknown"),
+            key_name,
+        )
         if dialog.exec() != QDialog.DialogCode.Accepted or dialog.selected is None:
             return
         self._confirm_and_install_release(uuid, record, dialog.selected)
@@ -969,6 +1082,13 @@ class PluginManagementDialog(QDialog):
                   name=record.get('name', ''),
                   current=current or tr(_I18N_GROUP, "label.unknown"),
                   target=release.version or release.tag)
+        if record.get("source_visibility") == "private":
+            key_name = self._bound_key_name(record.get("source_key_id", ""))
+            text = tr(
+                _I18N_GROUP,
+                "message.private_update_notice",
+                key_name=key_name,
+            ) + "\n\n" + text
         if relation == "降级":
             text += tr(_I18N_GROUP, "message.downgrade_warning")
         if not _confirm(self, tr(_I18N_GROUP, "title.confirm_install"), text):
@@ -983,10 +1103,88 @@ class PluginManagementDialog(QDialog):
                       else self.pm.thirdparty_plugin_dir)
         source_path = record.get("source_path", "")
         selected = [source_path] if source_path else None
+        key_id = record.get("source_key_id", "")
         self._run_background(
-            lambda: self.installer.install_release(owner, repo, release.tag, target_dir, selected),
+            lambda: self.installer.install_release(
+                owner, repo, release.tag, target_dir, selected,
+                key_id=key_id),
             self._on_install_results,
         )
+
+    def _prompt_rebind(
+        self,
+        uuid: str,
+        resolution: PluginSourceKeyResolution,
+    ) -> bool:
+        """打开重新绑定对话框并返回是否成功。"""
+        if not resolution.can_rebind:
+            self._show_rebind_unavailable(resolution)
+            return False
+        return self._open_rebind_dialog(uuid, resolution)
+
+    def _open_rebind_dialog(
+        self,
+        uuid: str,
+        resolution: PluginSourceKeyResolution,
+    ) -> bool:
+        """打开 Key 选择窗口；当前绑定的有效性不阻止主动更换。"""
+        dialog = GitHubKeyRebindDialog(
+            self._source_binder,
+            self._key_manager,
+            uuid,
+            resolution,
+            self,
+        )
+        return dialog.exec() == QDialog.DialogCode.Accepted
+
+    def _show_rebind_unavailable(
+        self,
+        resolution: PluginSourceKeyResolution,
+    ) -> None:
+        """显示不可重绑原因，避免出现空错误冒号。"""
+        message = resolution.error_message or tr(
+            _I18N_GROUP, "message.github_key_unavailable_generic")
+        Message.warning(
+            self,
+            tr(
+                _I18N_GROUP,
+                "message.github_key_unavailable",
+                error=message,
+            ),
+        )
+
+    def _on_rebind_github_key(self) -> None:
+        """主动为选中插件重新绑定 GitHub Key。"""
+        uuid = self._selected_plugin_id()
+        if uuid is None:
+            Message.info(self, tr(_I18N_GROUP, "message.select_plugin_first"))
+            return
+        self._run_background(
+            lambda: self._source_binder.resolve(uuid),
+            lambda resolution: self._on_manual_rebind_resolved(
+                uuid, resolution),
+        )
+
+    def _on_manual_rebind_resolved(
+        self, uuid: str, resolution: PluginSourceKeyResolution
+    ) -> None:
+        """在后台来源检查完成后打开重新绑定。"""
+        accepted = (
+            self._open_rebind_dialog(uuid, resolution)
+            if resolution.available
+            else self._prompt_rebind(uuid, resolution)
+        )
+        if accepted:
+            self.reload_plugin_lists()
+
+    def _bound_key_name(self, key_id: str) -> str:
+        """解析绑定 Key 名称，失败时返回已失效文案。"""
+        if not key_id:
+            return tr(_I18N_GROUP, "github_key.none")
+        try:
+            return self._key_manager.get_key_view(key_id).name
+        except (GitHubKeyNotFoundError, GitHubCredentialVaultError):
+            return tr(_I18N_GROUP, "github_key.missing")
 
     def _on_install_results(self, results: List[InstallResult]) -> None:
         """安装/升级/降级完成，展示结果并刷新"""
