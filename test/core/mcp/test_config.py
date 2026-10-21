@@ -15,6 +15,8 @@ class TestMCPServerConfig:
         assert config.port == 8765
         assert config.transport == "stdio"
         assert config.enabled is True
+        assert config.session_idle_timeout == 1800.0
+        assert config.max_sessions == 10000
 
     def test_to_dict(self):
         """to_dict() produces correct dict."""
@@ -31,6 +33,8 @@ class TestMCPServerConfig:
         assert d["port"] == 9000
         assert d["transport"] == "streamable-http"
         assert d["enabled"] is False
+        assert d["session_idle_timeout"] == 1800.0
+        assert d["max_sessions"] == 10000
 
     def test_from_dict(self):
         """from_dict() correctly deserializes."""
@@ -58,6 +62,8 @@ class TestMCPServerConfig:
         assert config.port == 8765  # default
         assert config.transport == "stdio"  # default
         assert config.enabled is True  # default
+        assert config.session_idle_timeout == 1800.0  # default
+        assert config.max_sessions == 10000  # default
 
     def test_roundtrip(self):
         """to_dict -> from_dict roundtrip preserves all fields."""
@@ -68,12 +74,29 @@ class TestMCPServerConfig:
             port=9999,
             transport="streamable-http",
             enabled=False,
+            session_idle_timeout=90.0,
+            max_sessions=25,
         )
         restored = MCPServerConfig.from_dict(original.to_dict())
         assert restored.host == original.host
         assert restored.port == original.port
         assert restored.transport == original.transport
         assert restored.enabled == original.enabled
+        assert restored.session_idle_timeout == 90.0
+        assert restored.max_sessions == 25
+
+    def test_roundtrip_preserves_disabled_limits(self):
+        """None 资源限制必须可持久化，避免被默认值覆盖。"""
+        from core.mcp.config import MCPServerConfig
+
+        original = MCPServerConfig(
+            session_idle_timeout=None,
+            max_sessions=None,
+        )
+        restored = MCPServerConfig.from_dict(original.to_dict())
+
+        assert restored.session_idle_timeout is None
+        assert restored.max_sessions is None
 
 
 class TestMCPRemoteServerConfig:

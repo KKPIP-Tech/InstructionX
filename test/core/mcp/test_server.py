@@ -16,6 +16,8 @@ class TestMCPHostServer:
         assert server._name == "InstructionX"
         assert server._host == "127.0.0.1"
         assert server._port == 8765
+        assert server._session_idle_timeout == 1800.0
+        assert server._max_sessions == 10000
 
     def test_init_stores_parameters(self):
         """Verify parameters are stored."""
@@ -25,11 +27,56 @@ class TestMCPHostServer:
             name="TestServer",
             host="0.0.0.0",
             port=9000,
+            session_idle_timeout=60.0,
+            max_sessions=12,
         )
 
         assert server._name == "TestServer"
         assert server._host == "0.0.0.0"
         assert server._port == 9000
+        assert server._session_idle_timeout == 60.0
+        assert server._max_sessions == 12
+
+    def test_init_fastmcp_passes_session_limits(self, mocker):
+        """FastMCP 必须接收明确配置的会话回收和数量限制。"""
+        from core.mcp.server import MCPHostServer
+
+        fastmcp = mocker.patch("core.mcp.server.FastMCP")
+        server = MCPHostServer(
+            name="LimitedServer",
+            host="127.0.0.1",
+            port=8788,
+            session_idle_timeout=45.0,
+            max_sessions=8,
+        )
+
+        server._init_fastmcp()
+
+        fastmcp.assert_called_once_with(
+            "LimitedServer",
+            host="127.0.0.1",
+            port=8788,
+            session_idle_timeout=45.0,
+            max_sessions=8,
+        )
+
+    @pytest.mark.parametrize(
+        ("kwargs", "message"),
+        [
+            ({"session_idle_timeout": 0}, "session_idle_timeout"),
+            ({"session_idle_timeout": "bad"}, "session_idle_timeout"),
+            ({"max_sessions": -1}, "max_sessions"),
+            ({"max_sessions": 1.5}, "max_sessions"),
+        ],
+    )
+    def test_init_rejects_non_positive_session_limits(
+        self, kwargs, message
+    ):
+        """启用资源限制时，非正数必须在构造阶段拒绝。"""
+        from core.mcp.server import MCPHostServer
+
+        with pytest.raises(ValueError, match=message):
+            MCPHostServer(**kwargs)
 
     def test_init_running_false(self):
         """Verify _running is False initially."""
