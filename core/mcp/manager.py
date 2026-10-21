@@ -155,6 +155,9 @@ class MCPManager:
                         host=self._config.server.host,
                         port=self._config.server.port,
                         auth_token=self._config.server.auth_token,
+                        session_idle_timeout=(
+                            self._config.server.session_idle_timeout),
+                        max_sessions=self._config.server.max_sessions,
                     )
                     # 初始化桥接器
                     self._bridge = MCPBridge(self)

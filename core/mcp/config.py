@@ -18,6 +18,10 @@ from core.llm.secure_keys import encode_secret, decode_secret
 DEFAULT_MCP_HOST = "127.0.0.1"
 # MCP Server 默认监听端口
 DEFAULT_MCP_PORT = 8765
+# Streamable HTTP 无活动请求会话的最大空闲时间（秒）
+DEFAULT_MCP_SESSION_IDLE_TIMEOUT = 1800.0
+# Streamable HTTP 同时保留的最大会话数
+DEFAULT_MCP_MAX_SESSIONS = 10000
 
 
 @dataclass
@@ -30,6 +34,10 @@ class MCPServerConfig:
         exposed_plugins: 允许暴露为 MCP 工具的插件 ID 白名单；
                          None 表示暴露全部插件（向后兼容默认行为）。
         allowed_hosts: 允许的 HTTP Host 头白名单（保留项，暂未强制校验）。
+        session_idle_timeout: Streamable HTTP 无活动请求会话的空闲超时秒数；
+                              None 表示禁用空闲回收。
+        max_sessions: Streamable HTTP 最大并发保留会话数；
+                      None 表示不限制。
     """
     host: str = DEFAULT_MCP_HOST
     port: int = DEFAULT_MCP_PORT
@@ -38,6 +46,8 @@ class MCPServerConfig:
     auth_token: Optional[str] = None
     exposed_plugins: Optional[List[str]] = None
     allowed_hosts: Optional[List[str]] = None
+    session_idle_timeout: Optional[float] = DEFAULT_MCP_SESSION_IDLE_TIMEOUT
+    max_sessions: Optional[int] = DEFAULT_MCP_MAX_SESSIONS
 
     def to_dict(self) -> Dict:
         """序列化为可写入配置文件的 dict
@@ -60,6 +70,8 @@ class MCPServerConfig:
             ),
             "exposed_plugins": self.exposed_plugins,
             "allowed_hosts": self.allowed_hosts,
+            "session_idle_timeout": self.session_idle_timeout,
+            "max_sessions": self.max_sessions,
         }
 
     @classmethod
@@ -88,6 +100,9 @@ class MCPServerConfig:
             ),
             exposed_plugins=data.get("exposed_plugins"),
             allowed_hosts=data.get("allowed_hosts"),
+            session_idle_timeout=data.get(
+                "session_idle_timeout", DEFAULT_MCP_SESSION_IDLE_TIMEOUT),
+            max_sessions=data.get("max_sessions", DEFAULT_MCP_MAX_SESSIONS),
         )
 
 
