@@ -46,7 +46,7 @@ jobs:
         run: uv run --frozen python -m pytest test/ -q --tb=short -p no:cacheprovider
       - name: Upload failure diagnostics
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: test-failure-diagnostics
           path: |
