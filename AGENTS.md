@@ -15,7 +15,7 @@
 - InstructionX_UIKit 主题与组件体系（`ui/InstructionX_UIKit` 组件库：设计令牌 + light/dark/auto 全局主题，58 组件 + 原生图表引擎 + 仿 VS Code 代码编辑器）、字体管理器（`core/font` 子系统：字体安装/卸载/预览/系统字体回退，框架不自带字体）
 - 多国语言（i18n）支持（`core/i18n` 子系统：XML 语言文件 + 回退链取词、界面语言实时切换、每插件语言覆盖；日志文案保持中文不国际化）
 
-- 应用标识：`InstructionX - CE`（组织名 `KKPIP-Tech`），当前版本 **Alpha 1.1.1**
+- 应用标识：`InstructionX - CE`（组织名 `KKPIP-Tech`），当前版本 **Alpha 1.1.2**
 - **版本号单一来源为 `core/version.py` 的 `VERSION` 常量**（pyproject 通过 AST 静态读取，修改版本只改这里）
 - 平台：**仅支持 Windows 10/11**，Python **>= 3.14**
 - 许可证：**GNU AGPL v3（或更高版本）+ §7 附加条款（署名与品牌标识保留 §7b、商标不授权 §7e）+ 双重许可**（闭源 SaaS、嵌入第三方商业产品、第三方服务后端、白标、批量捆绑销售需商业授权），详见 `LICENSE`
@@ -26,8 +26,8 @@
 | 依赖 | 用途 |
 |------|------|
 | PySide6 >= 6.10 | Qt GUI 框架 |
-| requests / aiohttp | HTTP / 异步 HTTP |
-| mcp >= 1.28.1, < 2 | MCP 协议（FastMCP） |
+| requests >= 2.32 / aiohttp >= 3.14.5 | HTTP / 异步 HTTP（aiohttp 设安全最低版本） |
+| mcp >= 1.30.0, < 2 | MCP 协议（FastMCP） |
 | orjson | JSON 序列化（SQLite 后端） |
 | matplotlib | 用量统计与 UIKit MarkdownView LaTeX 公式渲染（math_render 异步渲染中枢）使用；旧用量面板图表曾使用，现用量面板已改用 UIKit 原生图表引擎 |
 | packaging | 插件依赖版本检查 |
@@ -37,6 +37,7 @@
 
 - 依赖单一来源是 `pyproject.toml` 的 `[project].dependencies`；`requirements.txt` 与其保持同步（供 `uv pip install -r requirements.txt` / `pip install -r requirements.txt` 直接安装使用），**改依赖时两处都要改**。
 - 环境管理使用 **uv**（存在 `uv.lock`、`.python-version`、`.venv/`）。
+- 传递依赖安全下限记录在 `pyproject.toml` 的 `[tool.uv].constraint-dependencies`，只约束解析结果，不扩大公开运行依赖。
 
 ## 构建与运行命令
 
@@ -76,6 +77,7 @@ python -m pytest test/ -q --tb=short -p no:cacheprovider
 - UI 测试不配置 offscreen 平台，CI 跑在 `windows-latest` 上使用真实 GUI。
 - 项目还有一类**独立验证脚本**（非 pytest，放在 `scripts/`，用 `.venv\Scripts\python.exe scripts\<name>.py` 直接运行）：
   - `smoke_*.py`：核心链路无网冒烟测试（LLM、task、utils、i18n、字体管理、插件管理：安装/升级/降级/卸载/分组、本地插件包自动识别与插件集一次安装、包外文件兜底备份）；`smoke_setup_wizard.py` 针对原生安装向导（`setup.ps1` / `setup.sh`：文案完整性、两平台界面逐行一致性、uv 命令口径、干跑安全、Python 向导已移除）
+  - `smoke_github_private.py`：GitHub 多 Key、私有识别与重新绑定无网冒烟；`smoke_github_private_live.py` 读取本机测试 PAT/私有仓库环境变量，执行真实安装与 Release 下载，临时数据只写入 `temp/`
   - `check_i18n_completeness.py`：语言文件完整性校验（默认语言必须覆盖源码全部 `tr()` 调用，缺键 exit 1；其他语言缺键/孤立键 WARNING；支持 `--text-dir`/`--src-dir`/`--plugin-root`）
   - `screenshot_*.py`：对话框截图对比脚本（输出到 `scripts/screenshots/`）
   - `_mcp_smoke*.py`：真实 MCP SDK 冒烟测试
@@ -85,7 +87,8 @@ python -m pytest test/ -q --tb=short -p no:cacheprovider
 
 ## CI / 部署
 
-- 唯一工作流：`.github/workflows/test.yml`，push 到 `dev`/`main` 及所有 PR 触发，在 `windows-latest` + Python 3.14 上执行 `pip install -e ".[test]"` 后跑 pytest。
+- 唯一工作流：`.github/workflows/test.yml`，任意分支 push、所有 PR、手动触发及每周一定时触发；在 `windows-latest` + Python 3.14 上校验 `uv.lock`、安装锁定依赖、执行 OSV 漏洞审计并运行 pytest。
+- `.github/dependabot.yml` 每周检查 Python 与 GitHub Actions 依赖，安全更新按组创建 PR。
 - 无打包/发布流程；本项目以源码方式直接运行。
 
 ## 框架开发流程与注意事项（重要）
@@ -253,6 +256,13 @@ core/
                             #   递归扫描 IXPlugin.json、候选校验与去重、失败诊断
     plugin_backup.py        # 插件目录「包外文件」兜底：替换前检测插件目录内新包没有的文件，
                             #   整目录快照到 data/plugin_backup/{插件ID}/（每插件留最近 3 份）
+  github/                   # GitHub 私有仓库访问子系统（不暴露给插件）
+    credential.py           # GitHub PAT、Key 展示/验证状态、仓库可见性数据模型
+    secret_vault.py         # Windows DPAPI 凭据加密（测试可注入内存后端）
+    key_store.py            # config/github_keys.json schema v1、原子写与损坏恢复
+    key_manager.py          # 多 Key CRUD、默认 Key、身份验证、环境变量兼容
+    api_client.py           # api.github.com 鉴权、仓库/Contents/Release/zipball
+    source_binding.py       # 插件来源 Key 解析、重新绑定和失败不覆盖语义
   data/                     # 数据持久化层
     data_provider.py        # DataProvider 单例：PRIVATE/PUBLIC 双命名空间、发布订阅、内存缓存
     sqlite_backend.py       # SQLite WAL 后端（默认），schema 迁移
@@ -335,6 +345,10 @@ ui/                         # 界面层
                                  #   详情面板含「语言…」按钮与语言状态行（无语言包置灰）、
                                  #   「移至官方插件 / 移至第三方插件」按钮（文案随当前 Tab 变化）；
                                  #   「安装本地插件包」按当前 Tab 决定目标目录
+    github_key_manager_dialog.py # GitHub Key 列表、验证、默认 Key 与删除（显示绑定插件影响）
+    github_key_editor_dialog.py  # Key 添加/编辑与后台身份验证（Token 密码输入）
+    github_key_rebind_dialog.py  # 私有插件失效来源 Key 的验证与重新绑定
+    github_private_repo_notice.py # 安装页私有仓库、Key 与账号显式提示
     local_package_install_dialog.py  # 本地插件包安装对话框：选 zip → 自动识别
                                  #   单插件/插件集（任意层嵌套）→ 勾选后一次装完；
                                  #   target_scope 决定新插件的目标目录（官方/第三方）
@@ -399,7 +413,8 @@ config/ data/ logs/         # 运行时生成：配置、数据、日志
 | `config/mcp_config.json` | MCP Server/Client 配置 |
 | `config/plugin_order.json` | 插件显示顺序（未分组插件之间的顺序） |
 | `config/plugin_groups.json` | 用户自定义分组（schema v2：official/thirdparty 各自含 groups 分组数组 + order 面板统一顺序（分组与未分组插件混排）；v1 自动迁移） |
-| `config/plugin_registry.json` | 已安装插件注册表（schema v1：顶层显式 `version: 1`（`PluginRegistry.SCHEMA_VERSION`），插件条目含版本/来源/安装时间，升级降级与更新检查依据；启动时自动回填） |
+| `config/plugin_registry.json` | 已安装插件注册表（schema v2：版本/来源/安装时间/`source_visibility`/`source_key_id`；v1 自动迁移并保留 `.migrated-v1.bak`；启动时自动回填） |
+| `config/github_keys.json` | GitHub PAT 元数据与 DPAPI 密文（schema v1：命名 Key、默认 Key、账号/类型/验证状态/可选过期信息；不得保存 Token 明文） |
 | `data/plugin_backup/{插件ID}/{时间戳}_{版本}/` | 插件目录「包外文件」兜底快照（安装/升级/降级/重装前自动生成，每插件保留最近 3 份，仅人工取回、不自动恢复；见 `core/plugin/plugin_backup.py`） |
 | `data/assets/plugins/{插件ID}/` | 插件资产文件（`DataProvider.save_asset` 写入，插件存放运行时文件数据的规范位置） |
 | `config/i18n.json` | 框架语言设置（schema v1：`default_language` 开发者设定用户不可改 + `current_language` 用户选择；原子写，损坏备份 `.json.corrupt.bak` 重建） |
@@ -420,7 +435,7 @@ config/ data/ logs/         # 运行时生成：配置、数据、日志
 |------|------|
 | `INSTRUCTIONX_DATAPROVIDER_BACKEND` | `sqlite`（默认）/ `json`（回退旧 JSON 后端，写 `data/data.json`） |
 | `INSTRUCTIONX_MCP_CONFIG` | 覆盖 MCP 配置文件路径 |
-| `INSTRUCTIONX_GITHUB_TOKEN` | GitHub API Token（可选）：插件安装/Release 更新检查时鉴权，提升限流阈值、支持私有仓库 |
+| `INSTRUCTIONX_GITHUB_TOKEN` | 兼容 GitHub API Token（可选）：仅供未传 `key_id` 的底层历史调用回退；界面选择「不使用 Key」时绝不使用；推荐使用多 Key 管理器 |
 | `INSTRUCTIONX_LOG_DIR` | 覆盖日志输出目录（默认 `logs/`） |
 | `INSTRUCTIONX_LOG_LEVEL` | 覆盖日志级别（如 `DEBUG`/`INFO`/`WARNING`/`ERROR`/`CRITICAL`） |
 | `DEVELOPMENT_MODE` | 开发模式开关（启用额外日志/调试行为；详见 `utils/logging_tools.py`） |
@@ -452,6 +467,7 @@ config/ data/ logs/         # 运行时生成：配置、数据、日志
 - 多语言（i18n）：`docs/core/i18n/overview.md`
 - LLM：`docs/core/llm-provider/`、`docs/plugins/llm-integration-guide.md`
 - MCP：`docs/core/mcp/overview.md`
+- 依赖安全：`docs/security/dependency-management.md`
 - API 参考：`docs/api/full-reference.md`
 - 安装与环境管理：`docs/tui-setup.md`（**原生**安装向导 `setup.ps1` / `setup.sh`：两平台界面规范、安装/升级/体检/清理策略、uv 命令口径、目录与日志约定）
 - 插件开发快速入门：根目录 `插件开发流程.md`（环境初始化 / 插件仓库配置 / AI 辅助提示词模板，面向插件开发者）

@@ -132,6 +132,7 @@ from core.interfaces import ILocalizationFacade
 | `load_plugins()` | 加载所有插件 | None |
 | `load_official_plugins()` | 加载官方插件 | List[IPlugin] |
 | `load_thirdparty_plugins()` | 加载第三方插件 | List[IPlugin] |
+| `get_plugin_load_failures()` | 获取最近一次加载的依赖/入口失败列表 | List[PluginLoadFailure] |
 | `get_all_plugins()` | 获取所有插件 | List[IPlugin] |
 | `get_plugin_by_id(plugin_id)` | 根据 UUID 获取插件 | Optional[IPlugin] |
 | `get_plugin_by_name(name)` | 根据名称获取插件 | Optional[IPlugin] |
@@ -160,18 +161,26 @@ from core.interfaces import ILocalizationFacade
 | `call_plugin_method(caller_id, plugin_id, method_name, **kwargs)` | 跨插件调用 | Any |
 | `get_all_function_tools()` | 获取 MCP 工具列表 | List[Dict]（工具名 `sanitize_tool_name(f"{plugin_id}__{method_name}")`） |
 
+启动加载会先由 `core/plugin/plugin_startup.py` 读取 `IXPlugin.json.dependencies`
+并安装缺失依赖，再由 `core/plugin/plugin_module_loader.py` 导入插件入口。
+依赖安装失败、入口无效、导入异常和缺少模块都会形成结构化失败项；主窗口首次
+显示后统一弹出提示框。`docs/`、`assets/` 等不含插件特征文件的资源目录会被
+静默跳过，不会被误报为插件。
+
 #### GitHubPluginInstaller 主要 API
 
 **文件**: `core/plugin/github_plugin_installer.py`
 
 | 方法 | 说明 | 返回 |
 |------|------|------|
-| `inspect_repository(github_url)` | 检查 GitHub 仓库返回可安装插件列表 | RepoInspectionResult |
-| `install_from_url(github_url, ...)` | 从 GitHub URL 安装插件 | List[InstallResult] |
+| `inspect_repository(github_url, key_id="")` | 检查 GitHub 仓库，返回插件列表、仓库可见性和所用 Key | RepoInspectionResult |
+| `install_from_url(github_url, ..., key_id="")` | 从 GitHub URL 安装插件，私有仓库使用指定或绑定 Key | List[InstallResult] |
 | `inspect_local_package(zip_path, target_scope=None)` | 识别本地插件包：单插件 / 插件集 / 无效，并预演各插件的安装关系（新装/升级/降级/重装）、目标范围（随 `target_scope`）与默认勾选；只读，不落盘 | LocalPackageInspection |
 | `install_from_zip(zip_path, target_dir=None, progress_callback=None, selected_plugins=None, target_scope=None)` | 从本地 zip 安装/升级/降级插件（自动识别单插件与插件集；`selected_plugins` 按包内相对路径或插件 id 筛选；`target_scope` 决定新插件的目标目录，已安装同 id 插件沿用原目录） | List[InstallResult] |
-| `get_available_versions(source_url, descriptor_path="")` | 列出远程仓库可用版本（按插件版本号降序，对每个 Release tag 经 Contents API 读取 `IXPlugin.json` 解析版本） | List[ReleaseInfo] |
-| `install_release(owner, repo, tag, target_dir, selected_plugins=None, progress_callback=None)` | 安装指定 GitHub Release tag 对应的插件版本（upgrade / downgrade / reinstall 自动检测） | List[InstallResult] |
+| `get_available_versions(source_url, descriptor_path="", key_id="")` | 使用绑定 Key 列出远程仓库可用版本（按插件版本号降序） | List[ReleaseInfo] |
+| `install_release(owner, repo, tag, target_dir, selected_plugins=None, progress_callback=None, key_id="")` | 使用绑定 Key 安装指定 GitHub Release tag | List[InstallResult] |
+
+`core/github/` 同时提供 `GitHubKeyManager`、`PluginSourceKeyBinder` 和 `GitHubApiClient`；这些是框架内部服务，不加入面向插件的 `PluginServices`。
 
 ### 2.2 IPlugin
 

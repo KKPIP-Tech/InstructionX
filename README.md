@@ -9,7 +9,7 @@
 [![Python](https://img.shields.io/badge/Python-3.14+-blue.svg)](https://www.python.org/)
 [![PySide6](https://img.shields.io/badge/PySide6-6.10+-green.svg)](https://doc.qt.io/qtforpython/)
 [![Platform](https://img.shields.io/badge/Platform-Windows%2010%2F11-lightgrey.svg)](#)
-[![Version](https://img.shields.io/badge/Alpha-1.1.1%20CE-red.svg)](#)
+[![Version](https://img.shields.io/badge/Alpha-1.1.2%20CE-red.svg)](#)
 [![License](https://img.shields.io/badge/License-AGPL--3.0%2B%20%2B%20%C2%A77%20Terms-blue.svg)](LICENSE)
 
 中文版 | [English Version](README_EN.md) | [Version française](README_FR.md) | [Русская версия](README_RU.md)
@@ -31,7 +31,7 @@ InstructionX 是一个基于 PySide6 的**插件式桌面应用框架**。它将
 ### 插件系统
 
 - **生命周期管理**：插件热加载 / 热卸载 / 热重载，无需重启应用；卸载时自动清理插件身份标识与语言覆盖等关联数据
-- **安装与更新**：内置 GitHub 安装器支持单插件仓库（IXPlugin.json）与多插件仓库（IXRepo.json），后台安装并显示进度；支持本地 zip 安装（自动识别单插件 / 多插件包与压缩包内多层嵌套，安装前预览升级 / 重装 / 降级关系，降级需二次确认）、GitHub Release 升级 / 降级与版本关系检测；KKPIP-Tech 组织仓库自动归类为官方插件
+- **安装与更新**：内置 GitHub 安装器支持单插件和多插件仓库，支持本地 zip 安装与 GitHub Release 升级 / 降级；可管理多个命名 GitHub PAT、识别公共 / 私有仓库、显式提示私有来源，并在 Key 失效后重新绑定继续更新；KKPIP-Tech 组织仓库自动归类为官方插件
 - **版本与身份治理**：语义化插件版本（alpha / beta / pre-release / release）与每插件 UUID 身份标识；已安装插件注册表记录版本 / 来源 / 安装时间，作为升级与更新检查依据；插件声明的 Python 依赖由框架自动安装（优先 uv，回退 pip）
 - **跨插件协作**：插件声明 `service_api` 即自动注册跨插件 API 并同步暴露为 MCP 工具；插件亦可通过 `llm_tools` 直接向 LLM 注册工具
 - **面板组织**：技能面板支持自定义分组、折叠与混排顺序；切换插件时自动缓存界面状态，返回时完整恢复
@@ -266,6 +266,7 @@ logs/              # 运行时生成：应用日志
 | `config/plugin_order.json` | 未分组插件的显示顺序 |
 | `config/plugin_groups.json` | 用户自定义插件分组与面板顺序 |
 | `config/plugin_registry.json` | 已安装插件注册表（升级 / 降级依据） |
+| `config/github_keys.json` | 多个 GitHub PAT 的元数据与 DPAPI 加密凭据 |
 | `config/i18n.json` | 框架语言设置 |
 | `config/plugin_languages.json` | 每插件语言覆盖 |
 | `data/data.db` | 插件数据（SQLite + WAL） |
@@ -281,7 +282,7 @@ logs/              # 运行时生成：应用日志
 |------|------|
 | `INSTRUCTIONX_DATAPROVIDER_BACKEND` | 数据层后端：`sqlite`（默认）/ `json` |
 | `INSTRUCTIONX_MCP_CONFIG` | 覆盖 MCP 配置文件路径 |
-| `INSTRUCTIONX_GITHUB_TOKEN` | GitHub API Token：提升插件安装 / 更新检查的限流阈值 |
+| `INSTRUCTIONX_GITHUB_TOKEN` | GitHub API Token 兼容入口；推荐使用「编辑 → GitHub Key 管理」配置 DPAPI 加密 Key |
 | `INSTRUCTIONX_LOG_DIR` | 覆盖日志输出目录 |
 | `INSTRUCTIONX_LOG_LEVEL` | 覆盖日志级别（`DEBUG` / `INFO` / `WARNING` / `ERROR` / `CRITICAL`） |
 | `DEVELOPMENT_MODE` | 开发模式开关 |
@@ -309,8 +310,8 @@ python -m pytest test/ -q --tb=short -p no:cacheprovider
 |------|------|------|
 | Python | 编程语言 | >= 3.14 |
 | PySide6 | Qt GUI 框架 | >= 6.10 |
-| mcp | MCP 协议（FastMCP） | >= 1.28.1, < 2 |
-| requests / aiohttp | HTTP / 异步 HTTP | >= 2.32 / >= 3.11 |
+| mcp | MCP 协议（FastMCP） | >= 1.30.0, < 2 |
+| requests / aiohttp | HTTP / 异步 HTTP | >= 2.32 / >= 3.14.5 |
 | orjson | 高性能 JSON 序列化 | >= 3.11.0, < 4 |
 | matplotlib | 用量统计与 UIKit MarkdownView LaTeX 公式渲染 | >= 3.10 |
 | packaging | 插件依赖版本检查 | >= 23.0 |

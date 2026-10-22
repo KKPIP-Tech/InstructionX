@@ -234,6 +234,8 @@ graph TB
 - 检测仓库类型（单插件 `IXPlugin.json` / 多插件 `IXRepo.json`）
 - 解析 GitHub URL 支持多种格式
 - 自动判定安装目录（KKPIP-Tech → plugin/，其他 → custom_plugin/）
+- 多 PAT Key 管理、公共/私有仓库判定、私有 zipball 鉴权下载
+- 插件来源 Key 绑定，以及失效 Key 的重新绑定恢复
 - 后台下载，不阻塞 UI
 
 **详细文档**: [GitHub 插件安装器](../core/plugin-system/plugin-installer.md)
@@ -379,9 +381,16 @@ InstructionX/
 │   │   ├── config_manager.py
 │   │   ├── plugin_groups.py   # 用户自定义分组存储（config/plugin_groups.json）
 │   │   ├── plugin_registry.py # 已安装插件注册表（config/plugin_registry.json）
+│   │   ├── plugin_startup.py  # 启动依赖准备、插件候选识别与失败诊断
+│   │   ├── plugin_module_loader.py # 插件入口导入与 IPlugin 子类发现
 │   │   ├── tool_name.py       # 工具命名/清洗工具
 │   │   ├── dependency_manager.py  # 插件依赖管理
 │   │   └── github_plugin_installer.py  # GitHub 插件安装器
+│   ├── github/               # GitHub 私有仓库访问子系统
+│   │   ├── api_client.py     # GitHub REST API 与状态码映射
+│   │   ├── key_manager.py    # 多 PAT 管理和验证
+│   │   ├── key_store.py      # DPAPI 密文配置持久化
+│   │   └── source_binding.py # 插件来源 Key 绑定/重新绑定
 │   ├── data/                 # 数据层实现
 │   │   ├── data_provider.py # DataProvider（核心）
 │   │   ├── sqlite_backend.py # SQLite 后端（连接、DDL、事务、CRUD）

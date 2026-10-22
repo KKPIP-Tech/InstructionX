@@ -149,7 +149,8 @@ print(f"安装结果: {result.message}")
 
 ## 5. 与 GitHub 插件安装器的集成
 
-`DependencyManager` 由 `GitHubPluginInstaller` 自动使用，在安装插件时自动检查和安装依赖。
+`DependencyManager` 由 `GitHubPluginInstaller` 在安装插件时使用，也由
+`PluginDependencyPreparer` 在每次启动或重载插件时使用。
 
 实际集成发生在 `GitHubPluginInstaller._install_plugin_dir()` 方法中（简化示意）：
 
@@ -172,6 +173,22 @@ if dependencies:
         if progress_callback:
             progress_callback("依赖安装完成")
 ```
+
+### 5.1 启动期依赖恢复
+
+`PluginManager._load_plugin_from_directory()` 在导入 `entrance.py` 之前会：
+
+1. 读取插件目录中的 `IXPlugin.json`，取得 `dependencies`；
+2. 使用 `DependencyManager.check_dependencies()` 检查当前环境；
+3. 若存在缺失依赖，自动调用 `DependencyManager.install_dependencies()`；
+4. 安装完成后再次检查，只有依赖真正满足才继续导入插件；
+5. 安装或复查失败时不再静默跳过插件，而是记录
+   `PluginLoadFailure(reason="dependency_install_failed")`，由主窗口显示提示框。
+
+插件入口在依赖准备完成后仍可能抛出 `ModuleNotFoundError`，这通常表示插件
+使用了未在 `IXPlugin.json.dependencies` 中声明的库。此时框架会记录
+`PluginLoadFailure(reason="missing_module")` 并提示具体模块名，供用户或插件
+开发者修复依赖声明。
 
 ---
 

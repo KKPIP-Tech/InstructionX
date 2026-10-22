@@ -29,6 +29,7 @@ from ui.dialog.about_dialog import AboutDialog
 from ui.dialog.license_dialog import LicenseDialog
 from ui.dialog.font_manager_dialog import FontManagerDialog
 from ui.dialog.github_plugin_install_dialog import GitHubPluginInstallDialog
+from ui.dialog.github_key_manager_dialog import GitHubKeyManagerDialog
 from ui.dialog.language_dialog import LanguageDialog
 from ui.dialog.llm_settings import LLMSettingsDialog
 from ui.work_area.work_area import WorkArea
@@ -37,6 +38,16 @@ from ui.usage_panel import UsagePanel
 from ui.tray import TrayIconManager
 from ui.dialog.close_confirm_dialog import CloseChoice, CloseConfirmDialog
 from core.plugin.manager import PluginManager
+from core.plugin.plugin_startup import (
+    FAILURE_DEPENDENCY_CHECK,
+    FAILURE_DEPENDENCY_INSTALL,
+    FAILURE_IMPORT,
+    FAILURE_INVALID_ENTRY,
+    FAILURE_MISSING_MODULE,
+    FAILURE_UNEXPECTED,
+    PluginLoadFailure,
+)
+from core.github import get_github_key_manager
 from core.data.data_provider import DataProvider, DataNamespace
 from core.interfaces import IPlugin, TaskStatus
 from core.task.background_task import BackgroundTaskManager
@@ -45,6 +56,7 @@ from core.i18n import tr, get_language_manager
 from utils.logging_tools import LoggerManager, get_name
 from ui.uikit_theme import apply_uikit_theme, current_theme_mode
 from InstructionX_UIKit import T
+from InstructionX_UIKit.components import Dialog
 from InstructionX_UIKit.blueprint import BlueprintCanvas, BlueprintGraph
 from InstructionX_UIKit.blueprint.viewport import gl_available
 
@@ -148,6 +160,18 @@ THEME_SETTING_KEY = "theme"
 # 避免相对 CWD 失效）
 TRAY_ICON_FILE = Path(__file__).resolve().parent / "logo.ico"
 
+# 启动失败提示中单条底层错误的最大展示长度，避免对话框被过长堆栈撑开
+PLUGIN_FAILURE_DETAIL_MAX_LENGTH = 600
+
+_PLUGIN_FAILURE_REASON_KEYS = {
+    FAILURE_DEPENDENCY_CHECK: "reason.dependency_check_failed",
+    FAILURE_DEPENDENCY_INSTALL: "reason.dependency_install_failed",
+    FAILURE_INVALID_ENTRY: "reason.invalid_plugin_entry",
+    FAILURE_MISSING_MODULE: "reason.missing_module",
+    FAILURE_IMPORT: "reason.import_failed",
+    FAILURE_UNEXPECTED: "reason.unexpected_error",
+}
+
 
 class InstructionXMainWindow(QMainWindow):
     """
@@ -171,6 +195,7 @@ class InstructionXMainWindow(QMainWindow):
         super().__init__()
 
         self._logger = LoggerManager()
+        self._startup_failure_dialog_shown = False
 
         # 设置无边框窗口
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
@@ -254,6 +279,68 @@ class InstructionXMainWindow(QMainWindow):
         manager.language_changed.connect(self._refresh_skill_names)
         manager.plugin_language_changed.connect(self._refresh_skill_names)
 
+    def showEvent(self, event) -> None:
+        """主窗口首次显示后提示启动阶段无法加载的插件。"""
+        super().showEvent(event)
+        if self._startup_failure_dialog_shown:
+            return
+        self._startup_failure_dialog_shown = True
+        self._show_plugin_load_failures()
+
+    def _show_plugin_load_failures(self) -> None:
+        """把插件启动失败列表以用户可见的提示框展示。"""
+        manager = getattr(self, "plugin_manager", None)
+        get_failures = getattr(manager, "get_plugin_load_failures", None)
+        if not callable(get_failures):
+            return
+        failures = get_failures()
+        if not failures:
+            return
+        details = "\n\n".join(
+            self._format_plugin_load_failure(failure)
+            for failure in failures
+        )
+        Dialog.info(
+            self,
+            tr("plugin_startup", "title"),
+            tr("plugin_startup", "message", details=details),
+            ok_text=tr("plugin_startup", "button.acknowledge"),
+        )
+
+    def _format_plugin_load_failure(
+        self, failure: PluginLoadFailure
+    ) -> str:
+        """把单条结构化失败转换为可读文本。"""
+        reason_key = _PLUGIN_FAILURE_REASON_KEYS.get(
+            failure.reason, "reason.unexpected_error")
+        reason_lines = [tr("plugin_startup", reason_key)]
+        if failure.missing_dependencies:
+            reason_lines.append(tr(
+                "plugin_startup",
+                "reason.missing_dependencies",
+                dependencies=", ".join(failure.missing_dependencies),
+            ))
+        if failure.missing_module:
+            reason_lines.append(tr(
+                "plugin_startup",
+                "reason.missing_module_name",
+                module=failure.missing_module,
+            ))
+        detail = failure.detail.strip()
+        if detail:
+            reason_lines.append(tr(
+                "plugin_startup",
+                "reason.detail",
+                detail=detail[:PLUGIN_FAILURE_DETAIL_MAX_LENGTH],
+            ))
+        return tr(
+            "plugin_startup",
+            "item",
+            name=failure.plugin_name,
+            path=str(failure.plugin_dir),
+            reason="\n".join(reason_lines),
+        )
+
     def _refresh_skill_names(self, *_args) -> None:
         """语言变化后按新语言重建技能面板按钮（保留激活插件的高亮）
 
@@ -304,6 +391,10 @@ class InstructionXMainWindow(QMainWindow):
         self._action_language.triggered.connect(self._open_language_dialog)
         self._menu_edit.addAction(self._action_language)
 
+        self._action_github_keys = QAction(self)
+        self._action_github_keys.triggered.connect(self._open_github_key_manager)
+        self._menu_edit.addAction(self._action_github_keys)
+
         # 分隔线
         self._menu_edit.addSeparator()
 
@@ -343,6 +434,8 @@ class InstructionXMainWindow(QMainWindow):
         self._menu_theme_action.setToolTip(
             tr("main_window", "menu.edit.toggle_theme.tooltip"))
         self._action_language.setText(tr("main_window", "menu.edit.language"))
+        self._action_github_keys.setText(
+            tr("main_window", "menu.edit.github_keys"))
         self._action_github_install.setText(
             tr("main_window", "menu.edit.install_from_github"))
         self._action_github_install.setStatusTip(
@@ -467,6 +560,15 @@ class InstructionXMainWindow(QMainWindow):
     def _open_language_dialog(self):
         """打开界面语言选择对话框（确定后实时切换语言）"""
         dialog = LanguageDialog(self)
+        dialog.exec()
+
+    def _open_github_key_manager(self):
+        """打开 GitHub Key 管理器。"""
+        dialog = GitHubKeyManagerDialog(
+            get_github_key_manager(),
+            self.plugin_manager.registry,
+            self,
+        )
         dialog.exec()
 
     def _on_plugins_changed(self):

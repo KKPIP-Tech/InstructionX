@@ -12,7 +12,7 @@
 
 **模式**: 单例模式（`MCPManager` 全局唯一实例）
 
-**核心依赖**: `mcp>=1.28.1,<2`（官方 MCP Python SDK）
+**核心依赖**: `mcp>=1.30.0,<2`（官方 MCP Python SDK）
 
 **两种运行模式**:
 
@@ -235,7 +235,7 @@ mcp.start_server(transport="streamable-http")
 
 **stdio 方式**：`mcp.run(transport="stdio")` 直接在当前进程 stdin/stdout 上运行 MCP 协议。**该调用会阻塞当前线程**直到 Server 退出，请勿在 Qt 主线程直接调用（应放入工作线程，`MCPHostServer.run_stdio()` 检测到主线程调用时会记录警告）。适用于 Claude Code MCP Client 连接。
 
-**streamable-http 方式**：`mcp.run(transport="streamable-http")` 在后台线程启动 HTTP 服务器，默认端口 8765。启动时最多等待 5 秒（`SERVER_START_WAIT_TIMEOUT`）确认服务就绪；启动失败（如端口被占用、线程异常退出）会抛出 `RuntimeError`，不会静默吞掉。
+**streamable-http 方式**：`mcp.run(transport="streamable-http")` 在后台线程启动 HTTP 服务器，默认端口 8765。启动时最多等待 5 秒（`SERVER_START_WAIT_TIMEOUT`）确认服务就绪；启动失败（如端口被占用、线程异常退出）会抛出 `RuntimeError`，不会静默吞掉。MCP 1.30.0 起默认在 1800 秒无活动后回收会话，并限制最多 10000 个会话；配置可通过 `session_idle_timeout`、`max_sessions` 覆盖，值为 `null` 时禁用对应限制。
 
 ### 5.3 配置
 
@@ -249,6 +249,8 @@ mcp.start_server(transport="streamable-http")
         "transport": "stdio",
         "enabled": true,
         "auth_token": null,
+        "session_idle_timeout": 1800,
+        "max_sessions": 10000,
         "exposed_plugins": null,
         "allowed_hosts": null
     },
@@ -261,6 +263,8 @@ mcp.start_server(transport="streamable-http")
 | 字段 | 说明 |
 |------|------|
 | `auth_token` | HTTP 模式下的 Bearer 认证令牌；`null` 表示不启用认证（仅建议在本机回环地址下使用）。配置文件中以 `b64:` 前缀的 Base64 混淆格式存储（防瞥视，非加密），兼容旧版明文值 |
+| `session_idle_timeout` | Streamable HTTP 无活动请求会话的空闲超时秒数；默认 1800，`null` 表示禁用回收 |
+| `max_sessions` | Streamable HTTP 同时保留的最大会话数；默认 10000，`null` 表示不限制 |
 | `exposed_plugins` | 允许暴露为 MCP 工具的插件 ID 白名单；`null` 表示暴露全部插件（默认，向后兼容）。**fail-closed 语义**：`MCPBridge` 读取白名单时若抛出异常（如配置损坏），返回 `[]` 而非回退到「全部暴露」——任何读取异常都不会意外暴露未授权插件 |
 | `MCPRemoteServerConfig.enabled` | bool | 是否启用该外部 Server 连接；`enabled=False` 时 `MCPClientManager` 在 `connect_all()` 阶段直接跳过该配置项（不发起连接） |
 | `allowed_hosts` | 允许的 HTTP Host 头白名单（保留项，暂未强制校验） |
@@ -661,7 +665,7 @@ mcp.shutdown()  # 停止 Server + 断开所有 Client 连接
 ### 11.1 新增依赖
 
 ```
-mcp>=1.28.1,<2
+mcp>=1.30.0,<2
 ```
 
 MCP SDK 主要依赖：

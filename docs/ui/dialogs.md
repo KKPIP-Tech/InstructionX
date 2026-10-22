@@ -25,7 +25,7 @@
 
 - 项目 Logo（居中显示）
 - 项目名称: "InstructionX - CE"（加粗，字号取 UIKit 令牌 `font.title.lg` = 20px）
-- 版本号: "版本 Alpha 1.1.1"（次要样式）
+- 版本号: "版本 Alpha 1.1.2"（次要样式）
 - 版权声明: "© 2025-2026 dakuang 版权所有，保留所有权利。"
 - 专有软件声明（中文摘要 + 英文法律声明，代码中以 `\n` 换行，实际显示为三行）:
   ```
@@ -184,6 +184,16 @@ dialog.plugins_changed.connect(self._on_plugins_changed)
 dialog.exec()
 ```
 
+### 3.6 插件启动失败提示
+
+主窗口首次显示后会读取 `PluginManager.get_plugin_load_failures()`。存在失败项
+时使用 UIKit `Dialog.info()` 显示「插件加载失败」提示框，逐项列出插件名称、
+目录、失败原因、缺失依赖/模块和简要错误信息。
+
+触发场景包括：启动依赖自动安装失败、插件入口无效、入口导入异常和缺少
+Python 模块。`docs/`、`assets/`、`.github/` 等不含插件特征文件的普通资源
+目录会被静默跳过，不会触发提示。
+
 ---
 
 ## 4. PluginOrderDialog 插件排序对话框（遗留）
@@ -264,6 +274,8 @@ if dialog.exec() == QDialog.DialogCode.Accepted:
 │  从 GitHub 安装插件                           │
 ├─────────────────────────────────────────────┤
 │  GitHub URL: [________________________] [检查] │
+│  GitHub Key: [自动 / 命名 Key ▼] [管理 Key…]  │
+│  🔒 私有仓库提示（仅私有来源显示）             │
 │                                             │
 │  ── 插件信息 ──────────────────────────────  │
 │  将安装到: 第三方插件目录 (custom_plugin/)    │
@@ -291,6 +303,16 @@ if dialog.exec() == QDialog.DialogCode.Accepted:
 - **选择性安装**: 多插件时显示复选框列表
 - **自动目录判定**: 根据 GitHub 组织自动判定安装目录（KKPIP-Tech → plugin/，其他 → custom_plugin/）
 - **后台下载**: 使用 QThread 后台下载，不阻塞 UI
+- **多 Key 选择**: 第一项为「不使用 Key」，仅匿名访问；需要私有访问时由用户显式选择命名 Key
+- **私有仓库提示**: 显示仓库 URL、Key 名称和 GitHub 账号，并在安装前再次确认
+- **重新绑定恢复**: 私有插件绑定 Key 失效时，插件管理详情提供重新绑定入口
+
+### 5.4a GitHub Key 相关对话框
+
+- `GitHubKeyManagerDialog`：列出 Key 名称、GitHub 账号、类型、状态、过期信息、最近验证和默认状态；支持添加、编辑、验证、设默认和删除。
+- `GitHubKeyEditorDialog`：Token 默认密码显示，可切换可见；编辑时留空表示保留原 Token；未验证通过的输入不保存。
+- `GitHubKeyRebindDialog`：显示当前 Key 不可用原因，选择新 Key 并验证目标仓库；失败或取消不覆盖旧绑定。
+- `github_private_repo_notice.py`：安装页复用私有仓库提示组件。
 
 ### 5.5 信号
 
