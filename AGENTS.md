@@ -366,6 +366,7 @@ utils/
   i_logger.py               # ILogger 接口
   image_utils.py            # 图片工具（load_image_as_base64，原 LLMPluginService 方法迁出）
   thread_utils.py           # 工作线程 → UI 线程封送（run_in_ui_thread 等）
+  gc_main_thread.py         # 主线程循环 GC 守卫（gc.freeze/disable + QTimer 回收，缓解原生闪退）
   macos_dock_icon.py        # macOS Dock 栏应用图标设置（AppKit，非 macOS 空操作）
 plugin/                     # 官方/示例插件（kebab-case 目录；仅用于本地开发验证，非框架捆绑列表，
                             #   不视为框架公共契约的一部分，其余能力按需通过 GitHub 安装器获取）
@@ -460,6 +461,7 @@ config/ data/ logs/         # 运行时生成：配置、数据、日志
 
 - 架构：`docs/architecture/overview.md`、`module-dependencies.md`
 - 主题与 UI 组件：`docs/utils/uikit-theme.md`（UIKit 主题系统）、`docs/ui/`
+- 运行时稳定性：`docs/utils/gc-main-thread.md`（主线程 GC 守卫与 paint 闪退排查）
 - 插件系统：`docs/core/plugin-system/`（含 `plugin-development.md`）
 - 数据层：`docs/core/data-provider/`
 - 后台任务：`docs/core/background-task/`
