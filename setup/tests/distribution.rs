@@ -59,7 +59,15 @@ fn release_archive_contains_both_windows_native_setups() {
 
 #[test]
 fn bundled_checksums_cover_both_windows_binaries_and_match_content() {
-    let checksums = fs::read_to_string(project_root().join("tools/setup/SHA256SUMS")).unwrap();
+    let attributes = fs::read_to_string(project_root().join(".gitattributes")).unwrap();
+    assert!(
+        attributes
+            .lines()
+            .any(|line| { line.starts_with("tools/setup/SHA256SUMS") && line.contains("eol=lf") })
+    );
+    let checksum_bytes = fs::read(project_root().join("tools/setup/SHA256SUMS")).unwrap();
+    assert!(!checksum_bytes.contains(&b'\r'));
+    let checksums = String::from_utf8(checksum_bytes).unwrap();
     let expected: BTreeMap<&str, &str> = checksums
         .lines()
         .filter_map(|line| line.split_once("  "))
