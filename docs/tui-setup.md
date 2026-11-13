@@ -40,6 +40,7 @@ macOS 首次双击若提示「来自身份不明的开发者」，在「系统�
 | `--preview PAGE` | 渲染一次指定页面后退出（`menu`/`status`/`install`/`upgrade`/`manage`/`doctor`/`cleanup`/`launch`/`language`/`help`），用于无终端环境验证与两平台一致性比对 |
 | `--action NAME` | 非交互执行单个动作：`install` / `repair` / `upgrade` / `doctor` / `clean-temp` / `uninstall`（配合 `--yes`，适合脚本与远程排错） |
 | `--archive FILE` / `-ArchivePath FILE` | 用**本地**代码包升级（离线/内网环境）：跳过下载，走完全相同的解压 + 覆盖 + 依赖同步流程 |
+| `--release-tag TAG` / `-ReleaseTag TAG` | 下载并升级到指定 GitHub Release（包含 Pre-release）；Tag 格式为 `alpha-v1.2.3` / `v1.2.3` 等 |
 | `--dry-run` | 试运行：只展示将要执行的命令，不真正改动电脑 |
 | `--yes` | 自动确认所有提问 |
 | `--lang zh\|en` | 指定界面语言（默认：参数 > `.tui/lang` > 系统区域 > 英文） |
@@ -105,10 +106,14 @@ macOS 首次双击若提示「来自身份不明的开发者」，在「系统�
 
 ## 5. 升级策略
 
-- **有 Git 仓库且 git 可用** → `git pull --ff-only`（不做合并提交）；
+- **默认且有 Git 仓库、git 可用** → `git pull --ff-only`（不做合并提交）；
   升级前会检查已跟踪文件的本地修改并提示用户，避免自动升级把本地改动搞乱。
-- **没有 Git** → 下载 `https://codeload.github.com/KKPIP-Tech/InstructionX/zip/refs/heads/main`
+- **默认且没有 Git** → 下载 `https://codeload.github.com/KKPIP-Tech/InstructionX/zip/refs/heads/main`
   并**覆盖程序文件**。
+- **指定 `--release-tag` / `-ReleaseTag` 或本地归档时** → 无论是否存在 Git，都走压缩包升级；
+  Tag 下载地址为 `https://codeload.github.com/KKPIP-Tech/InstructionX/zip/refs/tags/<tag>`，不会退化为 `git pull main`。
+  框架「帮助 → 检查更新」在用户确认后通过该参数启动外部向导。
+- **压缩包覆盖前保护**：Git 仓库存在已跟踪文件修改时中止；未跟踪文件不参与该检查，也不会被清理。
 - 覆盖时**一律跳过**这些目录（用户数据与本地环境）：
 
   `config` `data` `logs` `plugin` `custom_plugin` `.venv` `.tui` `temp`，以及 `.git` `__pycache__`。

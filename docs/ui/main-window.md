@@ -86,6 +86,9 @@ def _create_menus(self) -> None:
 
     # 帮助菜单
     self._menu_help = menu_bar.addMenu("")
+    self._action_check_update = QAction(self)
+    self._action_check_update.triggered.connect(self._open_update_dialog)
+    self._menu_help.addAction(self._action_check_update)
     self._action_about = QAction(self)
     self._action_about.triggered.connect(self._open_about_dialog)
     self._menu_help.addAction(self._action_about)
@@ -480,6 +483,10 @@ cursor_map = {
 ```
 
 ### 5.3 对话框
+
+#### 检查更新对话框
+
+通过 **帮助 > 检查更新...** 手动打开，完整列出 GitHub Release（含 Pre-release），按发布时间倒序排列并标记当前版本。只有用户选择更高版本并点击「更新到所选版本」后，才启动外部安装向导；主窗口收到 `update_started` 后通过 `QTimer.singleShot(0, ...)` 延迟静默退出，不自动重启。详见 [对话框组件](dialogs.md)。
 
 #### 关于对话框
 
