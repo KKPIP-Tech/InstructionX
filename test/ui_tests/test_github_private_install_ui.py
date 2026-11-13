@@ -136,6 +136,8 @@ class TestInstallKeySelection:
         dialog.url_input.setText("https://github.com/acme/private-plugins")
         dialog.repo_result = _private_result()
         dialog._confirm_private_install = MagicMock(return_value=True)
+        # 本用例只验证 Key 路由；新增兼容确认由专门用例覆盖
+        dialog._confirm_framework_compatibility = MagicMock(return_value=True)
         worker_factory = mocker.patch.object(module, "GitHubInstallWorker")
 
         dialog._on_install()
