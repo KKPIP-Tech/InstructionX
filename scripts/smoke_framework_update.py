@@ -62,10 +62,9 @@ def check_release_timeline() -> None:
 
 
 def check_update_command() -> None:
-    """验证外部向导接收用户选择的 Tag，且不真正启动进程。"""
+    """验证随包原生向导接收用户选择的 Tag，且不真正启动进程。"""
     with TemporaryDirectory(dir=Path("temp")) as directory:
         root = Path(directory)
-        (root / "setup.ps1").write_text("# smoke", encoding="utf-8")
         starter = MagicMock()
         runner = MagicMock(return_value=subprocess.CompletedProcess(
             args=["git"], returncode=0, stdout="", stderr=""))
@@ -73,7 +72,7 @@ def check_update_command() -> None:
             project_root=root,
             process_starter=starter,
             status_runner=runner,
-            powershell_locator=lambda _name: "powershell.exe",
+            setup_locator=lambda _name: "instructionx-setup",
         )
         release = FrameworkRelease(
             release_id=2,
@@ -87,8 +86,9 @@ def check_update_command() -> None:
         )
         launcher.launch(release)
         command = starter.call_args.args[0]
-        check("更新命令包含所选 Tag", command[command.index("-ReleaseTag") + 1] == "alpha-v1.2.0")
-        check("更新动作交给安装向导", command[command.index("-Action") + 1] == "upgrade")
+        check("更新命令包含所选 Tag", command[command.index("--release-tag") + 1] == "alpha-v1.2.0")
+        check("更新动作交给原生 Setup", command[command.index("--action") + 1] == "upgrade")
+        check("更新不再依赖 PowerShell", "powershell.exe" not in command)
 
 
 def main() -> int:

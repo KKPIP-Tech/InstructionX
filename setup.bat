@@ -3,8 +3,8 @@ rem ===========================================================================
 rem InstructionX setup wizard - Windows double-click entry point
 rem
 rem This file only locates PowerShell and runs setup.ps1 with a bypass policy:
-rem the real UI and logic live in setup.ps1 (native TUI, no Python required).
-rem The macOS counterpart is setup.command (calls setup.sh, identical UI).
+rem setup.ps1 selects the bundled native Setup for the Windows architecture.
+rem The macOS/Linux counterpart is setup.command (calls setup.sh).
 rem
 rem NOTE FOR MAINTAINERS: keep this file ASCII-only with CRLF line endings.
 rem cmd.exe misparses LF-only batch files (it loses the first characters of a

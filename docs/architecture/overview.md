@@ -324,7 +324,20 @@ from core.interfaces import (
 - 通过 `BackgroundTaskManager` 执行一次性检查，结果经 `run_in_ui_thread` 返回 UI；弹窗关闭后忽略迟到结果。
 - 用户明确选择更高版本后，由 `FrameworkUpdateLauncher` 校验目标与本地修改，启动外部安装向导下载指定 Tag；更新过程不自动重启应用。
 
-**模块划分**: `models.py`（Release/结果模型与 Tag 解析）、`checker.py`（Release 检查与时间线）、`launcher.py`（外部向导启动保护）。
+**模块划分**: `models.py`（Release/结果模型与 Tag 解析）、`checker.py`（Release 检查与时间线）、`launcher.py`（原生 Setup 启动保护）。
+
+### 3.14 原生 Setup 子系统
+
+**文件位置**: `setup/`（Rust crate）、`core/plugin/setup_dependency_cli.py`
+
+**职责**:
+- 以 Ratatui + Crossterm 提供 Windows/macOS/Linux 共用的原生 TUI，不使用脚本语言实现界面。
+- 首次提供中/英（默认）/法/俄语言选择并持久化偏好，支持 0–5 六类页面和兼容非交互 CLI。
+- 采集系统硬件与框架状态；执行安装、同版本修复、Release 升级、环境包管理和环境重建。
+- 复用框架插件依赖安装与更新检查后端，逐插件报告结果；创建三平台无窗口桌面入口。
+- 开发者本机构建并校验 Windows x64/ARM64 预编译二进制与 SHA256，随源码包分发；不使用 GitHub Actions 构建 Setup，Windows 用户不需要安装 Rust。macOS 预编译版本为未来选项。
+
+**模块划分**: `app.rs`（页面与终端事件）、`workspace.rs`（操作编排）、`system/`（平台信息）、`github.rs`（Release）、`actions.rs`（备份回滚）、`uv.rs`（环境）、`plugins.rs`（插件）、`shortcuts.rs`（桌面入口）、`cli.rs`（兼容接口）。
 
 ---
 

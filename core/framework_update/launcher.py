@@ -1,7 +1,8 @@
-"""在独立控制台中启动框架 Release 安装向导。"""
+"""在独立控制台中启动原生 Setup 执行框架 Release 升级。"""
 
-import shutil
+import platform
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any, Callable, Optional
 
@@ -11,27 +12,51 @@ from .models import FrameworkRelease, parse_release_tag
 
 GIT_STATUS_TIMEOUT_SECONDS = 10
 CREATE_NEW_CONSOLE = getattr(subprocess, "CREATE_NEW_CONSOLE", 0)
+SETUP_BINARY_NAME = "instructionx-setup"
+SETUP_ASSETS = {
+    ("windows", "x86_64"): "instructionx-setup-windows-x86_64.exe",
+    ("windows", "aarch64"): "instructionx-setup-windows-aarch64.exe",
+    ("macos", "x86_64"): "instructionx-setup-macos-x86_64",
+    ("macos", "aarch64"): "instructionx-setup-macos-aarch64",
+    ("linux", "x86_64"): "instructionx-setup-linux-x86_64",
+    ("linux", "aarch64"): "instructionx-setup-linux-aarch64",
+}
+
+
+def _bundled_setup_asset(system: str, machine: str) -> Optional[str]:
+    """把 Python 平台名称映射为随包 Setup 文件名。"""
+    system_name = {
+        "win32": "windows",
+        "darwin": "macos",
+    }.get(system, "linux" if system.startswith("linux") else system)
+    architecture = {
+        "amd64": "x86_64",
+        "x86_64": "x86_64",
+        "arm64": "aarch64",
+        "aarch64": "aarch64",
+    }.get(machine.lower())
+    return SETUP_ASSETS.get((system_name, architecture))
 
 
 class UpdateLaunchError(Exception):
-    """更新目标无效或外部安装向导无法启动。"""
+    """更新目标无效或原生 Setup 无法启动。"""
 
 
 class FrameworkUpdateLauncher:
-    """校验用户选择并启动指定 Tag 的外部升级流程。"""
+    """校验用户选择并启动指定 Tag 的原生升级流程。"""
 
     def __init__(
         self,
         project_root: Optional[Path] = None,
         process_starter: Optional[Callable[..., Any]] = None,
         status_runner: Optional[Callable[..., Any]] = None,
-        powershell_locator: Optional[Callable[[str], Optional[str]]] = None,
+        setup_locator: Optional[Callable[[str], Optional[str]]] = None,
     ) -> None:
         """初始化启动器；外部依赖可注入以便无副作用测试。"""
         self._project_root = project_root or Path(__file__).resolve().parents[2]
         self._process_starter = process_starter or subprocess.Popen
         self._status_runner = status_runner or subprocess.run
-        self._powershell_locator = powershell_locator or shutil.which
+        self._setup_locator = setup_locator or self._find_setup_binary
 
     def launch(self, release: FrameworkRelease) -> None:
         """启动用户明确选择的更高版本，成功返回时不退出当前进程。
@@ -76,18 +101,22 @@ class FrameworkUpdateLauncher:
             raise UpdateLaunchError("存在已跟踪文件的本地修改，请先自行处理后再更新")
 
     def _build_command(self, tag_name: str) -> list[str]:
-        """构造不使用 shell 的 PowerShell 参数数组。"""
-        setup_script = self._project_root / "setup.ps1"
-        if not setup_script.is_file():
-            raise UpdateLaunchError("找不到安装向导 setup.ps1")
-        powershell = self._powershell_locator("powershell.exe")
-        if not powershell:
-            raise UpdateLaunchError("找不到 PowerShell，无法启动安装向导")
+        """构造原生 Setup 参数数组，不经过 shell。"""
+        executable = self._setup_locator(SETUP_BINARY_NAME)
+        if not executable:
+            raise UpdateLaunchError("找不到原生 Setup 程序 instructionx-setup")
         return [
-            powershell, "-NoProfile", "-ExecutionPolicy", "Bypass",
-            "-File", str(setup_script), "-Action", "upgrade", "-Yes",
-            "-ReleaseTag", tag_name,
+            executable, "--action", "upgrade", "--yes",
+            "--release-tag", tag_name,
         ]
+
+    def _find_setup_binary(self, name: str) -> Optional[str]:
+        """只返回 tools/setup 中与当前系统和架构匹配的原生程序。"""
+        asset_name = _bundled_setup_asset(sys.platform, platform.machine())
+        if asset_name is None:
+            return None
+        candidate = self._project_root / "tools" / "setup" / asset_name
+        return str(candidate) if candidate.is_file() else None
 
     def _start_update_process(self, command: list[str]) -> None:
         """在独立控制台启动向导，避免应用退出时终止更新进程。"""

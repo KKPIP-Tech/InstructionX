@@ -6,3 +6,6 @@ setup.command       text eol=lf
 setup.bat           text eol=crlf
 setup.ps1           text eol=lf
 setup_text/*.txt    text eol=lf
+
+# 随源码包分发的原生 Setup 不做行尾转换
+tools/setup/instructionx-setup-* binary

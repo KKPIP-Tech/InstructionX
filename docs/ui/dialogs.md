@@ -677,7 +677,7 @@ dialog.start_inspect("/path/to/package.zip")
 
 默认选中最新发布行。只有所选 Release 的 Tag 可解析且版本高于当前版本时，「更新到所选版本」才可用；旧版本仅用于浏览，不提供降级。
 
-点击更新后，`FrameworkUpdateLauncher` 再次校验版本和 Git 已跟踪文件修改，成功启动外部安装向导后发出 `update_started(tag)`。主窗口随后静默退出，由向导下载指定 Tag、覆盖程序文件、同步依赖并自检；应用不自动重启。取消、关闭或启动失败均不会触发更新或退出。
+点击更新后，`FrameworkUpdateLauncher` 再次校验版本和 Git 已跟踪文件修改，成功启动原生 Setup（`instructionx-setup --action upgrade --yes --release-tag <tag>`）后发出 `update_started(tag)`。主窗口随后静默退出，由原生 Setup 下载指定 Tag、覆盖程序文件、同步依赖并自检；应用不自动重启。取消、关闭或启动失败均不会触发更新或退出。
 
 后台回调经 `run_in_ui_thread` 封送到 UI 线程；弹窗关闭后忽略迟到结果。文案位于四个框架语言文件的 `dialog_update` 分组。
 
