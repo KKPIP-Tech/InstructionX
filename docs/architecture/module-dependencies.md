@@ -20,6 +20,7 @@ graph TB
         SP[ui/skills_panel/panel.py<br/>SkillsPanel]
         WA[ui/work_area/work_area.py<br/>WorkArea]
         GPI[ui/dialog/github_plugin_install_dialog.py<br/>GitHubPluginInstallDialog]
+        UPD[ui/dialog/update_dialog.py<br/>UpdateDialog]
     end
 
     subgraph Core ["核心层"]
@@ -28,6 +29,7 @@ graph TB
         BTM[core/task/background_task.py<br/>BackgroundTaskManager 单例]
         IPlugin[core/interfaces/i_plugin.py<br/>IPlugin]
         GInst[core/plugin/github_plugin_installer.py<br/>GitHubPluginInstaller]
+        FUC[core/framework_update/<br/>Release 检查与更新启动]
     end
 
     subgraph MCP ["MCP 层"]
@@ -62,6 +64,9 @@ graph TB
     MW --> DP
     MW --> UKTH
     MW --> GPI
+    MW --> UPD
+    UPD --> FUC
+    UPD --> BTM
     GPI --> GInst
     GInst --> PM
     SP --> PM
@@ -157,6 +162,19 @@ register_long_running_task()       # 注册长期任务
 update_long_running_task_status()  # 更新长期任务状态
 shutdown()                         # 安全关闭任务管理器
 ```
+
+### 2.4 框架更新子系统
+
+**文件**: `core/framework_update/`、`ui/dialog/update_dialog.py`
+
+| 功能 | 说明 |
+|------|------|
+| Release 检查 | `FrameworkUpdateChecker` 经 `GitHubApiClient.list_all_releases()` 完整读取 Release，包含 Pre-release、排除 Draft |
+| 时间线展示 | `UpdateDialog` 按发布时间倒序展示全部 Release，标记最新发布与当前版本 |
+| 后台任务 | 用户点击菜单后由 `BackgroundTaskManager` 执行一次检查，回调封送到 UI 线程 |
+| 更新启动 | `FrameworkUpdateLauncher` 校验更高版本和 Git 本地修改，调用外部安装向导升级指定 Tag |
+
+依赖方向：主窗口 → UpdateDialog → FrameworkUpdateChecker / FrameworkUpdateLauncher → GitHubApiClient / 安装向导；该子系统不向插件暴露公共接口。
 
 ---
 

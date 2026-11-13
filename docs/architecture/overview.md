@@ -314,6 +314,18 @@ from core.interfaces import (
 
 **详细文档**: [接口层概述](../core/interfaces/overview.md)
 
+### 3.13 框架更新子系统
+
+**文件位置**: `core/framework_update/`、`ui/dialog/update_dialog.py`
+
+**职责**:
+- 仅在用户点击「帮助 → 检查更新...」后读取官方 GitHub Release，不进行启动或定时自动检查。
+- 完整分页读取已发布 Release（含 Pre-release、排除 Draft），按发布时间倒序生成时间线并定位当前版本。
+- 通过 `BackgroundTaskManager` 执行一次性检查，结果经 `run_in_ui_thread` 返回 UI；弹窗关闭后忽略迟到结果。
+- 用户明确选择更高版本后，由 `FrameworkUpdateLauncher` 校验目标与本地修改，启动外部安装向导下载指定 Tag；更新过程不自动重启应用。
+
+**模块划分**: `models.py`（Release/结果模型与 Tag 解析）、`checker.py`（Release 检查与时间线）、`launcher.py`（外部向导启动保护）。
+
 ---
 
 ## 4. 数据流

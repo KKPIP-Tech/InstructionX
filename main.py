@@ -17,6 +17,7 @@ from PySide6.QtQuick import QQuickWindow, QSGRendererInterface
 from ui.main_window import InstructionXMainWindow
 from ui.uikit_theme import apply_uikit_theme
 
+from utils.gc_main_thread import MainThreadGcGuard
 from utils.logging_tools import LoggerManager, get_name
 from utils.macos_dock_icon import set_macos_dock_icon
 
@@ -86,9 +87,17 @@ def main():
     # macOS：设置 Dock 栏应用图标（直接 python 运行时进程属 Python.app，
     # Dock 默认显示 Python 图标；其他平台为空操作）
     set_macos_dock_icon(Path(__file__).resolve().parent / "ui" / "logo.png")
-    
+
+    # 主线程GC守卫：把循环 GC 收敛到 GUI 线程，避免后台线程回收 Qt/PySide
+    # 对象导致原生崩溃（2026-11-04 paint 0xC0000005 现场：崩溃线程在后台
+    # Garbage-collecting，详见 docs/utils/gc-main-thread.md）。只接管循环垃圾，
+    # 引用计数回收不受影响；若长测仍闪退需按该文档采集原生 dump 再定位。
+    gc_guard = MainThreadGcGuard(application)
+    gc_guard.install()
+
     # 运行应用
     result = application.exec()
+    gc_guard.shutdown()
     application.closeAllWindows()
 
     # 关闭后台任务管理器

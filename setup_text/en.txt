@@ -77,6 +77,7 @@ upgrade.up_to_date=Already up to date — nothing to upgrade.
 upgrade.success=Framework upgraded to {version}.
 upgrade.deps_refresh=Dependencies refreshed.
 upgrade.need_git_confirm=The latest code archive will be downloaded and unpacked over the program files (config, data and plugins are kept). Continue?
+upgrade.invalid_tag=Invalid Release Tag: {detail}
 upgrade.local_changes=Local changes detected — automatic upgrade may conflict: {detail}
 manage.title=Manage environment
 manage.rebuild=Rebuild environment (keep data, reinstall dependencies)

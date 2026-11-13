@@ -9,6 +9,7 @@
 **InstructionX** 是一个基于 **PySide6** 的**插件式桌面应用框架**（应用型项目，不作为库分发），支持：
 
 - 插件热加载 / 热卸载，GitHub 插件一键安装
+- 手动检查框架更新（帮助菜单触发，完整 GitHub Release 时间线含 Pre-release、当前版本定位、用户确认后按 Tag 升级；不自动检查）
 - 多厂商 LLM 集成（MiniMax、SiliconFlow、智谱 GLM、Ollama、OpenAI 兼容接口等），多会话管理、工具调用自动化（ToolCallExecutor）、多模态、用量统计
 - MCP 协议双向支持（内置 MCP Server 暴露插件 API；MCP Client 连接外部 MCP Server）
 - SQLite WAL 数据持久化层（DataProvider）、后台任务系统（BackgroundTaskManager）
@@ -76,7 +77,7 @@ python -m pytest test/ -q --tb=short -p no:cacheprovider
 - **注意**：`test/` 下当前仅保留 `test/core/data/test_data_provider.py` 一个有效测试文件（其余旧测试已在重构中删除，残留的 `__pycache__` 是过期产物，不要参考）。现有测试约定：中文 docstring、`tmp_path` fixture、测试单例类时需重置 `XxxManager._instance = None`。
 - UI 测试不配置 offscreen 平台，CI 跑在 `windows-latest` 上使用真实 GUI。
 - 项目还有一类**独立验证脚本**（非 pytest，放在 `scripts/`，用 `.venv\Scripts\python.exe scripts\<name>.py` 直接运行）：
-  - `smoke_*.py`：核心链路无网冒烟测试（LLM、task、utils、i18n、字体管理、插件管理：安装/升级/降级/卸载/分组、本地插件包自动识别与插件集一次安装、包外文件兜底备份）；`smoke_setup_wizard.py` 针对原生安装向导（`setup.ps1` / `setup.sh`：文案完整性、两平台界面逐行一致性、uv 命令口径、干跑安全、Python 向导已移除）
+  - `smoke_*.py`：核心链路无网冒烟测试（LLM、task、utils、i18n、字体管理、插件管理：安装/升级/降级/卸载/分组、本地插件包自动识别与插件集一次安装、包外文件兜底备份）；`smoke_setup_wizard.py` 针对原生安装向导（`setup.ps1` / `setup.sh`：文案完整性、两平台界面逐行一致性、uv 命令口径、干跑安全、Python 向导已移除）；`smoke_framework_update.py` 针对框架 Release 时间线、当前版本定位与指定 Tag 更新命令
   - `smoke_github_private.py`：GitHub 多 Key、私有识别与重新绑定无网冒烟；`smoke_github_private_live.py` 读取本机测试 PAT/私有仓库环境变量，执行真实安装与 Release 下载，临时数据只写入 `temp/`
   - `check_i18n_completeness.py`：语言文件完整性校验（默认语言必须覆盖源码全部 `tr()` 调用，缺键 exit 1；其他语言缺键/孤立键 WARNING；支持 `--text-dir`/`--src-dir`/`--plugin-root`）
   - `screenshot_*.py`：对话框截图对比脚本（输出到 `scripts/screenshots/`）
@@ -224,7 +225,8 @@ main.py                     # 应用入口
 setup.ps1                   # 安装向导 · Windows 原生 TUI（PowerShell 5.1，不依赖 Python / 第三方库）：
                             #   环境总览 / 安装与修复 / 升级 / 环境管理 / 一键体检 / 清理卸载 / 启动（调试用途）/ 中英双语；
                             #   首次安装成功自动创建桌面快捷方式（ui/logo.ico，pythonw 启动无控制台窗口），卸载时删除；
-                            #   支持 -Check 文本体检、-State 状态导出、-Preview 渲染、-Action 非交互动作、-DryRun/-Yes
+                            #   支持 -Check 文本体检、-State 状态导出、-Preview 渲染、-Action 非交互动作、-DryRun/-Yes、
+                            #   -ArchivePath 本地归档升级、-ReleaseTag 指定 GitHub Release 升级（setup.sh 为同名长参数）
 setup.sh                    # 安装向导 · macOS 原生 TUI（bash 3.2，同样不依赖 Python），界面与 setup.ps1 逐字一致；
                             #   首次安装成功创建 ~/Desktop/InstructionX.app 启动器（logo.png 转 icns），卸载时删除
 setup.bat / setup.command   # Windows / macOS 双击入口（只调用上面的原生脚本；无 Python 也能跑）
@@ -263,6 +265,11 @@ core/
     key_manager.py          # 多 Key CRUD、默认 Key、身份验证、环境变量兼容
     api_client.py           # api.github.com 鉴权、仓库/Contents/Release/zipball
     source_binding.py       # 插件来源 Key 解析、重新绑定和失败不覆盖语义
+  framework_update/         # 框架手动更新子系统（不暴露给插件）
+    models.py               # GitHub Release / 检查结果模型、Release Tag 解析、时间线版本判断
+    checker.py              # 完整分页读取已发布 Release（含 Pre-release、排除 Draft）、
+                            #   按发布时间倒序排列并定位当前版本
+    launcher.py             # 校验更高版本与 Git 已跟踪文件修改，启动外部安装向导按 Tag 升级
   data/                     # 数据持久化层
     data_provider.py        # DataProvider 单例：PRIVATE/PUBLIC 双命名空间、发布订阅、内存缓存
     sqlite_backend.py       # SQLite WAL 后端（默认），schema 迁移
@@ -338,6 +345,8 @@ ui/                         # 界面层
                             #   aboutToShow 动态重建）+ TrayBackend 平台后端注册表/工厂
                             #   （win32 后端 + generic 兜底，macOS/Linux 预留扩展点）
   dialog/                   # 各类对话框（GitHub 安装、开源许可等）
+    update_dialog.py           # 手动检查更新：完整 Release 时间线（含 Pre-release、按时间倒序）、
+                               #   最新/当前版本标识与定位、发布说明、用户确认后按 Tag 启动外部向导
     close_confirm_dialog.py    # 关闭确认对话框：退出程序/最小化到托盘/取消 三按钮，
                                #   每次关闭必问（无记忆选项），Esc/叉号等价于取消
     plugin_management_dialog.py  # 插件管理对话框：安装/升级/降级/卸载 + 分组与排序
@@ -366,6 +375,7 @@ utils/
   i_logger.py               # ILogger 接口
   image_utils.py            # 图片工具（load_image_as_base64，原 LLMPluginService 方法迁出）
   thread_utils.py           # 工作线程 → UI 线程封送（run_in_ui_thread 等）
+  gc_main_thread.py         # 主线程循环 GC 守卫（gc.freeze/disable + QTimer 回收，缓解原生闪退）
   macos_dock_icon.py        # macOS Dock 栏应用图标设置（AppKit，非 macOS 空操作）
 plugin/                     # 官方/示例插件（kebab-case 目录；仅用于本地开发验证，非框架捆绑列表，
                             #   不视为框架公共契约的一部分，其余能力按需通过 GitHub 安装器获取）
@@ -460,6 +470,7 @@ config/ data/ logs/         # 运行时生成：配置、数据、日志
 
 - 架构：`docs/architecture/overview.md`、`module-dependencies.md`
 - 主题与 UI 组件：`docs/utils/uikit-theme.md`（UIKit 主题系统）、`docs/ui/`
+- 运行时稳定性：`docs/utils/gc-main-thread.md`（主线程 GC 守卫与 paint 闪退排查）
 - 插件系统：`docs/core/plugin-system/`（含 `plugin-development.md`）
 - 数据层：`docs/core/data-provider/`
 - 后台任务：`docs/core/background-task/`

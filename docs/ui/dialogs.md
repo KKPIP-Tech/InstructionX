@@ -1,6 +1,6 @@
 # 对话框组件
 
-> InstructionX 应用程序中使用的十个对话框组件的完整说明
+> InstructionX 应用程序中使用的十二个对话框组件的完整说明
 
 ---
 
@@ -657,7 +657,33 @@ dialog.start_inspect("/path/to/package.zip")
 
 ---
 
-## 12. 相关文档
+## 12. UpdateDialog 检查更新对话框
+
+**文件位置**: `ui/dialog/update_dialog.py`
+
+### 12.1 概述
+
+`UpdateDialog` 仅由主窗口「帮助 → 检查更新...」手动打开。构造弹窗时通过 `BackgroundTaskManager` 注册一次性 GitHub Release 检查；框架启动、菜单创建和定时调度均不会自动检查。
+
+### 12.2 Release 时间线
+
+- 读取官方 `KKPIP-Tech/InstructionX` 仓库的全部已发布 Release，包含 Pre-release、排除 Draft；分页失败时不展示不完整结果。
+- 按 `published_at` 倒序排列（缺失时使用 `created_at`），最新发布位于第一行，不按版本号排序。
+- 每行显示 Release 名称、Tag、发布时间以及「最新发布 / 当前版本 / Pre-release / 无法识别版本号」标识。
+- 当前版本按 `APP_VERSION` 匹配并加粗，可点击「定位当前版本」滚动到对应行；当前版本未发布时明确提示，不伪造列表位置。
+- 选择任意行可查看纯文本发布说明并打开对应 HTTPS Release 页面。
+
+### 12.3 更新操作
+
+默认选中最新发布行。只有所选 Release 的 Tag 可解析且版本高于当前版本时，「更新到所选版本」才可用；旧版本仅用于浏览，不提供降级。
+
+点击更新后，`FrameworkUpdateLauncher` 再次校验版本和 Git 已跟踪文件修改，成功启动外部安装向导后发出 `update_started(tag)`。主窗口随后静默退出，由向导下载指定 Tag、覆盖程序文件、同步依赖并自检；应用不自动重启。取消、关闭或启动失败均不会触发更新或退出。
+
+后台回调经 `run_in_ui_thread` 封送到 UI 线程；弹窗关闭后忽略迟到结果。文案位于四个框架语言文件的 `dialog_update` 分组。
+
+---
+
+## 13. 相关文档
 
 - [主窗口](main-window.md)
 - [系统托盘与关闭行为](system-tray.md)

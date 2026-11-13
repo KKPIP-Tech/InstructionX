@@ -36,6 +36,30 @@
   Commercial use requires authorization if thresholds are exceeded.]]></text>
   </group>
 
+  <group name="dialog_update">
+    <text key="title">检查更新</text>
+    <text key="current_version">当前版本：{version}</text>
+    <text key="current_missing">当前版本：{version}（未出现在 GitHub Release 列表中）</text>
+    <text key="checking">正在检查 GitHub Release...</text>
+    <text key="no_releases">未找到可用的 GitHub Release。</text>
+    <text key="latest_unparseable">最新 Release 的版本号无法识别，仅可查看。</text>
+    <text key="update_available">发现新版本：{version}</text>
+    <text key="no_newer">当前已是最新版本。</text>
+    <text key="check_failed">检查更新失败：{error}</text>
+    <text key="launch_failed">无法启动更新：{error}</text>
+    <text key="task_unavailable">后台任务管理器不可用，请稍后重试。</text>
+    <text key="unknown_error">未知错误</text>
+    <text key="latest_badge">最新发布</text>
+    <text key="current_badge">当前版本</text>
+    <text key="prerelease_badge">Pre-release</text>
+    <text key="unparseable_badge">无法识别版本号</text>
+    <text key="no_notes">此 Release 没有发布说明。</text>
+    <text key="retry">重新检查</text>
+    <text key="locate_current">定位当前版本</text>
+    <text key="update_selected">更新到所选版本</text>
+    <text key="view_release">查看 Release 页面</text>
+  </group>
+
   <group name="dialog_close_confirm">
       <text key="title">关闭确认</text>
       <text key="message"><![CDATA[您希望退出程序，还是最小化到系统托盘继续运行？
@@ -507,6 +531,7 @@
       <text key="menu.ai.llm_settings">LLM 设置...</text>
       <text key="menu.ai.usage">用量查询</text>
       <text key="menu.help">帮助</text>
+      <text key="menu.help.check_updates">检查更新...</text>
       <text key="menu.help.about">关于</text>
       <text key="menu.help.licenses">开源组件许可</text>
       <text key="dialog.usage.title">用量查询</text>
