@@ -41,6 +41,7 @@ from ui.dialog.github_key_manager_dialog import GitHubKeyManagerDialog
 from ui.dialog.github_key_rebind_dialog import GitHubKeyRebindDialog
 from ui.dialog.local_package_install_dialog import LocalPackageInstallDialog
 from ui.dialog.plugin_language_dialog import PluginLanguageDialog
+from ui.dialog.plugin_compatibility import confirm_installation_with_compatibility
 from utils.logging_tools import LoggerManager, get_name
 from InstructionX_UIKit import T
 from InstructionX_UIKit.components import (
@@ -1091,7 +1092,9 @@ class PluginManagementDialog(QDialog):
             ) + "\n\n" + text
         if relation == "降级":
             text += tr(_I18N_GROUP, "message.downgrade_warning")
-        if not _confirm(self, tr(_I18N_GROUP, "title.confirm_install"), text):
+        if not confirm_installation_with_compatibility(
+                self, tr(_I18N_GROUP, "title.confirm_install"), text,
+                release.framework_compatibility):
             return
 
         parsed = self.installer.parse_github_url(record["source_url"])

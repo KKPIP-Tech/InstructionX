@@ -730,4 +730,17 @@
       <text key="reason.detail">详细信息：{detail}</text>
       <text key="button.acknowledge">知道了</text>
   </group>
+  <group name="dialog_plugin_compatibility">
+      <text key="summary.current">当前 InstructionX 框架：{version}</text>
+      <text key="summary.declared">作者声明已验证的框架版本：{versions}</text>
+      <text key="summary.no_declared">作者未声明已验证的框架版本</text>
+      <text key="summary.invalid_entries">无法识别的声明项：{entries}</text>
+      <text key="status.verified">当前框架版本已包含在作者声明的兼容性验证范围内。</text>
+      <text key="status.missing">未提供 compatible_framework_versions 字段，兼容性未经验证。</text>
+      <text key="status.not_listed">当前框架版本未列入作者声明，兼容性未经验证。</text>
+      <text key="status.invalid">兼容性声明格式无效或为空，兼容性未经验证。</text>
+      <text key="confirm.title">插件兼容性未经验证</text>
+      <text key="confirm.risk">继续安装不能得到兼容保证。仍要安装吗？</text>
+      <text key="confirm.install_anyway">仍然安装</text>
+  </group>
 </texts>

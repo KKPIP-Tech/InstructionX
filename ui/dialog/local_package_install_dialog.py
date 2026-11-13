@@ -22,6 +22,10 @@ from core.plugin.github_plugin_installer import (
     GitHubPluginInstaller, InstallResult, LocalInstallPlan, LocalPackageInspection,
 )
 from core.plugin.package_discovery import PACKAGE_KIND_INVALID, PACKAGE_KIND_SINGLE
+from ui.dialog.plugin_compatibility import (
+    confirm_unverified_compatibility,
+    format_compatibility_summary,
+)
 from utils.logging_tools import LoggerManager, get_name
 from InstructionX_UIKit import T, set_property
 from InstructionX_UIKit.components import Button, CheckBox, Dialog, Message
@@ -402,6 +406,8 @@ class LocalPackageInstallDialog(QDialog):
             parts.append(tr(_TR_GROUP, "row.path", path=plan.candidate.rel_path))
         parts.append(self._relation_text(plan))
         parts.append(tr(_TR_GROUP, f"scope.{plan.target_scope}"))
+        parts.append(format_compatibility_summary(
+            plan.candidate.framework_compatibility))
         if not plan.candidate.declared_in_index and self._inspection \
                 and self._inspection.has_index:
             parts.append(tr(_TR_GROUP, "row.undeclared"))
@@ -458,6 +464,8 @@ class LocalPackageInstallDialog(QDialog):
             return
         if not self._confirm_downgrade(selected):
             return
+        if not self._confirm_compatibility(selected):
+            return
         self._set_busy(tr(_TR_GROUP, "hint.installing"))
         self._install_worker = _InstallWorker(self._installer, self._zip_path, selected,
                                               self._target_scope)
@@ -485,6 +493,15 @@ class LocalPackageInstallDialog(QDialog):
             for plan in downgrades)
         return _confirm(self, tr(_TR_GROUP, "title.confirm_downgrade"),
                         tr(_TR_GROUP, "message.downgrade_confirm", details=details))
+
+    def _confirm_compatibility(self, selected: List[str]) -> bool:
+        """仅对实际勾选的插件确认框架兼容性风险。"""
+        items = [
+            (_resolve_field(plan.candidate.name),
+             plan.candidate.framework_compatibility)
+            for plan in self._selected_plans(selected)
+        ]
+        return confirm_unverified_compatibility(self, items)
 
     def _selected_plans(self, selected: List[str]) -> List[LocalInstallPlan]:
         """按勾选结果取出对应的安装计划"""

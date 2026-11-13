@@ -777,4 +777,17 @@ InstructionX a tenté d’installer automatiquement les dépendances déclarées
       <text key="reason.detail">Détails : {detail}</text>
       <text key="button.acknowledge">J’ai compris</text>
   </group>
+  <group name="dialog_plugin_compatibility">
+      <text key="summary.current">Version actuelle d’InstructionX : {version}</text>
+      <text key="summary.declared">Versions du framework déclarées comme vérifiées par l’auteur : {versions}</text>
+      <text key="summary.no_declared">L’auteur n’a déclaré aucune version vérifiée du framework</text>
+      <text key="summary.invalid_entries">Entrées de déclaration non reconnues : {entries}</text>
+      <text key="status.verified">La version actuelle du framework figure dans la déclaration de compatibilité de l’auteur.</text>
+      <text key="status.missing">Le champ compatible_framework_versions est absent ; la compatibilité n’a pas été vérifiée.</text>
+      <text key="status.not_listed">La version actuelle du framework ne figure pas dans la déclaration ; la compatibilité n’a pas été vérifiée.</text>
+      <text key="status.invalid">La déclaration de compatibilité est invalide ou vide ; la compatibilité n’a pas été vérifiée.</text>
+      <text key="confirm.title">Compatibilité du plugin non vérifiée</text>
+      <text key="confirm.risk">Continuer l’installation ne garantit pas la compatibilité. Installer quand même ?</text>
+      <text key="confirm.install_anyway">Installer quand même</text>
+  </group>
 </texts>
