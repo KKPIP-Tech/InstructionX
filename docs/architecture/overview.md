@@ -410,6 +410,8 @@ InstructionX/
 │   │   ├── plugin_module_loader.py # 插件入口导入与 IPlugin 子类发现
 │   │   ├── tool_name.py       # 工具命名/清洗工具
 │   │   ├── dependency_manager.py  # 插件依赖管理
+│   │   ├── framework_compatibility.py # 框架兼容性声明评估
+│   │   ├── package_discovery.py   # 本地包识别与兼容性结果传播
 │   │   └── github_plugin_installer.py  # GitHub 插件安装器
 │   ├── github/               # GitHub 私有仓库访问子系统
 │   │   ├── api_client.py     # GitHub REST API 与状态码映射

@@ -180,6 +180,8 @@ from core.interfaces import ILocalizationFacade
 | `get_available_versions(source_url, descriptor_path="", key_id="")` | 使用绑定 Key 列出远程仓库可用版本（按插件版本号降序） | List[ReleaseInfo] |
 | `install_release(owner, repo, tag, target_dir, selected_plugins=None, progress_callback=None, key_id="")` | 使用绑定 Key 安装指定 GitHub Release tag | List[InstallResult] |
 
+`PluginCandidate`、`PluginInfo` 和 `ReleaseInfo` 末尾均带可选 `framework_compatibility` 结果字段，由 `core/plugin/framework_compatibility.py` 根据 `compatible_framework_versions` 生成。结果包含 `status`、`current_version`、`declared_versions`、`invalid_entries` 和 `is_verified`。只有合法非空数组精确包含当前 `APP_VERSION` 时 `is_verified=True`；缺字段、未列入或非法声明均为未验证，由安装界面允许用户取消或主动继续。上述安装方法的公开签名不变。
+
 `core/github/` 同时提供 `GitHubKeyManager`、`PluginSourceKeyBinder` 和 `GitHubApiClient`；这些是框架内部服务，不加入面向插件的 `PluginServices`。
 
 ### 2.2 IPlugin

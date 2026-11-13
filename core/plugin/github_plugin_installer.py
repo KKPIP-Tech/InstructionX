@@ -34,6 +34,7 @@ from core.github import (
 from core.i18n import DEFAULT_LANGUAGE, I18nSettingsStore, resolve_i18n_field
 from utils.logging_tools import LoggerManager, get_name
 from .dependency_manager import DependencyManager
+from .framework_compatibility import FrameworkCompatibility, evaluate_framework_compatibility
 # 无循环依赖（manager 不反向依赖本模块），置顶导入
 from .manager import (
     SCOPE_OFFICIAL,
@@ -112,6 +113,7 @@ class PluginInfo:
     keywords: List[str] = field(default_factory=list)
     dependencies: Dict[str, str] = field(default_factory=dict)
     path: str = ""  # 相对于仓库根目录的路径
+    framework_compatibility: Optional[FrameworkCompatibility] = None
 
 
 @dataclass
@@ -166,6 +168,7 @@ class ReleaseInfo:
     version: str = ""          # 从 IXPlugin.json 解析的插件版本，解析失败为空
     prerelease: bool = False
     published_at: str = ""
+    framework_compatibility: Optional[FrameworkCompatibility] = None
 
 
 @dataclass
@@ -521,7 +524,8 @@ class GitHubPluginInstaller:
             homepage=desc.get("homepage"),
             keywords=desc.get("keywords", []),
             dependencies=desc.get("dependencies", {}),
-            path=path
+            path=path,
+            framework_compatibility=evaluate_framework_compatibility(desc),
         )
 
     def validate_descriptor(self, descriptor: Dict[str, Any]) -> Tuple[bool, str]:
@@ -1403,18 +1407,19 @@ class GitHubPluginInstaller:
         file_path: str,
         credential: Optional[GitHubCredential],
     ) -> List[ReleaseInfo]:
-        """把 Release API 数据与 tag 内插件版本合并。"""
+        """把 Release API 数据与 tag 内的版本和兼容性声明合并。"""
         results = []
         for rel in releases:
             tag = rel.get("tag_name", "")
-            version = self._fetch_version_at_ref(
+            descriptor = self._fetch_descriptor_at_ref(
                 owner, repo, tag, file_path, credential)
             results.append(ReleaseInfo(
                 tag=tag,
                 name=rel.get("name") or tag,
-                version=version or "",
+                version=str(descriptor.get("version") or "") if descriptor else "",
                 prerelease=bool(rel.get("prerelease", False)),
                 published_at=rel.get("published_at", ""),
+                framework_compatibility=evaluate_framework_compatibility(descriptor or {}),
             ))
         return results
 
@@ -1427,6 +1432,18 @@ class GitHubPluginInstaller:
         """查询仓库 Release 列表，认证与网络错误向上抛出。"""
         return self._api_client.list_releases(owner, repo, credential)
 
+    def _fetch_descriptor_at_ref(
+        self,
+        owner: str,
+        repo: str,
+        ref: str,
+        file_path: str,
+        credential: Optional[GitHubCredential] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """读取指定 ref 下的完整插件描述文件。"""
+        return self._fetch_file_content(
+            owner, repo, file_path, ref=ref, credential=credential)
+
     def _fetch_version_at_ref(
         self,
         owner: str,
@@ -1435,9 +1452,9 @@ class GitHubPluginInstaller:
         file_path: str,
         credential: Optional[GitHubCredential] = None,
     ) -> Optional[str]:
-        """读取指定 ref 下描述文件的插件版本号"""
-        desc = self._fetch_file_content(
-            owner, repo, file_path, ref=ref, credential=credential)
+        """保持原有接口：仅返回指定 ref 下描述文件的插件版本号。"""
+        desc = self._fetch_descriptor_at_ref(
+            owner, repo, ref, file_path, credential)
         if not desc:
             return None
         return desc.get("version")

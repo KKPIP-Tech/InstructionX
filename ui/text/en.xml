@@ -729,4 +729,17 @@ InstructionX attempted to install the dependencies declared by the plugins. Chec
       <text key="reason.detail">Details: {detail}</text>
       <text key="button.acknowledge">Got it</text>
   </group>
+  <group name="dialog_plugin_compatibility">
+      <text key="summary.current">Current InstructionX framework: {version}</text>
+      <text key="summary.declared">Framework versions declared as verified by the author: {versions}</text>
+      <text key="summary.no_declared">The author has not declared any verified framework versions</text>
+      <text key="summary.invalid_entries">Unrecognized declaration entries: {entries}</text>
+      <text key="status.verified">The current framework version is included in the author's compatibility declaration.</text>
+      <text key="status.missing">The compatible_framework_versions field is missing; compatibility has not been verified.</text>
+      <text key="status.not_listed">The current framework version is not listed by the author; compatibility has not been verified.</text>
+      <text key="status.invalid">The compatibility declaration is invalid or empty; compatibility has not been verified.</text>
+      <text key="confirm.title">Plugin compatibility has not been verified</text>
+      <text key="confirm.risk">Continuing the installation does not guarantee compatibility. Install anyway?</text>
+      <text key="confirm.install_anyway">Install anyway</text>
+  </group>
 </texts>

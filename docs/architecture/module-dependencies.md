@@ -97,6 +97,8 @@ graph TB
 | 顺序管理 | 支持自定义插件显示顺序 |
 | MCP 工具同步 | `_notify_mcp_new_tools()` / `_notify_mcp_remove_tools()` 自动同步插件 API 到 MCP 层 |
 
+**关联兼容性模块**：`framework_compatibility.py` 负责把 `compatible_framework_versions` 与当前 `APP_VERSION` 比较；`package_discovery.py` 和 `github_plugin_installer.py` 将结果附加到本地候选、仓库详情及逐 Tag Release；`ui/dialog/plugin_compatibility.py` 统一展示声明和未验证确认。依赖方向为 UI → 安装器/包识别 → 兼容性评估器 → `PluginVersion` / `core/version.py`，不反向影响插件启动加载。
+
 **关键属性**:
 ```python
 self._official_plugins: List[IPlugin]      # 官方插件列表
