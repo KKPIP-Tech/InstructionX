@@ -77,6 +77,7 @@ upgrade.up_to_date=已是最新版本，无需升级。
 upgrade.success=框架已升级到 {version}。
 upgrade.deps_refresh=依赖已同步更新。
 upgrade.need_git_confirm=将从官方地址下载最新代码包并覆盖程序文件（配置、数据与插件都会保留），是否继续？
+upgrade.invalid_tag=无效的 Release Tag：{detail}
 upgrade.local_changes=检测到本地修改，自动升级可能冲突，建议先手动处理：{detail}
 manage.title=环境管理
 manage.rebuild=重建运行环境（保留数据，重装依赖）

@@ -243,6 +243,13 @@ def check_scripts() -> None:
           and "不能用 ``Copy-Item -Recurse``" in ps_body)
     check("支持本地压缩包离线升级",
           "[string]$ArchivePath" in ps_body and 'OPT_ARCHIVE' in sh_text)
+    check("支持按 Release Tag 升级",
+          "[string]$ReleaseTag" in ps_body and 'OPT_RELEASE_TAG' in sh_text)
+    check("Release Tag 使用官方源码包地址",
+          "refs/tags" in ps_body and "refs/tags" in sh_text)
+    check("指定归档或 Tag 时绕过 git pull",
+          "Get-UpgradeMode" in ps_body and "upgrade_mode" in sh_text
+          and "$ReleaseTag" in ps_body and "$OPT_RELEASE_TAG" in sh_text)
     check("解压具备多工具回退（unzip/ditto/tar）",
           all(name in sh_text for name in ("unzip -q", "ditto -x -k", "tar -xf"))
           and "Expand-Archive" in ps_body)
@@ -325,6 +332,33 @@ def check_dry_run_safety() -> None:
           (ROOT / "config").is_dir() and (ROOT / "data").is_dir())
 
 
+def check_release_tag_dry_run(bash: bool) -> None:
+    """6.1 指定 Release Tag 的干跑必须使用 Tag 地址且不下载。"""
+    print("== 6.1 Release Tag 干跑 ==")
+    tag = "alpha-v9.9.9"
+    url = f"refs/tags/{tag}"
+    log_path = ROOT / "logs" / "tui_setup.log"
+    result = run_command(powershell_args(
+        "-Action", "upgrade", "-Yes", "-DryRun", "-ReleaseTag", tag,
+        "-Lang", "zh", "-NoColor"))
+    check("Windows Tag 干跑退出码语义正确", result.returncode in (0, 1),
+          f"exit={result.returncode}")
+    log = log_path.read_text(encoding="utf-8") if log_path.is_file() else ""
+    check("Windows 使用指定 Release 地址", url in log)
+    check("Tag 干跑未创建下载目录", not (ROOT / ".tui" / "work").exists())
+    if not bash:
+        return
+    previous_count = log.count(url)
+    result = run_command([str(GIT_BASH), str(ROOT / "setup.sh"),
+                          "--action", "upgrade", "--yes", "--dry-run",
+                          "--release-tag", tag, "--lang", "zh", "--no-color"])
+    check("Bash Tag 干跑退出码语义正确", result.returncode in (0, 1),
+          f"exit={result.returncode}")
+    updated = log_path.read_text(encoding="utf-8") if log_path.is_file() else ""
+    check("Bash 接受合法 Tag 并使用 Release 地址", updated.count(url) > previous_count)
+    check("Bash Tag 干跑未创建下载目录", not (ROOT / ".tui" / "work").exists())
+
+
 def check_parity(bash: bool) -> None:
     """4. 两平台渲染一致性"""
     print("== 4. 两平台渲染一致性 ==")
@@ -358,6 +392,7 @@ def main() -> int:
     check_parity(bash)
     check_state_and_check()
     check_dry_run_safety()
+    check_release_tag_dry_run(bash)
     check_python_removed()
     print(f"\n结果: {_passed} 通过, {_failed} 失败")
     return 1 if _failed else 0

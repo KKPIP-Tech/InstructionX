@@ -63,6 +63,8 @@ UNINSTALL_DIRS=".venv config data logs .tui"
 DESKTOP_APP_NAME="InstructionX.app"
 #: 官方资源
 ZIP_URL="https://codeload.github.com/KKPIP-Tech/InstructionX/zip/refs/heads/main"
+RELEASE_TAG_BASE_URL="https://codeload.github.com/KKPIP-Tech/InstructionX/zip/refs/tags"
+RELEASE_TAG_PATTERN='^((alpha|beta|pre-release|release|internal)-)?v[0-9]+\.[0-9]+\.[0-9]+$'
 UV_INSTALL_CMD="curl -LsSf https://astral.sh/uv/install.sh | sh"
 PYTHON_URL="https://www.python.org/downloads/"
 #: 超时（秒）
@@ -976,7 +978,11 @@ run_install() {
 # ============================================================================
 
 upgrade_mode() {
-    # git：有仓库且 git 可用；否则 zip（下载官方压缩包覆盖）
+    # 指定归档或 Release Tag 时用 zip；否则有 git 用 git pull，无 git 用 zip
+    if [ -n "$OPT_ARCHIVE" ] || [ -n "$OPT_RELEASE_TAG" ]; then
+        printf 'zip'
+        return
+    fi
     if [ -d "$PROJECT_ROOT/.git" ] && [ -n "$(resolve_executable git)" ]; then
         printf 'git'
         return
@@ -984,8 +990,28 @@ upgrade_mode() {
     printf 'zip'
 }
 
+valid_release_tag() {
+    # 空串表示未指定；非空必须符合框架 Release Tag 格式
+    [ -z "$1" ] || [[ "$1" =~ $RELEASE_TAG_PATTERN ]]
+}
+
+confirm_archive_upgrade() {
+    # 压缩包覆盖前保护 Git 已跟踪文件，并取得用户确认
+    if [ -d "$PROJECT_ROOT/.git" ]; then
+        local changes
+        changes=$(local_changes | head -n 1)
+        if [ -n "$changes" ]; then
+            show_result warn upgrade.local_changes detail="$changes"
+            return 1
+        fi
+    fi
+    read_confirm upgrade.need_git_confirm
+}
+
 local_changes() {
-    # 已跟踪文件的本地修改（未跟踪文件不影响 git pull）
+    # 干跑不检测本地修改，避免试运行日志被误认为变更内容
+    [ "$OPT_DRY_RUN" = "1" ] && return 0
+    # 已跟踪文件的本地修改（未跟踪文件不影响升级）
     if invoke_capture "$TIMEOUT_PROBE" git status --porcelain --untracked-files=no; then
         printf '%s' "$CAP_LINES"
     fi
@@ -996,8 +1022,24 @@ clean_work_dir() {
     [ -d "$WORK_DIR" ] && rm -rf "$WORK_DIR"
 }
 
+upgrade_download_url() {
+    if [ -n "$OPT_RELEASE_TAG" ]; then
+        printf '%s/%s' "$RELEASE_TAG_BASE_URL" "$OPT_RELEASE_TAG"
+    else
+        printf '%s' "$ZIP_URL"
+    fi
+}
+
+upgrade_archive_name() {
+    if [ -n "$OPT_RELEASE_TAG" ]; then
+        printf 'InstructionX-%s.zip' "$OPT_RELEASE_TAG"
+    else
+        printf 'InstructionX-main.zip'
+    fi
+}
+
 download_archive() {
-    # 取升级用的代码压缩包：默认下载，--archive 指定时直接用本地包（离线升级）；ARCHIVE 为空表示失败
+    # 本地归档优先，否则下载默认 main 或指定 Release Tag；ARCHIVE 为空表示失败
     ARCHIVE=""
     if [ -n "$OPT_ARCHIVE" ]; then
         if [ ! -f "$OPT_ARCHIVE" ]; then
@@ -1008,13 +1050,15 @@ download_archive() {
         ARCHIVE="$OPT_ARCHIVE"
         return 0
     fi
+    local download_url
+    download_url=$(upgrade_download_url)
     if [ "$OPT_DRY_RUN" = "1" ]; then
-        add_log info "$(t common.dry_run): $ZIP_URL"
+        add_log info "$(t common.dry_run): $download_url"
         return 1
     fi
     mkdir -p "$WORK_DIR" || return 1
-    ARCHIVE="$WORK_DIR/InstructionX-main.zip"
-    if ! curl -fsSL --max-time "$TIMEOUT_DOWNLOAD" -o "$ARCHIVE" "$ZIP_URL"; then
+    ARCHIVE="$WORK_DIR/$(upgrade_archive_name)"
+    if ! curl -fsSL --max-time "$TIMEOUT_DOWNLOAD" -o "$ARCHIVE" "$download_url"; then
         add_log error "$(t log.download_failed)"
         ARCHIVE=""
         return 1
@@ -1102,6 +1146,10 @@ overlay_files() {
 
 run_upgrade() {
     local before mode
+    if ! valid_release_tag "$OPT_RELEASE_TAG"; then
+        show_result fail upgrade.invalid_tag detail="$OPT_RELEASE_TAG"
+        return
+    fi
     before=$(get_framework_version)
     mode=$(upgrade_mode)
     if [ "$mode" = "git" ]; then
@@ -1114,7 +1162,7 @@ run_upgrade() {
             return
         fi
     else
-        if ! read_confirm upgrade.need_git_confirm; then
+        if ! confirm_archive_upgrade; then
             add_log warn "$(t common.cancel)"
             return
         fi
@@ -1952,6 +2000,7 @@ OPT_LANG=""
 OPT_NO_COLOR=0
 OPT_HELP=0
 OPT_ARCHIVE=""
+OPT_RELEASE_TAG=""
 OPT_KEYS=""
 ACTION_MODE=0
 KEY_QUEUE=""
@@ -1971,6 +2020,8 @@ while [ "$#" -gt 0 ]; do
         --action=*) OPT_ACTION="${1#*=}" ;;
         --archive|-archive) shift; OPT_ARCHIVE="${1:-}" ;;
         --archive=*) OPT_ARCHIVE="${1#*=}" ;;
+        --release-tag|-release-tag) shift; OPT_RELEASE_TAG="${1:-}" ;;
+        --release-tag=*) OPT_RELEASE_TAG="${1#*=}" ;;
         --keys|-keys) shift; OPT_KEYS="${1:-}" ;;
         --keys=*) OPT_KEYS="${1#*=}" ;;
         --dry-run|--dryrun|-dryrun) OPT_DRY_RUN=1 ;;

@@ -47,6 +47,7 @@ param(
     [ValidateSet('', 'install', 'repair', 'upgrade', 'doctor', 'clean-temp', 'uninstall')]
     [string]$Action = '',
     [string]$ArchivePath = '',
+    [string]$ReleaseTag = '',
     [string]$Keys = '',
     [switch]$NoColor
 )
@@ -92,6 +93,8 @@ $Script:ShortcutIcon = Join-Path $Script:ProjectRoot 'ui\logo.ico'
 #: 官方资源
 $Script:RepoUrl = 'https://github.com/KKPIP-Tech/InstructionX.git'
 $Script:ZipUrl = 'https://codeload.github.com/KKPIP-Tech/InstructionX/zip/refs/heads/main'
+$Script:ReleaseTagBaseUrl = 'https://codeload.github.com/KKPIP-Tech/InstructionX/zip/refs/tags'
+$Script:ReleaseTagPattern = '^(?:(alpha|beta|pre-release|release|internal)-)?v\d+\.\d+\.\d+$'
 $Script:UvInstallCmd = 'powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"'
 $Script:PythonUrl = 'https://www.python.org/downloads/'
 #: 超时（秒）
@@ -1327,19 +1330,44 @@ function Invoke-Install {
 function Get-UpgradeMode {
     <#
     .SYNOPSIS
-        升级方式：有 git 仓库且 git 可用时用 git pull，否则下载官方压缩包。
+        指定归档或 Release Tag 时用压缩包；否则有 git 用 git pull，无 git 用压缩包。
     .OUTPUTS
         String：git / zip。
     #>
+    if ($ArchivePath -ne '' -or $ReleaseTag -ne '') { return 'zip' }
     if ((Test-Path -LiteralPath (Join-Path $Script:ProjectRoot '.git')) -and
         (Get-Command git -ErrorAction SilentlyContinue)) { return 'git' }
     return 'zip'
 }
 
+function Test-ReleaseTagFormat {
+    <#
+    .SYNOPSIS
+        校验 Release Tag；空串表示未指定，沿用默认升级方式。
+    #>
+    param([string]$Tag)
+    return $Tag -eq '' -or $Tag -match $Script:ReleaseTagPattern
+}
+
+function Confirm-ArchiveUpgrade {
+    <#
+    .SYNOPSIS
+        压缩包覆盖前保护 Git 已跟踪文件，并取得用户确认。
+    #>
+    if (Test-Path -LiteralPath (Join-Path $Script:ProjectRoot '.git')) {
+        $changes = @(Get-LocalChanges)
+        if ($changes.Count -gt 0) {
+            Show-Result 'warn' 'upgrade.local_changes' @{ detail = $changes[0] }
+            return $false
+        }
+    }
+    return (Read-Confirm 'upgrade.need_git_confirm')
+}
+
 function Get-LocalChanges {
     <#
     .SYNOPSIS
-        检测已跟踪文件的本地修改（未跟踪文件不影响 git pull）。
+        检测已跟踪文件的本地修改（未跟踪文件不影响升级）。
     .OUTPUTS
         String[]：git status 输出行。
     #>
@@ -1348,16 +1376,24 @@ function Get-LocalChanges {
     return @($result.lines | Where-Object { $_.Trim() -ne '' })
 }
 
+function Get-UpgradeDownloadUrl {
+    <# .SYNOPSIS 取默认 main 或指定 Release Tag 的源码包地址。 #>
+    if ($ReleaseTag -ne '') { return "$Script:ReleaseTagBaseUrl/$ReleaseTag" }
+    return $Script:ZipUrl
+}
+
+function Get-UpgradeArchiveName {
+    <# .SYNOPSIS 取下载缓存文件名，Tag 字符已经过格式校验。 #>
+    if ($ReleaseTag -ne '') { return "InstructionX-$ReleaseTag.zip" }
+    return 'InstructionX-main.zip'
+}
+
 function Get-RemoteArchive {
     <#
     .SYNOPSIS
-        取升级用的代码压缩包：默认从官方地址下载，``-ArchivePath`` 指定时直接用本地压缩包。
+        取升级压缩包：本地归档优先，否则下载默认 main 或指定 Release Tag。
     .OUTPUTS
         String：压缩包路径；失败返回空串。
-
-    .NOTES
-        ``-ArchivePath`` 支持离线升级（内网/无外网环境）：管理员把官方压缩包拷到本机，
-        向导即可完成与在线升级完全相同的覆盖流程（同样保护用户数据）。
     #>
     if ($ArchivePath -ne '') {
         if (-not (Test-Path -LiteralPath $ArchivePath)) {
@@ -1367,17 +1403,18 @@ function Get-RemoteArchive {
         Add-Log 'info' ((Get-Text 'log.archive_local') + ": $ArchivePath")
         return (Resolve-Path -LiteralPath $ArchivePath).Path
     }
+    $downloadUrl = Get-UpgradeDownloadUrl
     if ($DryRun) {
-        Add-Log 'info' ((Get-Text 'common.dry_run') + ": $Script:ZipUrl")
+        Add-Log 'info' ((Get-Text 'common.dry_run') + ": $downloadUrl")
         return ''
     }
     if (-not (Test-Path -LiteralPath $Script:WorkDir)) {
         [void](New-Item -ItemType Directory -Path $Script:WorkDir -Force)
     }
-    $target = Join-Path $Script:WorkDir 'InstructionX-main.zip'
+    $target = Join-Path $Script:WorkDir (Get-UpgradeArchiveName)
     try {
         [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-        Invoke-WebRequest -Uri $Script:ZipUrl -OutFile $target -UseBasicParsing -TimeoutSec $Script:TimeoutDownload
+        Invoke-WebRequest -Uri $downloadUrl -OutFile $target -UseBasicParsing -TimeoutSec $Script:TimeoutDownload
         return $target
     } catch {
         Add-Log 'error' ((Get-Text 'log.download_failed') + ": " + $_.Exception.Message)
@@ -1476,6 +1513,10 @@ function Invoke-Upgrade {
     .SYNOPSIS
         执行升级（git pull 或压缩包覆盖），随后同步依赖并汇报版本变化。
     #>
+    if (-not (Test-ReleaseTagFormat $ReleaseTag)) {
+        Show-Result 'fail' 'upgrade.invalid_tag' @{ detail = $ReleaseTag }
+        return
+    }
     $before = Get-FrameworkVersion
     $mode = Get-UpgradeMode
     if ($mode -eq 'git') {
@@ -1487,7 +1528,7 @@ function Invoke-Upgrade {
             return
         }
     } else {
-        if (-not (Read-Confirm 'upgrade.need_git_confirm')) {
+        if (-not (Confirm-ArchiveUpgrade)) {
             Add-Log 'warn' (Get-Text 'common.cancel')
             return
         }
