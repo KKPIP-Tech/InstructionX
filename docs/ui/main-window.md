@@ -486,7 +486,7 @@ cursor_map = {
 
 #### 检查更新对话框
 
-通过 **帮助 > 检查更新...** 手动打开，完整列出 GitHub Release（含 Pre-release），按发布时间倒序排列并标记当前版本。只有用户选择更高版本并点击「更新到所选版本」后，才启动外部安装向导；主窗口收到 `update_started` 后通过 `QTimer.singleShot(0, ...)` 延迟静默退出，不自动重启。详见 [对话框组件](dialogs.md)。
+通过 **帮助 > 检查更新...** 手动打开，完整列出 GitHub Release（含 Pre-release），按发布时间倒序排列并标记当前版本。只有用户选择更高版本并点击「更新到所选版本」后，才启动原生 Setup；主窗口收到 `update_started` 后通过 `QTimer.singleShot(0, ...)` 延迟静默退出，不自动重启。详见 [对话框组件](dialogs.md)。
 
 #### 关于对话框
 

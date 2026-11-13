@@ -174,7 +174,23 @@ shutdown()                         # 安全关闭任务管理器
 | 后台任务 | 用户点击菜单后由 `BackgroundTaskManager` 执行一次检查，回调封送到 UI 线程 |
 | 更新启动 | `FrameworkUpdateLauncher` 校验更高版本和 Git 本地修改，调用外部安装向导升级指定 Tag |
 
-依赖方向：主窗口 → UpdateDialog → FrameworkUpdateChecker / FrameworkUpdateLauncher → GitHubApiClient / 安装向导；该子系统不向插件暴露公共接口。
+依赖方向：主窗口 → UpdateDialog → FrameworkUpdateChecker / FrameworkUpdateLauncher → GitHubApiClient / 原生 Setup；该子系统不向插件暴露公共接口。
+
+### 2.5 原生 Setup 子系统
+
+**文件**: `setup/`、`core/plugin/setup_dependency_cli.py`
+
+| 功能 | 说明 |
+|------|------|
+| 原生界面 | Rust `app.rs` / `workspace.rs` 实现六类页面、四语言偏好与操作状态机 |
+| 系统信息 | `system/` 在 Windows 使用 WMI，macOS 使用原生工具，Linux 使用 proc/sys 与系统命令 |
+| 安装与升级 | `github.rs` 读取 Release；`actions.rs` 负责版本校验、暂存、备份、覆盖与回滚 |
+| 环境管理 | `uv.rs` 处理包列表、更新/移除、uv 安装与环境重建 |
+| 插件管理 | `plugins.rs` 读取清单；框架 CLI 逐插件安装依赖并复用安装器检查更新 |
+| 桌面入口 | `shortcuts.rs` 创建 Windows `.lnk`、macOS `.app`、Linux `.desktop` 无窗口入口 |
+| 发布 | 开发者本机构建 Windows x64/ARM64，验证 PE 架构与 CLI；`tools/setup/` 随包保存二进制与 SHA256，启动器只负责本地选择，GitHub Actions 不构建 Setup |
+
+依赖方向：薄启动器 → 原生 Setup → GitHub / uv / 框架插件 CLI。GUI 更新弹窗仅通过 `FrameworkUpdateLauncher` 调用原生 Setup CLI，不再依赖 PowerShell。
 
 ---
 

@@ -79,26 +79,30 @@ InstructionX 是一个基于 PySide6 的**插件式桌面应用框架**。它将
 
 ### 方式一：TUI 向导（推荐给非开发用户）
 
-**双击**根目录的 `setup.bat`（Windows）或 `setup.command`（macOS）即可。
+**双击**根目录的 `setup.bat`（Windows）或 `setup.command`（macOS / Linux 终端）即可。
 
-向导是**原生脚本**（Windows：PowerShell 5.1；macOS：系统自带 bash），
-**不依赖 Python 与任何第三方库**——所以「电脑上连 Python 都没有」也能用它完成安装：
+Setup 是由 **Rust + Ratatui** 编写的原生程序，Windows、macOS、Linux 共用同一套界面实现。
+Windows 用户**不需要安装 Rust、Cargo 或 Python**：Release 压缩包已包含 `tools/setup/` 下的
+Windows 10/11 x64 与 ARM64 原生程序，启动器按系统自动选择，不再下载 Setup。
+macOS 预编译版本是未来选项，本次不提供 macOS/Linux 原生资产。
+各功能页显示独立操作项，可通过方向键选择并用 Tab 切换到数据列表。
 
 ```powershell
 # Windows（命令行，可选参数）
-powershell -NoProfile -ExecutionPolicy Bypass -File setup.ps1            # 打开中文/英文向导
+powershell -NoProfile -ExecutionPolicy Bypass -File setup.ps1            # 打开原生向导
 powershell -NoProfile -ExecutionPolicy Bypass -File setup.ps1 -Check     # 只做环境体检并打印报告
+.\setup.bat --version                                                    # 查看 Setup 平台/架构完整版本
 ```
 
 ```bash
-# macOS（命令行，可选参数）
-./setup.sh            # 打开中文/英文向导
+# macOS / Linux（命令行，可选参数）
+./setup.sh            # 打开原生向导
 ./setup.sh --check    # 只做环境体检并打印报告
 ```
 
-向导提供**安装 / 修复环境、升级框架、环境管理、一键体检、清理与卸载、启动应用**，
-全程中文提示（可切英文），自动准备 uv 与 Python 3.14，失败时给出具体建议，
-过程日志写入 `logs/tui_setup.log`。两个平台的界面逐字一致，详见 [安装向导](docs/tui-setup.md)。
+首次启动先选择中文 / English（默认）/ Français / Русский 并记住偏好。
+功能包括系统总览、安装与同版本修复、环境包管理、升级管理、插件列表、
+无窗口桌面快捷方式和环境修复；升级检查只由用户手动触发。详见 [原生 Setup](docs/tui-setup.md)。
 
 ### 方式二：手动安装（开发者）
 
