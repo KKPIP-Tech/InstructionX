@@ -284,10 +284,10 @@ def test_example(qtbot):
 | 版本号单一来源 | —（暂无模块文档，见 `test/core/test_version.py`） | 9 |
 | 工具与日志 | —（暂无模块文档，见 `test/utils/`） | 29 |
 
-> **安装向导（原生脚本）不在 pytest 套件内**：向导由 `setup.ps1`（Windows PowerShell 5.1）与
-> `setup.sh`（macOS bash 3.2）实现，**不依赖 Python**，因此也没有 pytest 用例。
-> 它的验证脚本是 `scripts/smoke_setup_wizard.py`（直接运行、不需要 pytest）：校验中英双语文案完整性、
-> 两个平台界面逐行一致、uv 命令口径、干跑安全，以及「Python 版向导已移除」。
+> **原生 Setup 使用独立 Rust 测试**：TUI 由 `setup/` 下的 Rust + Ratatui + Crossterm 实现，
+> 集成测试位于 `setup/tests/`（仅 test 分支），运行 `cargo test --locked`。
+> `setup.ps1` / `setup.sh` 只是选择 `tools/setup/` 随包原生程序的薄启动器，不包含 TUI；
+> 另运行 `scripts/smoke_setup_wizard.py` 验证四语言、独立操作项、CLI、干跑安全与启动入口。
 > 说明见 [docs/tui-setup.md](../docs/tui-setup.md)。
 
 ---
