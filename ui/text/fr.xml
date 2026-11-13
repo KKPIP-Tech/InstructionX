@@ -74,6 +74,30 @@
   Commercial use requires authorization if thresholds are exceeded.]]></text>
   </group>
 
+  <group name="dialog_update">
+    <text key="title">Rechercher des mises à jour</text>
+    <text key="current_version">Version actuelle : {version}</text>
+    <text key="current_missing">Version actuelle : {version} (absente de la liste des Releases GitHub)</text>
+    <text key="checking">Vérification des Releases GitHub...</text>
+    <text key="no_releases">Aucune Release GitHub disponible n’a été trouvée.</text>
+    <text key="latest_unparseable">La version de la dernière Release est inconnue ; consultation uniquement.</text>
+    <text key="update_available">Nouvelle version disponible : {version}</text>
+    <text key="no_newer">Vous utilisez déjà la dernière version.</text>
+    <text key="check_failed">Échec de la vérification : {error}</text>
+    <text key="launch_failed">Impossible de démarrer la mise à jour : {error}</text>
+    <text key="task_unavailable">Le gestionnaire de tâches est indisponible. Réessayez plus tard.</text>
+    <text key="unknown_error">Erreur inconnue</text>
+    <text key="latest_badge">Dernière publication</text>
+    <text key="current_badge">Version actuelle</text>
+    <text key="prerelease_badge">Pre-release</text>
+    <text key="unparseable_badge">Version non reconnue</text>
+    <text key="no_notes">Cette Release ne contient aucune note de publication.</text>
+    <text key="retry">Vérifier à nouveau</text>
+    <text key="locate_current">Localiser la version actuelle</text>
+    <text key="update_selected">Mettre à jour vers la version sélectionnée</text>
+    <text key="view_release">Voir la page de la Release</text>
+  </group>
+
   <group name="dialog_close_confirm">
     <text key="title">Confirmation de fermeture</text>
     <text key="message"><![CDATA[Quitter l’application ou la réduire dans la zone de notification ?
@@ -551,6 +575,7 @@
     <text key="menu.ai.llm_settings">Paramètres LLM…</text>
     <text key="menu.ai.usage">Statistiques d’utilisation</text>
     <text key="menu.help">Aide</text>
+    <text key="menu.help.check_updates">Rechercher des mises à jour…</text>
     <text key="menu.help.about">À propos</text>
     <text key="menu.help.licenses">Licences des composants</text>
     <text key="dialog.usage.title">Statistiques d’utilisation</text>

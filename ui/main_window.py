@@ -19,7 +19,7 @@ from PySide6.QtGui import (
     QAction, QCursor, QMouseEvent, QColor, QCloseEvent, QIcon, QSessionManager,
     QImage, QPainter, QPixmap
 )
-from PySide6.QtCore import Qt, QRectF, QEvent
+from PySide6.QtCore import Qt, QRectF, QEvent, QTimer
 
 # ===================================================================
 # 自定义工具
@@ -37,6 +37,7 @@ from ui.title_bar import CustomTitleBar
 from ui.usage_panel import UsagePanel
 from ui.tray import TrayIconManager
 from ui.dialog.close_confirm_dialog import CloseChoice, CloseConfirmDialog
+from ui.dialog.update_dialog import UpdateDialog
 from core.plugin.manager import PluginManager
 from core.plugin.plugin_startup import (
     FAILURE_DEPENDENCY_CHECK,
@@ -411,6 +412,11 @@ class InstructionXMainWindow(QMainWindow):
         # 帮助
         self._menu_help = menu_bar.addMenu("")
 
+        # 检查更新（仅用户点击后触发，不做启动或定时自动检查）
+        self._action_check_update = QAction(self)
+        self._action_check_update.triggered.connect(self._open_update_dialog)
+        self._menu_help.addAction(self._action_check_update)
+
         # 关于软件
         self._action_about = QAction(self)
         self._action_about.triggered.connect(self._open_about_dialog)
@@ -444,6 +450,7 @@ class InstructionXMainWindow(QMainWindow):
         self._action_llm_settings.setText(tr("main_window", "menu.ai.llm_settings"))
         self._action_usage.setText(tr("main_window", "menu.ai.usage"))
         self._menu_help.setTitle(tr("main_window", "menu.help"))
+        self._action_check_update.setText(tr("main_window", "menu.help.check_updates"))
         self._action_about.setText(tr("main_window", "menu.help.about"))
         self._action_license.setText(tr("main_window", "menu.help.licenses"))
         self._update_theme_action_text()
@@ -576,6 +583,18 @@ class InstructionXMainWindow(QMainWindow):
         self.skills_panel.load_skills_from_manager()
         # 清空工作区，避免残留已卸载插件的 Widget
         self.work_area.clear()
+
+    def _open_update_dialog(self):
+        """手动打开检查更新对话框；除此入口外不创建检查任务。"""
+        dialog = UpdateDialog(self)
+        dialog.update_started.connect(self._on_update_started)
+        dialog.exec()
+        dialog.deleteLater()
+
+    def _on_update_started(self, tag_name: str):
+        """外部向导启动后延迟静默退出，让更新弹窗先完成关闭。"""
+        self._force_quit = True
+        QTimer.singleShot(0, self._quit_application)
 
     def _open_about_dialog(self):
         """打开关于对话框"""

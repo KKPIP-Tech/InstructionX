@@ -35,6 +35,30 @@
 Commercial use requires authorization if thresholds are exceeded.]]></text>
   </group>
 
+  <group name="dialog_update">
+    <text key="title">Check for Updates</text>
+    <text key="current_version">Current version: {version}</text>
+    <text key="current_missing">Current version: {version} (not found in the GitHub Release list)</text>
+    <text key="checking">Checking GitHub Releases...</text>
+    <text key="no_releases">No available GitHub Releases were found.</text>
+    <text key="latest_unparseable">The latest Release has an unrecognized version and can only be viewed.</text>
+    <text key="update_available">New version available: {version}</text>
+    <text key="no_newer">You are already using the latest version.</text>
+    <text key="check_failed">Update check failed: {error}</text>
+    <text key="launch_failed">Unable to start the update: {error}</text>
+    <text key="task_unavailable">The background task manager is unavailable. Please try again later.</text>
+    <text key="unknown_error">Unknown error</text>
+    <text key="latest_badge">Latest release</text>
+    <text key="current_badge">Current version</text>
+    <text key="prerelease_badge">Pre-release</text>
+    <text key="unparseable_badge">Unrecognized version</text>
+    <text key="no_notes">This Release has no release notes.</text>
+    <text key="retry">Check Again</text>
+    <text key="locate_current">Locate Current Version</text>
+    <text key="update_selected">Update to Selected Version</text>
+    <text key="view_release">View Release Page</text>
+  </group>
+
   <group name="dialog_close_confirm">
       <text key="title">Close Confirmation</text>
       <text key="message"><![CDATA[Do you want to exit the program, or minimize it to the system tray and keep it running?
@@ -506,6 +530,7 @@ Interfaces using this font will fall back to a system font after uninstallation.
       <text key="menu.ai.llm_settings">LLM Settings...</text>
       <text key="menu.ai.usage">Usage</text>
       <text key="menu.help">Help</text>
+      <text key="menu.help.check_updates">Check for Updates...</text>
       <text key="menu.help.about">About</text>
       <text key="menu.help.licenses">Open Source Licenses</text>
       <text key="dialog.usage.title">Usage</text>
