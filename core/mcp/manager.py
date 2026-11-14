@@ -8,6 +8,7 @@ MCP Manager 单例
 import json
 import os
 import threading
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 import logging
@@ -17,11 +18,19 @@ from core.mcp.config import (
     MCPServerConfig,
     MCPRemoteServerConfig,
 )
-from core.mcp.server import MCPHostServer
+from core.mcp.server import MCPHostServer, ServerSecurityPolicy
 from core.mcp.client import MCPClientManager
 from core.mcp.bridge import MCPBridge
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True, slots=True)
+class MCPShutdownReport:
+    """MCP 关闭结果，包含全部清理异常。"""
+
+    success: bool
+    errors: tuple[str, ...] = ()
 
 
 class MCPManager:
@@ -158,6 +167,10 @@ class MCPManager:
                         session_idle_timeout=(
                             self._config.server.session_idle_timeout),
                         max_sessions=self._config.server.max_sessions,
+                        allowed_hosts=self._config.server.allowed_hosts,
+                        max_requests_per_minute=self._config.server.max_requests_per_minute,
+                        tls_certfile=self._config.server.tls_certfile,
+                        tls_keyfile=self._config.server.tls_keyfile,
                     )
                     # 初始化桥接器
                     self._bridge = MCPBridge(self)
@@ -174,6 +187,7 @@ class MCPManager:
             logger.info("MCP Server is disabled in config, skipping start")
             return
 
+        ServerSecurityPolicy.validate(self._config.server)
         if self._server is None:
             self._init_server()
 
@@ -211,10 +225,11 @@ class MCPManager:
         return self._server is not None and self._server.is_running
 
     def get_server_url(self) -> str:
-        """返回 MCP Server 的 HTTP 地址（Server 已初始化即返回，不看传输模式；未初始化返回空串）"""
+        """返回 Server 地址；配置 TLS 时使用 HTTPS，未初始化返回空串。"""
         if self._server is None:
             return ""
-        return f"http://{self._config.server.host}:{self._config.server.port}"
+        scheme = "https" if self._config.server.tls_certfile else "http"
+        return f"{scheme}://{self._config.server.host}:{self._config.server.port}"
 
     def get_server(self) -> Optional[MCPHostServer]:
         """返回 MCPHostServer 实例（可能为 None）"""
@@ -324,12 +339,21 @@ class MCPManager:
 
     # ─── 生命周期 ────────────────────────────────────────────────
 
-    def shutdown(self) -> None:
-        """关闭 MCP Manager，清理所有资源"""
-        self.stop_server()
+    def shutdown(self) -> MCPShutdownReport:
+        """关闭 MCP Manager，返回全部清理异常，不让单步失败被隐藏。"""
+        errors = []
+        try:
+            self.stop_server()
+        except Exception as exc:
+            errors.append(f"停止 MCP Server 失败: {exc}")
         if self._client_manager:
-            self._client_manager.shutdown()
+            try:
+                client_errors = self._client_manager.shutdown()
+                errors.extend(f"关闭 MCP Client 失败: {error}" for error in client_errors)
+            except Exception as exc:
+                errors.append(f"关闭 MCP Client 失败: {exc}")
         logger.info("MCP Manager shutdown complete")
+        return MCPShutdownReport(not errors, tuple(errors))
 
 
 # ─── 模块级便捷函数 ───────────────────────────────────────────
