@@ -46,7 +46,7 @@
 | 负载 ID | 固定规模 | 执行范围 |
 |---------|----------|----------|
 | `idle` 空闲 | 新建 12 个独立 SQLite 数据库；内存采样 1 次 | 真实 `SQLiteBackend.ensure_database`，**非 GUI 启动** |
-| `typical_desktop` 典型桌面 | 100 个种子键，每键 1024 字节；读、写、事件各 12 次；MCP 调用 12 次 | 真实 `DataProvider`、SQLite、同步事件和本地回环 MCP |
+| `typical_desktop` 典型桌面 | 100 个种子键，每键 1024 字节；读、写、事件各 12 次；另执行 12 轮 × 100 键批量写入；MCP 调用 12 次 | 真实 `DataProvider`、SQLite、同步事件和本地回环 MCP；优化前批量基准回退为逐键写入，优化后为单事务写入 |
 | `long_running_32` 32 个长期任务 | 32 个长期任务、12 个异步任务、4 个工作线程；关闭采样 1 次 | 真实 `BackgroundTaskManager`，长期任务等待模块级事件并协作退出 |
 | `chart_1khz` 1kHz 图表 | 1000 帧 × 60 点 = 60000 输入点；每帧对最近 600 点做 100 桶 min/max 降采样 | **仅纯 Python 算法**，不创建 `QApplication`，不测量也不报告真实 fps |
 | `slow_io` 慢网络/慢磁盘 | 各 12 次；网络等待 20ms；磁盘等待 10ms 后写 4096 字节并 `fsync` | 网络为本地确定性 sleeper；磁盘为 `temp/` 真实文件加受控等待 |
@@ -61,6 +61,8 @@
 | `idle_process_rss` | 512 MiB | 空闲采集点进程工作集 |
 | `sqlite_write` | 20ms | 单键私有数据写入 |
 | `sqlite_read` | 5ms | 固定种子键读取 |
+| `sqlite_batch_write` | 20ms | 100 键 × 1024 字节的整批写入；优化前后使用同一数据规模 |
+| `batch_process_rss` | 512 MiB | 批量写入完成后的进程工作集 |
 | `event_publish` | 5ms | 一个空订阅者的同步发布 |
 | `mcp_startup` | 5000ms | 本地 HTTP MCP Server 启动确认 |
 | `mcp_roundtrip` | 100ms | 真实 MCP SDK 经回环调用 `benchmark_echo` |

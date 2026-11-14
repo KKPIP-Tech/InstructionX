@@ -279,6 +279,60 @@ provider.set_plugin_data(
 
 ---
 
+### set_plugin_data_batch()
+
+```python
+def set_plugin_data_batch(
+    self,
+    instance_id: str,
+    values: Dict[str, Any],
+    namespace: DataNamespace = DataNamespace.PRIVATE,
+    notify: bool = True,
+) -> None
+```
+
+在单个 SQLite `IMMEDIATE` 事务中批量插入或更新数据，不执行逐键查询。所有值先完成序列化，任一值不可序列化时整批不写入。空字典为无操作。
+
+`PUBLIC` 且 `notify=True` 时，按 `values` 的字典顺序逐个通知，旧值通过一次命名空间查询取得。单键 `set_plugin_data()` 保持不变。
+
+```python
+provider.set_plugin_data_batch(
+    "plugin-id",
+    {"status": "ready", "progress": 50},
+    DataNamespace.PUBLIC,
+)
+```
+
+### get_plugin_data_page()
+
+```python
+def get_plugin_data_page(
+    self,
+    instance_id: str,
+    namespace: DataNamespace = DataNamespace.PRIVATE,
+    limit: int = 256,
+    offset: int = 0,
+) -> Dict[str, Any]
+```
+
+按写入顺序分页读取，SQLite 使用 `LIMIT/OFFSET`，避免先复制全部记录再由 Python 过滤。`limit` 必须为大于 0 的整数，`offset` 必须为非负整数；参数错误或插件不存在时抛出 `DataProviderError`。
+
+### count_plugin_data()
+
+```python
+def count_plugin_data(
+    self,
+    instance_id: str,
+    namespace: DataNamespace = DataNamespace.PRIVATE,
+) -> int
+```
+
+使用 SQLite `COUNT(*)` 聚合返回指定命名空间的记录数，不加载 `value_json`。
+
+以上三个方法是 `DataProvider` 的具体扩展，不会给 `IDataProvider` 增加抽象方法；JSON 应急后端提供相同批量、分页和计数语义，但不宣称 SQLite 事务保证。
+
+---
+
 ### get_all_plugin_data()
 
 ```python

@@ -209,6 +209,17 @@ SELECT key, value_json FROM plugin_data
 WHERE instance_id=? AND namespace=? ORDER BY id;
 """
 
+        # 大数据分页读取，避免一次性复制全部记录后由 Python 过滤。
+        SELECT_PLUGIN_DATA_PAGE = """
+SELECT key, value_json FROM plugin_data
+WHERE instance_id=? AND namespace=? ORDER BY id LIMIT ? OFFSET ?;
+"""
+
+        # 数据库聚合计数，不加载 value_json。
+        SELECT_PLUGIN_DATA_COUNT = """
+SELECT COUNT(*) FROM plugin_data WHERE instance_id=? AND namespace=?;
+"""
+
         # 按 instance_id 查询单个插件的基本信息（get_plugin_info 专用，避免全表扫描）。
         SELECT_PLUGIN_BY_ID = """
 SELECT instance_id, plugin_type, active FROM plugins WHERE instance_id=?;

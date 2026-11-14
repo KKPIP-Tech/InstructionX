@@ -15,13 +15,10 @@ from typing import Dict, Any, Optional, Callable, List
 from core.interfaces.i_data_provider import IDataProvider, DataNamespace
 from utils.logging_tools import LoggerManager, get_name
 
+from .errors import DataProviderError
+from .plugin_data_operations import PluginDataOperations
 from .sqlite_backend import SQLiteBackend, SQLiteBackendError
 from .event_dispatcher import BackpressurePolicy, EventDispatcher, PublishReceipt
-
-
-class DataProviderError(Exception):
-    """DataProvider 自定义异常类"""
-    pass
 
 
 class DataProvider(IDataProvider):
@@ -101,6 +98,8 @@ class DataProvider(IDataProvider):
                 self._backend.ensure_database()
             except SQLiteBackendError as e:
                 raise DataProviderError(str(e)) from e
+
+        self._data_operations = PluginDataOperations(self)
 
         # 标记初始化完成
         self._initialized = True
@@ -219,11 +218,6 @@ class DataProvider(IDataProvider):
     # 公共方法：插件管理
     # -------------------------------------------------------------------------
 
-    def _ensure_cache_loaded(self) -> None:
-        """确保 _cache 已加载（用于保持与旧实现一致的行为）。"""
-        if self._cache is None:
-            self.load_data()
-
     def register_plugin(self, instance_id: str, plugin_type: str) -> None:
         """注册插件实例并初始化其数据结构
 
@@ -253,8 +247,7 @@ class DataProvider(IDataProvider):
                 self._backend.register_plugin(instance_id, plugin_type)
             except SQLiteBackendError as e:
                 raise DataProviderError(str(e)) from e
-            self._ensure_cache_loaded()
-            if instance_id not in self._cache["plugins"]:
+            if self._cache is not None and instance_id not in self._cache["plugins"]:
                 self._cache["plugins"][instance_id] = {
                     "type": plugin_type,
                     "active": False,
@@ -289,11 +282,11 @@ class DataProvider(IDataProvider):
                 self._backend.unregister_plugin(instance_id)
             except SQLiteBackendError as e:
                 raise DataProviderError(str(e)) from e
-            self._ensure_cache_loaded()
-            self._cache["plugins"].pop(instance_id, None)
-            for ptype, pid in list(self._cache["active_instances"].items()):
-                if pid == instance_id:
-                    del self._cache["active_instances"][ptype]
+            if self._cache is not None:
+                self._cache["plugins"].pop(instance_id, None)
+                for ptype, pid in list(self._cache["active_instances"].items()):
+                    if pid == instance_id:
+                        del self._cache["active_instances"][ptype]
         # 释放 _file_lock 后再清理订阅
         self._remove_subscriptions_for_plugin(instance_id)
 
@@ -347,15 +340,15 @@ class DataProvider(IDataProvider):
                 self._backend.set_active_instance(instance_id)
             except SQLiteBackendError as e:
                 raise DataProviderError(str(e)) from e
-            self._ensure_cache_loaded()
             plugin_type = self._backend.get_plugin_type(instance_id)
             if plugin_type is None:
                 raise DataProviderError(f"插件 {instance_id} 不存在")
-            self._cache["plugins"][instance_id]["active"] = True
-            self._cache["active_instances"][plugin_type] = instance_id
-            for pid, plugin_data in self._cache["plugins"].items():
-                if plugin_data["type"] == plugin_type and pid != instance_id:
-                    plugin_data["active"] = False
+            if self._cache is not None and instance_id in self._cache["plugins"]:
+                self._cache["plugins"][instance_id]["active"] = True
+                self._cache["active_instances"][plugin_type] = instance_id
+                for pid, plugin_data in self._cache["plugins"].items():
+                    if plugin_data["type"] == plugin_type and pid != instance_id:
+                        plugin_data["active"] = False
 
     # -------------------------------------------------------------------------
     # 公共方法：数据访问
@@ -445,14 +438,42 @@ class DataProvider(IDataProvider):
                 self._backend.set_plugin_data(instance_id, namespace_str, key, value)
             except SQLiteBackendError as e:
                 raise DataProviderError(str(e)) from e
-            # 同步 _cache
-            self._ensure_cache_loaded()
-            self._cache["plugins"][instance_id][namespace_str][key] = copy.deepcopy(value)
+            # 仅同步已存在的兼容全量缓存，正常点写不得触发全库加载
+            if self._cache is not None:
+                self._cache["plugins"][instance_id][namespace_str][key] = copy.deepcopy(value)
             new_value = copy.deepcopy(value)
 
         # 释放 _file_lock 后再通知订阅者
         if namespace_str == DataNamespace.PUBLIC.value and notify:
             self._notify_subscribers(instance_id, key, old_value, new_value)
+
+    def set_plugin_data_batch(
+        self,
+        instance_id: str,
+        values: Dict[str, Any],
+        namespace: DataNamespace = DataNamespace.PRIVATE,
+        notify: bool = True,
+    ) -> None:
+        """单事务批量写入；公开数据按 values 顺序通知，空字典为无操作。"""
+        self._data_operations.set_batch(instance_id, values, namespace, notify)
+
+    def get_plugin_data_page(
+        self,
+        instance_id: str,
+        namespace: DataNamespace = DataNamespace.PRIVATE,
+        limit: int = 256,
+        offset: int = 0,
+    ) -> Dict[str, Any]:
+        """分页读取插件数据，SQLite 使用 SQL LIMIT/OFFSET。"""
+        return self._data_operations.get_page(instance_id, namespace, limit, offset)
+
+    def count_plugin_data(
+        self,
+        instance_id: str,
+        namespace: DataNamespace = DataNamespace.PRIVATE,
+    ) -> int:
+        """使用数据库 COUNT 聚合返回记录数。"""
+        return self._data_operations.count(instance_id, namespace)
 
     def get_all_plugin_data(self,
                            instance_id: str,
