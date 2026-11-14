@@ -411,6 +411,29 @@ def publish(
 provider.publish("video-editor", "video_duration", 180)
 ```
 
+### publish_async()
+
+```python
+receipt = provider.publish_async(
+    "video-editor", "video_duration", 180,
+    policy=BackpressurePolicy.COALESCE,
+)
+```
+
+先持久化公开数据，再异步分发到每订阅者的独立有界邮箱。`policy` 支持 `REJECT`、
+`COALESCE` 和 `DROP_OLDEST`。`PublishReceipt.accepted=False` 时表示至少一个邮箱
+拒绝接收，`reason` 为 `queue_full`；返回成功不代表回调已执行或业务已确认。
+
+### get_event_delivery_stats()
+
+```python
+stats = provider.get_event_delivery_stats("exporter-plugin")
+```
+
+返回 `EventDeliveryStats(queued, delivered, coalesced, dropped, failed, lag_ms)`，
+用于观测队列深度、送达、合并、丢弃、回调失败和分发延迟。关键业务不得用该内存
+事件总线替代持久化确认、幂等和恢复机制。
+
 ---
 
 ## 7. 资源文件管理方法
