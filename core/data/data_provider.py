@@ -205,6 +205,12 @@ class DataProvider(IDataProvider):
             if not self._use_json_backend:
                 self._backend.clear_caches()
 
+    def close(self) -> None:
+        """幂等关闭持久化连接；JSON 后端无连接资源，调用同样安全。"""
+        with self._file_lock:
+            if not self._use_json_backend:
+                self._backend.close()
+
 
     # -------------------------------------------------------------------------
     # 公共方法：插件管理
