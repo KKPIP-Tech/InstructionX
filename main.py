@@ -22,12 +22,8 @@ from utils.logging_tools import LoggerManager, get_name
 from utils.macos_dock_icon import set_macos_dock_icon
 
 # ===================================================================
-# 后台任务
-from core.task import BackgroundTaskManager
-
-# ===================================================================
-# LLM 用量记录（退出时冲刷待写数据）
-from core.llm.usage_record_store import get_usage_record_store
+# 应用生命周期（统一关闭外部服务、插件、任务和存储）
+from core.application_lifecycle import ApplicationLifecycle, LifecycleServices
 
 # ===================================================================
 # i18n（界面语言）
@@ -98,17 +94,12 @@ def main():
     # 运行应用
     result = application.exec()
     gc_guard.shutdown()
-    application.closeAllWindows()
 
-    # 关闭后台任务管理器
-    if BackgroundTaskManager._instance is not None:
-        BackgroundTaskManager._instance.shutdown()
-
-    # 冲刷 LLM 用量记录防抖窗口内的待写数据，避免退出时丢失
-    try:
-        get_usage_record_store().flush()
-    except Exception as flush_err:
-        logger.warning(get_name(), f'LLM 用量记录冲刷失败: {flush_err}')
+    # 先停止外部服务和任务并冲刷存储，最后释放 UI，统一记录关闭结果
+    services = LifecycleServices(close_ui=application.closeAllWindows)
+    shutdown_report = ApplicationLifecycle(services).shutdown()
+    if not shutdown_report.success:
+        logger.warning(get_name(), f'应用关闭未全部完成: {shutdown_report}')
 
     sys.exit(result)
 

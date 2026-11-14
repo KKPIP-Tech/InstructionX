@@ -238,6 +238,7 @@ setup_text/                 # 旧版脚本向导的中英双语文案（保留�
 core/
   __init__.py               # PEP-562 惰性导出，避免 import core 时拉起 PySide6
   version.py                # VERSION 常量（版本单一来源）
+  application_lifecycle.py  # 应用关闭协调器：外部调用/任务/MCP/插件/LLM/存储/UI 顺序与全局截止期报告
   interfaces/               # 抽象接口层：IPlugin、IPluginInfo、IDataProvider、ITaskManager、
                             #   ILLMService（i_llm_service.py，LLM 插件服务契约）、PluginServices（依赖注入容器）、
                             #   health.py（核心服务健康状态、错误码、快照与脱敏契约）
@@ -400,7 +401,7 @@ config/ data/ logs/         # 运行时生成：配置、数据、日志
 
 - **单例模式**：`PluginManager`、`DataProvider`、`BackgroundTaskManager`、`LLMProvider`、`LLMConfig`、`LLMPluginService`、`MCPManager`、`FontManager`、`LanguageManager`、`LoggerManager` 均为单例（`XxxManager._instance`，部分提供 `get_xxx()` 访问器；`LLMPluginService` 为模块级 `_instance`）。测试中重置单例要清 `_instance`。
 - **接口与实现分离**：共享类型统一定义在 `core/interfaces/`，其他模块从这里 re-export，避免循环导入。
-- **关闭行为约定**：`main.py` 已 `setQuitOnLastWindowClosed(False)`，「关窗即退出」的隐式链路被切断，退出时机完全由代码显式控制（`QApplication.quit()`）；主窗口 `closeEvent` 统一拦截全部关闭路径（自绘叉子 / 标题栏右键 / Alt+F4 / 任务栏右键关闭），每次弹出 `CloseConfirmDialog` 询问「退出程序 / 最小化到托盘 / 取消」（无记忆选项）；托盘菜单「退出」与 Windows 注销/关机（`commitDataRequest` 回调置 `_force_quit`）走静默直退，不弹窗、不阻塞系统关机。
+- **关闭行为约定**：`main.py` 已 `setQuitOnLastWindowClosed(False)`，「关窗即退出」的隐式链路被切断，退出时机完全由代码显式控制（`QApplication.quit()`）；主窗口 `closeEvent` 统一拦截全部关闭路径（自绘叉子 / 标题栏右键 / Alt+F4 / 任务栏右键关闭），每次弹出 `CloseConfirmDialog` 询问「退出程序 / 最小化到托盘 / 取消」（无记忆选项）；托盘菜单「退出」与 Windows 注销/关机（`commitDataRequest` 回调置 `_force_quit`）走静默直退，不弹窗、不阻塞系统关机。`application.exec()` 返回后由 `core/application_lifecycle.py` 统一关闭外部调用、任务、MCP、插件、LLM 和存储，最后释放 UI，并输出全局截止期与逐步骤结果。
 - 后台任务回调在**工作线程**执行，更新 UI 必须通过 `utils/thread_utils.py` 封送到 UI 线程。
 - **蓝图 GL 视口预热**：主窗口构造期（`show()` 之前）调用 `_prewarm_blueprint_viewport()` 预创建一个隐藏蓝图画布并长期持有——蓝图画布的 GL 视口基于 `QOpenGLWidget`，若在窗口可见后才加入窗口树会触发顶层原生句柄重建（窗口短暂关闭重开）；预热让原生句柄首次创建时即按含 GL 子控件的方式建立（详见 `docs/ui/main-window.md` §4 与 UIKit USAGE.md §9.6）。
 - **图表 GL 视口**：UIKit 图表引擎（alpha-v1.0.3 起）的 `ChartWidget` 在构造期即创建绘制视口，GL 可用时为 `QOpenGLWidget`（不可用/offscreen 自动回退软件渲染）。框架内唯一的图表使用方是 `ui/usage_panel/trend_chart.py`，其控件在对话框 `exec()` 之前构造，不触发上述原生句柄重建。
