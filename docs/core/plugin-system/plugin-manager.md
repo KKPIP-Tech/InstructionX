@@ -102,6 +102,14 @@ DataProvider、TaskManager 和 LLM 初始化失败属于必需服务不可用；
 代替核心服务，自动 API 注册异常归类为插件代码错误。主窗口启动提示包含受影响
 能力、恢复建议和关联 ID，不会展示 Token、API Key 或密码。
 
+#### 插件资源回收
+
+`cancel_all_plugin_tasks()` 取消全部已加载插件拥有的异步、定时和长期任务并汇总
+未结束数量。`release_plugin_resources(plugin_id)` 进一步清理发布/订阅、跨插件 API、
+MCP 工具、语言包和缓存 Widget，返回 `ResourceReleaseReport`，其中包含处理数量与
+错误列表。`shutdown_plugins()` 对全部插件执行上述回收并清空运行时注册表；应用
+退出由 `ApplicationLifecycle` 统一调用，插件不得再依赖退出后的服务或 UI 对象。
+
 #### load_official_plugins()
 
 ```python

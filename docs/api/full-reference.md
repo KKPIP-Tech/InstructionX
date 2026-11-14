@@ -136,6 +136,9 @@ from core.interfaces import ILocalizationFacade
 | `get_service_health(plugin_id)` | 获取插件最严重核心服务的健康快照 | HealthSnapshot |
 | `get_unavailable_capabilities(plugin_id)` | 获取完全不可用的核心能力名称列表 | List[str] |
 | `get_service_health_issues()` | 获取全部降级或不可用插件的健康快照 | Dict[str, HealthSnapshot] |
+| `cancel_all_plugin_tasks()` | 取消全部插件拥有的任务并汇总未结束数量 | Dict[str, int] |
+| `release_plugin_resources(plugin_id)` | 回收插件任务、订阅、API 和生命周期资源 | ResourceReleaseReport |
+| `shutdown_plugins()` | 卸载全部插件并返回逐插件回收报告 | List[ResourceReleaseReport] |
 | `get_all_plugins()` | 获取所有插件 | List[IPlugin] |
 | `get_plugin_by_id(plugin_id)` | 根据 UUID 获取插件 | Optional[IPlugin] |
 | `get_plugin_by_name(name)` | 根据名称获取插件 | Optional[IPlugin] |
@@ -175,6 +178,11 @@ from core.interfaces import ILocalizationFacade
 网络、权限、持久化、插件代码和内部错误。`HealthSnapshot` 包含状态、错误码、
 脱敏消息、UTC 时间戳和关联 ID。`core/plugin/service_health.py` 按插件与能力
 聚合状态，任一必需服务不可用不会被后续健康服务覆盖。
+
+`core/application_lifecycle.py` 提供 `ApplicationLifecycle.shutdown(timeout=15.0)`，
+按外部调用、任务、MCP、插件、任务管理器、LLM、用量、DataProvider、UI 的顺序
+关闭资源并返回 `ShutdownReport`。报告含逐步骤状态、耗时、异常和全局超时；
+重复调用返回 skipped，单步失败不阻断后续清理。
 
 #### GitHubPluginInstaller 主要 API
 

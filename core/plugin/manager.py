@@ -12,6 +12,7 @@ import shutil
 import inspect
 import traceback
 import importlib
+from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from typing import List, Dict, Optional, Any, Callable, Tuple
@@ -81,6 +82,16 @@ class PluginAPI:
         self.plugin_type = plugin_type
         self.api_methods: Dict[str, Callable] = {}
         self.api_descriptions: Dict[str, Dict[str, Any]] = {}
+
+
+@dataclass(frozen=True, slots=True)
+class ResourceReleaseReport:
+    """插件任务、订阅和 API 等资源回收结果。"""
+
+    plugin_id: str
+    success: bool
+    cancelled_tasks: int = 0
+    errors: List[str] = field(default_factory=list)
 
 
 class PluginManager:
@@ -249,6 +260,63 @@ class PluginManager:
     def get_service_health_issues(self) -> Dict[str, HealthSnapshot]:
         """返回全部降级或不可用插件的健康快照。"""
         return self._service_health.get_health_issues()
+
+    def cancel_all_plugin_tasks(self) -> Dict[str, int]:
+        """取消全部已加载插件拥有的任务并汇总未结束数量。"""
+        summary = {"cancelled": 0, "scheduled": 0, "long": 0, "unfinished": 0}
+        for plugin in self.get_all_plugins():
+            manager = getattr(getattr(plugin, "_services", None), "task_manager", None)
+            if manager is None:
+                continue
+            result = manager.cancel_tasks_by_plugin(plugin.plugin_id)
+            for key in summary:
+                summary[key] += result.get(key, 0)
+        return summary
+
+    def release_plugin_resources(self, plugin_id: str) -> ResourceReleaseReport:
+        """回收插件任务、订阅、API 和生命周期资源并返回完整结果。"""
+        plugin = self.get_plugin_by_id(plugin_id)
+        if plugin is None:
+            return ResourceReleaseReport(plugin_id, False, errors=["插件不存在"])
+        errors = []
+        cancelled = self._cancel_tasks_for_plugin(plugin, errors)
+        self._remove_plugin_subscriptions(plugin_id, errors)
+        try:
+            self._unload_plugin_instance(plugin)
+        except Exception as exc:
+            errors.append(f"生命周期清理失败: {exc}")
+        return ResourceReleaseReport(plugin_id, not errors, cancelled, errors)
+
+    def _cancel_tasks_for_plugin(self, plugin, errors: List[str]) -> int:
+        """取消单插件任务，返回已处理数量并记录未结束任务。"""
+        manager = getattr(getattr(plugin, "_services", None), "task_manager", None)
+        if manager is None:
+            return 0
+        result = manager.cancel_tasks_by_plugin(plugin.plugin_id)
+        unfinished = result.get("unfinished", 0)
+        if unfinished:
+            errors.append(f"{unfinished} 个任务未确认停止")
+        return sum(result.values())
+
+    def _remove_plugin_subscriptions(self, plugin_id: str, errors: List[str]) -> None:
+        """移除插件作为发布者与订阅者的全部数据订阅。"""
+        try:
+            DataProvider()._remove_subscriptions_for_plugin(plugin_id)
+        except Exception as exc:
+            errors.append(f"订阅清理失败: {exc}")
+
+    def shutdown_plugins(self) -> List[ResourceReleaseReport]:
+        """卸载全部插件并清空运行时注册表，返回逐插件回收报告。"""
+        reports = [
+            self.release_plugin_resources(plugin_id)
+            for plugin_id in list(self._plugin_registry)
+        ]
+        self._official_plugins.clear()
+        self._thirdparty_plugins.clear()
+        self._plugin_registry.clear()
+        self._plugin_name_to_id.clear()
+        self._api_registry.clear()
+        return reports
 
     def load_official_plugins(self) -> List[IPlugin]:
         """

@@ -158,8 +158,9 @@ class BackgroundTaskManager(ITaskManager):
         # 停止事件（用于优雅关闭检查线程）
         self._stop_event = threading.Event()
 
-        # 关闭标志（防止关闭后提交新任务）
+        # 关闭标志（防止关闭后提交新任务）与完整关闭完成标记
         self._is_shutdown = False
+        self._shutdown_complete = False
 
         # 启动调度器
         self._scheduler.start()
@@ -1330,6 +1331,31 @@ class BackgroundTaskManager(ITaskManager):
 
     # ==================== 生命周期管理 ====================
 
+    def stop_accepting_tasks(self) -> None:
+        """停止接收新任务与定时调度，完整资源清理由 shutdown 完成。"""
+        with self._task_lock:
+            self._is_shutdown = True
+            self._stop_event.set()
+
+    def cancel_tasks_by_plugin(self, plugin_id: str) -> Dict[str, int]:
+        """取消插件拥有的异步、定时和长期任务并返回真实回收计数。"""
+        result = {"cancelled": 0, "scheduled": 0, "long": 0, "unfinished": 0}
+        for task in self._storage.get_scheduled_tasks_by_plugin(plugin_id):
+            if self.unregister_scheduled_task(task.task_id):
+                result["scheduled"] += 1
+        for task in list(self._running_tasks.values()):
+            if task.plugin_id != plugin_id:
+                continue
+            cancellation = self.request_task_cancellation(task.task_id)
+            key = "cancelled" if cancellation.status is TaskStatus.CANCELLED else "unfinished"
+            result[key] += 1
+        for task in list(self._running_long_running_tasks.values()):
+            if task.plugin_id == plugin_id and self.stop_long_running_task(
+                task.task_id, delete_from_storage=False
+            ):
+                result["long"] += 1
+        return result
+
     def shutdown(self) -> None:
         """按全局截止期停止调度、长期任务和全部执行池，重复调用幂等。"""
         started = time.monotonic()
@@ -1348,12 +1374,13 @@ class BackgroundTaskManager(ITaskManager):
         self._scheduler.stop()
         deadline = started + self.LONG_TASK_STOP_TIMEOUT + self.EXECUTOR_SHUTDOWN_TIMEOUT
         self._shutdown_executor_pools(deadline)
+        self._shutdown_complete = True
         BackgroundTaskManager._instance = None
 
     def _begin_shutdown(self) -> bool:
-        """拒绝新任务并停止调度；已关闭时返回 False。"""
+        """停止调度并返回是否需执行完整清理；已完成时返回 False。"""
         with self._task_lock:
-            if self._is_shutdown:
+            if self._shutdown_complete:
                 return False
             self._is_shutdown = True
             timers = list(self._restart_timers.values())

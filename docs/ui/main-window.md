@@ -646,7 +646,17 @@ def changeEvent(self, event):
 
 ---
 
-## 7. 相关文档
+## 7. 应用关闭生命周期
+
+主窗口只负责发出退出请求。事件循环结束后，`ApplicationLifecycle` 先停止外部调用、
+新任务和插件任务，再关闭 MCP、卸载插件、关闭任务管理器与 LLM、冲刷用量并关闭
+DataProvider，最后调用 `QApplication.closeAllWindows()`。UI 不再先于后台资源销毁，
+避免工作线程或插件回调访问已删除控件。`ShutdownReport` 提供每一步状态、耗时、
+异常和全局超时结果；单步失败不跳过后续清理。
+
+---
+
+## 8. 相关文档
 
 - [技能面板](skills-panel.md)
 - [工作区](work-area.md)

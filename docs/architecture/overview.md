@@ -576,7 +576,7 @@ flowchart TD
     K --> L[等待用户交互]
 ```
 
-> **托盘与退出**：`main.py` 通过 `setQuitOnLastWindowClosed(False)` 切断「最后一个窗口关闭即退出」的隐式链路，退出时机完全由代码显式控制。主窗口 `closeEvent` 拦截全部关闭路径（自绘叉号 / Alt+F4 / 任务栏关闭），每次弹出 `CloseConfirmDialog` 询问「退出程序 / 最小化到托盘 / 取消」；托盘菜单「退出」与 Windows 注销/关机（`commitDataRequest` 守卫置 `_force_quit`）静默直退。`application.exec()` 返回后依次执行 `BackgroundTaskManager.shutdown()` 与 LLM 用量记录冲刷（`UsageRecordStore.flush()`）。详见 [系统托盘](../ui/system-tray.md)。
+> **托盘与退出**：`main.py` 通过 `setQuitOnLastWindowClosed(False)` 切断「最后一个窗口关闭即退出」的隐式链路，退出时机完全由代码显式控制。主窗口 `closeEvent` 拦截全部关闭路径（自绘叉号 / Alt+F4 / 任务栏关闭），每次弹出 `CloseConfirmDialog` 询问「退出程序 / 最小化到托盘 / 取消」；托盘菜单「退出」与 Windows 注销/关机（`commitDataRequest` 守卫置 `_force_quit`）静默直退。`application.exec()` 返回后由 `ApplicationLifecycle` 统一执行停止外部调用、停止新任务、取消插件任务、关闭 MCP、卸载插件、关闭任务管理器与 LLM、冲刷用量、关闭 DataProvider，最后释放 UI；每一步记录耗时、异常和全局截止期结果。详见 [系统托盘](../ui/system-tray.md)。
 
 ---
 
