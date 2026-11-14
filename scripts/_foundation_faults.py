@@ -283,10 +283,11 @@ class ControlledChatProvider:
     def chat(self, messages: list, **kwargs: Any) -> ChatResponse:
         """经过真实 LLMProvider.chat 调用；失败时等待并抛框架超时异常。"""
         self.calls += 1
-        self.observed_timeouts.append(self.timeout)
+        request_timeout = kwargs.get("request_timeout", self.timeout)
+        self.observed_timeouts.append(request_timeout)
         if not self.fail:
             return ChatResponse(content="ok", model=MODEL_ID)
-        threading.Event().wait(self.timeout)
+        threading.Event().wait(request_timeout)
         raise LLMTimeoutError("受控 Provider 超时", provider=PROVIDER_ID)
 
 

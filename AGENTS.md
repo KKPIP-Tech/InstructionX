@@ -292,6 +292,7 @@ core/
   llm/                      # LLM 框架
     llm_provider.py         # LLMProvider 单例：对话/流式/embedding/模型列表缓存、
                             #   adapter 分发、check_provider/check_model、配置版本惰性刷新
+    provider_supervisor.py  # 后台模型刷新、真实健康结果、失败熔断与半开恢复
     model_schema.py         # 统一模型 schema：capabilities 闭集/normalize_model_entry/
                             #   merge_model_entries 三路合并/infer_model_group
     catalog/                # 提供商预设目录（随程序发布只读）：ProviderPreset/PROVIDER_PRESETS（5 家）、
