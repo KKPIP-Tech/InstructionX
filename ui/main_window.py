@@ -51,6 +51,8 @@ from core.plugin.plugin_startup import (
 from core.github import get_github_key_manager
 from core.data.data_provider import DataProvider, DataNamespace
 from core.interfaces import IPlugin, TaskStatus
+from core.interfaces.health import HealthSnapshot, sanitize_health_message
+from core.plugin.service_health import PluginServiceHealth
 from core.task.background_task import BackgroundTaskManager
 from core.llm.llm_provider import get_llm_provider
 from core.i18n import tr, get_language_manager
@@ -289,23 +291,61 @@ class InstructionXMainWindow(QMainWindow):
         self._show_plugin_load_failures()
 
     def _show_plugin_load_failures(self) -> None:
-        """把插件启动失败列表以用户可见的提示框展示。"""
+        """集中展示插件加载失败和核心服务降级，不执行恢复业务逻辑。"""
         manager = getattr(self, "plugin_manager", None)
         get_failures = getattr(manager, "get_plugin_load_failures", None)
         if not callable(get_failures):
             return
         failures = get_failures()
-        if not failures:
+        issues = InstructionXMainWindow._get_service_health_issues(manager)
+        if not failures and not issues:
             return
-        details = "\n\n".join(
-            self._format_plugin_load_failure(failure)
-            for failure in failures
-        )
+        details = [self._format_plugin_load_failure(failure) for failure in failures]
+        details.extend(InstructionXMainWindow._format_health_issues(manager, issues))
         Dialog.info(
             self,
             tr("plugin_startup", "title"),
-            tr("plugin_startup", "message", details=details),
+            tr("plugin_startup", "message", details="\n\n".join(details)),
             ok_text=tr("plugin_startup", "button.acknowledge"),
+        )
+
+    @staticmethod
+    def _get_service_health_issues(manager):
+        """读取健康异常；旧管理器没有该接口时按无异常处理。"""
+        get_issues = getattr(manager, "get_service_health_issues", None)
+        if not callable(get_issues):
+            return {}
+        issues = get_issues()
+        return issues if isinstance(issues, dict) else {}
+
+    @staticmethod
+    def _format_health_issues(manager, issues) -> List[str]:
+        """将健康快照格式化为启动提示条目。"""
+        formatted = []
+        for plugin_id, snapshot in issues.items():
+            plugin = manager.get_plugin_by_id(plugin_id)
+            name = plugin.plugin_name if plugin is not None else plugin_id
+            capabilities = manager.get_unavailable_capabilities(plugin_id)
+            formatted.append(
+                InstructionXMainWindow._format_service_health_issue(
+                    name, snapshot, capabilities
+                )
+            )
+        return formatted
+
+    @staticmethod
+    def _format_service_health_issue(name, snapshot: HealthSnapshot, capabilities) -> str:
+        """生成脱敏的受影响能力、错误原因、恢复建议和关联 ID。"""
+        capability_text = ", ".join(capabilities) if capabilities else "部分核心能力"
+        suggestion = PluginServiceHealth.get_recovery_suggestion(snapshot.error_code)
+        return tr(
+            "plugin_startup", "health.item",
+            name=name,
+            capabilities=capability_text,
+            status=snapshot.status.value,
+            detail=sanitize_health_message(snapshot.message),
+            suggestion=suggestion,
+            correlation_id=snapshot.correlation_id,
         )
 
     def _format_plugin_load_failure(

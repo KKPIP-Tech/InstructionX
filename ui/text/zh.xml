@@ -728,6 +728,12 @@
       <text key="reason.import_failed">插件入口导入失败</text>
       <text key="reason.unexpected_error">插件加载时发生异常</text>
       <text key="reason.detail">详细信息：{detail}</text>
+      <text key="health.item"><![CDATA[• {name}
+受影响能力：{capabilities}
+健康状态：{status}
+详细信息：{detail}
+恢复建议：{suggestion}
+关联 ID：{correlation_id}]]></text>
       <text key="button.acknowledge">知道了</text>
   </group>
   <group name="dialog_plugin_compatibility">
