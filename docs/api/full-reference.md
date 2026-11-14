@@ -374,8 +374,9 @@ from core.interfaces import ILocalizationFacade
 | `remove_provider(name)` | 移除 Provider | bool |
 | `reload_config()` | 重新加载配置（公开入口已具备版本比对惰性刷新，本方法为强制热重载） | None |
 | `get_provider_health(name=None)` | 健康状态（None 返回全量 dict） | Dict 或 Tuple |
-| `check_provider(name)` | 连通性检查（强制刷新模型列表） | Tuple[bool, Optional[str], int] |
-| `check_model(provider_name, model_id, timeout)` | 单模型最小化探测 | ModelCheckResult |
+| `check_provider(name)` | 连通性检查（旧返回签名，失败返回 `(False, 错误, 0)`） | Tuple[bool, Optional[str], int] |
+| `check_provider_detailed(provider_id)` | 返回真实模型数、错误和 `HealthStatus`，支持熔断恢复 | ProviderCheckResult |
+| `check_model(provider_name, model_id, timeout)` | 单模型最小化探测，timeout 仅作用于本次请求 | ModelCheckResult |
 | `resolve_provider_name(name, feature)` | 解析 "default" 为实际实例 id（带粘性缓存） | str |
 | `get_default_provider_id(feature)` | 默认实例解析结果（不抛异常） | Optional[str] |
 | `close()` | 关闭所有提供商连接 | None |
@@ -426,6 +427,8 @@ from core.interfaces import ILocalizationFacade
 | `get_usage_stats(conversation_id?)` | 获取用量统计（conversation_id 不存在时返回 None） | Optional[UsageStats] |
 | `validate_provider(provider)` | 验证 Provider 配置 | Tuple[bool, str] |
 | `last_stream_response` (property) | 最近一次流式请求的聚合响应 | Optional[ChatResponse] |
+| `last_stream_metrics` (property) | 首 token、总耗时和中断原因（按线程隔离） | Dict[str, Any] |
+| `request_timeout` / `request_id`（kwargs） | 请求级超时和 X-Request-ID，不改变共享 Provider 配置，重试复用 ID | 按调用生效 |
 
 > 已移除：`get_provider` / `get_all_providers` / `get_raw_provider` / `get_cached_models` / `get_available_providers` / `load_image_as_base64`（后者迁至 `utils/image_utils.py`）。
 

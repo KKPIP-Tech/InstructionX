@@ -154,7 +154,9 @@ graph TB
 - 按实例 `adapter` 查询适配器注册表创建实例（注册表键为适配器家族）
 - 统一 API 接口（chat、stream_chat、embed）
 - 模型列表获取与缓存（缓存键为实例 id）
-- 连通性检查（`check_provider` / `check_model`）与健康跟踪
+- 连通性检查（`check_provider` / `check_provider_detailed` / `check_model`）与真实健康跟踪、失败熔断和半开恢复
+- 启动仅加载磁盘缓存，`ProviderSupervisor` 后台并行刷新模型，不阻塞 UI
+- 请求级 `request_timeout` 与 `X-Request-ID`，流式首 token、总耗时和中断指标
 - 配置版本比对惰性刷新（无需手动 `reload_config()`）
 - Function Calling 支持
 

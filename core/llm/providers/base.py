@@ -30,6 +30,7 @@ import threading
 import time
 from abc import ABC
 from typing import Dict, Any, Optional, List, Union, Callable, AsyncIterator
+from uuid import uuid4
 
 import aiohttp
 import requests
@@ -378,6 +379,20 @@ class BaseProvider(ILLM):
         # 正常获取（优先缓存）
         return self.get_models()
 
+    def refresh_models_strict(self, force: bool = False) -> List[ModelInfo]:
+        """严格刷新：请求失败向上抛出，只有真实成功才返回空列表。"""
+        if hasattr(self, 'CHAT_MODELS') or hasattr(self, 'EMBEDDING_MODELS'):
+            return self._get_fallback_models()
+        if not force:
+            return self.get_models()
+        models = self._fetch_models_from_api()
+        if self.last_error:
+            raise ConnectionError(self.last_error)
+        if models:
+            self._save_models_to_cache(models)
+            return models
+        return self._load_models_from_cache()
+
     async def async_get_models(self) -> List[ModelInfo]:
         """异步获取模型列表
 
@@ -725,7 +740,8 @@ class BaseProvider(ILLM):
         endpoint: str,
         data: Optional[Dict] = None,
         params: Optional[Dict] = None,
-        timeout: Optional[int] = None
+        timeout: Optional[int] = None,
+        request_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """发起同步 HTTP 请求（含重试与指数退避）
 
@@ -752,6 +768,7 @@ class BaseProvider(ILLM):
         """
         url = f"{self.base_url}{endpoint}"
         read_timeout = timeout or self.timeout
+        headers = {"X-Request-ID": request_id} if request_id else None
 
         for attempt in range(self._max_retries + 1):
             try:
@@ -762,7 +779,8 @@ class BaseProvider(ILLM):
                         url=url,
                         json=data,
                         params=params,
-                        timeout=(self.connect_timeout, read_timeout)
+                        timeout=(self.connect_timeout, read_timeout),
+                        headers=headers,
                     )
 
                 if response.status_code == 401:
@@ -862,7 +880,8 @@ class BaseProvider(ILLM):
         endpoint: str,
         data: Optional[Dict] = None,
         params: Optional[Dict] = None,
-        timeout: Optional[int] = None
+        timeout: Optional[int] = None,
+        request_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """发起异步 HTTP 请求（含重试与指数退避）
 
@@ -889,6 +908,7 @@ class BaseProvider(ILLM):
         """
         url = f"{self.base_url}{endpoint}"
         timeout = timeout or self.timeout
+        headers = {"X-Request-ID": request_id} if request_id else None
 
         for attempt in range(self._max_retries + 1):
             try:
@@ -898,6 +918,7 @@ class BaseProvider(ILLM):
                     url=url,
                     json=data,
                     params=params,
+                    headers=headers,
                     timeout=aiohttp.ClientTimeout(
                         total=timeout,
                         connect=self.connect_timeout,
@@ -962,7 +983,9 @@ class BaseProvider(ILLM):
         self,
         endpoint: str,
         data: Dict,
-        callback: Optional[Callable[[ChatResponse], None]] = None
+        callback: Optional[Callable[[ChatResponse], None]] = None,
+        request_timeout: Optional[float] = None,
+        request_id: Optional[str] = None,
     ):
         """发起同步流式请求
 
@@ -983,6 +1006,7 @@ class BaseProvider(ILLM):
             ConnectionError: 连接失败
         """
         url = f"{self.base_url}{endpoint}"
+        headers = {"X-Request-ID": request_id} if request_id else None
 
         try:
             session = self._get_session()
@@ -992,7 +1016,8 @@ class BaseProvider(ILLM):
                     url,
                     json=data,
                     stream=True,
-                    timeout=(self.connect_timeout, self.timeout)
+                    timeout=(self.connect_timeout, request_timeout or self.timeout),
+                    headers=headers,
                 )
             with response:
                 if response.status_code == 401:
@@ -1037,7 +1062,9 @@ class BaseProvider(ILLM):
     async def _make_async_stream_request(
         self,
         endpoint: str,
-        data: Dict
+        data: Dict,
+        request_timeout: Optional[float] = None,
+        request_id: Optional[str] = None,
     ) -> AsyncIterator[ChatResponse]:
         """发起异步流式请求
 
@@ -1058,16 +1085,18 @@ class BaseProvider(ILLM):
             ConnectionError: 连接失败
         """
         url = f"{self.base_url}{endpoint}"
+        headers = {"X-Request-ID": request_id} if request_id else None
 
         try:
             session = await self._get_async_session()
             async with session.post(
                 url,
                 json=data,
+                headers=headers,
                 timeout=aiohttp.ClientTimeout(
                     total=None,
                     connect=self.connect_timeout,
-                    sock_read=self.timeout,
+                    sock_read=request_timeout or self.timeout,
                 )
             ) as response:
                 if response.status == 401:
@@ -1166,10 +1195,15 @@ class BaseProvider(ILLM):
         Returns:
             ChatResponse: 聊天响应对象
         """
+        request_timeout = kwargs.pop("request_timeout", None)
+        request_id = kwargs.pop("request_id", None) or uuid4().hex
         payload = self._prepare_chat_payload(
             messages, model, temperature, max_tokens, stream=False, **kwargs
         )
-        response = self._make_request("POST", self._chat_endpoint, data=payload)
+        response = self._make_request(
+            "POST", self._chat_endpoint, data=payload,
+            timeout=request_timeout, request_id=request_id,
+        )
         return self._parse_chat_response(response)
 
     def stream_chat(
@@ -1196,10 +1230,15 @@ class BaseProvider(ILLM):
         Returns:
             生成器: 流式响应生成器
         """
+        request_timeout = kwargs.pop("request_timeout", None)
+        request_id = kwargs.pop("request_id", None) or uuid4().hex
         payload = self._prepare_chat_payload(
             messages, model, temperature, max_tokens, stream=True, **kwargs
         )
-        return self._make_stream_request(self._chat_endpoint, payload, callback)
+        return self._make_stream_request(
+            self._chat_endpoint, payload, callback,
+            request_timeout=request_timeout, request_id=request_id,
+        )
 
     def embed(
         self,
@@ -1222,6 +1261,8 @@ class BaseProvider(ILLM):
         if isinstance(texts, str):
             texts = [texts]
 
+        request_timeout = kwargs.pop("request_timeout", None)
+        request_id = kwargs.pop("request_id", None) or uuid4().hex
         payload = {
             "model": model or self.embedding_model,
             "input": texts,
@@ -1230,7 +1271,10 @@ class BaseProvider(ILLM):
         # 剔除 None 值，避免污染 API 请求
         payload = {k: v for k, v in payload.items() if v is not None}
 
-        response = self._make_request("POST", self._embedding_endpoint, data=payload)
+        response = self._make_request(
+            "POST", self._embedding_endpoint, data=payload,
+            timeout=request_timeout, request_id=request_id,
+        )
         return self._parse_embedding_response(response)
 
     def _parse_embedding_response(self, response: Dict[str, Any]) -> List[EmbeddingResponse]:
@@ -1279,10 +1323,15 @@ class BaseProvider(ILLM):
         Returns:
             ChatResponse: 聊天响应对象
         """
+        request_timeout = kwargs.pop("request_timeout", None)
+        request_id = kwargs.pop("request_id", None) or uuid4().hex
         payload = self._prepare_chat_payload(
             messages, model, temperature, max_tokens, stream=False, **kwargs
         )
-        response = await self._make_async_request("POST", self._chat_endpoint, data=payload)
+        response = await self._make_async_request(
+            "POST", self._chat_endpoint, data=payload,
+            timeout=request_timeout, request_id=request_id,
+        )
         return self._parse_chat_response(response)
 
     async def async_stream_chat(
@@ -1307,10 +1356,15 @@ class BaseProvider(ILLM):
         Yields:
             ChatResponse: 聊天响应块
         """
+        request_timeout = kwargs.pop("request_timeout", None)
+        request_id = kwargs.pop("request_id", None) or uuid4().hex
         payload = self._prepare_chat_payload(
             messages, model, temperature, max_tokens, stream=True, **kwargs
         )
-        async for response in self._make_async_stream_request(self._chat_endpoint, payload):
+        async for response in self._make_async_stream_request(
+            self._chat_endpoint, payload,
+            request_timeout=request_timeout, request_id=request_id,
+        ):
             yield response
 
     async def async_embed(
@@ -1334,6 +1388,8 @@ class BaseProvider(ILLM):
         if isinstance(texts, str):
             texts = [texts]
 
+        request_timeout = kwargs.pop("request_timeout", None)
+        request_id = kwargs.pop("request_id", None) or uuid4().hex
         payload = {
             "model": model or self.embedding_model,
             "input": texts,
@@ -1342,7 +1398,10 @@ class BaseProvider(ILLM):
         # 剔除 None 值，避免污染 API 请求
         payload = {k: v for k, v in payload.items() if v is not None}
 
-        response = await self._make_async_request("POST", self._embedding_endpoint, data=payload)
+        response = await self._make_async_request(
+            "POST", self._embedding_endpoint, data=payload,
+            timeout=request_timeout, request_id=request_id,
+        )
         return self._parse_embedding_response(response)
 
     def validate_config(self) -> bool:
