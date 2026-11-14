@@ -4,6 +4,7 @@
 负责定时任务的调度和执行。
 """
 
+import time
 from datetime import datetime
 from typing import Optional, Callable, Any
 
@@ -124,7 +125,8 @@ class SchedulerCallback:
         if not task.enabled:
             return False
 
+        if task.next_run_monotonic is not None:
+            return time.monotonic() >= task.next_run_monotonic
         if task.next_run is None:
             return True
-
         return datetime.now() >= task.next_run

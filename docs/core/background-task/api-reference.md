@@ -183,11 +183,13 @@ def register_scheduled_task(
     interval: int,
     callback: Optional[Callable] = None,
     args: tuple = (),
-    kwargs: dict = None
+    kwargs: dict = None,
+    overlap_policy: str = ScheduledOverlapPolicy.COALESCE,
 ) -> Optional[str]
 ```
 
-注册定时任务。
+注册定时任务。`overlap_policy` 可选 `SKIP`、`QUEUE_ONE`、`COALESCE`，慢任务最多
+保留一个待执行或合并批次，默认使用 `COALESCE`。
 
 **参数**:
 - `plugin_id`: 插件 UUID
@@ -633,7 +635,9 @@ def get_scheduled_tasks(self, plugin_id: Optional[str] = None) -> List[Scheduled
 def cancel_task(self, task_id: str) -> bool
 ```
 
-取消任务。
+旧状态取消 API。对已经开始执行的函数，`Future.cancel()` 无效，但任务仍会标记
+`CANCELLED`；函数可能继续执行并产生副作用。为保持旧插件兼容，该行为暂未改变。
+新任务应使用 `register_cancellable_task()` 和 `request_task_cancellation()`。
 
 **参数**:
 - `task_id`: 任务 ID
@@ -642,6 +646,21 @@ def cancel_task(self, task_id: str) -> bool
 - 是否成功取消（任务不在运行列表中时返回 False）
 
 ---
+
+### register_cancellable_task() / request_task_cancellation()
+
+```python
+task_id = manager.register_cancellable_task(
+    "my-plugin", "可取消任务", worker,
+    priority=TaskPriority.HIGH,
+)
+result = manager.request_task_cancellation(task_id, timeout=2.0)
+```
+
+任务函数第一个参数接收 `CancellationToken`，应在安全检查点调用
+`token.raise_if_cancelled()`。发出请求后，函数未实际退出前状态为 `CANCELLING`；
+响应令牌并退出后才为 `CANCELLED`。函数忽略请求并正常返回时为 `COMPLETED`。
+排队尚未开始的函数确认不再执行后才为 `CANCELLED`。
 
 ### clear_completed_tasks()
 

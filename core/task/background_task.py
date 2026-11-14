@@ -6,14 +6,24 @@ BackgroundTaskManager - 后台任务管理器
 """
 
 import threading
+import time
 # 注意：shutdown 中的线程池等待线程使用模块级导入的 Thread，
 # 保证其创建路径与调度线程（threading.Thread）解耦。
 from threading import Thread
-from concurrent.futures import ThreadPoolExecutor, Future
+from concurrent.futures import ThreadPoolExecutor, Future, wait
 from datetime import datetime
 from typing import Dict, List, Optional, Callable, Any
 
 from core.interfaces.i_task_manager import ITaskManager
+from .cancellation import (
+    CancellationResult,
+    CancellationToken,
+    QueueFullError,
+    ScheduledOverlapPolicy,
+    TaskCancelled,
+    TaskPriority,
+)
+from .executor_pools import ExecutorPools
 from .task_model import (
     BackgroundTask, ScheduledTask, LongRunningTask, TaskType, TaskStatus
 )
@@ -78,6 +88,8 @@ class BackgroundTaskManager(ITaskManager):
     TASK_RECORD_MAX_AGE_DAYS = 30
     # 异步任务线程池默认工作线程数
     DEFAULT_MAX_WORKERS = 4
+    # 单插件普通与高优短任务的运行加排队总配额
+    MAX_ASYNC_TASKS_PER_PLUGIN = 32
     # 定时任务检查线程的轮询间隔（秒）
     SCHEDULE_CHECK_INTERVAL = 1.0
     # 关闭时等待定时任务检查线程退出的上限（秒）
@@ -107,16 +119,19 @@ class BackgroundTaskManager(ITaskManager):
         # 日志管理器
         self._logger = LoggerManager()
 
-        # 线程池（用于异步任务执行）
-        self._executor = ThreadPoolExecutor(
-            max_workers=self.DEFAULT_MAX_WORKERS, thread_name_prefix="BackgroundTask"
-        )
+        # 长期、普通和高优先级任务分池，短任务使用有界队列
+        self._pools = ExecutorPools(executor_factory=ThreadPoolExecutor)
+        self._executor = self._pools.normal
+        self._long_executor = self._pools.long
 
         # 运行时任务存储（不持久化 func 和 callback）
         self._running_tasks: Dict[str, BackgroundTask] = {}
         self._running_scheduled_tasks: Dict[str, ScheduledTask] = {}
         self._running_long_running_tasks: Dict[str, LongRunningTask] = {}
-        self._futures: Dict[str, Future] = {}  # task_id -> Future
+        self._futures: Dict[str, Future] = {}
+        self._cancellation_tokens: Dict[str, CancellationToken] = {}
+        self._scheduled_futures: Dict[str, Future] = {}
+        self._scheduled_pending: set = set()
 
         # 定时任务工厂注册表（双级键，同插件多个工厂函数互不覆盖）
         # {plugin_id: {"func": 最近注册的 func, "callback": 最近注册的 callback,
@@ -312,38 +327,70 @@ class BackgroundTaskManager(ITaskManager):
         args: tuple = (),
         kwargs: dict = None
     ) -> Optional[str]:
-        """
-        注册异步任务
+        """按普通优先级注册异步任务，公开签名保持兼容。"""
+        return self._register_async_with_priority(
+            plugin_id, name, func, callback, args, kwargs, TaskPriority.NORMAL
+        )
 
-        注意：callback 在线程池 worker 线程中执行；如需操作 Qt UI，
-        请使用信号槽或 QMetaObject.invokeMethod 编组到主线程。
+    def register_priority_task(
+        self, plugin_id, name, func, priority=TaskPriority.HIGH,
+        args=(), kwargs=None
+    ) -> Optional[str]:
+        """使用独立高优或普通有界队列注册短任务。"""
+        return self._register_async_with_priority(
+            plugin_id, name, func, None, args, kwargs, priority
+        )
 
-        Returns:
-            任务 ID；管理器已关闭时返回 None
-        """
-        if kwargs is None:
-            kwargs = {}
+    def register_cancellable_task(
+        self, plugin_id, name, func, callback=None, args=(), kwargs=None,
+        priority=TaskPriority.NORMAL
+    ) -> Optional[str]:
+        """注册首个参数接收 CancellationToken 的协作取消任务。"""
+        token = CancellationToken()
+        task_args = (token, *args)
+        task_id = self._register_async_with_priority(
+            plugin_id, name, func, callback, task_args, kwargs, priority, token
+        )
+        if task_id is None:
+            token.cancel()
+        return task_id
+
+    def _register_async_with_priority(
+        self, plugin_id, name, func, callback, args, kwargs, priority,
+        cancellation_token=None,
+    ) -> Optional[str]:
+        """创建任务并按优先级提交，队列满或关闭时显式失败。"""
+        task = BackgroundTask(
+            plugin_id=plugin_id, name=name, task_type=TaskType.ASYNC,
+            func=func, callback=callback, args=args, kwargs=kwargs or {}
+        )
         with self._task_lock:
-            # 先检查关闭标志再持久化，避免产生幽灵任务
             if self._is_shutdown:
                 return None
-
-            task = BackgroundTask(
-                plugin_id=plugin_id,
-                name=name,
-                task_type=TaskType.ASYNC,
-                func=func,
-                callback=callback,
-                args=args,
-                kwargs=kwargs
+            plugin_task_count = sum(
+                item.plugin_id == plugin_id for item in self._running_tasks.values()
             )
-
+            if plugin_task_count >= self.MAX_ASYNC_TASKS_PER_PLUGIN:
+                task.mark_failed("单插件异步任务配额已满")
+                self._storage.save_task(task)
+                self._logger.warning(get_name(), f"插件 {plugin_id} 的异步任务配额已满")
+                return None
             self._storage.save_task(task)
-
             self._running_tasks[task.task_id] = task
-            future = self._executor.submit(self._execute_async_task, task)
+            if cancellation_token is not None:
+                self._cancellation_tokens[task.task_id] = cancellation_token
+            try:
+                future = self._pools.for_priority(priority).submit(
+                    self._execute_async_task, task
+                )
+            except (QueueFullError, RuntimeError) as exc:
+                task.mark_failed(str(exc))
+                self._storage.save_task(task)
+                self._running_tasks.pop(task.task_id, None)
+                self._cancellation_tokens.pop(task.task_id, None)
+                self._logger.warning(get_name(), f"任务提交被拒绝: {exc}")
+                return None
             self._futures[task.task_id] = future
-
         return task.task_id
 
     def _execute_sync_task(self, task: BackgroundTask) -> None:
@@ -381,6 +428,9 @@ class BackgroundTaskManager(ITaskManager):
                 if task.status != TaskStatus.CANCELLED:
                     task.mark_completed(result)
 
+        except TaskCancelled:
+            with self._task_lock:
+                task.mark_cancelled()
         except Exception as e:
             with self._task_lock:
                 # 取消竞态防护：已取消的任务不再覆盖为失败
@@ -389,12 +439,11 @@ class BackgroundTaskManager(ITaskManager):
 
         finally:
             with self._task_lock:
-                # 已取消状态已由 cancel_task 落盘，此处不覆盖
-                if task.status != TaskStatus.CANCELLED:
-                    self._storage.save_task(task)
-
+                # 协作取消也必须在 worker 退出时落盘，避免存储停留在 CANCELLING
+                self._storage.save_task(task)
                 self._running_tasks.pop(task.task_id, None)
                 self._futures.pop(task.task_id, None)
+                self._cancellation_tokens.pop(task.task_id, None)
 
             self._execute_callback(task)
 
@@ -423,7 +472,8 @@ class BackgroundTaskManager(ITaskManager):
         interval: int,
         callback: Optional[Callable] = None,
         args: tuple = (),
-        kwargs: dict = None
+        kwargs: dict = None,
+        overlap_policy: str = ScheduledOverlapPolicy.COALESCE,
     ) -> Optional[str]:
         """
         注册定时任务
@@ -445,6 +495,8 @@ class BackgroundTaskManager(ITaskManager):
         """
         if kwargs is None:
             kwargs = {}
+        if overlap_policy not in ScheduledOverlapPolicy.ALL:
+            raise ValueError(f"未知定时任务重入策略: {overlap_policy}")
         with self._task_lock:
             # 先检查关闭标志再持久化，避免产生幽灵任务（与 register_async_task 对齐）
             if self._is_shutdown:
@@ -460,7 +512,8 @@ class BackgroundTaskManager(ITaskManager):
             callback=callback,
             interval=interval,
             args=args,
-            kwargs=kwargs
+            kwargs=kwargs,
+            overlap_policy=overlap_policy,
         )
         # 记录函数标识，用于重启后按 plugin_id + func_name 精确匹配工厂
         task.func_name = self._func_key(func)
@@ -642,7 +695,7 @@ class BackgroundTaskManager(ITaskManager):
                             tasks_to_run.append(task)
 
                     for task in tasks_to_run:
-                        self._execute_scheduled_task(task)
+                        self._execute_scheduled_task(task, task.overlap_policy)
 
             except Exception as e:
                 self._logger.error(get_name(), f'Error checking scheduled tasks: {e}')
@@ -650,32 +703,66 @@ class BackgroundTaskManager(ITaskManager):
             # 等待一个轮询间隔或直到停止事件被设置
             self._stop_event.wait(self.SCHEDULE_CHECK_INTERVAL)
 
-    def _execute_scheduled_task(self, task: ScheduledTask) -> None:
-        """执行定时任务"""
-        if self._is_shutdown:
+    def _execute_scheduled_task(
+        self, task: ScheduledTask, overlap_policy=ScheduledOverlapPolicy.COALESCE
+    ) -> None:
+        """按重入策略提交定时任务，慢任务最多保留一个待执行批次。"""
+        if self._is_shutdown or task.func is None:
             return
+        if overlap_policy not in ScheduledOverlapPolicy.ALL:
+            raise ValueError(f"未知定时任务重入策略: {overlap_policy}")
+        with self._task_lock:
+            previous = self._scheduled_futures.get(task.task_id)
+            if previous is not None and not previous.done():
+                if overlap_policy == ScheduledOverlapPolicy.SKIP:
+                    return
+                if task.task_id in self._scheduled_pending:
+                    return
+                self._scheduled_pending.add(task.task_id)
+                previous.add_done_callback(
+                    lambda future: self._on_scheduled_done(task, future, overlap_policy)
+                )
+                return
+            self._record_schedule_delay(task)
+            future = self._submit_scheduled_task(task)
+            if future is not None:
+                self._scheduled_futures[task.task_id] = future
 
-        if task.func is None:
-            self._logger.warning(get_name(), f'Scheduled task {task.task_id} has no func, skipping')
-            return
-
+    def _submit_scheduled_task(self, task: ScheduledTask):
+        """持久化计划时间并提交执行，返回 Future 或失败时 None。"""
         task.last_run = datetime.now()
         task.calculate_next_run()
-
         self._storage.update_scheduled_task(task)
-
         try:
-            self._executor.submit(
+            future = self._executor.submit(
                 self._scheduler_callback.execute_scheduled_task,
-                task,
-                task.func,
-                task.callback
+                task, task.func, task.callback,
             )
-        except RuntimeError:
-            # 线程池关闭后 submit 会抛 RuntimeError；仅在已关闭时忽略，
-            # 其他情况继续抛出（避免用脆弱的字符串匹配判断关闭原因）
+        except (QueueFullError, RuntimeError) as exc:
             if not self._is_shutdown:
-                raise
+                self._logger.warning(get_name(), f"定时任务提交失败: {exc}")
+            return None
+        future.add_done_callback(
+            lambda done: self._on_scheduled_done(task, done, ScheduledOverlapPolicy.COALESCE)
+        )
+        return future
+
+    def _on_scheduled_done(self, task, future, overlap_policy) -> None:
+        """清理已完成 Future，并执行唯一合并的待执行批次。"""
+        with self._task_lock:
+            if self._scheduled_futures.get(task.task_id) is future:
+                self._scheduled_futures.pop(task.task_id, None)
+            if task.task_id not in self._scheduled_pending:
+                return
+            self._scheduled_pending.discard(task.task_id)
+        self._execute_scheduled_task(task, overlap_policy)
+
+    def _record_schedule_delay(self, task: ScheduledTask) -> None:
+        """记录实际提交相对单调时钟计划时间的延迟。"""
+        if task.next_run_monotonic is None:
+            return
+        delay_ms = (time.monotonic() - task.next_run_monotonic) * 1000
+        self._pools.supervisor.record_schedule_delay(delay_ms)
 
     # ==================== 长期任务 ====================
 
@@ -738,7 +825,7 @@ class BackgroundTaskManager(ITaskManager):
             self._storage.save_long_running_task(task)
 
             self._running_long_running_tasks[task.task_id] = task
-            future = self._executor.submit(self._execute_long_running_task, task)
+            future = self._long_executor.submit(self._execute_long_running_task, task)
             self._futures[task.task_id] = future
 
         return task.task_id
@@ -832,7 +919,7 @@ class BackgroundTaskManager(ITaskManager):
                 if self._is_shutdown:
                     break
                 self._running_long_running_tasks[stored_task.task_id] = stored_task
-                future = self._executor.submit(self._execute_long_running_task, stored_task)
+                future = self._long_executor.submit(self._execute_long_running_task, stored_task)
                 self._futures[stored_task.task_id] = future
 
             # 调用恢复回调
@@ -1002,7 +1089,7 @@ class BackgroundTaskManager(ITaskManager):
                 return
 
             try:
-                future = self._executor.submit(self._execute_long_running_task, task)
+                future = self._long_executor.submit(self._execute_long_running_task, task)
             except RuntimeError:
                 # 线程池已关闭
                 return
@@ -1159,6 +1246,37 @@ class BackgroundTaskManager(ITaskManager):
 
     # ==================== 任务控制 ====================
 
+    def request_task_cancellation(self, task_id: str, timeout=None) -> CancellationResult:
+        """请求协作取消；运行中函数未退出前只报告 CANCELLING。"""
+        with self._task_lock:
+            task = self._running_tasks.get(task_id)
+            if task is None:
+                return CancellationResult(task_id, False, None, "任务不存在或已结束")
+            future = self._futures.get(task_id)
+            task.mark_cancelling()
+            self._storage.save_task(task)
+            token = self._cancellation_tokens.get(task_id)
+            if token is not None:
+                token.cancel()
+            cancelled_before_start = future.cancel() if future is not None else False
+            if cancelled_before_start:
+                self._finish_queued_cancellation(task)
+        if cancelled_before_start:
+            self._execute_callback(task)
+        elif timeout is not None and future is not None:
+            wait([future], timeout=timeout)
+        status = self.get_task_status(task_id)
+        message = "取消请求已发出，等待函数实际停止" if status is TaskStatus.CANCELLING else "任务已停止"
+        return CancellationResult(task_id, True, status, message)
+
+    def _finish_queued_cancellation(self, task: BackgroundTask) -> None:
+        """确认未开始的任务已取消并清理运行时记录，调用方需持有任务锁。"""
+        task.mark_cancelled()
+        self._storage.save_task(task)
+        self._running_tasks.pop(task.task_id, None)
+        self._futures.pop(task.task_id, None)
+        self._cancellation_tokens.pop(task.task_id, None)
+
     def cancel_task(self, task_id: str) -> bool:
         """
         取消任务
@@ -1213,93 +1331,81 @@ class BackgroundTaskManager(ITaskManager):
     # ==================== 生命周期管理 ====================
 
     def shutdown(self) -> None:
-        """
-        关闭任务管理器（限时优雅停止，保证在有限时间内返回）
-
-        流程：
-        1. 设置关闭标志，拒绝新任务提交；
-        2. 停止定时任务检查线程，取消所有待重启定时器；
-        3. 调用各长期任务的 stop_callback，并限时（每任务 LONG_TASK_STOP_TIMEOUT 秒）
-           等待其退出；运行中的长期任务标记为 stopped 并保留存储记录
-           （重启后不自动恢复，仅"崩溃中断"的任务会在下次启动时恢复）；
-        4. 关闭线程池：cancel_futures 取消排队任务，并在独立线程中等待
-           运行中任务结束，总上限 EXECUTOR_SHUTDOWN_TIMEOUT 秒，
-           超时放弃等待并记 warning（不响应 stop 的任务不会卡死应用退出）。
-        """
+        """按全局截止期停止调度、长期任务和全部执行池，重复调用幂等。"""
+        started = time.monotonic()
+        if not self._begin_shutdown():
+            return
         with self._task_lock:
-            if self._is_shutdown:
-                return
-            # 设置关闭标志，防止新任务提交
-            self._is_shutdown = True
-
-        # 停止定时任务检查线程
-        self._stop_event.set()
-        check_thread = getattr(self, '_schedule_check_thread', None)
-        if check_thread is not None and check_thread.is_alive():
-            check_thread.join(timeout=self.CHECK_THREAD_JOIN_TIMEOUT)
-
-        # 取消所有待重启定时器
-        with self._task_lock:
-            timers = list(self._restart_timers.values())
-            self._restart_timers.clear()
-        for timer in timers:
-            timer.cancel()
-
-        # 停止所有长期任务：先统一调用 stop_callback（让任务尽快收到停止信号）
-        with self._task_lock:
-            long_tasks = list(self._running_long_running_tasks.items())
-
-        for task_id, task in long_tasks:
-            if task.stop_callback:
-                try:
-                    task.stop_callback()
-                except Exception as e:
-                    self._logger.error(get_name(), f'Error calling stop_callback for task {task_id}: {e}')
-
-        # 再逐个限时等待退出，并标记为"已停止"（正常退出语义，保留存储记录）
-        for task_id, task in long_tasks:
-            future = self._futures.get(task_id)
-            if future is not None and not future.done():
-                try:
-                    future.result(timeout=self.LONG_TASK_STOP_TIMEOUT)
-                except Exception:
-                    # 超时/已取消/执行异常：任务不响应停止，放弃等待
-                    self._logger.warning(
-                        get_name(),
-                        f'Long-running task {task_id} did not stop within {self.LONG_TASK_STOP_TIMEOUT}s, giving up'
-                    )
-                    future.cancel()
-
-            task.current_status = LONG_TASK_STATUS_STOPPED
-            task.last_stopped_at = datetime.now()
-            try:
-                self._storage.save_long_running_task(task)
-            except Exception as e:
-                self._logger.warning(get_name(), f'Failed to persist stopped state for task {task_id}: {e}')
-
-        # 清理运行时表
+            long_tasks = list(self._running_long_running_tasks.values())
+        self._stop_long_tasks(long_tasks, started + self.LONG_TASK_STOP_TIMEOUT)
         with self._task_lock:
             self._running_long_running_tasks.clear()
             self._running_tasks.clear()
             self._futures.clear()
-
-        # 停止调度器
+            self._cancellation_tokens.clear()
+            self._scheduled_futures.clear()
+            self._scheduled_pending.clear()
         self._scheduler.stop()
-
-        # 关闭线程池：取消排队任务，并在独立线程中限时等待运行中任务结束
-        def _wait_executor() -> None:
-            self._executor.shutdown(wait=True, cancel_futures=True)
-
-        waiter = Thread(target=_wait_executor, daemon=True, name="BackgroundTaskExecutorShutdown")
-        waiter.start()
-        waiter.join(timeout=self.EXECUTOR_SHUTDOWN_TIMEOUT)
-        if waiter.is_alive():
-            self._logger.warning(
-                get_name(),
-                f'Thread pool did not finish within {self.EXECUTOR_SHUTDOWN_TIMEOUT}s, giving up waiting'
-            )
-
+        deadline = started + self.LONG_TASK_STOP_TIMEOUT + self.EXECUTOR_SHUTDOWN_TIMEOUT
+        self._shutdown_executor_pools(deadline)
         BackgroundTaskManager._instance = None
+
+    def _begin_shutdown(self) -> bool:
+        """拒绝新任务并停止调度；已关闭时返回 False。"""
+        with self._task_lock:
+            if self._is_shutdown:
+                return False
+            self._is_shutdown = True
+            timers = list(self._restart_timers.values())
+            self._restart_timers.clear()
+        self._stop_event.set()
+        check_thread = getattr(self, '_schedule_check_thread', None)
+        if check_thread is not None and check_thread.is_alive():
+            check_thread.join(timeout=self.CHECK_THREAD_JOIN_TIMEOUT)
+        for timer in timers:
+            timer.cancel()
+        return True
+
+    def _stop_long_tasks(self, tasks, deadline: float) -> None:
+        """按全局截止期等待长期任务，超时不随任务数量线性增长。"""
+        for task in tasks:
+            if task.stop_callback:
+                try:
+                    task.stop_callback()
+                except Exception as exc:
+                    self._logger.error(get_name(), f"长期任务停止回调失败 {task.task_id}: {exc}")
+        futures = [self._futures[task.task_id] for task in tasks if task.task_id in self._futures]
+        unfinished = 0
+        for future in futures:
+            remaining = max(0.0, deadline - time.monotonic())
+            try:
+                future.result(timeout=remaining)
+            except Exception:
+                unfinished += 1
+                future.cancel()
+        if unfinished:
+            self._logger.warning(get_name(), f"{unfinished} 个长期任务未在全局截止期内停止")
+        for task in tasks:
+            self._mark_long_task_stopped(task)
+
+    def _mark_long_task_stopped(self, task: LongRunningTask) -> None:
+        """持久化长期任务正常停止状态，失败仅记录不中断其余清理。"""
+        task.current_status = LONG_TASK_STATUS_STOPPED
+        task.last_stopped_at = datetime.now()
+        try:
+            self._storage.save_long_running_task(task)
+        except Exception as exc:
+            self._logger.warning(get_name(), f"保存长期任务停止状态失败 {task.task_id}: {exc}")
+
+    def _shutdown_executor_pools(self, deadline: float) -> None:
+        """在独立线程中关闭全部执行池，并受全局剩余时间约束。"""
+        def wait_for_pools() -> None:
+            self._pools.shutdown(wait=True, cancel_futures=True)
+        waiter = Thread(target=wait_for_pools, daemon=True, name="BackgroundTaskExecutorShutdown")
+        waiter.start()
+        waiter.join(timeout=max(0.0, deadline - time.monotonic()))
+        if waiter.is_alive():
+            self._logger.warning(get_name(), "执行池未在全局截止期内完成关闭")
 
     def __del__(self):
         """析构函数"""

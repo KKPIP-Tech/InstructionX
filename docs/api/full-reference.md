@@ -288,7 +288,10 @@ from core.interfaces import ILocalizationFacade
 | `BackgroundTaskManager()` | 获取单例实例（单例模式） | BackgroundTaskManager |
 | `register_sync_task(plugin_id, name, func, callback, args, kwargs)` | 注册同步任务 | str (task_id) |
 | `register_async_task(plugin_id, name, func, callback, args, kwargs)` | 注册异步任务 | Optional[str]（task_id；shutdown 后为 None） |
-| `register_scheduled_task(plugin_id, name, func, interval, callback, args, kwargs)` | 注册定时任务 | Optional[str]（task_id；shutdown 后为 None） |
+| `register_priority_task(plugin_id, name, func, priority, args, kwargs)` | 按 `TaskPriority` 注册独立池短任务 | Optional[str]（队列/配额满或 shutdown 后为 None） |
+| `register_cancellable_task(plugin_id, name, func, callback, args, kwargs, priority)` | 注册首参数接收 `CancellationToken` 的协作任务 | Optional[str] |
+| `request_task_cancellation(task_id, timeout=None)` | 请求协作取消，实际停止前为 `CANCELLING` | CancellationResult |
+| `register_scheduled_task(plugin_id, name, func, interval, callback, args, kwargs, overlap_policy)` | 注册定时任务并指定重入策略 | Optional[str]（task_id；shutdown 后为 None） |
 | `register_scheduled_task_factory(plugin_id, func, callback)` | 注册任务工厂 | None |
 | `restore_scheduled_tasks(plugin_id)` | 恢复定时任务 | int |
 | `enable_scheduled_task(task_id)` | 启用定时任务 | bool |
@@ -305,7 +308,7 @@ from core.interfaces import ILocalizationFacade
 | `get_all_tasks()` | 获取所有任务 | List[BackgroundTask] |
 | `get_task_status(task_id)` | 获取任务状态 | Optional[TaskStatus] |
 | `get_scheduled_tasks(plugin_id)` | 获取定时任务 | List[ScheduledTask] |
-| `cancel_task(task_id)` | 取消任务 | bool |
+| `cancel_task(task_id)` | 旧状态取消 API，运行中函数仍可能继续执行；新代码使用 `request_task_cancellation` | bool |
 | `clear_completed_tasks(plugin_id)` | 清理已完成任务 | int |
 | `shutdown()` | 关闭任务管理器 | None |
 
