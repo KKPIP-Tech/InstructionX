@@ -63,7 +63,22 @@ class TaskType(Enum):
   )
   ```
 
-### 2.4 定时任务 (SCHEDULED)
+### 2.4 执行池、背压与协作取消
+
+`core/task/executor_pools.py` 将长期、普通和高优任务分配到独立执行池：
+普通池默认 4 个 worker，高优池 2 个，长期池 32 个。普通和高优队列均有容量上限，
+单插件普通与高优短任务的运行加排队总配额为 32；队列或插件配额已满时，注册
+返回 `None` 并记录失败原因，不会形成无界等待队列。`TaskSupervisor` 记录提交、
+完成、拒绝、队列深度和单调时钟调度延迟。
+
+`register_priority_task()` 通过 `TaskPriority.HIGH` 提交高优短任务。
+`register_cancellable_task()` 为函数的第一个参数注入 `CancellationToken`，插件在
+安全检查点调用 `raise_if_cancelled()`。`request_task_cancellation()` 发出请求后，
+函数未实际退出前状态为 `CANCELLING`；只有确认停止才进入 `CANCELLED`，忽略取消
+并正常返回的函数最终为 `COMPLETED`。旧 `cancel_task()` 保留既有状态取消语义，
+但新任务应使用协作式 API。
+
+### 2.5 定时任务 (SCHEDULED)
 
 - **特点**: 按固定间隔重复执行
 - **适用场景**: 定期备份、自动同步等
@@ -80,7 +95,11 @@ class TaskType(Enum):
   )
   ```
 
-### 2.5 长期任务 (LONG_RUNNING)
+定时任务使用 `next_run_monotonic` 判断到期，避免系统时间回拨影响。重入策略
+`ScheduledOverlapPolicy.SKIP` 直接跳过未结束批次，`QUEUE_ONE` 和 `COALESCE`
+最多保留一个待执行/合并批次，防止慢任务无限积压。
+
+### 2.6 长期任务 (LONG_RUNNING)
 
 - **特点**: 持续运行直到被显式停止，支持优雅停止和自动重启
 - **适用场景**: Web 服务器、长期驻留服务、持续监听任务等

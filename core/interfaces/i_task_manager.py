@@ -21,6 +21,7 @@ class TaskStatus(Enum):
     """任务状态枚举（单一来源，core.task.task_model 从此处 re-export）"""
     PENDING = "pending"     # 待执行：任务已创建但未开始
     RUNNING = "running"    # 执行中：任务正在运行
+    CANCELLING = "cancelling" # 取消中：已请求取消，但函数尚未确认停止
     COMPLETED = "completed" # 已完成：任务成功执行完毕
     FAILED = "failed"      # 执行失败：任务执行过程中出错
     CANCELLED = "cancelled" # 已取消：任务被用户主动取消

@@ -239,11 +239,13 @@ core/
   __init__.py               # PEP-562 惰性导出，避免 import core 时拉起 PySide6
   version.py                # VERSION 常量（版本单一来源）
   interfaces/               # 抽象接口层：IPlugin、IPluginInfo、IDataProvider、ITaskManager、
-                            #   ILLMService（i_llm_service.py，LLM 插件服务契约）、PluginServices（依赖注入容器）
+                            #   ILLMService（i_llm_service.py，LLM 插件服务契约）、PluginServices（依赖注入容器）、
+                            #   health.py（核心服务健康状态、错误码、快照与脱敏契约）
   plugin/                   # 插件系统核心
     manager.py              # PluginManager 单例：加载/注册插件、热重载（完整卸载旧实例）、
                             #   跨插件 API 注册、插件卸载（uninstall_plugin）、
                             #   插件分类移动（move_plugin_to_scope，官方 ↔ 第三方）、自定义分组与排序
+    service_health.py       # 按插件与能力聚合健康快照、错误分类、恢复建议与关联 ID
     plugin_identity.py      # 插件 UUID（优先 {插件目录}/.plugin_info.json，不可写时回退
                             #   data/plugin_identity/{插件目录名}.json；卸载时 delete() 清理）
     config_manager.py       # 插件显示顺序（config/plugin_order.json）
@@ -278,7 +280,10 @@ core/
     data_provider.py        # DataProvider 单例：PRIVATE/PUBLIC 双命名空间、发布订阅、内存缓存
     sqlite_backend.py       # SQLite WAL 后端（默认），schema 迁移
   task/                     # 后台任务系统
-    background_task.py      # BackgroundTaskManager 单例：4 线程池、定时/长期任务、优雅关闭
+    background_task.py      # BackgroundTaskManager 单例：任务生命周期与兼容门面、全局截止期关闭
+    executor_pools.py       # 长期/普通/高优独立有界执行池（4/2/32 worker）与工厂注入
+    cancellation.py         # 协作取消令牌、取消结果、任务优先级与定时重入策略
+    supervisor.py           # 提交/完成/拒绝、队列深度与单调时钟调度延迟指标
     task_model.py           # BackgroundTask / ScheduledTask / LongRunningTask 数据模型
     scheduler.py            # TaskScheduler（轻量生命周期占位）+ SchedulerCallback
     task_storage.py         # 任务状态持久化（data/tasks.json）
