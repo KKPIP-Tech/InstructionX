@@ -278,7 +278,8 @@ core/
                             #   按发布时间倒序排列并定位当前版本
     launcher.py             # 校验更高版本与 Git 已跟踪文件修改，调用原生 Setup 按 Tag 升级
   data/                     # 数据持久化层
-    data_provider.py        # DataProvider 单例：PRIVATE/PUBLIC 双命名空间、发布订阅、内存缓存
+    data_provider.py        # DataProvider 单例：PRIVATE/PUBLIC 双命名空间、发布订阅、内存缓存、统一关闭
+    event_dispatcher.py     # 每订阅者独立有界邮箱与 worker、三种背压策略、单调序号和分发指标
     sqlite_backend.py       # SQLite WAL 后端（默认），schema 迁移
   task/                     # 后台任务系统
     background_task.py      # BackgroundTaskManager 单例：任务生命周期与兼容门面、全局截止期关闭

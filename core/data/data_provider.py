@@ -16,6 +16,7 @@ from core.interfaces.i_data_provider import IDataProvider, DataNamespace
 from utils.logging_tools import LoggerManager, get_name
 
 from .sqlite_backend import SQLiteBackend, SQLiteBackendError
+from .event_dispatcher import BackpressurePolicy, EventDispatcher, PublishReceipt
 
 
 class DataProviderError(Exception):
@@ -89,6 +90,7 @@ class DataProvider(IDataProvider):
 
         # 订阅管理器: {(subscriber_id, target_plugin_id, target_key): callback}
         self._subscriptions: Dict[tuple, Callable] = {}
+        self._event_dispatcher = EventDispatcher()
 
         # 日志管理器
         self._logger = LoggerManager()
@@ -206,7 +208,8 @@ class DataProvider(IDataProvider):
                 self._backend.clear_caches()
 
     def close(self) -> None:
-        """幂等关闭持久化连接；JSON 后端无连接资源，调用同样安全。"""
+        """关闭事件分发器和持久化连接；JSON 后端调用同样安全。"""
+        self._event_dispatcher.close()
         with self._file_lock:
             if not self._use_json_backend:
                 self._backend.close()
@@ -510,6 +513,7 @@ class DataProvider(IDataProvider):
             with self._subscription_lock:
                 subscription_key = (subscriber_id, target_plugin_id, target_key)
                 self._subscriptions[subscription_key] = callback
+            self._event_dispatcher.subscribe(subscriber_id, target_plugin_id, target_key, callback)
             return
 
         # 在 _file_lock 保护下仅验证目标插件存在，然后释放锁再注册订阅
@@ -523,6 +527,7 @@ class DataProvider(IDataProvider):
         with self._subscription_lock:
             subscription_key = (subscriber_id, target_plugin_id, target_key)
             self._subscriptions[subscription_key] = callback
+        self._event_dispatcher.subscribe(subscriber_id, target_plugin_id, target_key, callback)
 
     def unsubscribe(self, subscriber_id: str, target_plugin_id: Optional[str] = None) -> None:
         """取消订阅
@@ -541,6 +546,7 @@ class DataProvider(IDataProvider):
                                  if k[0] == subscriber_id and k[1] == target_plugin_id]
                 for key in keys_to_remove:
                     del self._subscriptions[key]
+        self._event_dispatcher.unsubscribe_matching(subscriber_id, target_plugin_id)
 
     def publish(self,
                 publisher_id: str,
@@ -559,6 +565,21 @@ class DataProvider(IDataProvider):
             DataProviderError: 插件不存在、值不可序列化或底层写入失败时抛出
         """
         self.set_plugin_data(publisher_id, key, value, namespace, notify=True)
+
+    def publish_async(
+        self, publisher_id: str, key: str, value: Any,
+        policy: str = BackpressurePolicy.REJECT,
+    ) -> PublishReceipt:
+        """持久化公开数据后异步分发，返回接收回执而非送达保证。"""
+        old_value = self.get_plugin_data(publisher_id, key, DataNamespace.PUBLIC)
+        self.set_plugin_data(
+            publisher_id, key, value, DataNamespace.PUBLIC, notify=False
+        )
+        return self._event_dispatcher.publish(publisher_id, key, old_value, value, policy)
+
+    def get_event_delivery_stats(self, subscriber_id: str):
+        """返回订阅方异步分发统计。"""
+        return self._event_dispatcher.get_stats(subscriber_id)
 
     def _notify_subscribers(self,
                           publisher_id: str,
@@ -585,6 +606,8 @@ class DataProvider(IDataProvider):
             keys_to_remove = [k for k in self._subscriptions.keys() if k[0] == instance_id or k[1] == instance_id]
             for key in keys_to_remove:
                 del self._subscriptions[key]
+        self._event_dispatcher.unsubscribe_subscriber(instance_id)
+        self._event_dispatcher.unsubscribe_target(instance_id)
 
     # -------------------------------------------------------------------------
     # 公共方法：资源文件管理

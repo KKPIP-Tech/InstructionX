@@ -173,6 +173,22 @@ class PublisherService:
         )
 ```
 
+### 5.4 异步事件分发与背压
+
+`publish_async()` 先持久化公开数据，再把事件交给 `core/data/event_dispatcher.py`。
+每个订阅者都有独立有界邮箱和分发 worker，慢订阅者不会阻塞发布者或其他订阅者。
+事件包含单调递增 ID 和发布时间，`get_event_delivery_stats()` 提供排队、送达、合并、
+丢弃、失败和延迟指标。邮箱满时必须显式选择：
+
+- `BackpressurePolicy.REJECT`：拒绝新事件并返回 `queue_full`；
+- `BackpressurePolicy.COALESCE`：合并待处理事件，保留最新值并计数；
+- `BackpressurePolicy.DROP_OLDEST`：丢弃最旧事件并计数，允许新事件入队。
+
+`PublishReceipt` 只表示邮箱是否接收，不代表回调已执行，更不代表持久化确认。可视化
+和一般状态通知可以使用合并/丢弃策略；关键业务必须由插件实现持久化队列、确认、
+幂等和恢复机制，不得把内存事件总线当作可靠消息队列。插件卸载和 `close()` 会取消
+匹配邮箱并停止 worker。旧 `publish()` 的同步回调语义保持不变。
+
 ---
 
 ## 6. 资源管理
