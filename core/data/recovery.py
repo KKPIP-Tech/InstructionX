@@ -11,6 +11,8 @@ from enum import Enum
 from pathlib import Path
 from typing import Dict, Optional
 
+from core.observability.events import FrameworkEventType, get_framework_event_journal
+
 
 CLASSIFY_TIMEOUT_SECONDS = 0.05
 CHECKSUM_CHUNK_BYTES = 1024 * 1024
@@ -115,6 +117,11 @@ class DatabaseRecovery:
         """
         report = self._copy_snapshot(Path(path), QUARANTINE_PREFIX, reason)
         self.verify_recovery_point(report)
+        get_framework_event_journal().record(
+            FrameworkEventType.DATA_RECOVERED,
+            str(report.source_path),
+            details={"action": "quarantine", "recovery_path": str(report.recovery_path)},
+        )
         return replace(report, integrity=DatabaseState.CORRUPT.value)
 
     def verify_recovery_point(self, report: RecoveryReport) -> None:
@@ -173,6 +180,11 @@ class DatabaseRecovery:
             raise DatabaseRecoveryError(
                 f"恢复文件已应用，但暂存目录清理失败：{cleanup_error}；请人工检查并恢复"
             ) from cleanup_error
+        get_framework_event_journal().record(
+            FrameworkEventType.DATA_RECOVERED,
+            str(report.source_path),
+            details={"action": "restore", "recovery_path": str(report.recovery_path)},
+        )
 
     def _restore_staging_path(self, source: Path) -> Path:
         """生成与目标同文件系统的唯一恢复暂存目录路径。"""

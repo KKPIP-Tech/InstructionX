@@ -18,6 +18,9 @@ from pathlib import Path
 from typing import List, Dict, Optional, Any, Callable, Tuple
 
 from core.interfaces import IPlugin
+from core.observability.context import correlation_scope
+from core.observability.events import FrameworkEventType, get_framework_event_journal
+from core.observability.plugin_facade import PluginObservability
 from core.interfaces.health import (
     HealthErrorCode,
     HealthSnapshot,
@@ -176,6 +179,7 @@ class PluginManager:
             mcp_client=self._create_optional_service(plugin_id, "mcp_client", self._get_mcp_client),
             font_manager=get_font_manager(),
             localization=PluginI18nFacade(plugin_id, get_language_manager()),
+            observability=PluginObservability(plugin_id),
         )
 
     def _create_required_service(self, plugin_id, capability, factory, error_code):
@@ -411,9 +415,15 @@ class PluginManager:
         plugin_instance._plugin_dir = plugin_dir
         plugin_instance._plugin_id = plugin_id
         plugin_instance._services = services
-        plugin_instance.on_plugin_loaded()
-        self._register_loaded_plugin(plugin_instance, plugin_id)
-        self._auto_register_plugin_api(plugin_dir, plugin_id)
+        with correlation_scope(plugin_id=plugin_id):
+            plugin_instance.on_plugin_loaded()
+            self._register_loaded_plugin(plugin_instance, plugin_id)
+            self._auto_register_plugin_api(plugin_dir, plugin_id)
+            get_framework_event_journal().record(
+                FrameworkEventType.PLUGIN_LOADED,
+                plugin_id,
+                details={"plugin_id": plugin_id},
+            )
         return plugin_instance
 
     @staticmethod

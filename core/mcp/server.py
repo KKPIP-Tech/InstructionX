@@ -23,6 +23,9 @@ from core.mcp.config import (
     DEFAULT_MCP_SESSION_IDLE_TIMEOUT,
     MCPServerConfig,
 )
+from core.observability.events import FrameworkEventType, get_framework_event_journal
+from core.observability.metrics import get_metrics_registry
+from core.observability.names import MCP_SESSIONS
 
 # ===== 可选依赖：MCP SDK / uvicorn / anyio（缺失时置 None，运行时检查）=====
 _MCP_IMPORT_ERROR = None
@@ -687,6 +690,18 @@ class MCPHostServer:
             logger.info(
                 f"MCP HTTP Server started on {self._host}:{self._port}"
             )
+            get_metrics_registry().gauge(MCP_SESSIONS, {"direction": "host"}).set(1)
+            get_framework_event_journal().record(
+                FrameworkEventType.MCP_EXPOSED,
+                f"{self._host}:{self._port}",
+                details={
+                    "transport": "streamable-http",
+                    "auth_enabled": bool(self._auth_token),
+                    "tls_enabled": bool(self._tls_certfile),
+                    "host": self._host,
+                    "port": self._port,
+                },
+            )
 
     def stop(self) -> None:
         """停止 MCP Server
@@ -708,6 +723,7 @@ class MCPHostServer:
         self._uvicorn_server = None
         self._thread = None
         self._running = False
+        get_metrics_registry().gauge(MCP_SESSIONS, {"direction": "host"}).set(0)
         logger.info("MCP Server stopped")
 
     @property

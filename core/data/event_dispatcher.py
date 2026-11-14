@@ -9,6 +9,9 @@ from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional
 from uuid import uuid4
 
+from core.observability.metrics import get_metrics_registry
+from core.observability.names import EVENT_COALESCED, EVENT_DROPPED, EVENT_QUEUE_DEPTH
+
 
 logger = logging.getLogger(__name__)
 _STOP_EVENT = object()
@@ -136,24 +139,31 @@ class EventDispatcher:
         except queue.Full:
             pass
         if policy == BackpressurePolicy.REJECT:
-            mailbox.dropped += 1
+            self._record_drop(mailbox, policy)
             return False
         if policy == BackpressurePolicy.DROP_OLDEST:
-            self._discard_oldest(mailbox)
+            self._discard_oldest(mailbox, policy)
         else:
-            mailbox.coalesced += self._drain(mailbox)
+            coalesced = self._drain(mailbox)
+            mailbox.coalesced += coalesced
+            get_metrics_registry().counter(EVENT_COALESCED, {"policy": policy}).inc(coalesced)
         try:
             mailbox.queue.put_nowait(event)
             return True
         except queue.Full:
-            mailbox.dropped += 1
+            self._record_drop(mailbox, policy)
             return False
 
     @staticmethod
-    def _discard_oldest(mailbox) -> None:
+    def _record_drop(mailbox, policy: str) -> None:
+        mailbox.dropped += 1
+        get_metrics_registry().counter(EVENT_DROPPED, {"policy": policy}).inc()
+
+    @staticmethod
+    def _discard_oldest(mailbox, policy: str) -> None:
         try:
             mailbox.queue.get_nowait()
-            mailbox.dropped += 1
+            EventDispatcher._record_drop(mailbox, policy)
         except queue.Empty:
             return
 
@@ -233,8 +243,12 @@ class EventDispatcher:
                 mailbox for mailbox in self._mailboxes.values()
                 if mailbox.subscriber_id == subscriber_id
             ]
+        queued = sum(mailbox.queue.qsize() for mailbox in mailboxes)
+        get_metrics_registry().gauge(
+            EVENT_QUEUE_DEPTH, {"subscriber_id": subscriber_id}
+        ).set(queued)
         return EventDeliveryStats(
-            queued=sum(mailbox.queue.qsize() for mailbox in mailboxes),
+            queued=queued,
             delivered=sum(mailbox.delivered for mailbox in mailboxes),
             coalesced=sum(mailbox.coalesced for mailbox in mailboxes),
             dropped=sum(mailbox.dropped for mailbox in mailboxes),

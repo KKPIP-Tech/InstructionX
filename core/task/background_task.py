@@ -15,6 +15,9 @@ from datetime import datetime
 from typing import Dict, List, Optional, Callable, Any
 
 from core.interfaces.i_task_manager import ITaskManager
+from core.observability.events import FrameworkEventType, get_framework_event_journal
+from core.observability.metrics import get_metrics_registry
+from core.observability.names import TASK_RESTARTS
 from .cancellation import (
     CancellationResult,
     CancellationToken,
@@ -446,6 +449,8 @@ class BackgroundTaskManager(ITaskManager):
                 self._futures.pop(task.task_id, None)
                 self._cancellation_tokens.pop(task.task_id, None)
 
+            if task.status is TaskStatus.CANCELLED:
+                self._record_task_cancelled(task, "worker_stopped")
             self._execute_callback(task)
 
     def _execute_callback(self, task: BackgroundTask) -> None:
@@ -1063,6 +1068,7 @@ class BackgroundTaskManager(ITaskManager):
 
         # 自动重启：指数退避
         task.restart_count += 1
+        get_metrics_registry().counter(TASK_RESTARTS, {"plugin_id": task.plugin_id}).inc()
         task.current_status = LONG_TASK_STATUS_RESTARTING
         delay = min(
             self.AUTO_RESTART_INITIAL_DELAY * (2 ** (task.restart_count - 1)),
@@ -1267,6 +1273,8 @@ class BackgroundTaskManager(ITaskManager):
         elif timeout is not None and future is not None:
             wait([future], timeout=timeout)
         status = self.get_task_status(task_id)
+        if status is TaskStatus.CANCELLED:
+            self._record_task_cancelled(task, "cooperative_cancelled")
         message = "取消请求已发出，等待函数实际停止" if status is TaskStatus.CANCELLING else "任务已停止"
         return CancellationResult(task_id, True, status, message)
 
@@ -1277,6 +1285,14 @@ class BackgroundTaskManager(ITaskManager):
         self._running_tasks.pop(task.task_id, None)
         self._futures.pop(task.task_id, None)
         self._cancellation_tokens.pop(task.task_id, None)
+
+    def _record_task_cancelled(self, task: BackgroundTask, source: str) -> None:
+        """记录已确认的取消状态，CANCELLING 不生成完成事件。"""
+        get_framework_event_journal().record(
+            FrameworkEventType.TASK_CANCELLED,
+            task.task_id,
+            details={"task_id": task.task_id, "plugin_id": task.plugin_id, "source": source},
+        )
 
     def cancel_task(self, task_id: str) -> bool:
         """
@@ -1300,6 +1316,7 @@ class BackgroundTaskManager(ITaskManager):
 
                 self._running_tasks.pop(task_id)
                 self._futures.pop(task_id, None)
+                self._record_task_cancelled(task, "legacy_status_cancelled")
                 return True
 
         return False

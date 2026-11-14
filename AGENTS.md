@@ -319,6 +319,15 @@ core/
     client_support.py       # MCP Client 可选依赖导入与检查
     async_cleanup.py        # Server/Client 自有事件循环遗留 Task 的取消与等待
     bridge.py               # 插件 API 注册表 ↔ MCP Server 双向同步（exposed_plugins 白名单失败关闭）
+  observability/            # 本地可观测性（无外部监控运行前提）
+    context.py              # CorrelationContext 与 ContextVar 调用链、耗时
+    metrics.py              # 有界 counter/histogram/gauge、标签基数与失败降级
+    health_registry.py      # 本地脱敏健康快照，插件卸载清理
+    events.py               # PLUGIN_LOADED/TASK_CANCELLED/DATA_RECOVERED/MCP_EXPOSED 有界框架事件
+    plugin_facade.py        # PluginObservability 绑定插件身份的健康、指标与上下文门面
+    sanitize.py             # 凭据、患者及插件自定义敏感字段递归脱敏
+    instrumentation.py      # 数据库写入测量（原异常照常传播）
+    names.py                # 框架指标名称单一来源
   font/                     # 字体子系统（框架不自带字体）
     font_record.py          # FontRecord dataclass（frozen, slots）：字体注册记录
     exceptions.py           # FontInstallError：字体安装失败异常
@@ -485,6 +494,7 @@ config/ data/ logs/         # 运行时生成：配置、数据、日志
 - MCP Server 默认仅监听 `127.0.0.1`；非回环 HTTP 无 Bearer token 必须在绑定端口前失败关闭。对外暴露应同时配置 Host 白名单、请求限流与 TLS；token 使用 Windows DPAPI 保存，兼容读取旧 Base64/明文但不得再以其作为安全边界。
 - `dependency_manager.py` 会自动 `pip install` 插件声明的依赖——审查第三方插件的依赖声明。
 - `data/`、`config/`、`logs/` 含用户数据，改动其读写逻辑时保持向后兼容（SQLite 后端有 schema 迁移机制，改表结构需新增 migration）。
+- 日志、指标标签、健康快照和框架事件必须经 `core/observability/sanitize.py` 脱敏；患者和插件自定义敏感字段标记不得写入诊断产物。框架事件仅用于基础设施诊断，业务审计格式与持久化仍由插件负责。
 - 许可证边界：项目为 AGPL 开源 + 双重许可——修改/衍生作品与网络服务须开源回馈；`./ui/` 界面的名称、LOGO、版权信息与框架标识性描述不得移除（白标需授权）；闭源 SaaS、嵌入第三方商业产品、批量捆绑销售等场景需商业授权；仅经公开插件接口交互的插件为独立作品。
 
 ## 文档地图（docs/）
@@ -499,6 +509,7 @@ config/ data/ logs/         # 运行时生成：配置、数据、日志
 - 多语言（i18n）：`docs/core/i18n/overview.md`
 - LLM：`docs/core/llm-provider/`、`docs/plugins/llm-integration-guide.md`
 - MCP：`docs/core/mcp/overview.md`
+- 可观测性与框架事件：`docs/core/observability/overview.md`
 - 依赖安全：`docs/security/dependency-management.md`
 - API 参考：`docs/api/full-reference.md`
 - 安装与环境管理：`docs/tui-setup.md`（Rust 原生 Setup：三平台 TUI、四语言、安装/修复/升级、环境包与插件管理、预检回滚、原生资产发布与 dry-run 约定）

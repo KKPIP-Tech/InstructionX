@@ -11,6 +11,7 @@ from core.interfaces.health import (
     HealthStatus,
     sanitize_health_message,
 )
+from core.observability.health_registry import get_health_registry
 
 
 _SEVERITY = {
@@ -56,6 +57,10 @@ class PluginServiceHealth:
         )
         with self._lock:
             self._snapshots.setdefault(plugin_id, {})[capability] = snapshot
+        get_health_registry().report(
+            capability, status, error_code, snapshot.message,
+            snapshot.correlation_id, plugin_id,
+        )
         return snapshot
 
     def get_service_health(self, plugin_id: str) -> HealthSnapshot:
@@ -101,6 +106,7 @@ class PluginServiceHealth:
         """插件卸载时清理其全部健康记录。"""
         with self._lock:
             self._snapshots.pop(plugin_id, None)
+        get_health_registry().clear_plugin(plugin_id)
 
     @staticmethod
     def get_recovery_suggestion(error_code: Optional[HealthErrorCode]) -> str:

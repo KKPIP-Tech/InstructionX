@@ -17,6 +17,8 @@ from core.mcp.async_cleanup import cancel_pending_tasks
 from core.mcp.client_support import ensure_mcp_sdk
 from core.mcp.config import MCPRemoteServerConfig  # noqa: F401
 from core.mcp.connection_actor import ConnectionActor
+from core.observability.metrics import get_metrics_registry
+from core.observability.names import MCP_SESSIONS
 from core.plugin.tool_name import sanitize_tool_name
 
 logger = logging.getLogger(__name__)
@@ -213,6 +215,8 @@ class MCPClientManager:
 
         with self._conn_lock:
             self._connections[server_id] = conn
+            session_count = len(self._connections)
+        get_metrics_registry().gauge(MCP_SESSIONS, {"direction": "remote"}).set(session_count)
         return conn
 
     async def _async_disconnect(self, server_id: str) -> None:
@@ -232,6 +236,8 @@ class MCPClientManager:
         finally:
             with self._conn_lock:
                 self._connections.pop(server_id, None)
+                session_count = len(self._connections)
+        get_metrics_registry().gauge(MCP_SESSIONS, {"direction": "remote"}).set(session_count)
         if errors:
             raise RuntimeError(f"MCP 连接 {server_id} 清理不完整: {'; '.join(errors)}")
         logger.info(f"Disconnected from MCP server: {server_id}")
