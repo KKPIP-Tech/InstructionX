@@ -727,6 +727,12 @@ InstructionX attempted to install the dependencies declared by the plugins. Chec
       <text key="reason.import_failed">The plugin entry point failed to import</text>
       <text key="reason.unexpected_error">An exception occurred while loading the plugin</text>
       <text key="reason.detail">Details: {detail}</text>
+      <text key="health.item"><![CDATA[• {name}
+Affected capabilities: {capabilities}
+Health status: {status}
+Details: {detail}
+Recommended action: {suggestion}
+Correlation ID: {correlation_id}]]></text>
       <text key="button.acknowledge">Got it</text>
   </group>
   <group name="dialog_plugin_compatibility">

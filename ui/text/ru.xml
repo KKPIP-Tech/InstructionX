@@ -761,6 +761,12 @@ InstructionX попытался автоматически установить 
       <text key="reason.import_failed">Не удалось импортировать точку входа плагина</text>
       <text key="reason.unexpected_error">При загрузке плагина возникло исключение</text>
       <text key="reason.detail">Подробности: {detail}</text>
+      <text key="health.item"><![CDATA[• {name}
+Затронутые возможности: {capabilities}
+Состояние: {status}
+Подробности: {detail}
+Рекомендуемое действие: {suggestion}
+ID корреляции: {correlation_id}]]></text>
       <text key="button.acknowledge">Понятно</text>
   </group>
   <group name="dialog_plugin_compatibility">

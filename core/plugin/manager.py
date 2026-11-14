@@ -15,9 +15,15 @@ import importlib
 from enum import Enum
 from pathlib import Path
 from typing import List, Dict, Optional, Any, Callable, Tuple
-from unittest.mock import MagicMock
 
 from core.interfaces import IPlugin
+from core.interfaces.health import (
+    HealthErrorCode,
+    HealthSnapshot,
+    HealthStatus,
+    sanitize_health_message,
+)
+from .service_health import PluginServiceHealth
 from core.data import DataProvider
 from core.task import BackgroundTaskManager
 from .config_manager import PluginConfigManager
@@ -131,66 +137,82 @@ class PluginManager:
         # 用户自定义分组存储
         self.group_store = PluginGroupStore()
 
+        # 核心服务健康状态（按插件与能力分别记录）
+        self._service_health = PluginServiceHealth()
+
         # 日志管理器
         self._logger = LoggerManager()
 
     def _create_plugin_services(self, plugin_id: str) -> PluginServices:
-        """创建插件服务依赖注入容器
-
-        创建包含所有核心服务的 PluginServices 对象，
-        供插件在构造器和 on_plugin_loaded 回调中使用。
-
-        Args:
-            plugin_id: 插件 UUID（用于绑定多语言取词门面）
-
-        Returns:
-            PluginServices: 服务容器实例
-        """
+        """创建服务容器；失败保留旧 None 兼容语义并记录显式健康状态。"""
         # NOTE: 函数级导入用于打破 core.plugin ↔ core.llm/mcp 循环依赖，待 P2 事件化重构后移除
         from core.llm import get_llm_plugin_service
-        try:
-            data_provider = DataProvider()
-        except Exception:
-            data_provider = None
-
-        try:
-            task_manager = BackgroundTaskManager()
-        except Exception:
-            task_manager = None
-
-        logger = LoggerManager()
-
+        llm_facade = self._create_required_service(
+            plugin_id, "llm_facade", get_llm_plugin_service, HealthErrorCode.CONFIGURATION
+        )
+        data_provider = self._create_required_service(
+            plugin_id, "data_provider", DataProvider, HealthErrorCode.PERSISTENCE
+        )
+        task_manager = self._create_required_service(
+            plugin_id, "task_manager", BackgroundTaskManager, HealthErrorCode.RESOURCE
+        )
         return PluginServices(
-            llm_facade=get_llm_plugin_service(),
+            llm_facade=llm_facade,
             data_provider=data_provider,
             task_manager=task_manager,
-            logger=logger,
-            mcp_manager=self._get_mcp_manager(),
-            mcp_client=self._get_mcp_client(),
+            logger=LoggerManager(),
+            mcp_manager=self._create_optional_service(plugin_id, "mcp_manager", self._get_mcp_manager),
+            mcp_client=self._create_optional_service(plugin_id, "mcp_client", self._get_mcp_client),
             font_manager=get_font_manager(),
             localization=PluginI18nFacade(plugin_id, get_language_manager()),
         )
 
-    def _get_mcp_manager(self) -> Any:
-        """获取 MCPManager 单例"""
+    def _create_required_service(self, plugin_id, capability, factory, error_code):
+        """创建必需服务，失败时标记 UNAVAILABLE 并返回 None。"""
         try:
-            # NOTE: 函数级导入用于打破 core.plugin ↔ core.llm/mcp 循环依赖，待 P2 事件化重构后移除
-            from core.mcp import get_mcp_manager
-            return get_mcp_manager()
-        except Exception:
+            service = factory()
+        except Exception as exc:
+            self._record_service_failure(plugin_id, capability, HealthStatus.UNAVAILABLE, error_code, exc)
             return None
+        self._service_health.report(plugin_id, capability, HealthStatus.HEALTHY)
+        return service
+
+    def _create_optional_service(self, plugin_id, capability, factory):
+        """创建可选服务，失败时标记 DEGRADED 并返回 None。"""
+        try:
+            service = factory()
+        except Exception as exc:
+            self._record_service_failure(plugin_id, capability, HealthStatus.DEGRADED, HealthErrorCode.NETWORK, exc)
+            return None
+        self._service_health.report(plugin_id, capability, HealthStatus.HEALTHY)
+        return service
+
+    def _record_service_failure(self, plugin_id, capability, status, error_code, error):
+        """记录脱敏错误、错误类别和关联 ID，避免初始化失败静默。"""
+        snapshot = self._service_health.report(
+            plugin_id, capability, status, error_code, str(error)
+        )
+        self._logger.error(
+            get_name(),
+            f"插件 {plugin_id} 的 {capability} 初始化失败: {error_code.value}; "
+            f"correlation_id={snapshot.correlation_id}; "
+            f"error={sanitize_health_message(error)}",
+        )
+
+    def _get_mcp_manager(self) -> Any:
+        """获取 MCPManager 单例，异常交由健康模型分类。"""
+        # NOTE: 函数级导入用于打破 core.plugin ↔ core.llm/mcp 循环依赖，待 P2 事件化重构后移除
+        from core.mcp import get_mcp_manager
+        return get_mcp_manager()
 
     def _get_mcp_client(self) -> Any:
-        """获取 MCPClientManager 实例"""
-        try:
-            # NOTE: 函数级导入用于打破 core.plugin ↔ core.llm/mcp 循环依赖，待 P2 事件化重构后移除
-            from core.mcp import get_mcp_manager
-            from core.llm import get_llm_plugin_service
-            mcp_mgr = get_mcp_manager()
-            tool_registry = get_llm_plugin_service().get_shared_tool_registry()
-            return mcp_mgr.get_client_manager(tool_registry)
-        except Exception:
-            return None
+        """获取 MCPClientManager 实例，异常交由健康模型分类。"""
+        # NOTE: 函数级导入用于打破 core.plugin ↔ core.llm/mcp 循环依赖，待 P2 事件化重构后移除
+        from core.mcp import get_mcp_manager
+        from core.llm import get_llm_plugin_service
+        mcp_mgr = get_mcp_manager()
+        tool_registry = get_llm_plugin_service().get_shared_tool_registry()
+        return mcp_mgr.get_client_manager(tool_registry)
 
     def load_plugins(self):
         """加载所有插件，并校准版本注册表与记录加载失败。"""
@@ -215,6 +237,18 @@ class PluginManager:
     def get_plugin_load_failures(self) -> List[PluginLoadFailure]:
         """获取最近一次插件加载产生的失败列表副本。"""
         return list(self._plugin_load_failures)
+
+    def get_service_health(self, plugin_id: str) -> HealthSnapshot:
+        """返回指定插件最严重的核心服务健康快照。"""
+        return self._service_health.get_service_health(plugin_id)
+
+    def get_unavailable_capabilities(self, plugin_id: str) -> List[str]:
+        """返回指定插件完全不可用的核心能力列表。"""
+        return self._service_health.get_unavailable_capabilities(plugin_id)
+
+    def get_service_health_issues(self) -> Dict[str, HealthSnapshot]:
+        """返回全部降级或不可用插件的健康快照。"""
+        return self._service_health.get_health_issues()
 
     def load_official_plugins(self) -> List[IPlugin]:
         """
@@ -420,6 +454,7 @@ class PluginManager:
         # 2. 注销跨插件 API 并同步移除 MCP 工具
         if plugin_id:
             self.unregister_plugin_api(plugin_id)
+            self._service_health.clear(plugin_id)
             # 注销插件语言包（清理注册项与语言目录缓存）
             get_language_manager().unregister_plugin_texts(plugin_id)
         # 3. 销毁缓存的 Widget（必须在 GUI 线程调用，失败仅记录）
@@ -1011,25 +1046,15 @@ class PluginManager:
                 self._logger.warning(get_name(), f'Skipping API registration ({plugin_dir.name}): no Service class found')
                 return
 
-            # 实例化 Service（优先使用真实单例 DataProvider/TaskManager，
-            # 仅在核心服务不可用（如测试环境）时回退为 MagicMock）
-            # NOTE: 函数级导入用于打破 core.plugin ↔ core.llm/mcp 循环依赖，待 P2 事件化重构后移除
-            from core.llm import get_llm_plugin_service
-
-            try:
-                mock_dp = DataProvider()
-            except Exception:
-                mock_dp = MagicMock()
-
-            real_llm = get_llm_plugin_service()
-
-            try:
-                mock_ts = BackgroundTaskManager()
-            except Exception:
-                mock_ts = MagicMock()
-
+            # 复用插件加载时创建的真实服务；核心服务不可用保持 None 兼容，
+            # 但健康注册表已明确记录，绝不使用 MagicMock 制造假成功。
+            plugin = self.get_plugin_by_id(plugin_id)
+            services = getattr(plugin, "_services", None)
+            if services is None:
+                services = self._create_plugin_services(plugin_id)
             service_instance = self._instantiate_service(
-                service_class, plugin_id, mock_dp, real_llm, mock_ts
+                service_class, plugin_id, services.data_provider,
+                services.llm_facade, services.task_manager
             )
 
             if service_instance is None:
@@ -1040,7 +1065,10 @@ class PluginManager:
             self.register_plugin_api(plugin_id, service_instance, api_descriptions)
 
         except Exception as e:
-            self._logger.error(get_name(), f'API auto registration failed: {e}')
+            self._record_service_failure(
+                plugin_id, "plugin_api", HealthStatus.DEGRADED,
+                HealthErrorCode.PLUGIN_CODE, e,
+            )
 
     def _instantiate_service(
         self,

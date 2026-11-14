@@ -133,6 +133,9 @@ from core.interfaces import ILocalizationFacade
 | `load_official_plugins()` | 加载官方插件 | List[IPlugin] |
 | `load_thirdparty_plugins()` | 加载第三方插件 | List[IPlugin] |
 | `get_plugin_load_failures()` | 获取最近一次加载的依赖/入口失败列表 | List[PluginLoadFailure] |
+| `get_service_health(plugin_id)` | 获取插件最严重核心服务的健康快照 | HealthSnapshot |
+| `get_unavailable_capabilities(plugin_id)` | 获取完全不可用的核心能力名称列表 | List[str] |
+| `get_service_health_issues()` | 获取全部降级或不可用插件的健康快照 | Dict[str, HealthSnapshot] |
 | `get_all_plugins()` | 获取所有插件 | List[IPlugin] |
 | `get_plugin_by_id(plugin_id)` | 根据 UUID 获取插件 | Optional[IPlugin] |
 | `get_plugin_by_name(name)` | 根据名称获取插件 | Optional[IPlugin] |
@@ -166,6 +169,12 @@ from core.interfaces import ILocalizationFacade
 依赖安装失败、入口无效、导入异常和缺少模块都会形成结构化失败项；主窗口首次
 显示后统一弹出提示框。`docs/`、`assets/` 等不含插件特征文件的资源目录会被
 静默跳过，不会被误报为插件。
+
+核心服务健康类型定义在 `core/interfaces/health.py`：`HealthStatus` 包含
+`UNKNOWN / HEALTHY / DEGRADED / UNAVAILABLE`，`HealthErrorCode` 包含配置、资源、
+网络、权限、持久化、插件代码和内部错误。`HealthSnapshot` 包含状态、错误码、
+脱敏消息、UTC 时间戳和关联 ID。`core/plugin/service_health.py` 按插件与能力
+聚合状态，任一必需服务不可用不会被后续健康服务覆盖。
 
 #### GitHubPluginInstaller 主要 API
 

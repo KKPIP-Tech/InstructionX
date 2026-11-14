@@ -775,6 +775,12 @@ InstructionX a tenté d’installer automatiquement les dépendances déclarées
       <text key="reason.import_failed">Échec de l’import du point d’entrée du plugin</text>
       <text key="reason.unexpected_error">Une exception est survenue pendant le chargement du plugin</text>
       <text key="reason.detail">Détails : {detail}</text>
+      <text key="health.item"><![CDATA[• {name}
+Capacités concernées : {capabilities}
+État de santé : {status}
+Détails : {detail}
+Action recommandée : {suggestion}
+ID de corrélation : {correlation_id}]]></text>
       <text key="button.acknowledge">J’ai compris</text>
   </group>
   <group name="dialog_plugin_compatibility">
