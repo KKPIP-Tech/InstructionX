@@ -158,9 +158,12 @@ class TestMCPRemoteServerConfig:
         )
         d = config.to_dict()
         assert d["url"] == "https://mcp.example.com"
-        # auth_token 落盘为 b64: 混淆格式（防瞥视，非加密），解混淆后还原明文
-        from core.llm.secure_keys import decode_secret
-        assert decode_secret(d["auth_token"]) == "secret-token"
+        # auth_token 使用 DPAPI 加密，旧 b64 格式仅在读取时兼容。
+        from core.github.secret_vault import DPAPI_PREFIX
+        assert d["auth_token"].startswith(DPAPI_PREFIX)
+        assert "secret-token" not in d["auth_token"]
+        restored = MCPRemoteServerConfig.from_dict(d)
+        assert restored.auth_token == "secret-token"
 
     def test_to_dict_excludes_none_url(self):
         """to_dict() omits None values from output."""

@@ -77,15 +77,15 @@ class TestCheckModel:
         assert "not-exist" in result.skip_reason
 
     def test_timeout_override_and_restore(self, mock_config_factory):
-        """timeout 经临时覆盖生效，探测结束后恢复原值"""
+        """timeout 仅覆盖本次请求，共享 Provider 配置保持不变"""
         llm = _ready_llm(mock_config_factory)
         provider = llm.get_provider("mock-1")
         assert provider.timeout == MOCK_INITIAL_TIMEOUT
         result = llm.check_model(
             "mock-1", MOCK_CHAT_MODEL_ID, timeout=MODEL_CHECK_DEFAULT_TIMEOUT)
         assert result.ok is True
-        # 调用瞬间观测到的是覆盖值，结束后恢复原值
-        assert provider.chat_calls[-1]["seen_timeout"] == (
+        # 本次请求使用覆盖值，且不通过修改共享 Provider 配置实现。
+        assert provider.chat_calls[-1]["request_timeout"] == (
             MODEL_CHECK_DEFAULT_TIMEOUT)
         assert provider.timeout == MOCK_INITIAL_TIMEOUT
 
