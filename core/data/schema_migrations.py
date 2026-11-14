@@ -32,3 +32,6 @@ MIGRATIONS: Dict[int, MigrationFunc] = {
 
 # 当前代码期望的最新 schema 版本。
 TARGET_SCHEMA_VERSION = 1
+
+# LLM 用量与会话独立数据库的 schema 版本，避免与 DataProvider 主库版本耦合。
+LLM_STORAGE_SCHEMA_VERSION = 1

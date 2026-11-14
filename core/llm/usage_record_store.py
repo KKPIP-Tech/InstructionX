@@ -1,14 +1,4 @@
-"""LLM 用量记录持久化存储模块
-
-基于 JSON 的原子写入单例存储，用于记录每一次 LLM API 请求的用量信息。
-遵循 task_storage.py 的原子写入模式（临时文件 + os.replace）。
-
-写入策略:
-    单后台写线程 + 防抖合并（debounce）：连续高频记录只触发一次全量写入，
-    避免每条记录都 spawn 新线程全量重写文件。
-
-存储文件: data/llm_usage.json
-"""
+"""LLM 用量持久化门面：默认 SQLite 增量写入，保留旧 JSON 兼容路径。"""
 
 import json
 import logging
@@ -16,11 +6,22 @@ import os
 import threading
 import time
 import uuid
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 
 from .types import UsageRecord
+from .usage_sqlite_store import UsageSQLiteStore, UsageStorageError
+
+
+@dataclass(frozen=True, slots=True)
+class FlushReport:
+    """用量冲刷结果，包含是否成功、未落盘数量和错误信息。"""
+
+    success: bool
+    pending: int
+    error: str = ""
 
 logger = logging.getLogger(__name__)
 
@@ -69,7 +70,7 @@ class UsageRecordStore:
     # flush 轮询间隔（秒）：检查写线程是否完成落盘的等待步长
     FLUSH_POLL_SECONDS = 0.02
 
-    def __new__(cls) -> "UsageRecordStore":
+    def __new__(cls, data_dir=None, durable=True) -> "UsageRecordStore":
         if cls._instance is None:
             with cls._lock:
                 if cls._instance is None:
@@ -77,29 +78,69 @@ class UsageRecordStore:
                     cls._instance._initialized = False
         return cls._instance
 
-    def __init__(self) -> None:
+    def __init__(self, data_dir=None, durable=True) -> None:
         if self._initialized:
             return
         self._initialized = True
 
         self._file_lock = threading.RLock()
         self._pending_write = False
-
-        # 单后台写线程（防抖合并）
         self._writer_thread: Optional[threading.Thread] = None
         self._writer_wake = threading.Event()
+        self._last_write_error = ""
 
-        # 数据目录和文件路径
-        self._data_dir = Path(__file__).resolve().parent.parent.parent / "data"
+        if data_dir is None:
+            self._data_dir = Path(__file__).resolve().parent.parent.parent / "data"
+        else:
+            self._data_dir = Path(data_dir)
         self._data_dir.mkdir(parents=True, exist_ok=True)
         self._records_file = self._data_dir / "llm_usage.json"
-
-        # 内存缓存
+        self._default_records_file = self._records_file
         self._cache: Dict[str, Any] = {"version": 1, "records": []}
         self._cache_dirty = False
+        self._initialize_sqlite_storage(durable)
 
-        self._ensure_data_file()
-        self._load_from_disk()
+    def _initialize_sqlite_storage(self, durable: bool) -> None:
+        """初始化 SQLite 并在数据库不存在时迁移合法旧 JSON。"""
+        db_file = self._data_dir / "llm_usage.db"
+        should_migrate = not db_file.exists() and self._records_file.exists()
+        if should_migrate:
+            self._migrate_json_to_sqlite(db_file, durable)
+        else:
+            self._sqlite_store = UsageSQLiteStore(db_file, durable)
+            self._cache["records"] = self._sqlite_store.load_records()
+
+    def _migrate_json_to_sqlite(self, db_file: Path, durable: bool) -> None:
+        """校验并迁移旧 JSON，成功后才创建带时间戳的迁移备份。"""
+        try:
+            with open(self._records_file, "r", encoding="utf-8") as file:
+                data = json.load(file)
+            records = data.get("records", [])
+            self._sqlite_store = UsageSQLiteStore(db_file, durable)
+            self._sqlite_store.import_records(records)
+        except (json.JSONDecodeError, OSError, UsageStorageError) as exc:
+            if hasattr(self, "_sqlite_store"):
+                self._sqlite_store.close()
+            self._discard_new_usage_db(db_file)
+            self._quarantine_corrupt_json()
+            raise UsageStorageError(f"旧用量文件迁移失败: {exc}") from exc
+        self._cache["records"] = self._sqlite_store.load_records()
+        backup = self._data_dir / f"llm_usage.migrated-{uuid.uuid4().hex}.bak"
+        os.replace(self._records_file, backup)
+
+    def _quarantine_corrupt_json(self) -> None:
+        """保留损坏原文件并生成隔离副本，绝不按空数据继续覆盖。"""
+        if not self._records_file.exists():
+            return
+        quarantine = self._data_dir / f"llm_usage.corrupt-{uuid.uuid4().hex}.bak"
+        quarantine.write_bytes(self._records_file.read_bytes())
+
+    @staticmethod
+    def _discard_new_usage_db(db_file: Path) -> None:
+        """迁移失败时仅删除本次新建数据库，原 JSON 始终保留。"""
+        for path in (db_file, db_file.with_name(db_file.name + "-wal"), db_file.with_name(db_file.name + "-shm")):
+            if path.exists():
+                path.unlink()
 
     def _ensure_data_file(self) -> None:
         """确保数据文件存在"""
@@ -154,9 +195,12 @@ class UsageRecordStore:
                 if self._cache_dirty:
                     try:
                         self._write_to_disk(self._cache)
-                    except Exception:
+                    except Exception as exc:
+                        self._last_write_error = str(exc)
                         logger.exception("UsageRecordStore 写入磁盘失败")
-                    self._cache_dirty = False
+                    else:
+                        self._cache_dirty = False
+                        self._last_write_error = ""
                 # 窗口期内又来了新记录 -> 保持 pending，继续下一轮写入
                 self._pending_write = self._writer_wake.is_set()
 
@@ -176,6 +220,9 @@ class UsageRecordStore:
         Returns:
             None
         """
+        if not self._use_legacy_json_backend:
+            self._sqlite_store.flush()
+            return
         deadline = time.monotonic() + timeout
         while True:
             with self._file_lock:
@@ -185,9 +232,21 @@ class UsageRecordStore:
             # 唤醒写线程尽快写入（不等新的防抖窗口自然到期）
             self._writer_wake.set()
             if time.monotonic() >= deadline:
+                self._last_write_error = self._last_write_error or "flush 超时，仍有数据未落盘"
                 logger.warning("UsageRecordStore flush 超时（%ss），仍有数据未落盘", timeout)
                 return
             time.sleep(self.FLUSH_POLL_SECONDS)
+
+    def flush_detailed(self, timeout: float = 2.0) -> FlushReport:
+        """执行冲刷并返回结构化结果，不把超时或写盘异常伪装成功。"""
+        try:
+            self.flush(timeout=timeout)
+        except Exception as exc:
+            return FlushReport(False, 1, str(exc))
+        with self._file_lock:
+            dirty = self._cache_dirty
+            error = self._last_write_error
+        return FlushReport(not dirty, 1 if dirty else 0, error)
 
     def record(self, usage_record: UsageRecord) -> None:
         """记录一次 LLM API 请求
@@ -199,14 +258,25 @@ class UsageRecordStore:
         if "id" not in record_dict or not record_dict["id"]:
             record_dict["id"] = uuid.uuid4().hex
 
+        if self._use_legacy_json_backend:
+            with self._file_lock:
+                self._cache["records"].append(record_dict)
+                if len(self._cache["records"]) > self.MAX_RECORDS:
+                    self._cache["records"] = self._cache["records"][-self.PRUNE_KEEP:]
+                self._cache_dirty = True
+            self._async_save()
+            return
+        self._sqlite_store.append(record_dict)
         with self._file_lock:
             self._cache["records"].append(record_dict)
-            # 自动 prune：超过阈值时仅保留最近的记录
             if len(self._cache["records"]) > self.MAX_RECORDS:
                 self._cache["records"] = self._cache["records"][-self.PRUNE_KEEP:]
-            self._cache_dirty = True
+            self._cache_dirty = False
 
-        self._async_save()
+    @property
+    def _use_legacy_json_backend(self) -> bool:
+        """旧调用方显式替换 JSON 路径时保留原异步 JSON 行为。"""
+        return self._records_file != self._default_records_file
 
     def get_records(
         self,
@@ -381,6 +451,10 @@ class UsageRecordStore:
             int: 删除的记录数
         """
         before = _normalize_dt(before)
+        if not self._use_legacy_json_backend:
+            removed = self._sqlite_store.delete_before(before.isoformat())
+            self._cache["records"] = self._sqlite_store.load_records()
+            return removed
         with self._file_lock:
             original_count = len(self._cache["records"])
             self._cache["records"] = [

@@ -248,6 +248,9 @@ def main():
                   [{"role": "system", "content": "s"}]
                   + mgr3.get_conversation(big_conv).messages),
               f"sent={len(sent_dicts)} 条")
+        conv_mgr.close()
+        mgr2.close()
+        mgr3.close()
 
     # ------------------------------------------------------------------
     # c. AuthenticationError 带 status_code/provider 正常构造
