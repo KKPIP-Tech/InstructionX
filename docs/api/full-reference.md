@@ -250,6 +250,7 @@ from core.interfaces import ILocalizationFacade
 | `load_data(force_reload)` | 加载数据 | Dict |
 | `save_data()` | 保存数据 | None |
 | `clear_cache()` | 清除缓存 | None |
+| `close()` | 幂等关闭持久化连接；JSON 后端无连接资源也可安全重复调用，SQLite 后续访问可按惰性连接语义重开 | None |
 | `get_all_plugins()` | 获取所有插件 | Dict |
 | `get_plugin_info(instance_id)` | 获取插件信息 | Optional[Dict] |
 | `reset_all_data()` | 重置所有数据 | None |
