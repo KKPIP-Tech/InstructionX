@@ -1,0 +1,12 @@
+"""框架指标名称单一来源，避免仪表盘出现同义重复序列。"""
+
+TASK_QUEUE_DEPTH = "task.queue_depth"
+TASK_SCHEDULE_DELAY_MS = "task.schedule_delay_ms"
+TASK_RESTARTS = "task.restarts"
+DB_WRITE_LATENCY_MS = "db.write_latency_ms"
+DB_WRITE_FAILURES = "db.write_failures"
+EVENT_DROPPED = "event.dropped"
+EVENT_COALESCED = "event.coalesced"
+EVENT_QUEUE_DEPTH = "event.queue_depth"
+MCP_SESSIONS = "mcp.sessions"
+UI_CHART_INGEST_MS = "ui.chart_ingest_ms"

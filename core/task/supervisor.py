@@ -4,6 +4,9 @@ import math
 import threading
 from typing import Dict, List
 
+from core.observability.metrics import get_metrics_registry
+from core.observability.names import TASK_QUEUE_DEPTH, TASK_SCHEDULE_DELAY_MS
+
 
 class TaskSupervisor:
     """以锁保护轻量计数器和调度延迟样本，不介入任务业务状态机。"""
@@ -23,12 +26,16 @@ class TaskSupervisor:
         with self._lock:
             self._submitted[pool] = self._submitted.get(pool, 0) + 1
             self._queue_depth[pool] = self._queue_depth.get(pool, 0) + 1
+            depth = self._queue_depth[pool]
+        get_metrics_registry().gauge(TASK_QUEUE_DEPTH, {"pool": pool}).set(depth)
 
     def record_completion(self, pool: str) -> None:
         """记录一次执行结束并降低队列深度。"""
         with self._lock:
             self._completed[pool] = self._completed.get(pool, 0) + 1
             self._queue_depth[pool] = max(0, self._queue_depth.get(pool, 1) - 1)
+            depth = self._queue_depth[pool]
+        get_metrics_registry().gauge(TASK_QUEUE_DEPTH, {"pool": pool}).set(depth)
 
     def record_rejected(self, pool: str) -> None:
         """记录一次队列满拒绝。"""
@@ -40,6 +47,7 @@ class TaskSupervisor:
         with self._lock:
             self._schedule_delays_ms.append(max(0.0, delay_ms))
             self._schedule_delays_ms = self._schedule_delays_ms[-self.MAX_DELAY_SAMPLES:]
+        get_metrics_registry().histogram(TASK_SCHEDULE_DELAY_MS).observe(max(0.0, delay_ms))
 
     def snapshot(self) -> Dict[str, object]:
         """返回计数器、队列深度和调度延迟 p99 的一致性快照。"""

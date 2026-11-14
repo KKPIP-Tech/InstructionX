@@ -21,6 +21,7 @@ if TYPE_CHECKING:
     from core.mcp.client import MCPClientManager
     from core.font import FontManager
     from .i_localization import ILocalizationFacade
+    from core.observability.plugin_facade import PluginObservability
 
 
 @dataclass
@@ -32,7 +33,8 @@ class PluginServices:
     插件开发者应通过 services.llm_facade 访问 LLM 能力，
     通过 services.mcp_manager 管理 MCP Server，
     通过 services.mcp_client 连接外部 MCP Server，
-    通过 services.localization 访问多语言取词门面。
+    通过 services.localization 访问多语言取词门面，
+    通过 services.observability 上报插件自身健康、指标和关联上下文。
 
     用法：
 
@@ -61,3 +63,5 @@ class PluginServices:
     font_manager: Optional["FontManager"] = field(default=None)
     # 多语言取词门面（绑定插件 UUID），无降级保护、始终注入
     localization: Optional["ILocalizationFacade"] = field(default=None)
+    # 插件自身健康与指标门面，可选追加字段保持既有构造调用兼容
+    observability: Optional["PluginObservability"] = field(default=None)

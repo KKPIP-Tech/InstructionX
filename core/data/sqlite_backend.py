@@ -20,6 +20,8 @@ from uuid import UUID
 
 import orjson
 
+from core.observability.instrumentation import measure_db_write
+
 from .schema_migrations import MIGRATIONS, TARGET_SCHEMA_VERSION
 from .recovery import DatabaseRecovery, DatabaseRecoveryError, DatabaseState, RecoveryReport
 from . import sql_map
@@ -690,10 +692,11 @@ class SQLiteBackend:
     ) -> None:
         value_json = _serialize(value)
         conn = self._connect()
-        conn.execute(
-            sql_map.SQLMap.v1.UPSERT_PLUGIN_DATA,
-            (instance_id, namespace, key, value_json),
-        )
+        with measure_db_write("set_plugin_data", instance_id):
+            conn.execute(
+                sql_map.SQLMap.v1.UPSERT_PLUGIN_DATA,
+                (instance_id, namespace, key, value_json),
+            )
         self._value_cache.invalidate((instance_id, namespace, key))
 
     def get_all_plugin_data(self, instance_id: str, namespace: str) -> Dict[str, Any]:
@@ -748,7 +751,7 @@ class SQLiteBackend:
     def save_data(self, data: Dict[str, Any]) -> None:
         """将完整字典结构写回 SQLite。"""
         conn = self._connect()
-        with self.transaction() as txn:
+        with measure_db_write("save_data"), self.transaction() as txn:
             # 先清空子表，再清空父表
             txn.execute(sql_map.SQLMap.v1.DELETE_ALL_PLUGIN_DATA)
             txn.execute(sql_map.SQLMap.v1.DELETE_ALL_ACTIVE_INSTANCES)

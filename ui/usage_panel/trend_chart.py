@@ -8,6 +8,7 @@ set_stream_data 增量通路），配色实时取自 UIKit 令牌并随主题切
 """
 
 from datetime import date, datetime, timedelta
+import time
 from typing import List, Optional, Tuple
 
 from PySide6.QtCore import QDate, Signal
@@ -16,6 +17,8 @@ from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QVBoxLayout
 
 from core.i18n import get_language_manager, tr
 from core.llm.types import UsageRecord
+from core.observability.metrics import get_metrics_registry
+from core.observability.names import UI_CHART_INGEST_MS
 from InstructionX_UIKit import T, set_property
 from InstructionX_UIKit.charts import ChartWidget, register_series
 from InstructionX_UIKit.charts.series_cartesian import HeatmapSeriesRenderer
@@ -336,7 +339,12 @@ class TrendPanel(QFrame):
         Returns:
             bool: 是否写入成功
         """
-        return self._chart.set_stream_data(series_data, series=HEATMAP_SERIES_INDEX)
+        started = time.perf_counter()
+        try:
+            return self._chart.set_stream_data(series_data, series=HEATMAP_SERIES_INDEX)
+        finally:
+            elapsed_ms = (time.perf_counter() - started) * 1000
+            get_metrics_registry().histogram(UI_CHART_INGEST_MS).observe(elapsed_ms)
 
     def _render_full(
         self, series_data: List[List[object]], metric_idx: int, start_d: date
