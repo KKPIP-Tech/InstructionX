@@ -404,7 +404,24 @@ stats = svc.get_usage_stats(conv_id)
 print(f"Token: {stats.total_tokens}, 费用: {stats.total_cost}元")
 ```
 
-### 8.3 与旧 API 的区别
+### 8.3 持久化、并发与故障恢复
+
+用量默认写入 `data/llm_usage.db`，会话默认写入 `data/conversations.db`，均采用
+SQLite WAL 和逐条/逐轮显式事务，不再在每次变更后全量重写 JSON。`durable=True`
+使用 `synchronous=FULL`，确保已确认事务在约定进程崩溃/断电模型下持久；
+`durable=False` 为 balanced 模式，使用 `synchronous=NORMAL`，性能更高但掉电时
+可能损失最近事务，不应按 RPO=0 承诺。
+
+启动时若独立数据库不存在且存在合法旧 JSON，会在单事务中完成迁移并生成
+`.bak` 备份；迁移失败清理本次新建库，允许从原 JSON 重试。损坏 JSON 保留原文件
+并生成 `.corrupt-*.bak` 隔离副本，禁止按空数据覆盖。`UsageRecordStore` 的旧自定义
+JSON 路径仍保留异步 JSON 兼容行为，写失败保持 `_cache_dirty=True`，`flush()` 可重试，
+`flush_detailed()` 返回成功、未落盘数和错误信息。
+
+`ConversationManager` 仅提交尚未持久化的增量消息。同会话的同步和流式发送按完整
+用户/助手轮次串行执行，不同会话仍可并行；写库失败会显式抛出，不伪装保存成功。
+
+### 8.4 与旧 API 的区别
 
 | 方面 | 旧 API (LLMProvider.chat) | 新 API (LLMPluginService) |
 |---|---|---|
@@ -860,4 +877,4 @@ graph LR
 - [系统架构概述](../../architecture/overview.md)
 - [instructionx-architecture.md §3.2 LLM 层](../../architecture/instructionx-architecture.md#32-llm-层-corellm)（`LLMPluginService` / `LLMProvider` / `ConversationManager` / `ToolCallExecutor` 模块依赖图）
 - [MCP 协议模块概述](../mcp/overview.md)（`MCPClientManager` 将外部 MCP 工具注入 `ToolRegistry`）
-- [DataProvider 概述](../data-provider/overview.md)（用量持久化 `data/llm_usage.json`）
+- [DataProvider 概述](../data-provider/overview.md)（用量持久化 `data/llm_usage.db`）

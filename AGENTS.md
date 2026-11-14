@@ -299,6 +299,10 @@ core/
                             #   会话管理、工具调用、list_providers/get_models、定价热更新）
     tool_call_executor.py   # ToolRegistry（register/register_typed）+ ToolCallExecutor
                             #   （工具调用多轮循环返回 ToolChatResult，默认 max_turns=5）
+    conversation_manager.py # 会话生命周期、每会话串行轮次与增量消息计数
+    conversation_sqlite_store.py # 会话与消息 SQLite 单事务迁移、按轮次提交与写回执
+    usage_record_store.py   # 用量持久化门面：默认 SQLite、旧 JSON 兼容与结构化冲刷
+    usage_sqlite_store.py   # 用量 SQLite 增量事务、JSON 批量迁移与完整性检查
     providers/              # 适配器注册表（PROVIDER_REGISTRY 键为 adapter 家族）+ 各厂商实现
                             #   + OpenAICompatibleProvider（自定义 OpenAI 兼容兜底适配器）
     config.py / secure_keys.py  # ProviderConfig（实例：preset_id/adapter/order）/ LLMConfig 单例
@@ -442,8 +446,8 @@ config/ data/ logs/         # 运行时生成：配置、数据、日志
 | `config/plugin_languages.json` | 每插件语言覆盖（schema v1：`overrides` {插件UUID: 语言代码}，无键=跟随框架；卸载插件自动清除） |
 | `data/data.db` | 插件数据（SQLite + WAL；另有 `-wal`/`-shm` 伴生文件） |
 | `data/tasks.json` | 后台任务状态 |
-| `data/llm_usage.json` | LLM 用量记录 |
-| `data/conversations.json` | LLM 会话持久化 |
+| `data/llm_usage.db` | LLM 用量记录（SQLite WAL 增量写入；旧 `llm_usage.json` 仅作迁移来源与旧自定义路径兼容） |
+| `data/conversations.db` | LLM 会话持久化（SQLite WAL 按轮次增量提交；旧 `conversations.json` 仅作迁移来源与应急导出） |
 | `data/fonts/` | 框架安装字体的存储目录（字体文件 + `fonts.json` 注册表，schema v1：顶层 `version` + `fonts` 数组） |
 | `{插件目录}/.plugin_info.json` 或 `data/plugin_identity/{插件目录名}.json` | 插件 UUID（优先前者，插件目录不可写时回退后者） |
 | `logs/application.log` | 应用日志 |

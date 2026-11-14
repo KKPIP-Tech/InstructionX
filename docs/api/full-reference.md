@@ -441,7 +441,26 @@ from core.interfaces import ILocalizationFacade
 | `delete_conversation(conv_id)` | 删除对话 | bool |
 | `get_usage_stats(conv_id?)` | 获取用量统计（conv_id 不存在时返回 None） | Optional[UsageStats] |
 
-### 5.5 ToolCallExecutor / ToolRegistry
+### 5.5 用量与会话持久化
+
+**文件**: `core/llm/usage_record_store.py`、`core/llm/usage_sqlite_store.py`、`core/llm/conversation_sqlite_store.py`
+
+| 接口 | 说明 | 返回值 |
+|------|------|--------|
+| `UsageRecordStore.record(record)` | SQLite 事务追加用量，写失败显式抛出 | None |
+| `UsageRecordStore.get_records(...)` | 按时间、Provider、模型、会话和分页查询 | List[UsageRecord] |
+| `UsageRecordStore.aggregate(...)` | 按 Provider、模型或日期聚合 | Dict |
+| `UsageRecordStore.flush(timeout=2.0)` | 冲刷 SQLite 或旧 JSON 兼容队列，超时不伪报成功 | None |
+| `UsageRecordStore.flush_detailed(timeout=2.0)` | 返回成功、未落盘数和错误信息 | FlushReport |
+| `ConversationStore.create_conversation(conversation)` | 创建或更新会话元数据 | None |
+| `ConversationStore.import_conversations(conversations)` | 单事务批量迁移旧会话，失败整体回滚 | None |
+| `ConversationStore.append_turn(conversation_id, turn)` | 在事务中更新统计并追加完整轮次 | WriteReceipt |
+| `ConversationStore.load_conversations()` | 恢复全部会话及有序消息 | Dict[str, Conversation] |
+| `ConversationStore.delete_conversation(conversation_id)` | 删除会话及级联消息 | bool |
+| `ConversationStore.flush()` | WAL 被动检查点和快速完整性检查 | None |
+| `ConversationStore.close()` | 关闭数据库连接 | None |
+
+### 5.6 ToolCallExecutor / ToolRegistry
 
 **文件**: `core/llm/tool_call_executor.py`
 
@@ -455,7 +474,7 @@ from core.interfaces import ILocalizationFacade
 | `ToolCallExecutor` | `chat_with_tools(messages, provider?, model?, max_turns?, ...)` | 工具调用循环，返回 `ToolChatResult` |
 | `ToolCallExecutor` | `chat_with_tools(..., stream, stream_callback)` | 流式工具调用，返回 `ToolChatResult` |
 
-### 5.6 MCPManager
+### 5.7 MCPManager
 
 **文件**: `core/mcp/manager.py`
 

@@ -192,7 +192,9 @@ graph TB
 - `core/llm/pricing.py` — 提供 `DEFAULT_PRICING` 定价表
 - `core/llm/types_cache.py` — 统一缓存信息类型（CacheInfo、CacheType）
 - `core/llm/cache_adapter.py` — 各 Provider 缓存适配器
-- `core/llm/usage_record_store.py` — 用量记录持久化（`data/llm_usage.json`）
+- `core/llm/usage_record_store.py` — 用量记录持久化门面（默认 `data/llm_usage.db`）
+- `core/llm/usage_sqlite_store.py` — 用量 SQLite 增量事务与 JSON 批量迁移
+- `core/llm/conversation_sqlite_store.py` — 会话与消息 SQLite 按轮次增量提交
 
 ### 3.5 PluginVersion（版本管理）
 
@@ -518,8 +520,8 @@ InstructionX/
 │   ├── data.db-wal           # WAL 日志（运行时自动生成）
 │   ├── data.db-shm           # WAL 共享内存索引（运行时自动生成）
 │   ├── tasks.json
-│   ├── llm_usage.json
-│   ├── conversations.json    # LLM 会话持久化
+│   ├── llm_usage.db          # LLM 用量 SQLite 增量存储（旧 llm_usage.json 仅迁移/兼容）
+│   ├── conversations.db      # LLM 会话 SQLite 按轮次存储（旧 conversations.json 仅迁移/导出）
 │   ├── fonts/                # 框架安装字体目录（fonts.json 注册表，schema v1）
 │   ├── plugin_identity/      # 插件 UUID 回退存储（{插件目录名}.json）
 │   └── assets/
