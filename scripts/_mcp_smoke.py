@@ -15,8 +15,47 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from unittest.mock import patch
 
+RECONNECT_CYCLES = 100
+CLEANUP_WARNING_MARKERS = (
+    "cancel scope",
+    "task was destroyed",
+    "resourcewarning",
+    "unclosed",
+    "generatorexit",
+)
+
+
+class StderrGuard:
+    """原样输出 stderr，同时保留清理警告供最终门禁判定。"""
+
+    def __init__(self, stream):
+        self._stream = stream
+        self.content = []
+
+    def write(self, text):
+        self.content.append(text)
+        return self._stream.write(text)
+
+    def flush(self):
+        self._stream.flush()
+
+    def fileno(self):
+        return self._stream.fileno()
+
+    def isatty(self):
+        return self._stream.isatty()
+
+    def warning_text(self):
+        text = "".join(self.content).lower()
+        return "\n".join(marker for marker in CLEANUP_WARNING_MARKERS if marker in text)
+
+
+stderr_guard = StderrGuard(sys.stderr)
+sys.stderr = stderr_guard
 logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(name)s: %(message)s")
+logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
@@ -28,6 +67,46 @@ results = []
 def check(name, ok, detail=""):
     results.append((name, ok, detail))
     print(f"[{'PASS' if ok else 'FAIL'}] {name} {detail}")
+
+
+def count_stdio_processes():
+    """通过 Windows 进程表统计尚未退出的冒烟子进程。"""
+    completed = subprocess.run(
+        ["powershell", "-NoProfile", "-Command",
+         "(Get-CimInstance Win32_Process | Where-Object "
+         "{$_.ProcessId -ne $PID -and $_.Name -like 'python%' -and "
+         "$_.CommandLine -like '*_mcp_smoke_stdio_server*'} | "
+         "Measure-Object).Count"],
+        capture_output=True, text=True,
+    )
+    return completed.stdout.strip() if completed.returncode == 0 else "查询失败"
+
+
+def run_reconnect_cycles(client, config, registry, expected_text, with_text):
+    """执行真实连接、调用、断开循环，返回首轮资源或调用错误。"""
+    failures = []
+    server_id = config.server_id
+    for index in range(RECONNECT_CYCLES):
+        try:
+            client.connect(config)
+            tools = client.list_tools(server_id)
+            if len(tools) != 1:
+                raise RuntimeError(f"工具数量异常: {tools}")
+            arguments = {"text": f"cycle-{index}"} if with_text else {}
+            result = registry.tools[tools[0]]["handler"](**arguments)
+            if expected_text not in str(result):
+                raise RuntimeError(f"调用结果异常: {result}")
+        except Exception as exc:
+            failures.append(f"第 {index + 1} 次调用: {exc}")
+        finally:
+            client.disconnect(server_id)
+            failures.extend(client._lifecycle_errors)
+            client._lifecycle_errors = []
+        if registry.tools or server_id in client.list_connected_servers():
+            failures.append(f"第 {index + 1} 次断开后仍有工具或连接")
+        if failures:
+            break
+    return failures
 
 
 # ─── a. Server 工具注册 ─────────────────────────────────────────
@@ -111,7 +190,7 @@ check(
     and client._loop_thread.daemon,
 )
 
-from core.plugin.manager import sanitize_tool_name
+from core.plugin.manager import PluginManager, sanitize_tool_name
 
 san = sanitize_tool_name("mcp__my-server__tool.name:with@chars")
 check("c1 净化名符合 OpenAI 正则", bool(OPENAI_RE.match(san)), san)
@@ -149,20 +228,22 @@ check("d4 同 server_id 重连无重名冲突", tools_after == tools, str(tools_
 client.disconnect("smoke.stdio:server")
 check("d5 disconnect 后工具已注销", len(registry.tools) == 0, str(registry.tools))
 check("d6 disconnect 后连接列表为空", client.list_connected_servers() == [])
-time.sleep(1.0)
-ps = subprocess.run(
-    ["powershell", "-NoProfile", "-Command",
-     "(Get-CimInstance Win32_Process | Where-Object "
-     "{$_.ProcessId -ne $PID -and $_.Name -like 'python%' -and "
-     "$_.CommandLine -like '*_mcp_smoke_stdio_server*'} | "
-     "Measure-Object).Count"],
-    capture_output=True, text=True,
-).stdout.strip()
-check("d7 无遗留 stdio 子进程", ps == "0", f"剩余进程数={ps}")
-client.shutdown()
+stdio_failures = run_reconnect_cycles(
+    client, cfg, registry, expected_text="echo:cycle-", with_text=True
+)
 check(
-    "d8 shutdown 后 loop 线程退出",
-    client._loop_thread is None and client._async_loop is None,
+    "d7 100 次真实 stdio 连接/调用/断开无泄漏",
+    not stdio_failures,
+    "; ".join(stdio_failures[:3]),
+)
+time.sleep(1.0)
+ps = count_stdio_processes()
+check("d8 无遗留 stdio 子进程", ps == "0", f"剩余进程数={ps}")
+shutdown_errors = client.shutdown()
+check(
+    "d9 shutdown 后 loop 线程退出且无清理错误",
+    not shutdown_errors and client._loop_thread is None and client._async_loop is None,
+    "; ".join(shutdown_errors),
 )
 
 
@@ -170,7 +251,12 @@ check(
 import httpx
 
 http_server = MCPHostServer(
-    name="smoke-http", host="127.0.0.1", port=8878, auth_token="secret-token"
+    name="smoke-http",
+    host="127.0.0.1",
+    port=8878,
+    auth_token="secret-token",
+    allowed_hosts=["127.0.0.1", "localhost"],
+    max_requests_per_minute=None,
 )
 http_server.add_tool(
     name="p__t", description="t",
@@ -183,22 +269,55 @@ try:
     r = httpx.post("http://127.0.0.1:8878/mcp", json={"jsonrpc": "2.0", "id": 1},
                    timeout=5.0)
     check("e2 无 token 请求被 401 拒绝", r.status_code == 401, str(r.status_code))
+    auth_headers = {
+        "Authorization": "Bearer secret-token",
+        "Accept": "application/json, text/event-stream",
+    }
     r2 = httpx.post(
         "http://127.0.0.1:8878/mcp",
-        headers={
-            "Authorization": "Bearer secret-token",
-            "Accept": "application/json, text/event-stream",
-        },
+        headers=auth_headers,
         json={"jsonrpc": "2.0", "id": 1, "method": "tools/list"},
         timeout=5.0,
     )
     check("e3 带 token 请求通过认证(非 401)", r2.status_code != 401, str(r2.status_code))
+    r3 = httpx.post(
+        "http://127.0.0.1:8878/mcp",
+        headers={**auth_headers, "Host": "evil.example"},
+        json={"jsonrpc": "2.0", "id": 1},
+        timeout=5.0,
+    )
+    check("e4 非白名单 Host 被 403 拒绝", r3.status_code == 403, str(r3.status_code))
+    try:
+        MCPHostServer(host="0.0.0.0", port=8879).run_http()
+    except ValueError as exc:
+        check("e5 非回环无认证直接拒绝启动", "非回环" in str(exc), str(exc))
+    else:
+        check("e5 非回环无认证直接拒绝启动", False, "未抛出 ValueError")
+    http_cfg = MCPRemoteServerConfig(
+        server_id="smoke.http.server",
+        name="Smoke HTTP",
+        transport="streamable-http",
+        url="http://127.0.0.1:8878/mcp",
+        auth_token="secret-token",
+    )
+    with patch.object(PluginManager, "call_plugin_method", return_value="http-ok"):
+        http_failures = run_reconnect_cycles(
+            client, http_cfg, registry, expected_text="http-ok", with_text=False
+        )
+    check(
+        "e6 100 次真实 HTTP 连接/调用/断开无泄漏",
+        not http_failures,
+        "; ".join(http_failures[:3]),
+    )
 finally:
+    shutdown_errors = client.shutdown()
     http_server.stop()
 check(
-    "e4 stop() 真正关停(线程退出, is_running=False)",
-    not http_server.is_running
+    "e7 stop() 真正关停且客户端无清理错误",
+    not shutdown_errors
+    and not http_server.is_running
     and (http_server._thread is None or not http_server._thread.is_alive()),
+    "; ".join(shutdown_errors),
 )
 # 关停后端口应不可用（优雅关停可能有短暂延迟，轮询最多 4 秒）
 port_closed = False
@@ -209,7 +328,12 @@ for _ in range(20):
     except Exception:
         port_closed = True
         break
-check("e5 关停后端口已释放", port_closed)
+check("e8 关停后端口已释放", port_closed)
+
+stderr_guard.flush()
+sys.stderr = stderr_guard._stream
+cleanup_warnings = stderr_guard.warning_text()
+check("f1 无 cancel scope/未关闭资源/遗留任务警告", not cleanup_warnings, cleanup_warnings)
 
 print()
 failed = [r for r in results if not r[1]]

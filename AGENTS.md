@@ -311,10 +311,14 @@ core/
                             #   （config/llm_providers.json schema v2 + v1→v2 迁移备份、变更订阅/version）、
                             #   API Key 混淆存储
   mcp/                      # MCP 协议
-    manager.py              # MCPManager 单例：start_server / connect
-    server.py               # MCPHostServer（FastMCP，默认 127.0.0.1:8765，可选 Bearer 鉴权）
-    client.py               # 连接外部 MCP Server，工具注册进 ToolRegistry
-    bridge.py               # 插件 API 注册表 ↔ MCP Server 双向同步
+    manager.py              # MCPManager 单例：start_server / connect、MCPShutdownReport 汇总清理异常
+    server.py               # MCPHostServer（FastMCP，默认 127.0.0.1:8765；非回环无 token 失败关闭、
+                            #   Host 白名单、按客户端限流、TLS、停止超时禁止假成功）
+    client.py               # 连接外部 MCP Server，工具注册进 ToolRegistry；shutdown 返回清理错误元组
+    connection_actor.py     # 单连接唯一 coroutine owner：同一 Task 进出 AsyncExitStack、串行调用、超时关闭
+    client_support.py       # MCP Client 可选依赖导入与检查
+    async_cleanup.py        # Server/Client 自有事件循环遗留 Task 的取消与等待
+    bridge.py               # 插件 API 注册表 ↔ MCP Server 双向同步（exposed_plugins 白名单失败关闭）
   font/                     # 字体子系统（框架不自带字体）
     font_record.py          # FontRecord dataclass（frozen, slots）：字体注册记录
     exceptions.py           # FontInstallError：字体安装失败异常
@@ -478,7 +482,7 @@ config/ data/ logs/         # 运行时生成：配置、数据、日志
 ## 安全注意事项
 
 - **不要提交真实 API Key**：LLM Key 存于 `config/llm_providers.json`（混淆存储，非加密），该目录为运行时数据。
-- MCP Server 默认仅监听 `127.0.0.1`；对外开放时务必启用 Bearer token 鉴权（`MCPHostServer` 内置中间件）。
+- MCP Server 默认仅监听 `127.0.0.1`；非回环 HTTP 无 Bearer token 必须在绑定端口前失败关闭。对外暴露应同时配置 Host 白名单、请求限流与 TLS；token 使用 Windows DPAPI 保存，兼容读取旧 Base64/明文但不得再以其作为安全边界。
 - `dependency_manager.py` 会自动 `pip install` 插件声明的依赖——审查第三方插件的依赖声明。
 - `data/`、`config/`、`logs/` 含用户数据，改动其读写逻辑时保持向后兼容（SQLite 后端有 schema 迁移机制，改表结构需新增 migration）。
 - 许可证边界：项目为 AGPL 开源 + 双重许可——修改/衍生作品与网络服务须开源回馈；`./ui/` 界面的名称、LOGO、版权信息与框架标识性描述不得移除（白标需授权）；闭源 SaaS、嵌入第三方商业产品、批量捆绑销售等场景需商业授权；仅经公开插件接口交互的插件为独立作品。
