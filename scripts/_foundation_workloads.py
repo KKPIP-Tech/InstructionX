@@ -30,6 +30,7 @@ from _foundation_benchmark_common import (
 
 LATENCY_SAMPLES = 12
 SEED_KEY_COUNT = 100
+BATCH_KEY_COUNT = 100
 PAYLOAD_BYTES = 1024
 LONG_TASK_COUNT = 32
 CHART_FRAMES = 1000
@@ -43,6 +44,7 @@ SLOW_DISK_DELAY_SECONDS = 0.01
 MCP_CALL_TIMEOUT_SECONDS = 5.0
 STARTUP_SLO_MS = 2000.0
 SQLITE_WRITE_SLO_MS = 20.0
+SQLITE_BATCH_WRITE_SLO_MS = 20.0
 SQLITE_READ_SLO_MS = 5.0
 EVENT_PUBLISH_SLO_MS = 5.0
 TASK_SUBMIT_SLO_MS = 50.0
@@ -125,7 +127,11 @@ def run_typical_desktop(workspace: Path) -> dict[str, Any]:
         reads = _measure_calls(lambda index: provider.get_plugin_data("benchmark-plugin", f"seed-{index % SEED_KEY_COUNT}"))
         provider.subscribe("benchmark-subscriber", "benchmark-plugin", "event", _noop_subscriber)
         events = _measure_calls(lambda index: provider.publish("benchmark-plugin", "event", index))
-    metrics = _typical_storage_metrics(writes, reads, events)
+        batch_writes, batch_method = _measure_batch_writes(provider)
+        batch_rss = _memory_samples()
+    metrics = _typical_storage_metrics(
+        writes, reads, events, batch_writes, batch_method, batch_rss
+    )
     mcp_metrics, mcp_error = _collect_mcp_metrics()
     metrics.extend(mcp_metrics)
     workload = make_workload("typical_desktop", "REAL_CORE_AND_LOOPBACK_MCP", metrics, _typical_scale())
@@ -162,6 +168,23 @@ def _seed_provider(provider: DataProvider) -> None:
         provider.set_plugin_data("benchmark-plugin", f"seed-{index}", payload)
 
 
+def _measure_batch_writes(provider: DataProvider) -> tuple[list[float], str]:
+    """测量同规模批量写入；无新 API 时以逐键路径保留优化前对照。"""
+    payload = "x" * PAYLOAD_BYTES
+    batch_writer = getattr(provider, "set_plugin_data_batch", None)
+
+    def operation(index: int) -> None:
+        values = {f"batch-{index}-{key}": payload for key in range(BATCH_KEY_COUNT)}
+        if batch_writer is not None:
+            batch_writer("benchmark-plugin", values)
+            return
+        for key, value in values.items():
+            provider.set_plugin_data("benchmark-plugin", key, value)
+
+    method = "100键单事务写入" if batch_writer is not None else "100键逐键写入（优化前对照）"
+    return _measure_calls(operation), method
+
+
 def _noop_subscriber(publisher_id: str, key: str, old_value: Any, new_value: Any) -> None:
     """空订阅者用于隔离发布分发开销。"""
 
@@ -176,12 +199,17 @@ def _measure_calls(operation: Callable[[int], Any], count: int = LATENCY_SAMPLES
     return samples
 
 
-def _typical_storage_metrics(writes: list[float], reads: list[float], events: list[float]) -> list[dict[str, Any]]:
-    """生成典型桌面的存储和事件指标。"""
+def _typical_storage_metrics(
+    writes: list[float], reads: list[float], events: list[float],
+    batch_writes: list[float], batch_method: str, batch_rss: list[float],
+) -> list[dict[str, Any]]:
+    """生成典型桌面的存储、批量写入、内存和事件指标。"""
     return [
         make_metric("sqlite_write", writes, SQLITE_WRITE_SLO_MS, "DataProvider.set_plugin_data 单键私有写入"),
         make_metric("sqlite_read", reads, SQLITE_READ_SLO_MS, "DataProvider.get_plugin_data 固定键读取"),
         make_metric("event_publish", events, EVENT_PUBLISH_SLO_MS, "DataProvider.publish 同步通知一个空订阅者"),
+        make_metric("sqlite_batch_write", batch_writes, SQLITE_BATCH_WRITE_SLO_MS, batch_method),
+        make_metric("batch_process_rss", batch_rss, MEMORY_SLO_MIB, "批量写入完成后的进程工作集", "MiB"),
     ]
 
 
@@ -189,6 +217,7 @@ def _typical_scale() -> dict[str, Any]:
     """返回典型桌面固定数据规模。"""
     return {
         "seed_keys": SEED_KEY_COUNT,
+        "batch_keys_per_operation": BATCH_KEY_COUNT,
         "payload_bytes_per_key": PAYLOAD_BYTES,
         "operations_per_metric": LATENCY_SAMPLES,
         "mcp_tool_calls": LATENCY_SAMPLES,

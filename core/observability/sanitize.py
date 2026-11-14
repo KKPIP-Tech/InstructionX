@@ -15,6 +15,8 @@ _DEFAULT_SENSITIVE_FIELDS = frozenset({
 _BEARER_PATTERN = re.compile(r"(?i)\bbearer\s+[a-z0-9._~+/=-]+")
 _CUSTOM_FIELDS: set[str] = set()
 _CUSTOM_LOCK = threading.Lock()
+_FIELD_PATTERN_CACHE = None
+_FIELD_PATTERN_DIRTY = True
 
 
 def _normalize_field(name: object) -> str:
@@ -23,9 +25,13 @@ def _normalize_field(name: object) -> str:
 
 def register_sensitive_fields(*names: str) -> None:
     """注册插件自定义敏感字段标记，后续日志与快照均按名称脱敏。"""
+    global _FIELD_PATTERN_DIRTY
     normalized = {_normalize_field(name) for name in names if _normalize_field(name)}
     with _CUSTOM_LOCK:
-        _CUSTOM_FIELDS.update(normalized)
+        new_fields = normalized - _CUSTOM_FIELDS
+        if new_fields:
+            _CUSTOM_FIELDS.update(new_fields)
+            _FIELD_PATTERN_DIRTY = True
 
 
 def is_sensitive_field(name: object) -> bool:
@@ -37,13 +43,18 @@ def is_sensitive_field(name: object) -> bool:
 
 
 def _field_pattern() -> re.Pattern:
+    global _FIELD_PATTERN_CACHE, _FIELD_PATTERN_DIRTY
     with _CUSTOM_LOCK:
+        if not _FIELD_PATTERN_DIRTY and _FIELD_PATTERN_CACHE is not None:
+            return _FIELD_PATTERN_CACHE
         names = _DEFAULT_SENSITIVE_FIELDS | _CUSTOM_FIELDS
-    alternatives = "|".join(re.escape(name) for name in sorted(names, key=len, reverse=True))
-    return re.compile(
-        rf"(?i)(?P<prefix>[\"']?(?:{alternatives})[\"']?\s*[:=]\s*)"
-        rf"(?P<quote>[\"']?)(?P<value>(?:bearer\s+)?[^\s,;&\"']+)(?P=quote)"
-    )
+        alternatives = "|".join(re.escape(name) for name in sorted(names, key=len, reverse=True))
+        _FIELD_PATTERN_CACHE = re.compile(
+            rf"(?i)(?P<prefix>[\"']?(?:{alternatives})[\"']?\s*[:=]\s*)"
+            rf"(?P<quote>[\"']?)(?P<value>(?:bearer\s+)?[^\s,;&\"']+)(?P=quote)"
+        )
+        _FIELD_PATTERN_DIRTY = False
+        return _FIELD_PATTERN_CACHE
 
 
 def sanitize_text(value: object) -> str:

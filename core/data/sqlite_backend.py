@@ -699,6 +699,48 @@ class SQLiteBackend:
             )
         self._value_cache.invalidate((instance_id, namespace, key))
 
+    def set_plugin_data_batch(
+        self, instance_id: str, namespace: str, values: Dict[str, Any]
+    ) -> None:
+        """在一个 IMMEDIATE 事务中批量写入，序列化失败时不开启事务。"""
+        if not values:
+            return
+        rows = [
+            (instance_id, namespace, key, _serialize(value))
+            for key, value in values.items()
+        ]
+        with measure_db_write("set_plugin_data_batch", instance_id), self.transaction() as txn:
+            txn.executemany(sql_map.SQLMap.v1.UPSERT_PLUGIN_DATA, rows)
+        self._value_cache.invalidate_plugin(instance_id)
+
+    def get_plugin_data_page(
+        self, instance_id: str, namespace: str, limit: int, offset: int
+    ) -> Dict[str, Any]:
+        """通过 SQL LIMIT/OFFSET 读取一页，不加载整表或填充全量缓存。"""
+        self._validate_page(limit, offset)
+        conn = self._connect()
+        cursor = conn.execute(
+            sql_map.SQLMap.v1.SELECT_PLUGIN_DATA_PAGE,
+            (instance_id, namespace, limit, offset),
+        )
+        return {key: _deserialize(value_json) for key, value_json in cursor.fetchall()}
+
+    def count_plugin_data(self, instance_id: str, namespace: str) -> int:
+        """使用数据库 COUNT 聚合返回记录数。"""
+        conn = self._connect()
+        cursor = conn.execute(
+            sql_map.SQLMap.v1.SELECT_PLUGIN_DATA_COUNT, (instance_id, namespace)
+        )
+        return int(cursor.fetchone()[0])
+
+    @staticmethod
+    def _validate_page(limit: int, offset: int) -> None:
+        """分页参数必须为正 limit 和非负 offset，且不能是布尔值。"""
+        if isinstance(limit, bool) or not isinstance(limit, int) or limit <= 0:
+            raise SQLiteBackendError("limit 必须是大于 0 的整数")
+        if isinstance(offset, bool) or not isinstance(offset, int) or offset < 0:
+            raise SQLiteBackendError("offset 必须是非负整数")
+
     def get_all_plugin_data(self, instance_id: str, namespace: str) -> Dict[str, Any]:
         conn = self._connect()
         cur = conn.execute(

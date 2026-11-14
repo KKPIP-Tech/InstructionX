@@ -278,9 +278,12 @@ core/
                             #   按发布时间倒序排列并定位当前版本
     launcher.py             # 校验更高版本与 Git 已跟踪文件修改，调用原生 Setup 按 Tag 升级
   data/                     # 数据持久化层
-    data_provider.py        # DataProvider 单例：PRIVATE/PUBLIC 双命名空间、发布订阅、内存缓存、统一关闭
+    data_provider.py        # DataProvider 单例：PRIVATE/PUBLIC 双命名空间、发布订阅、兼容全量缓存、统一关闭；
+                            #   正常点写不强制全库加载，单键 API 保持不变
+    plugin_data_operations.py # PluginDataOperations：批量单事务写入、分页读取、COUNT 聚合
+    errors.py               # DataProviderError 共享异常（data_provider re-export 保持兼容）
     event_dispatcher.py     # 每订阅者独立有界邮箱与 worker、三种背压策略、单调序号和分发指标
-    sqlite_backend.py       # SQLite WAL 后端（默认），schema 迁移
+    sqlite_backend.py       # SQLite WAL 后端（默认），schema 迁移、批量事务、SQL 分页/聚合
   task/                     # 后台任务系统
     background_task.py      # BackgroundTaskManager 单例：任务生命周期与兼容门面、全局截止期关闭
     executor_pools.py       # 长期/普通/高优独立有界执行池（4/2/32 worker）与工厂注入
@@ -291,8 +294,9 @@ core/
     task_storage.py         # 任务状态持久化（data/tasks.json）
   llm/                      # LLM 框架
     llm_provider.py         # LLMProvider 单例：对话/流式/embedding/模型列表缓存、
-                            #   adapter 分发、check_provider/check_model、配置版本惰性刷新
-    provider_supervisor.py  # 后台模型刷新、真实健康结果、失败熔断与半开恢复
+                            #   adapter 分发、check_provider/check_model、配置版本惰性刷新、
+                            #   refresh_all_models 并行等待与总截止期
+    provider_supervisor.py  # 后台并行模型刷新、真实健康结果、失败熔断与半开恢复
     model_schema.py         # 统一模型 schema：capabilities 闭集/normalize_model_entry/
                             #   merge_model_entries 三路合并/infer_model_group
     catalog/                # 提供商预设目录（随程序发布只读）：ProviderPreset/PROVIDER_PRESETS（5 家）、
@@ -499,7 +503,7 @@ config/ data/ logs/         # 运行时生成：配置、数据、日志
 
 ## 文档地图（docs/）
 
-- 架构：`docs/architecture/overview.md`、`module-dependencies.md`
+- 架构：`docs/architecture/overview.md`、`module-dependencies.md`；SLO 与性能证据：`foundation-slo.md`、`foundation-performance.md`
 - 主题与 UI 组件：`docs/utils/uikit-theme.md`（UIKit 主题系统）、`docs/ui/`
 - 运行时稳定性：`docs/utils/gc-main-thread.md`（主线程 GC 守卫与 paint 闪退排查）
 - 插件系统：`docs/core/plugin-system/`（含 `plugin-development.md`）

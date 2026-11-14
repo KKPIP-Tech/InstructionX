@@ -42,7 +42,7 @@ class ProviderSupervisor:
         self._failures: Dict[str, int] = {}
         self._open_until: Dict[str, float] = {}
 
-    def refresh_models_async(self, provider_id: str) -> Future:
+    def refresh_models_async(self, provider_id: str, force: bool = True) -> Future:
         """提交后台刷新并返回 Future；熔断期返回已失败 Future。"""
         with self._lock:
             existing = self._futures.get(provider_id)
@@ -52,24 +52,24 @@ class ProviderSupervisor:
                 future = Future()
                 future.set_exception(ProviderCircuitOpenError(f"Provider {provider_id} 处于熔断期"))
                 return future
-            future = self._executor.submit(self._refresh, provider_id)
+            future = self._executor.submit(self._refresh, provider_id, force)
             self._futures[provider_id] = future
             future.add_done_callback(lambda done: self._finish(provider_id, done))
         return future
 
-    def refresh_all_async(self) -> Dict[str, Future]:
+    def refresh_all_async(self, force: bool = True) -> Dict[str, Future]:
         """并行提交全部 Provider，单实例失败不阻塞其他实例。"""
         return {
-            provider_id: self.refresh_models_async(provider_id)
+            provider_id: self.refresh_models_async(provider_id, force)
             for provider_id in self._owner.get_all_providers()
         }
 
-    def _refresh(self, provider_id: str):
+    def _refresh(self, provider_id: str, force: bool):
         provider = self._owner.get_provider(provider_id)
         if provider is None:
             raise ValueError(f"提供商实例不存在: {provider_id}")
         strict = getattr(provider, "refresh_models_strict", None)
-        models = strict(force=True) if callable(strict) else provider.refresh_models(force=True)
+        models = strict(force=force) if callable(strict) else provider.refresh_models(force=force)
         self._owner._models_cache[provider_id] = models
         self._owner._config.save_models_cache(
             provider_id, [model.to_dict() for model in models]
