@@ -31,7 +31,6 @@ Functions:
 import json
 import threading
 import time
-from concurrent.futures import wait
 from datetime import datetime, timezone
 from typing import Dict, Any, Optional, List, Tuple, Union, Callable, AsyncIterator, TYPE_CHECKING
 from uuid import uuid4
@@ -200,10 +199,10 @@ class LLMProvider:
                 self._logger.error(get_name(), f'Failed to initialize provider {name}: {e}')
 
     def _fetch_all_models(self) -> None:
-        """启动只读磁盘缓存，远程刷新由 supervisor 后台并行执行。"""
+        """按原设计逐个读取磁盘缓存并完成远程刷新，顺序写入缓存。"""
         for name in self._providers:
             self._load_models_from_disk_cache(name)
-        self._supervisor.refresh_all_async()
+            self.refresh_provider_models(name, force=True)
 
     def _load_models_from_disk_cache(self, name: str) -> None:
         """从本地缓存文件回填单个提供商的模型列表（不联网）
@@ -274,14 +273,7 @@ class LLMProvider:
             return []
 
         try:
-            models = provider.refresh_models(force=force)
-            self._models_cache[provider_name] = models
-            # 同步保存到本地缓存文件
-            self._config.save_models_cache(
-                provider_name,
-                [m.to_dict() for m in models]
-            )
-            return models
+            return self._supervisor.refresh_models_async(provider_name, force).result()
         except Exception as e:
             self._logger.error(get_name(), f'Failed to refresh models for {provider_name}: {e}')
             return []
@@ -289,20 +281,13 @@ class LLMProvider:
     def refresh_all_models(
         self, force: bool = False, timeout: float = MODEL_REFRESH_ALL_TIMEOUT
     ) -> Dict[str, List[ModelInfo]]:
-        """并行刷新全部 Provider，并在总截止期后返回当前缓存。
+        """按注册顺序逐个刷新 Provider，并顺序写入缓存。
 
-        单个 Provider 失败或超时不会阻塞其他实例；运行中的网络请求不能被
-        强制取消时，只取消尚未开始的 Future，不伪装远端已经停止。
+        ``timeout`` 仅为既有调用兼容保留；顺序模型不提供并行总截止期，
+        运行中的 Provider 刷新必须实际返回后才处理下一个。
         """
-        self._refresh_config_if_needed()
-        futures = self._supervisor.refresh_all_async(force=force)
-        if not futures:
-            return self._models_cache
-        _, not_done = wait(futures.values(), timeout=timeout)
-        for name, future in futures.items():
-            if future in not_done:
-                future.cancel()
-                self._health[name] = (False, "模型列表刷新超过总截止期")
+        for name in self._providers:
+            self.refresh_provider_models(name, force=force)
         return self._models_cache
 
     def get_cached_models(self, provider_name: str) -> List[ModelInfo]:

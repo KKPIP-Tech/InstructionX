@@ -30,7 +30,7 @@ class ProviderSupervisor:
 
     FAILURE_THRESHOLD = 3
     RECOVERY_SECONDS = 30.0
-    MAX_WORKERS = 4
+    MAX_WORKERS = 1
 
     def __init__(self, owner):
         self._owner = owner
@@ -58,7 +58,7 @@ class ProviderSupervisor:
         return future
 
     def refresh_all_async(self, force: bool = True) -> Dict[str, Future]:
-        """并行提交全部 Provider，单实例失败不阻塞其他实例。"""
+        """提交全部 Provider，由单 worker 按提交顺序逐个执行。"""
         return {
             provider_id: self.refresh_models_async(provider_id, force)
             for provider_id in self._owner.get_all_providers()
