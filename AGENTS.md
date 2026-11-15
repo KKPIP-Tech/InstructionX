@@ -513,7 +513,7 @@ config/ data/ logs/         # 运行时生成：配置、数据、日志
 
 ## 文档地图（docs/）
 
-- 架构：`docs/architecture/overview.md`、`module-dependencies.md`；SLO 与性能证据：`foundation-slo.md`、`foundation-performance.md`；故障/兼容/长稳：`foundation-validation.md`；可选进程隔离与 watchdog：`plugin-isolation.md`
+- 架构：`docs/architecture/overview.md`、`module-dependencies.md`；SLO 与性能证据：`foundation-slo.md`、`foundation-performance.md`；故障/兼容/长稳：`foundation-validation.md`；可选进程隔离与 watchdog：`plugin-isolation.md`；部署灰度与最终证据：`foundation-deployment-guide.md`、`foundation-verification-report.md`
 - 主题与 UI 组件：`docs/utils/uikit-theme.md`（UIKit 主题系统）、`docs/ui/`
 - 运行时稳定性：`docs/utils/gc-main-thread.md`（主线程 GC 守卫与 paint 闪退排查）
 - 插件系统：`docs/core/plugin-system/`（含 `plugin-development.md`）

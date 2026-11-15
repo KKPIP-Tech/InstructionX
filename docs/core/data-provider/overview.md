@@ -260,7 +260,7 @@ flowchart TD
 - 数据库文件：`data/data.db`
 - WAL 模式：`PRAGMA journal_mode = WAL;`
 - 外键约束：`PRAGMA foreign_keys = ON;`
-- 同步级别：`PRAGMA synchronous = NORMAL;`
+- 同步级别：固定 `PRAGMA synchronous = NORMAL;`（balanced），当前没有 DataProvider durable 开关
 
 `set_plugin_data` 等单条写入使用 SQLite 语句级原子性（UPSERT）保证，不依赖显式事务。`save_data` / `reset_all_data` / `set_active_instance` 使用 `BEGIN IMMEDIATE` 显式事务，异常时自动回滚。
 
@@ -278,6 +278,10 @@ flowchart TD
 多文件替换**不是一次物理原子操作**。上述保证覆盖可捕获的复制、替换和删除异常，并在这些异常后回滚到一致旧状态；进程异常退出、断电等发生在两次替换之间时仍可能留下混合版本，需要利用保留的启动备份或隔离副本人工恢复。回滚本身失败时保留暂存旧文件并报告人工指引。
 
 这些快照是启动前文件级恢复点，**不是跨进程在线备份协议**。备份期间不应有外部进程写库；本机制不协调外部写入者，也不替代独立备份方案。当前未提供启动备份保留数量或自动清理策略，长期运行会积累目录，需由运维另行管理存储空间，不能为释放空间而删除唯一恢复点。
+
+#### 7.2.2 balanced 与 durable 的存储边界
+
+DataProvider 只有上述 balanced 模式。进程异常退出后的已提交事务保留不等于物理断电 RPO=0，真实断电未在本项目中验收。LLM 用量和会话是独立存储：`UsageRecordStore` / `ConversationStore` 默认 `durable=True` 并使用 FULL 同步，显式传 `False` 才使用 NORMAL balanced；详细配置与回执见 [部署指南](../../architecture/foundation-deployment-guide.md)。
 
 ### 7.3 JSON 应急回退
 

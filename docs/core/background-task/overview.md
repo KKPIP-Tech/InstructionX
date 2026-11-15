@@ -183,7 +183,10 @@ stateDiagram-v2
 ```mermaid
 graph TB
     subgraph BTM [BackgroundTaskManager 单例]
-        Pool[线程池<br/>ThreadPoolExecutor<br/>max_workers=4]
+        NormalPool[普通池<br/>4 worker + 有界队列]
+        HighPool[高优池<br/>2 worker + 有界队列]
+        LongPool[长期池<br/>32 worker]
+        Supervisor[TaskSupervisor<br/>配额/背压/调度指标]
         RunningTasks[运行中的任务<br/>_running_tasks]
         ScheduledTasks[定时任务<br/>_running_scheduled_tasks]
         LongRunningTasks[长期任务<br/>_running_long_running_tasks]
@@ -200,9 +203,11 @@ graph TB
         Register[注册任务]
     end
 
-    Pool -->|执行任务| RunningTasks
-    Pool -->|执行任务| ScheduledTasks
-    Pool -->|执行任务| LongRunningTasks
+    NormalPool -->|执行普通/定时任务| RunningTasks
+    NormalPool -->|执行定时任务| ScheduledTasks
+    HighPool -->|执行高优短任务| RunningTasks
+    LongPool -->|执行长期任务| LongRunningTasks
+    Supervisor -->|配额与指标| NormalPool
     ScheduleChecker -->|检查到期| ScheduledTasks
     Register -->|注册| BTM
     BTM -->|持久化| JSON
@@ -440,16 +445,16 @@ task_id = manager.register_async_task(
 
 ### 9.0 生命周期管理：shutdown() 限时优雅关闭
 
-`main.py` 在 `application.exec()` 返回后调用 `BackgroundTaskManager.shutdown()`，流程**严格限时**，保证应用不会因任务未结束而卡死：
+`main.py` 在 `application.exec()` 返回后通过 `ApplicationLifecycle` 协调关闭，不再把任务管理器当作唯一关闭入口。协调器先停止外部调用和新任务、请求插件任务取消并关闭 MCP，随后卸载插件，再调用 `BackgroundTaskManager.shutdown()`，最后清理 LLM、用量和 DataProvider。
 
-1. **拒绝新任务**：`self._is_shutdown = True`，后续 `register_async_task` / `register_scheduled_task` / `register_long_running_task` 均返回 `None`；
-2. **停止定时任务检查线程**：`_stop_event.set()` + `_schedule_check_thread.join(timeout=CHECK_THREAD_JOIN_TIMEOUT)`；
-3. **取消待重启定时器**：遍历 `_restart_timers` 全部 `timer.cancel()`；
-4. **停止长期任务**：先逐个调用 `stop_callback`（让任务尽快收到停止信号），再 `future.result(timeout=LONG_TASK_STOP_TIMEOUT=3.0s)` 限时等待；超时任务记 WARNING 并 `future.cancel()` 放弃等待；正常退出的长期任务标记为 `STOPPED` 状态并落存储（**正常退出语义**——重启后不自动恢复；「崩溃中断」的任务会在下次启动时经插件工厂注册（`register_long_running_task_factory`）后的 `restore_long_running_tasks()` 恢复路径自动重启）；
-5. **关闭线程池**：在独立 `BackgroundTaskExecutorShutdown` daemon 线程中调用 `executor.shutdown(wait=True, cancel_futures=True)`；总上限 `EXECUTOR_SHUTDOWN_TIMEOUT=10s`，超时记 WARNING 放弃等待；
-6. **清理单例**：`BackgroundTaskManager._instance = None`，下次 `BackgroundTaskManager()` 重新构造（典型场景：单元测试 / 重启）。
+任务管理器自身执行以下有界清理：
 
-可配常量均位于 `BackgroundTaskManager` 模块顶部（`LONG_TASK_STOP_TIMEOUT` / `EXECUTOR_SHUTDOWN_TIMEOUT` / `CHECK_THREAD_JOIN_TIMEOUT`）。
+1. 设置关闭标志并停止定时检查，取消全部待重启定时器；后续注册明确失败。
+2. 调用长期任务停止回调，在 `LONG_TASK_STOP_TIMEOUT` 内等待实际退出；正常停止与崩溃中断的恢复语义保持区分。
+3. 在独立关闭线程中对长期、普通和高优执行池执行 `shutdown(wait=True, cancel_futures=True)`，并受 `LONG_TASK_STOP_TIMEOUT + EXECUTOR_SHUTDOWN_TIMEOUT` 全局截止期约束。
+4. 清理运行时记录和单例引用。超时只表示停止等待，不能保证不合作的 Python 函数已经终止。
+
+最终是否成功必须读取 `ApplicationLifecycle.shutdown()` 返回的 `ShutdownReport`：逐步骤状态、异常、耗时和 `timed_out/success` 均在报告中。窗口退出或线程池停止等待不等于所有副作用已经停止。
 
 ### 9.0.1 启动期自动清理过期任务
 

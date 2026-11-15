@@ -582,6 +582,8 @@ if not report.success:
     print(report.errors)  # 所有清理异常；success=False 时不得视为关闭完成
 ```
 
+实际应用不在 `main.py` 中堆叠零散关闭调用，而由 `ApplicationLifecycle` 先停止外部调用和新任务，再执行 MCP 关闭、插件卸载、任务/LLM/存储清理。`MCPShutdownReport` 汇入全局 `ShutdownReport.steps`；任一步失败或全局截止期耗尽都必须视为关闭未完全成功，不能只检查窗口已经退出。
+
 ---
 
 ## 9.3 环境变量与故障语义

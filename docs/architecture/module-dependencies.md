@@ -194,6 +194,20 @@ shutdown()                         # 安全关闭任务管理器
 
 依赖方向：薄启动器 → 原生 Setup → GitHub / uv / 框架插件 CLI。GUI 更新弹窗仅通过 `FrameworkUpdateLauncher` 调用原生 Setup CLI，不再依赖 PowerShell。
 
+### 2.6 可选插件宿主与外部 Watchdog
+
+**文件**: `core/plugin_host/`、`core/external_watchdog.py`、`core/process_control.py`
+
+| 模块 | 依赖方向与职责 |
+|---|---|
+| `protocol.py` | 仅依赖标准库，定义版本化长度帧和严格 JSON-RPC 契约 |
+| `runtime.py` | 在子进程中复用 PluginManager 与 ApplicationLifecycle，不复制插件注入/注册规则 |
+| `supervisor.py` | 主进程持有子进程、 writer/monitor/reader，实施有界调用、代际防重放、有限重启和熔断 |
+| `proxy.py` | 将无 UI Service/API 方法转换为结构化 RPC，不代理 Qt 或对象引用 |
+| `external_watchdog.py` | 独立读取显式心跳，通过 ProcessControl 仅操作配置 PID；无设备控制依赖 |
+
+`PluginHost` 不被 `PluginManager` 默认创建，因此通用桌面依赖图不变。子进程拥有独立单例和 DataProvider 连接，跨进程缓存与发布订阅不自动共享。
+
 ---
 
 ## 3. 单例模式使用
@@ -209,7 +223,7 @@ shutdown()                         # 安全关闭任务管理器
 | **BackgroundTaskManager** | `core/task/background_task.py` | 任务调度 |
 | **LLMProvider** | `core/llm/llm_provider.py` | 大语言模型核心层（底层） |
 | **LLMConfig** | `core/llm/config.py` | LLM Provider 实例配置（schema v2 + 变更订阅） |
-| **UsageRecordStore** | `core/llm/usage_record_store.py` | LLM 用量记录持久化（data/llm_usage.json） |
+| **UsageRecordStore** | `core/llm/usage_record_store.py` | LLM 用量记录持久化（默认 data/llm_usage.db；旧 JSON 仅迁移/兼容） |
 | **LLMPluginService** | `core/llm/plugin_service.py` | LLM 插件服务层（插件开发者入口） |
 | **MCPManager** | `core/mcp/manager.py` | MCP 协议协调器（Server + Client 管理） |
 | **FontManager** | `core/font/manager.py` | 字体子系统（安装/卸载/系统回退解析） |
@@ -310,6 +324,7 @@ class PluginServices:
     mcp_client: "MCPClientManager" = field(default=None)  # MCP Client 管理器
     font_manager: "FontManager" = field(default=None)     # 字体管理器（core/font，无降级保护、始终注入）
     localization: "ILocalizationFacade" = field(default=None)  # 多语言取词门面（绑定插件 UUID，无降级保护、始终注入；实现 PluginI18nFacade）
+    observability: "PluginObservability" = field(default=None)  # 插件健康、指标与关联上下文门面
 ```
 
 新版插件通过 `self._services` 访问服务，旧版插件可通过直接导入单例兼容访问。
