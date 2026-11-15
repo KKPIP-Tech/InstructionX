@@ -84,11 +84,11 @@
 | `database_corruption` | P0 | 真实损坏 SQLite；检测 `p95<=200ms`，显式报错且原始损坏文件逐字节保留 |
 | `database_locked` | P1 | 第二连接持有 `BEGIN IMMEDIATE`，`busy_timeout=50ms`；检测 `p95<=200ms`，公共 API 抛 `DataProviderError`，解锁后写回成功 |
 | `database_readonly` | P1 | 真实文件只读位；检测 `p95<=500ms` 且公共 API 抛 `DataProviderError`。平台未强制只读、写入意外成功时为 `NOT_RUN` |
-| `disk_full` | P0 | 对真实 `TaskStorage.save_data` 注入本地 `ENOSPC`；检测 `p95<=200ms`，调用者收到异常且 `_cache_dirty=True` |
+| `disk_full` | P0 | 对真实 `TaskStorage.save_data` 注入本地 `ENOSPC`；检测 `p95<=200ms`，返回 `False` 且 `_cache_dirty=True` |
 | `process_kill` | P0 | 仅启动本采集器拥有的子进程；提交一行后在未提交事务中自愿 `os._exit(42)`。父进程检查退出码、`integrity_check=ok` 和已提交行数 1，整个过程 `p95<=5000ms`；不强杀任何外部进程 |
 | `provider_timeout` | P1 | 隔离 `LLMProvider.check_model → chat` 真实入口下注入受控适配器；12 次超时均归类、原始 timeout 复原，随后再次探测成功且 `_health` 恢复。超时和恢复指标均 `p95<=100ms`；不代表真实外部 Provider 网络 |
 | `mcp_disconnect` | P1 | 真实本地 MCP 会话中停止 Server；工具调用由 `asyncio.wait_for(1.5s)` 限制，2s 内显式异常且 Session/传输清理无异常才通过。停止前必须在 Server 所属 loop 取消并 await 全部 SSE `_shutdown_watcher`，停止后 pending=0；仅检查 `cleanup_error=None` 不足以证明清理完成。`cleanup_error` 写入观察结果与 details，存在清理异常即失败。传输进入、Session 初始化或 Server 停止等准备错误单独记为 `COLLECTION_ERROR/FAIL`，不得以空样本派生 NOT_RUN |
-| `slow_subscriber` | P1 | 真实发布路径注入 50ms 慢订阅者；发布 `p95<=10ms`，快订阅者收到全部 5 次事件 |
+| `slow_subscriber` | P1 | `publish_async` 路径注入 500ms 慢订阅者；发布返回 `p95<=10ms`，快订阅者实际收到全部 5 次事件，不以入队回执冒充送达 |
 | `plugin_exception` | P1 | 真实订阅回调抛受控异常；发布 `p95<=5ms`，异常不向外传播，正常订阅者收到全部 5 次事件 |
 
 所有故障指标同样记录 p50/p95/p99、最大值、样本数和测量方法。故障记录另含 `expected`、`observed`、`execution_scope` 和结构化 `details`，当前失败不得因脚本继续运行而改写成通过。
@@ -112,7 +112,7 @@
 - `full_gui_startup_shutdown`：真实主窗口启动和关闭；
 - `external_provider_network`：真实外部 Provider 网络及超时恢复；
 - `physical_disk_full`：真实物理磁盘耗尽；
-- `endurance_72h`：72 小时稳定性、内存趋势和长期任务运行。
+- `endurance_7h`：本次实际执行约 7.04 小时稳定性、内存趋势和长期任务运行，由开发者确认接受；不宣称完成 72 小时。
 
 此外，自愿退出子进程只验证 SQLite abrupt-exit 后的提交持久性，不宣称完整应用的任务恢复已经通过。
 

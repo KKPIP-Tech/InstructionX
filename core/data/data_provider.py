@@ -6,6 +6,7 @@
 import copy
 import os
 import json
+import sqlite3
 import threading
 from pathlib import Path, PurePath
 from typing import Dict, Any, Optional, Callable, List
@@ -96,7 +97,7 @@ class DataProvider(IDataProvider):
             self._backend = SQLiteBackend(data_dir, data_filename)
             try:
                 self._backend.ensure_database()
-            except SQLiteBackendError as e:
+            except (SQLiteBackendError, sqlite3.Error) as e:
                 raise DataProviderError(str(e)) from e
 
         self._data_operations = PluginDataOperations(self)
@@ -174,7 +175,7 @@ class DataProvider(IDataProvider):
             if self._cache is None or force_reload or self._cache_dirty:
                 try:
                     self._cache = self._backend.load_data()
-                except SQLiteBackendError as e:
+                except (SQLiteBackendError, sqlite3.Error) as e:
                     raise DataProviderError(str(e)) from e
                 self._cache_dirty = False
             return copy.deepcopy(self._cache) if self._cache else {}
@@ -194,7 +195,7 @@ class DataProvider(IDataProvider):
         with self._file_lock:
             try:
                 self._backend.save_data(self._cache)
-            except SQLiteBackendError as e:
+            except (SQLiteBackendError, sqlite3.Error) as e:
                 raise DataProviderError(str(e)) from e
             self._cache_dirty = False
 
@@ -245,7 +246,7 @@ class DataProvider(IDataProvider):
         with self._file_lock:
             try:
                 self._backend.register_plugin(instance_id, plugin_type)
-            except SQLiteBackendError as e:
+            except (SQLiteBackendError, sqlite3.Error) as e:
                 raise DataProviderError(str(e)) from e
             if self._cache is not None and instance_id not in self._cache["plugins"]:
                 self._cache["plugins"][instance_id] = {
@@ -280,7 +281,7 @@ class DataProvider(IDataProvider):
         with self._file_lock:
             try:
                 self._backend.unregister_plugin(instance_id)
-            except SQLiteBackendError as e:
+            except (SQLiteBackendError, sqlite3.Error) as e:
                 raise DataProviderError(str(e)) from e
             if self._cache is not None:
                 self._cache["plugins"].pop(instance_id, None)
@@ -309,7 +310,7 @@ class DataProvider(IDataProvider):
         with self._file_lock:
             try:
                 return self._backend.get_active_instance(plugin_type)
-            except SQLiteBackendError as e:
+            except (SQLiteBackendError, sqlite3.Error) as e:
                 raise DataProviderError(str(e)) from e
 
     def set_active_instance(self, instance_id: str) -> None:
@@ -338,7 +339,7 @@ class DataProvider(IDataProvider):
         with self._file_lock:
             try:
                 self._backend.set_active_instance(instance_id)
-            except SQLiteBackendError as e:
+            except (SQLiteBackendError, sqlite3.Error) as e:
                 raise DataProviderError(str(e)) from e
             plugin_type = self._backend.get_plugin_type(instance_id)
             if plugin_type is None:
@@ -382,11 +383,11 @@ class DataProvider(IDataProvider):
             return data["plugins"][instance_id][namespace_str].get(key, default)
 
         with self._file_lock:
-            if not self._backend.plugin_exists(instance_id):
-                raise DataProviderError(f"插件 {instance_id} 不存在")
             try:
+                if not self._backend.plugin_exists(instance_id):
+                    raise DataProviderError(f"插件 {instance_id} 不存在")
                 return self._backend.get_plugin_data(instance_id, namespace_str, key, default)
-            except SQLiteBackendError as e:
+            except (SQLiteBackendError, sqlite3.Error) as e:
                 raise DataProviderError(str(e)) from e
 
     def set_plugin_data(self,
@@ -426,17 +427,12 @@ class DataProvider(IDataProvider):
             return
 
         with self._file_lock:
-            if not self._backend.plugin_exists(instance_id):
-                raise DataProviderError(f"插件 {instance_id} 不存在")
-            # 获取旧值（用于回调）
             try:
+                if not self._backend.plugin_exists(instance_id):
+                    raise DataProviderError(f"插件 {instance_id} 不存在")
                 old_value = self._backend.get_plugin_data(instance_id, namespace_str, key)
-            except SQLiteBackendError as e:
-                raise DataProviderError(str(e)) from e
-            # 写入新值
-            try:
                 self._backend.set_plugin_data(instance_id, namespace_str, key, value)
-            except SQLiteBackendError as e:
+            except (SQLiteBackendError, sqlite3.Error) as e:
                 raise DataProviderError(str(e)) from e
             # 仅同步已存在的兼容全量缓存，正常点写不得触发全库加载
             if self._cache is not None:
@@ -503,7 +499,7 @@ class DataProvider(IDataProvider):
                 raise DataProviderError(f"插件 {instance_id} 不存在")
             try:
                 return self._backend.get_all_plugin_data(instance_id, namespace_str)
-            except SQLiteBackendError as e:
+            except (SQLiteBackendError, sqlite3.Error) as e:
                 raise DataProviderError(str(e)) from e
 
 
@@ -542,7 +538,7 @@ class DataProvider(IDataProvider):
             try:
                 if not self._backend.plugin_exists(target_plugin_id):
                     raise DataProviderError(f"目标插件 {target_plugin_id} 不存在")
-            except SQLiteBackendError as e:
+            except (SQLiteBackendError, sqlite3.Error) as e:
                 raise DataProviderError(str(e)) from e
 
         with self._subscription_lock:
@@ -767,7 +763,7 @@ class DataProvider(IDataProvider):
         with self._file_lock:
             try:
                 return self._backend.get_all_plugins()
-            except SQLiteBackendError as e:
+            except (SQLiteBackendError, sqlite3.Error) as e:
                 raise DataProviderError(str(e)) from e
 
     def get_plugin_info(self, instance_id: str) -> Optional[Dict[str, Any]]:
@@ -789,7 +785,7 @@ class DataProvider(IDataProvider):
         with self._file_lock:
             try:
                 return self._backend.get_plugin_info(instance_id)
-            except SQLiteBackendError as e:
+            except (SQLiteBackendError, sqlite3.Error) as e:
                 raise DataProviderError(str(e)) from e
 
     def reset_all_data(self) -> None:
@@ -808,6 +804,6 @@ class DataProvider(IDataProvider):
         with self._file_lock:
             try:
                 self._backend.reset_all_data()
-            except SQLiteBackendError as e:
+            except (SQLiteBackendError, sqlite3.Error) as e:
                 raise DataProviderError(str(e)) from e
         self.clear_cache()

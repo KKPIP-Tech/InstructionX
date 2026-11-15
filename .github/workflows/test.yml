@@ -44,6 +44,8 @@ jobs:
           uvx --from pip-audit==2.10.1 pip-audit -r $requirements --no-deps --disable-pip -s osv --timeout 30 --progress-spinner off
       - name: Run tests
         run: uv run --frozen python -m pytest test/ -q --tb=short -p no:cacheprovider
+      - name: Run quick fault and contract gates
+        run: uv run --frozen python scripts/fault_inject_foundation.py --quick --allow-not-run --output temp/fault-inject-quick.json
       - name: Upload failure diagnostics
         if: failure()
         uses: actions/upload-artifact@v4

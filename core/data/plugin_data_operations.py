@@ -1,6 +1,7 @@
 """插件批量写入、分页读取与聚合查询，独立于兼容门面。"""
 
 import copy
+import sqlite3
 from typing import Any, Dict
 
 from core.interfaces.i_data_provider import DataNamespace
@@ -55,11 +56,11 @@ class PluginDataOperations:
         provider = self._provider
         namespace_str = namespace.value
         with provider._file_lock:
-            self._require_sqlite_plugin(instance_id)
-            old_values = self._sqlite_old_values(instance_id, namespace_str, notify)
             try:
+                self._require_sqlite_plugin(instance_id)
+                old_values = self._sqlite_old_values(instance_id, namespace_str, notify)
                 provider._backend.set_plugin_data_batch(instance_id, namespace_str, values)
-            except SQLiteBackendError as error:
+            except (SQLiteBackendError, sqlite3.Error) as error:
                 self._raise_backend(error)
             self._sync_full_cache(instance_id, namespace_str, values)
         if namespace_str == DataNamespace.PUBLIC.value and notify:
@@ -103,12 +104,12 @@ class PluginDataOperations:
         if self._provider._use_json_backend:
             return self._json_page(instance_id, namespace, limit, offset)
         with self._provider._file_lock:
-            self._require_sqlite_plugin(instance_id)
             try:
+                self._require_sqlite_plugin(instance_id)
                 return self._provider._backend.get_plugin_data_page(
                     instance_id, namespace.value, limit, offset
                 )
-            except SQLiteBackendError as error:
+            except (SQLiteBackendError, sqlite3.Error) as error:
                 self._raise_backend(error)
 
     def _json_page(self, instance_id, namespace, limit, offset) -> Dict[str, Any]:
@@ -124,10 +125,10 @@ class PluginDataOperations:
             self._require_json_plugin(data, instance_id)
             return len(self._json_values(data, instance_id, namespace.value))
         with self._provider._file_lock:
-            self._require_sqlite_plugin(instance_id)
             try:
+                self._require_sqlite_plugin(instance_id)
                 return self._provider._backend.count_plugin_data(instance_id, namespace.value)
-            except SQLiteBackendError as error:
+            except (SQLiteBackendError, sqlite3.Error) as error:
                 self._raise_backend(error)
 
     @staticmethod

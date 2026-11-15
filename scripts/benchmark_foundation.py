@@ -167,9 +167,9 @@ def _not_run_items() -> list[dict[str, str]]:
         },
         {
             "id": "endurance_72h",
-            "capability": "72 小时稳定性、内存趋势与长期任务运行",
+            "capability": "长稳负载的稳定性、内存趋势与长期任务运行（本次验收 7 小时）",
             "status": "NOT_RUN",
-            "reason": "Task 0 仅执行短时基线，不把短时采集解释为 72 小时通过",
+            "reason": "Task 0 仅执行短时基线，不把短时采集解释为正式长稳验收通过",
         },
     ]
 
