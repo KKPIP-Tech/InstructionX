@@ -3,8 +3,10 @@
 覆盖任务持久化存储的 CRUD、缓存、损坏回退等核心行为。
 """
 
+import errno
 import json
 from datetime import datetime
+from unittest.mock import patch
 
 import pytest
 
@@ -238,3 +240,14 @@ class TestCleanupOldTasks:
         removed = storage.cleanup_old_tasks(max_age_days=30)
         assert removed == 0
         assert storage.get_long_running_task("long") is not None
+
+
+
+def test_save_data_returns_false_and_preserves_dirty_then_recovers(storage):
+    """磁盘满返回 False 且保留脏标记，恢复写盘后返回 True。"""
+    storage.load_data()
+    with patch("builtins.open", side_effect=OSError(errno.ENOSPC, "受控磁盘满")):
+        assert storage.save_data() is False
+        assert storage._cache_dirty is True
+    assert storage.save_data() is True
+    assert storage._cache_dirty is False

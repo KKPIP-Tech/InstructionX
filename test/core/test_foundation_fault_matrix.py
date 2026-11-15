@@ -150,13 +150,13 @@ FAULT_SEVERITIES = {
 }
 EXPECTED_FAULT_STATUSES = {
     "database_corruption": "PASS",
-    "database_locked": "FAIL",
-    "database_readonly": "FAIL",
-    "disk_full": "FAIL",
+    "database_locked": "PASS",
+    "database_readonly": "PASS",
+    "disk_full": "PASS",
     "process_kill": "PASS",
     "provider_timeout": "PASS",
     "mcp_disconnect": "PASS",
-    "slow_subscriber": "FAIL",
+    "slow_subscriber": "PASS",
     "plugin_exception": "PASS",
 }
 EXPECTED_FAILURE_SEVERITIES = {
@@ -398,14 +398,14 @@ def test_collection_error_with_empty_samples_is_fail() -> None:
 
 
 def test_real_report_preserves_known_failures_and_not_run(real_report: dict[str, Any]) -> None:
-    """真实基线必须暴露当前一个 P0、三个 P1 和五项安全边界外能力。"""
+    """故障项通过后仍须保留五项安全边界外能力的 NOT_RUN 判定。"""
     actual_failures = {
         item["id"]: item["severity"]
         for item in real_report["current_failures"]
         if item["source"] == "fault_matrix"
     }
     assert real_report["collection_status"] == "COMPLETED"
-    assert real_report["qualification_status"] == "FAIL"
+    assert real_report["qualification_status"] == "NOT_RUN"
     assert actual_failures == EXPECTED_FAILURE_SEVERITIES
     assert len(real_report["current_failures"]) == len(EXPECTED_FAILURE_SEVERITIES), _workload(
         real_report, "typical_desktop"
@@ -463,23 +463,23 @@ def test_database_corruption_preserves_original_as_pass(tmp_path: Path) -> None:
 
 
 def test_database_lock_and_readonly_expose_public_api_errors(real_report: dict[str, Any]) -> None:
-    """锁定和只读场景的底层 OperationalError 泄漏必须形成 P1 失败。"""
+    """锁定和只读必须统一为 DataProviderError，且锁释放后可恢复。"""
     locked = _fault(real_report, "database_locked")
     readonly = _fault(real_report, "database_readonly")
-    assert locked["status"] == "FAIL"
-    assert "OperationalError" in locked["details"]["error_type"]
+    assert locked["status"] == "PASS"
+    assert locked["details"]["error_type"].startswith("DataProviderError")
     assert locked["details"]["recovered"] is True
-    assert readonly["status"] == "FAIL"
-    assert "OperationalError" in readonly["details"]["error_type"]
+    assert readonly["status"] == "PASS"
+    assert readonly["details"]["error_type"].startswith("DataProviderError")
     assert readonly["details"]["platform_enforced"] is True
 
 
 def test_disk_full_reports_false_persistence_success(tmp_path: Path) -> None:
-    """ENOSPC 后无异常且 dirty=False 是当前 P0 假成功证据，必须判 FAIL。"""
+    """ENOSPC 必须返回 False 并保留脏标记，检测通过不等于物理磁盘满已验收。"""
     result = faults.fault_disk_full(tmp_path)
-    assert result["status"] == "FAIL"
-    assert result["details"]["error_type"] == "无"
-    assert result["details"]["cache_dirty"] is False
+    assert result["status"] == "PASS"
+    assert result["details"]["save_receipt"] is False
+    assert result["details"]["cache_dirty"] is True
     assert result["metrics"][0]["statistics"]["sample_count"] == 1
     assert "不得表现为持久化成功" in result["expected"]
 
@@ -665,14 +665,15 @@ def test_mcp_cleanup_exception_is_preserved_and_fails(
     assert result["metrics"][0]["statistics"]["sample_count"] == 1
 
 
-def test_slow_subscriber_failure_keeps_fast_delivery(real_report: dict[str, Any]) -> None:
-    """50ms 慢订阅者阻塞发布是 P1；快订阅者交付证据仍须完整。"""
+def test_async_slow_subscriber_does_not_block_fast_delivery(real_report: dict[str, Any]) -> None:
+    """500ms 异步慢订阅者不得阻塞发布，快订阅者必须实际全部送达。"""
     result = _fault(real_report, "slow_subscriber")
     metric = result["metrics"][0]
-    assert result["status"] == "FAIL"
+    assert result["status"] == "PASS"
     assert metric["statistics"]["sample_count"] == FAULT_SAMPLE_COUNT
-    assert metric["statistics"]["p95"] > SLOW_SUBSCRIBER_SLO_MS
+    assert metric["statistics"]["p95"] <= SLOW_SUBSCRIBER_SLO_MS
     assert result["details"]["fast_subscriber_events"] == FAULT_SAMPLE_COUNT
+    assert result["details"]["fast_delivered"] == FAULT_SAMPLE_COUNT
 
 
 def test_plugin_exception_isolated_from_healthy_subscriber(real_report: dict[str, Any]) -> None:
