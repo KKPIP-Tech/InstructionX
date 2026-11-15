@@ -83,14 +83,17 @@ python -m pytest test/ -q --tb=short -p no:cacheprovider
   - `smoke_github_private.py`：GitHub 多 Key、私有识别与重新绑定无网冒烟；`smoke_github_private_live.py` 读取本机测试 PAT/私有仓库环境变量，执行真实安装与 Release 下载，临时数据只写入 `temp/`
   - `check_i18n_completeness.py`：语言文件完整性校验（默认语言必须覆盖源码全部 `tr()` 调用，缺键 exit 1；其他语言缺键/孤立键 WARNING；支持 `--text-dir`/`--src-dir`/`--plugin-root`）
   - `screenshot_*.py`：对话框截图对比脚本（输出到 `scripts/screenshots/`）
-  - `_mcp_smoke*.py`：真实 MCP SDK 冒烟测试
+  - `_mcp_smoke*.py`：真实 MCP SDK 冒烟测试（各 100 次 stdio/HTTP 重连及清理门禁）
+  - `validate_plugin_contracts.py`：公开签名、依赖注入、官方插件生命周期和旧格式兼容验证
+  - `fault_inject_foundation.py`：故障矩阵、回环网络故障和 100 次恢复；`--quick` 用于 PR 快速门禁
+  - `soak_foundation.py`：仅限用户在基准机通过专用命令手动触发的混合负载长稳，禁止 pytest 或 CI/CD 启动；默认预热 300 秒，周期输出内存、句柄、队列、p95/p99 与错误日志并检查全部资源峰值；本次实际执行约 7.04 小时并经开发者确认接受，未完成命令指定时长时保持 NOT_RUN
   - `demo_*.py`：功能演示脚本
 - **Setup 是 Rust + Ratatui + Crossterm 原生程序**（`setup/` crate，Windows/macOS/Linux 源码实现），TUI 不得使用 Python、PowerShell 或 Bash 编写；`setup.ps1` / `setup.sh` / `setup.bat` / `setup.command` 只按系统与架构选择 `tools/setup/` 随包二进制，不下载 Setup。改动后必须运行 `cargo fmt --check`、`cargo clippy --locked --all-targets -- -D warnings`、`cargo test --locked` 和 `scripts/smoke_setup_wizard.py`；Rust 集成测试放在 `test` 分支。当前只在开发者本机构建并随包 Windows x64/ARM64，macOS 资产为未来选项；发布前必须更新这两个二进制与 `SHA256SUMS`。
 - 另外，`scripts/` 下有 4 个 `test_*.py` 文件属 UI 验证脚本（`test_debug_cluster_framework_api_demo.py`、`test_long_running_task.py`、`test_model_edit_sync.py`、`test_provider_switch_rendering.py`），命名虽似 pytest 测试，但不在 `testpaths = ["test"]` 的收集范围内，需直接运行。
 
 ## CI / 部署
 
-- 唯一工作流：`.github/workflows/test.yml`，任意分支 push、所有 PR、手动触发及每周一定时触发；Windows + Python 3.14 执行 `uv.lock` 校验、锁定依赖安装、OSV 审计和 pytest。**不在 GitHub Actions 构建或发布 Setup 原生二进制**。
+- 唯一工作流：`.github/workflows/test.yml`，任意分支 push、所有 PR、手动触发及每周一定时触发；Windows + Python 3.14 执行 `uv.lock` 校验、锁定依赖安装、OSV 审计、完整 pytest（真实 GUI）和快速故障/契约门禁；长稳负载只允许用户通过专用命令手动触发，禁止 pytest 或任何 CI/CD 任务启动。**不在 GitHub Actions 构建或发布 Setup 原生二进制**。
 - `.github/dependabot.yml` 每周检查 Python 与 GitHub Actions 依赖，安全更新按组创建 PR。
 - 框架以源码方式直接运行；`tools/setup/` 中 Windows x64/ARM64 的预编译 Setup 随源码提交并自动包含在 GitHub Release 源码压缩包中，Windows 用户无需安装 Rust 或等待二次下载。
 
@@ -291,7 +294,7 @@ core/
     supervisor.py           # 提交/完成/拒绝、队列深度与单调时钟调度延迟指标
     task_model.py           # BackgroundTask / ScheduledTask / LongRunningTask 数据模型
     scheduler.py            # TaskScheduler（轻量生命周期占位）+ SchedulerCallback
-    task_storage.py         # 任务状态持久化（data/tasks.json）
+    task_storage.py         # 任务状态持久化（data/tasks.json；save_data 返回 bool 回执，失败保留脏标记）
   llm/                      # LLM 框架
     llm_provider.py         # LLMProvider 单例：对话/流式/embedding/模型列表缓存、
                             #   adapter 分发、check_provider/check_model、配置版本惰性刷新、
@@ -503,7 +506,7 @@ config/ data/ logs/         # 运行时生成：配置、数据、日志
 
 ## 文档地图（docs/）
 
-- 架构：`docs/architecture/overview.md`、`module-dependencies.md`；SLO 与性能证据：`foundation-slo.md`、`foundation-performance.md`
+- 架构：`docs/architecture/overview.md`、`module-dependencies.md`；SLO 与性能证据：`foundation-slo.md`、`foundation-performance.md`；故障/兼容/长稳：`foundation-validation.md`
 - 主题与 UI 组件：`docs/utils/uikit-theme.md`（UIKit 主题系统）、`docs/ui/`
 - 运行时稳定性：`docs/utils/gc-main-thread.md`（主线程 GC 守卫与 paint 闪退排查）
 - 插件系统：`docs/core/plugin-system/`（含 `plugin-development.md`）

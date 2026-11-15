@@ -216,10 +216,10 @@ def load_data(self, force_reload: bool = False) -> Dict[str, Any]
 ### save_data()
 
 ```python
-def save_data(self) -> None
+def save_data(self) -> bool
 ```
 
-将当前缓存数据保存到磁盘。
+将当前缓存数据保存到磁盘。原子替换成功返回 `True`；写入失败返回 `False`，保留 `_cache_dirty=True` 并记录错误，不再把正常返回表现为持久化成功。既有忽略返回值的调用仍可执行，但需要确认落盘的调用方必须检查回执。
 
 ### clear_cache()
 
@@ -234,7 +234,7 @@ def clear_cache(self)
 ## 8. 原子写入机制
 
 ```python
-def _write_to_disk(self, data: Dict[str, Any]) -> None:
+def _write_to_disk(self, data: Dict[str, Any]) -> bool:
     # 1. 写入临时文件
     with open(temp_file, 'w', encoding='utf-8') as f:
         json.dump(data, f, ensure_ascii=False, indent=2)

@@ -50,8 +50,10 @@ PROVIDER_TIMEOUT_SECONDS = 0.02
 PROVIDER_TIMEOUT_SLO_MS = 100.0
 MCP_DISCONNECT_TIMEOUT_SECONDS = 1.5
 MCP_DISCONNECT_SLO_MS = 2000.0
-SLOW_SUBSCRIBER_DELAY_SECONDS = 0.05
+SLOW_SUBSCRIBER_DELAY_SECONDS = 0.5
 SLOW_SUBSCRIBER_SLO_MS = 10.0
+DELIVERY_WAIT_TIMEOUT_SECONDS = 2.0
+DELIVERY_POLL_INTERVAL_SECONDS = 0.001
 PLUGIN_PUBLISH_SLO_MS = 5.0
 VOLUNTARY_EXIT_CODE = 42
 CHILD_TIMEOUT_SECONDS = 10.0
@@ -212,25 +214,28 @@ def fault_disk_full(workspace: Path) -> dict[str, Any]:
     try:
         storage = TaskStorage(str(workspace / "fault-disk-full"))
         storage.load_data()
-        error = None
+        persistence_succeeded = None
         started = time.perf_counter()
         with patch("builtins.open", side_effect=OSError(errno.ENOSPC, "受控磁盘满")):
             try:
-                storage.save_data()
+                persistence_succeeded = storage.save_data()
             except Exception as caught:
-                error = caught
+                persistence_succeeded = caught
         elapsed_ms = (time.perf_counter() - started) * MILLISECONDS_PER_SECOND
         dirty = bool(storage._cache_dirty)
     finally:
         TaskStorage._instance = None
     metric = make_metric("disk_full_detection", [elapsed_ms], FAULT_DETECTION_SLO_MS, "patch builtins.open 抛出 ENOSPC 后调用 TaskStorage.save_data")
-    status = derive_fault_status(error is not None and dirty, [metric])
+    status = derive_fault_status(persistence_succeeded is False and dirty, [metric])
     return make_fault(
         "disk_full", "P0", status, [metric],
-        expected="写入失败必须通知调用者并保留脏标志，不得表现为持久化成功",
-        observed=f"异常={_error_name(error)}；返回后 cache_dirty={dirty}",
+        expected="写入失败必须返回 False 并保留脏标志，不得表现为持久化成功",
+        observed=f"save_data 回执={persistence_succeeded}；返回后 cache_dirty={dirty}",
         scope="REAL_TASK_STORAGE_CONTROLLED_ENOSPC",
-        details={"error_type": _error_name(error), "cache_dirty": dirty},
+        details={
+            "save_receipt": persistence_succeeded if isinstance(persistence_succeeded, bool) else "EXCEPTION",
+            "cache_dirty": dirty,
+        },
     )
 
 
@@ -472,36 +477,48 @@ def _stop_server_with_evidence(
 
 
 def fault_slow_subscriber(workspace: Path) -> dict[str, Any]:
-    """注入 50ms 同步订阅者，联合检查发布 SLO 与快订阅者交付。"""
+    """注入 500ms 异步慢订阅者，检查发布返回与快订阅者实际送达。"""
     received = []
     with _provider_session(workspace / "fault-slow-subscriber") as provider:
         provider.register_plugin("benchmark", "benchmark")
         provider.subscribe("slow", "benchmark", "event", _slow_subscriber)
         provider.subscribe("fast", "benchmark", "event", lambda *args: received.append(args))
         samples = _measure_publishes(provider)
-    metric = make_metric("slow_subscriber_publish", samples, SLOW_SUBSCRIBER_SLO_MS, "50ms 慢订阅者与快订阅者并存时测量 DataProvider.publish")
-    behavior = len(received) == FAULT_SAMPLES
-    observed = f"publish p95={metric['statistics']['p95']}ms；快订阅者收到={len(received)}"
+        delivered = _wait_fast_delivery(provider)
+    metric = make_metric("slow_subscriber_publish", samples, SLOW_SUBSCRIBER_SLO_MS, "500ms 慢订阅者与快订阅者并存时测量 DataProvider.publish_async")
+    behavior = len(received) == FAULT_SAMPLES and delivered == FAULT_SAMPLES
+    observed = f"publish_async p95={metric['statistics']['p95']}ms；快订阅者收到={len(received)}"
     return make_fault(
         "slow_subscriber", "P1", derive_fault_status(behavior, [metric]), [metric],
-        expected="慢订阅者不阻塞发布者（p95<=10ms），快订阅者收到全部事件",
+        expected="异步慢订阅者不阻塞发布者（p95<=10ms），快订阅者实际收到全部事件",
         observed=observed, scope="REAL_DATAPROVIDER_CONTROLLED_SLEEPER",
-        details={"fast_subscriber_events": len(received)},
+        details={"fast_subscriber_events": len(received), "fast_delivered": delivered},
     )
 
 
 def _measure_publishes(provider: DataProvider) -> list[float]:
-    """测量固定次数真实发布，异常继续抛出并由上下文清理连接。"""
+    """测量固定次数异步发布，异常继续抛出并由上下文清理连接。"""
     samples = []
     for index in range(FAULT_SAMPLES):
         started = time.perf_counter()
-        provider.publish("benchmark", "event", index)
+        provider.publish_async("benchmark", "event", index)
         samples.append((time.perf_counter() - started) * MILLISECONDS_PER_SECOND)
     return samples
 
 
+def _wait_fast_delivery(provider: DataProvider) -> int:
+    """在有限时间内等待快订阅者实际送达，不将入队回执冒充交付。"""
+    deadline = time.monotonic() + DELIVERY_WAIT_TIMEOUT_SECONDS
+    while time.monotonic() < deadline:
+        delivered = provider.get_event_delivery_stats("fast").delivered
+        if delivered >= FAULT_SAMPLES:
+            return delivered
+        threading.Event().wait(DELIVERY_POLL_INTERVAL_SECONDS)
+    return provider.get_event_delivery_stats("fast").delivered
+
+
 def _slow_subscriber(publisher_id: str, key: str, old_value: Any, new_value: Any) -> None:
-    """本地慢订阅者固定等待 50ms。"""
+    """本地慢订阅者固定等待 500ms。"""
     threading.Event().wait(SLOW_SUBSCRIBER_DELAY_SECONDS)
 
 
