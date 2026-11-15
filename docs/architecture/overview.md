@@ -297,7 +297,7 @@ graph TB
 | `ILLMService` | `i_llm_service.py` | LLM 插件服务接口 | `core/llm/plugin_service.py`（`LLMPluginService` 显式继承） |
 | `ILogger` | `i_logger.py`（`core/interfaces/` 重导出） | 日志接口 | `utils/logging_tools.py`（LoggerManager） |
 | `ILocalizationFacade` | `i_localization.py` | 插件文案取词门面接口（绑定插件 UUID） | `core/i18n/facade.py` 的 `PluginI18nFacade` |
-| `PluginServices` | `plugin_services.py` | 服务封装（依赖注入容器，8 字段） | — |
+| `PluginServices` | `plugin_services.py` | 服务封装（依赖注入容器，9 字段，含 observability） | — |
 
 **导入指南**:
 ```python
@@ -342,6 +342,17 @@ from core.interfaces import (
 - 开发者本机构建并校验 Windows x64/ARM64 预编译二进制与 SHA256，随源码包分发；不使用 GitHub Actions 构建 Setup，Windows 用户不需要安装 Rust。macOS 预编译版本为未来选项。
 
 **模块划分**: `app.rs`（页面与终端事件）、`workspace.rs`（操作编排）、`system/`（平台信息）、`github.rs`（Release）、`actions.rs`（备份回滚）、`uv.rs`（环境）、`plugins.rs`（插件）、`shortcuts.rs`（桌面入口）、`cli.rs`（兼容接口）。
+
+### 3.15 可靠性与可选进程隔离
+
+**文件位置**: `core/application_lifecycle.py`、`core/observability/`、`core/plugin_host/`、`core/external_watchdog.py`
+
+- `ApplicationLifecycle` 统一关闭外部调用、任务、MCP、插件、LLM 和存储，输出逐步骤与全局截止期报告。
+- 分池任务、有界异步事件、增量 SQLite 用量/会话、健康快照和框架事件提供可观测的显式故障边界；异步事件不是可靠消息队列。
+- `PluginHost` 只承载显式选择的无 UI、可 JSON 序列化 Service/API，提供版本化长度帧 RPC、有界调用、心跳、有限重启、熔断和崩溃回收；默认 `PluginManager` 同进程加载不变。
+- 外部 watchdog 只执行用户配置的 `none/exit/restart`，不执行设备控制或安全联锁。隔离不是权限沙箱，断电与行业业务正确性仍需外部验证。
+
+部署、灰度与实测限制见 [部署指南](foundation-deployment-guide.md) 和 [验证报告](foundation-verification-report.md)。
 
 ---
 
@@ -664,3 +675,6 @@ def get_mcp_manager() -> "MCPManager":
 - [后台任务概述](../core/background-task/overview.md)
 - [LLM Provider 概述](../core/llm-provider/overview.md)
 - [MCP 协议模块概述](../core/mcp/overview.md)
+- [行业辅助部署、灰度与回滚指南](foundation-deployment-guide.md)
+- [基础框架可靠性验证报告](foundation-verification-report.md)
+- [关键插件进程隔离与 watchdog](plugin-isolation.md)
