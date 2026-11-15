@@ -412,12 +412,12 @@ Expected: 达到第 2 节长稳指标；未实际执行 7 小时前不得标记�
 - Produces: `PluginHost.stop(timeout) -> StopReport`
 - Produces: `Watchdog.check_once() -> WatchdogReport`
 
-- [ ] 使用带版本和长度帧的 JSON-RPC；校验消息大小、类型、请求 ID 和错误码，拒绝无效消息。
-- [ ] 进程崩溃只影响对应代理；调用方收到明确 `PLUGIN_UNAVAILABLE`，不得拖死 UI。
-- [ ] 心跳、调用超时、最大重启次数和熔断状态可观测；禁止无限重启。
-- [ ] 主进程退出时回收子进程；watchdog 只执行用户配置的退出/重启动作，不执行设备控制。
-- [ ] 写故障测试：插件死循环、段错误等效进程退出、消息洪水、错误协议、主进程强杀。
-- [ ] 默认仍加载受信任同进程插件；只有明确配置的关键插件进入进程外宿主。
+- [x] 使用带版本和长度帧的 JSON-RPC；校验消息大小、类型、请求 ID 和错误码，拒绝无效消息。
+- [x] 进程崩溃只影响对应代理；调用方收到明确 `PLUGIN_UNAVAILABLE`，不得拖死 UI。
+- [x] 心跳、调用超时、最大重启次数和熔断状态可观测；禁止无限重启。
+- [x] 主进程退出时回收子进程；watchdog 只执行用户配置的退出/重启动作，不执行设备控制。
+- [x] 写故障测试：插件死循环、段错误等效进程退出、消息洪水、错误协议、主进程强杀。
+- [x] 默认仍加载受信任同进程插件；只有明确配置的关键插件进入进程外宿主。
 
 Run: `python -m pytest test/core/plugin_host/test_process_isolation.py -q --tb=short -p no:cacheprovider`
 Expected: 插件进程故障不使主进程退出，调用有界返回，子进程和句柄全部可回收。

@@ -242,6 +242,13 @@ core/
   __init__.py               # PEP-562 惰性导出，避免 import core 时拉起 PySide6
   version.py                # VERSION 常量（版本单一来源）
   application_lifecycle.py  # 应用关闭协调器：外部调用/任务/MCP/插件/LLM/存储/UI 顺序与全局截止期报告
+  external_watchdog.py      # 独立 watchdog：严格心跳校验、仅执行显式退出/重启配置、Windows 有界终止
+  process_control.py        # 跨平台进程存活与终止原语：Windows 原生退出码和等待句柄
+  plugin_host/              # 可选关键插件进程隔离；默认 PluginManager 同进程加载路径不变
+    protocol.py             # 版本化四字节长度帧 JSON-RPC、严格字段/ID/错误码与大小校验
+    runtime.py              # 子进程运行时：复用既有插件加载/注入/API 注册与统一生命周期
+    supervisor.py           # 有界 RPC、独立写入、心跳、累计重启预算、熔断、代际防重放与回收
+    proxy.py                # 无 UI、可 JSON 序列化 Service/API 的动态代理（返回 RpcResult）
   interfaces/               # 抽象接口层：IPlugin、IPluginInfo、IDataProvider、ITaskManager、
                             #   ILLMService（i_llm_service.py，LLM 插件服务契约）、PluginServices（依赖注入容器）、
                             #   health.py（核心服务健康状态、错误码、快照与脱敏契约）
@@ -506,7 +513,7 @@ config/ data/ logs/         # 运行时生成：配置、数据、日志
 
 ## 文档地图（docs/）
 
-- 架构：`docs/architecture/overview.md`、`module-dependencies.md`；SLO 与性能证据：`foundation-slo.md`、`foundation-performance.md`；故障/兼容/长稳：`foundation-validation.md`
+- 架构：`docs/architecture/overview.md`、`module-dependencies.md`；SLO 与性能证据：`foundation-slo.md`、`foundation-performance.md`；故障/兼容/长稳：`foundation-validation.md`；可选进程隔离与 watchdog：`plugin-isolation.md`
 - 主题与 UI 组件：`docs/utils/uikit-theme.md`（UIKit 主题系统）、`docs/ui/`
 - 运行时稳定性：`docs/utils/gc-main-thread.md`（主线程 GC 守卫与 paint 闪退排查）
 - 插件系统：`docs/core/plugin-system/`（含 `plugin-development.md`）
