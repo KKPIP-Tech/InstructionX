@@ -67,20 +67,28 @@ def test_failed_refresh_is_not_healthy_empty_success():
     assert manager.get_provider_health("p")[0] is False
 
 
-def test_startup_returns_before_slow_refresh_finishes():
-    """启动只读缓存，慢远程刷新在后台完成，不阻塞调用方。"""
+def test_startup_loads_cache_and_refreshes_sequentially():
+    """启动按原设计先读缓存，再等待当前 Provider 刷新完成。"""
     provider = ControlledProvider()
     manager = make_manager(provider)
+    events = []
+    manager._load_models_from_disk_cache = lambda name: events.append(f"disk:{name}")
     original_refresh = provider.refresh_models
-    provider.refresh_models = lambda force=False: (time.sleep(0.5) or original_refresh(force))
+
+    def slow_refresh(force=False):
+        events.append("remote:p")
+        time.sleep(0.05)
+        return original_refresh(force)
+
+    provider.refresh_models = slow_refresh
     started = time.monotonic()
-    manager._fetch_all_models()
-    assert time.monotonic() - started < 0.2
-    deadline = time.monotonic() + 2
-    while provider.refresh_calls < 1:
-        assert time.monotonic() < deadline
-        time.sleep(0.01)
-    assert provider.refresh_calls >= 1
+    try:
+        manager._fetch_all_models()
+        assert time.monotonic() - started >= 0.04
+        assert events == ["disk:p", "remote:p"]
+        assert provider.refresh_calls == 1
+    finally:
+        manager._supervisor.close()
 
 
 def test_circuit_opens_and_recovers_after_timeout():

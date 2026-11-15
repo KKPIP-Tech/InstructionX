@@ -1,5 +1,6 @@
-"""Task 10 并行刷新总截止期与故障隔离性能契约。"""
+"""模型顺序刷新与故障隔离性能契约。"""
 
+import threading
 import time
 from types import SimpleNamespace
 from unittest.mock import MagicMock
@@ -31,27 +32,48 @@ def _llm_with_providers(providers):
     llm._providers = providers
     llm._models_cache = {}
     llm._health = {}
+    llm._logger = MagicMock()
     llm._config = SimpleNamespace(version=0, save_models_cache=MagicMock())
     llm._loaded_config_version = 0
     llm._supervisor = ProviderSupervisor(llm)
     return llm
 
 
-def test_refresh_all_models_runs_in_parallel_and_has_total_deadline():
-    """慢 Provider 不得串行阻塞快 Provider，等待受总截止期限制。"""
+def test_refresh_all_models_runs_sequentially_without_overlapping_refreshes():
+    """按注册顺序逐个刷新，任意时刻最多一个 Provider 在执行。"""
     providers = {
-        "fast": _RefreshProvider("fast-model", 0.02),
-        "slow": _RefreshProvider("slow-model", 0.20),
+        "fast": _RefreshProvider("fast-model", 0.08),
+        "slow": _RefreshProvider("slow-model", 0.08),
     }
+    active = [0, 0]
+    lock = threading.Lock()
+
+    def track(provider):
+        original = provider.refresh_models
+
+        def tracked(force):
+            with lock:
+                active[0] += 1
+                active[1] = max(active)
+            try:
+                return original(force)
+            finally:
+                with lock:
+                    active[0] -= 1
+
+        provider.refresh_models = tracked
+
+    for provider in providers.values():
+        track(provider)
     llm = _llm_with_providers(providers)
     started = time.perf_counter()
     try:
-        models = llm.refresh_all_models(timeout=0.05)
+        models = llm.refresh_all_models(timeout=0.01)
         elapsed = time.perf_counter() - started
-        assert elapsed < 0.15
+        assert elapsed >= 0.15, (elapsed, active, models, llm._health, type(llm._supervisor._executor))
+        assert active[1] == 1
         assert models["fast"][0].id == "fast-model"
-        assert llm._health["slow"][0] is False
-        assert "总截止期" in llm._health["slow"][1]
+        assert models["slow"][0].id == "slow-model"
     finally:
         llm._supervisor.close()
 

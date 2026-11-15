@@ -602,6 +602,7 @@ class TestRefreshProviderModels:
         _make_provider(mocker)
         inst = lp_module.LLMProvider()
         mock_provider = MagicMock()
+        mock_provider.refresh_models_strict = None
         models = [ModelInfo(id="m1", name="Model 1")]
         mock_provider.refresh_models.return_value = models
         inst._providers["prov"] = mock_provider
