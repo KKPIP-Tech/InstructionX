@@ -350,7 +350,7 @@ flowchart TD
 - **`models_cache_stale` 属性**：暴露当前缓存是否过期，供 `LLMProvider._check_models_staleness()` 等上层调度判断是否需要后台静默刷新；
 - **缓存条目格式**：TTL 信封 `{"timestamp": <unix_ts>, "models": [ModelInfo, ...]}`；读取端兼容**纯 list 旧格式**（无 timestamp）——此时视为已过期（`models_cache_stale=True`），强制走 API 刷新或回退默认模型。
 - **预设模型列表**: 子类定义了 `CHAT_MODELS` / `EMBEDDING_MODELS` 类属性的 Provider 不走上述流程，直接返回预设模型列表（`get_models()` → `_get_fallback_models()`）
-- **启动与后台刷新**: 初始化只读取磁盘缓存，`ProviderSupervisor` 后台并行执行严格刷新，单 Provider 失败不阻塞其他实例或 UI。严格刷新只有真实成功才返回空列表；网络失败会进入不健康状态和失败计数，连续失败触发熔断，恢复窗口后允许半开成功并重置状态。`check_provider_detailed()` 返回模型数、错误和 `HealthStatus`，旧 `check_provider()` 返回签名保持兼容。
+- **启动与顺序刷新**: 初始化按注册顺序逐个读取磁盘缓存并完成严格刷新，`ProviderSupervisor` 单 worker 顺序写缓存，单 Provider 失败不阻止后续实例。严格刷新只有真实成功才返回空列表；网络失败会进入不健康状态和失败计数，连续失败触发熔断，恢复窗口后允许半开成功并重置状态。`check_provider_detailed()` 返回模型数、错误和 `HealthStatus`，旧 `check_provider()` 返回签名保持兼容。
 - **请求级并发控制**: `request_timeout` 仅作用于单次请求，不修改共享 `provider.timeout`；聊天、嵌入和流式调用使用 `X-Request-ID`，重试复用同一 ID 以便服务端去重。流式指标包含首 token、总耗时和中断原因，响应在异常和取消路径关闭。
 
 ```python
