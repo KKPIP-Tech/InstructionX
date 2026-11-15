@@ -78,7 +78,10 @@ class ProcessControl:
             raise OSError(error, "无法打开目标进程")
         try:
             if not kernel32.TerminateProcess(handle, 1):
-                raise OSError(ctypes.get_last_error(), "无法终止目标进程")
+                error = ctypes.get_last_error()
+                if not ProcessControl._windows_alive(pid):
+                    return
+                raise OSError(error, "无法终止目标进程")
             wait_ms = int(timeout * MILLISECONDS_PER_SECOND)
             if kernel32.WaitForSingleObject(handle, wait_ms) != WINDOWS_WAIT_OBJECT_0:
                 raise TimeoutError("目标进程未在截止期内退出")
