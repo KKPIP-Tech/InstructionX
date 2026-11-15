@@ -162,11 +162,7 @@ def _wait_for(predicate, timeout: float = WAIT_TIMEOUT) -> None:
 
 
 def _process_alive(pid: int) -> bool:
-    try:
-        os.kill(pid, 0)
-    except OSError:
-        return False
-    return True
+    return ProcessControl.is_alive(pid)
 
 
 def test_protocol_roundtrip_and_rejects_invalid_frames() -> None:
@@ -424,3 +420,10 @@ def test_configuration_and_heartbeat_reject_non_finite_or_boolean_values(tmp_pat
     )
     report = Watchdog(WatchdogConfig(heartbeat.path, os.getpid())).check_once()
     assert report.status == WatchdogStatus.INVALID_HEARTBEAT
+
+
+def test_process_alive_check_never_signals_target(mocker) -> None:
+    """Windows 存活检查不得把信号零误用为 CTRL_C_EVENT。"""
+    kill = mocker.patch("os.kill")
+    _process_alive(os.getpid())
+    kill.assert_not_called()
