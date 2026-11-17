@@ -18,7 +18,7 @@
 ### 2.1 启动与主窗口
 
 - `main.py` 不再调用 `QQuickWindow.setGraphicsApi()` 强制 OpenGL。
-- 新增 `ui/rhi_surface.py` 的 `prepare_rhi_surface(window)`：主窗口在窗口标志确定后、首次 `show()` 前匹配顶层 Surface，避免 Canvas/RHI 子控件触发可见窗口重建。
+- 新增 `ui/rhi_surface.py` 的 `prepare_rhi_surface(window)`：主窗口在窗口标志确定后、首次 `show()` 前匹配顶层 Surface，避免 Canvas/RHI 子控件触发可见窗口重建；macOS Cocoa 顶层则交给 Qt 自管理，防止 Qt 6.11 的 QRhiWidget 与 WebEngine 离屏帧在 `beginOffscreenFrame` 崩溃。
 - 删除 `_prewarm_blueprint_viewport()` 及全部旧 GL 导入；预渲染九宫格窗口阴影保留。
 - `scripts/smoke_uikit_canvas.py` 使用 Win32 客户区原生抓图。`QWidget.grab()` 不能覆盖原生 QQuickView 子窗口，不能作为 RHI 整窗验收依据；最终帧在 resize 预览和入场动画结束后捕获。
 
@@ -57,8 +57,9 @@ renderer.opt["name"] = ""
 | 验收项 | 标准 | 结果 |
 |---|---|---|
 | 同步一致性 | 固定上游 `.py` / `.qml` 内容与框架副本一致 | 通过 |
-| 框架完整 pytest | `test` 分支全部测试通过 | **1351 passed，0 failed** |
+| 框架完整 pytest | `test` 分支全部测试通过 | **1352 passed，0 failed** |
 | 定向适配测试 | RHI、同步、趋势与旧 GL 测试更新 | 51 passed |
+| macOS Cocoa 防护 | 不调用 `winId()`、不强制设置顶层 Surface，Windows Canvas 不回归 | 模拟平台测试通过；未进行 macOS 实机验证 |
 | 静态契约与 i18n | 公开签名、语言完整性、框架更新与插件管理冒烟 | 通过；插件管理 74 项通过 |
 | 上游独立测试 | 固定上游包源码对应的 95 个脚本全部退出 0 | **95/95 通过**，含 160 个页面状态 RGBA 零差异 |
 | 默认真实后端 | Chart、Blueprint、TrendPanel 全部 `canvas-widget` | 通过 |

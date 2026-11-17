@@ -366,7 +366,7 @@ def _create_main_layout(self) -> None:
     self.skills_panel.skill_clicked.connect(self._on_skill_clicked)
 ```
 
-> **RHI Surface 初始化**（`prepare_rhi_surface`）：主窗口在窗口标志确定后、首次 `show()` 前，根据 `QQuickWindow.graphicsApi()` 的自动选择结果设置顶层 `QSurface` 类型，避免首个 Canvas/RHI 子控件加入时销毁并重建可见窗口。offscreen/minimal 平台为空操作；旧 `_prewarm_blueprint_viewport`、`QOpenGLWidget` 和 GL 探测已删除。
+> **RHI Surface 初始化**（`prepare_rhi_surface`）：主窗口在窗口标志确定后、首次 `show()` 前，根据 `QQuickWindow.graphicsApi()` 的自动选择结果设置顶层 `QSurface` 类型，避免首个 Canvas/RHI 子控件加入时销毁并重建可见窗口。offscreen/minimal 平台为空操作；macOS Cocoa 顶层交给 Qt 自管理，避免 QRhiWidget 与 WebEngine 离屏帧崩溃；旧 `_prewarm_blueprint_viewport`、`QOpenGLWidget` 和 GL 探测已删除。
 >
 > **图形 API 选择**：`main.py` 不再调用 `QQuickWindow.setGraphicsApi()` 强制 OpenGL。Chart 与 Blueprint 默认直接 Canvas，显式 RHI 使用完整快照；真实桌面验收通过 Win32 客户区抓图覆盖原生 QQuickView，避免 `QWidget.grab()` 只得到父窗口空白区域。
 

@@ -8,7 +8,7 @@
 [![CI](https://github.com/KKPIP-Tech/InstructionX/actions/workflows/test.yml/badge.svg)](https://github.com/KKPIP-Tech/InstructionX/actions/workflows/test.yml)
 [![Python](https://img.shields.io/badge/Python-3.14+-blue.svg)](https://www.python.org/)
 [![PySide6](https://img.shields.io/badge/PySide6-6.11.1+-green.svg)](https://doc.qt.io/qtforpython/)
-[![Platform](https://img.shields.io/badge/Platform-Windows%2010%2F11-lightgrey.svg)](#)
+[![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS-lightgrey.svg)](#)
 [![Version](https://img.shields.io/badge/Alpha-1.1.2%20CE-red.svg)](#)
 [![License](https://img.shields.io/badge/License-AGPL--3.0%2B%20%2B%20%C2%A77%20Terms-blue.svg)](LICENSE)
 
@@ -108,7 +108,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File setup.ps1 -Check     # 只�
 
 #### 环境要求
 
-- Windows 10 / 11（框架主要目标平台；macOS 亦可运行，部分系统集成能力受限）
+- Windows 10 / 11 与 macOS（Cocoa；RHI 图形后端由 Qt 自动选择，平台系统集成功能按各自实现提供）
 - Python 3.14 或更高版本
 - [uv](https://docs.astral.sh/uv/)（Python 虚拟环境与依赖管理器）
 
