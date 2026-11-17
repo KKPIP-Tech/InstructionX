@@ -17,7 +17,7 @@
 - InstructionX_UIKit 主题与组件体系（`ui/InstructionX_UIKit` 组件库：设计令牌 + light/dark/auto 全局主题，59 组件 + 原生 Canvas/RHI 图表引擎 + 蓝图节点图 + 仿 VS Code 代码编辑器 + 完整 Iconoir 图标库）、字体管理器（`core/font` 子系统：字体安装/卸载/预览/系统字体回退，框架不自带字体）
 - 多国语言（i18n）支持（`core/i18n` 子系统：XML 语言文件 + 回退链取词、界面语言实时切换、每插件语言覆盖；日志文案保持中文不国际化）
 
-- 应用标识：`InstructionX - CE`（组织名 `KKPIP-Tech`），当前版本 **Alpha 1.1.2**
+- 应用标识：`InstructionX - CE`（组织名 `KKPIP-Tech`），当前版本 **Alpha 1.1.3**
 - **框架版本号单一来源为 `core/version.py` 的 `VERSION` 常量**（pyproject 通过 AST 静态读取，修改版本只改这里）
 - **Setup 对外基础版本号单一来源为 `setup/src/version.rs` 的 `SETUP_VERSION`**：格式 `YYYYMMDD-NN`（当天打包序号从 `01` 起），当前为 `20261114-01`；完整构建版本自动追加平台和架构，如 `20261114-01.win.x86_64` / `20261114-01.win.aarch64`，界面标题、`--version` 和 `--state` 均显示完整版本，与框架版本独立
 - 平台：**Windows 10/11 与 macOS（Cocoa）**，Python **>= 3.14**
@@ -456,7 +456,7 @@ config/ data/ logs/         # 运行时生成：配置、数据、日志
   - **所有 import 必须放在文件顶部**（PEP 8 顺序：标准库/第三方/本地），禁止函数级 import（包括为规避循环导入）
   - 无魔法数字
 - GitHub 安装描述文件：`IXPlugin.json`（每个插件必需，位于插件子目录，文件名大小写敏感）、`IXRepo.json`（插件仓库索引，所有插件仓库必需，含单插件仓库）；KKPIP-Tech 组织下的插件自动归类为官方插件。
-- 可选兼容声明：`IXPlugin.json.compatible_framework_versions` 为精确 `PluginVersion` 字符串数组，表示作者实际验证过的框架版本。安装/重装/升级/降级时与当前 `APP_VERSION` 比较；缺字段、未列入或声明非法均提示兼容性未经验证，用户可明确选择仍然安装。不因此禁用旧插件，安装器公开方法签名不变。
+- **插件开发必需的兼容声明**：新开发、更新和发布的插件必须在 `IXPlugin.json.compatible_framework_versions` 填写精确 `PluginVersion` 字符串数组，列出作者实际验证过的框架版本。安装/重装/升级/降级时与当前 `APP_VERSION` 比较；为兼容既有插件，框架仍允许读取缺字段的旧描述文件。缺字段、未列入或声明非法均提示兼容性未经验证，用户可明确选择仍然安装，不因此禁用旧插件，安装器公开方法签名不变。
 - 详细文档：`docs/core/plugin-system/plugin-development.md`、`docs/plugins/llm-integration-guide.md`。
 - 参考示例：`plugin/` 目录下提供的官方/示例插件（仅用于本地开发验证，非框架公共契约的一部分）；其余能力按需通过 GitHub 安装器获取。
 
