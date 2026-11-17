@@ -75,7 +75,7 @@ class TestFrameworkUpdateChecker:
         api = MagicMock()
         api.list_all_releases.return_value = [
             _api_release(1, "alpha-v1.0.0", "2026-03-01T00:00:00Z"),
-            _api_release(2, "alpha-v1.1.2", "2026-02-01T00:00:00Z"),
+            _api_release(2, "alpha-v1.1.3", "2026-02-01T00:00:00Z"),
             _api_release(3, "alpha-v0.9.0", "2026-04-01T00:00:00Z"),
             _api_release(4, "alpha-v9.0.0", "2026-01-01T00:00:00Z", draft=True),
         ]
@@ -94,7 +94,7 @@ class TestFrameworkUpdateChecker:
         api = MagicMock()
         api.list_all_releases.return_value = [
             _api_release(1, "nightly", "2026-03-01T00:00:00Z", prerelease=True),
-            _api_release(2, "alpha-v1.1.2", "2026-02-01T00:00:00Z", prerelease=True),
+            _api_release(2, "alpha-v1.1.3", "2026-02-01T00:00:00Z", prerelease=True),
         ]
         result = checker_module.FrameworkUpdateChecker(api_client=api).check()
 
@@ -110,7 +110,7 @@ class TestFrameworkUpdateChecker:
         first = _api_release(1, "alpha-v1.0.0", "2026-03-01T00:00:00Z")
         first["published_at"] = None
         first["created_at"] = "2026-05-01T00:00:00Z"
-        second = _api_release(2, "alpha-v1.1.2", "2026-02-01T00:00:00Z")
+        second = _api_release(2, "alpha-v1.1.3", "2026-02-01T00:00:00Z")
         api.list_all_releases.return_value = [second, first]
 
         result = checker_module.FrameworkUpdateChecker(api_client=api).check()
@@ -122,7 +122,7 @@ class TestFrameworkUpdateChecker:
         api = MagicMock()
         api.list_all_releases.return_value = [
             _api_release(1, "alpha-v1.2.0", "2026-03-01T00:00:00Z"),
-            _api_release(2, "alpha-v1.1.2", "2026-02-01T00:00:00Z"),
+            _api_release(2, "alpha-v1.1.3", "2026-02-01T00:00:00Z"),
             _api_release(3, "alpha-v1.0.0", "2026-01-01T00:00:00Z"),
         ]
         result = checker_module.FrameworkUpdateChecker(api_client=api).check()

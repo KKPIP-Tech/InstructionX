@@ -8,7 +8,7 @@ from core.plugin.plugin_version import PluginVersion
 from core.version import APP_VERSION
 
 
-CURRENT = PluginVersion.from_string("alpha.1.1.2")
+CURRENT = PluginVersion.from_string("alpha.1.1.3")
 FIELD = "compatible_framework_versions"
 
 
@@ -36,11 +36,11 @@ def test_missing_field_is_unverified(compatibility_module):
 def test_exact_current_version_is_verified(compatibility_module):
     """声明数组精确包含当前版本时才属于已验证。"""
     result = compatibility_module.evaluate_framework_compatibility(
-        _descriptor(["alpha.1.1.0", "alpha.1.1.2"]), CURRENT)
+        _descriptor(["alpha.1.1.0", "alpha.1.1.3"]), CURRENT)
 
     assert result.status == compatibility_module.FrameworkCompatibilityStatus.VERIFIED
     assert result.is_verified
-    assert result.declared_versions == ("alpha.1.1.0", "alpha.1.1.2")
+    assert result.declared_versions == ("alpha.1.1.0", "alpha.1.1.3")
 
 
 def test_current_version_not_listed_preserves_declared_versions(compatibility_module):
@@ -62,7 +62,7 @@ def test_release_channel_is_part_of_exact_match(compatibility_module):
     assert not result.is_verified
 
 
-@pytest.mark.parametrize("raw", [None, "alpha.1.1.2", {"versions": []}, 42])
+@pytest.mark.parametrize("raw", [None, "alpha.1.1.3", {"versions": []}, 42])
 def test_non_array_declaration_is_invalid(compatibility_module, raw):
     """显式 null 和非数组值均属于非法声明，而不是缺字段。"""
     result = compatibility_module.evaluate_framework_compatibility(
@@ -84,21 +84,21 @@ def test_empty_array_is_invalid(compatibility_module):
 def test_mixed_invalid_entries_never_count_as_verified(compatibility_module):
     """即使数组包含当前版本，存在非法项也不能整体视为有效声明。"""
     result = compatibility_module.evaluate_framework_compatibility(
-        _descriptor(["alpha.1.1.2", "not-a-version", 7]), CURRENT)
+        _descriptor(["alpha.1.1.3", "not-a-version", 7]), CURRENT)
 
     assert result.status == compatibility_module.FrameworkCompatibilityStatus.INVALID_DECLARATION
     assert not result.is_verified
-    assert result.declared_versions == ("alpha.1.1.2",)
+    assert result.declared_versions == ("alpha.1.1.3",)
     assert result.invalid_entries == ("not-a-version", "7")
 
 
 def test_duplicate_versions_are_normalized(compatibility_module):
     """重复项和首尾空白应归一化，不改变精确匹配语义。"""
     result = compatibility_module.evaluate_framework_compatibility(
-        _descriptor([" alpha.1.1.2 ", "alpha.1.1.2"]), CURRENT)
+        _descriptor([" alpha.1.1.3 ", "alpha.1.1.3"]), CURRENT)
 
     assert result.is_verified
-    assert result.declared_versions == ("alpha.1.1.2",)
+    assert result.declared_versions == ("alpha.1.1.3",)
 
 
 def test_current_version_can_be_injected(compatibility_module):

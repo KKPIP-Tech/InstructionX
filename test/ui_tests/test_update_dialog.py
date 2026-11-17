@@ -43,7 +43,7 @@ def _result() -> UpdateCheckResult:
     return UpdateCheckResult(
         releases=(
             _release(1, "alpha-v1.2.0"),
-            _release(2, "alpha-v1.1.2"),
+            _release(2, "alpha-v1.1.3"),
             _release(3, "alpha-v1.0.0"),
             _release(4, "nightly"),
         ),
