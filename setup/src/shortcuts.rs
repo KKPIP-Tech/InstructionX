@@ -31,7 +31,7 @@ impl ShortcutManager {
             format!(
                 "Set shell = CreateObject(\"WScript.Shell\")\n\
                  shell.CurrentDirectory = \"{root}\"\n\
-                 shell.Run \"\"{uv}\"\" run --frozen pythonw main.py\", 0, False\n"
+                 shell.Run \"\"\"{uv}\"\" run --frozen pythonw main.py\", 0, False\n"
             )
         } else if cfg!(target_os = "macos") {
             format!("#!/bin/bash\ncd \"{root}\"\n\"{uv}\" run --frozen python main.py\n")
