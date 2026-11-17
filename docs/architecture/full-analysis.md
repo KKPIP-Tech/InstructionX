@@ -734,9 +734,11 @@ classDiagram
 ```python
 self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
 self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+prepare_native_window_frame(self)
+prepare_rhi_surface(self)
 ```
 
-配合 `CustomTitleBar` 实现自定义窗口控制按钮（最小化/最大化/关闭）。
+配合 `CustomTitleBar` 实现自定义窗口控制按钮（最小化/最大化/关闭）。Windows 由 `prepare_native_window_frame()` 关闭逐像素透明分层属性并提供 DWM 外层圆角/阴影，避免直接 Canvas/RHI 缩放后的点击穿透；macOS 保留透明宿主。
 
 ### 8.2 SkillsPanel 信号链
 

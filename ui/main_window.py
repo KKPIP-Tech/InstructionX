@@ -59,6 +59,7 @@ from core.i18n import tr, get_language_manager
 from utils.logging_tools import LoggerManager, get_name
 from ui.uikit_theme import apply_uikit_theme, current_theme_mode
 from ui.rhi_surface import prepare_rhi_surface
+from ui.native_window_frame import prepare_native_window_frame
 from InstructionX_UIKit import T
 from InstructionX_UIKit.components import Dialog
 
@@ -199,10 +200,12 @@ class InstructionXMainWindow(QMainWindow):
         self._logger = LoggerManager()
         self._startup_failure_dialog_shown = False
 
-        # 设置无边框窗口；窗口标志确定后立即匹配 RHI Surface，
-        # 避免首个 Canvas/RHI 子控件在可见窗口上触发原生句柄重建。
+        # 窗口标志确定后先配置原生边框，再匹配 RHI Surface，避免首个
+        # Canvas/RHI 子控件在可见窗口上触发原生句柄重建；Windows 不使用
+        # 会把缩放后新增输入区域留给后台窗口的逐像素分层宿主。
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        prepare_native_window_frame(self)
         prepare_rhi_surface(self)
 
         # 设置初始窗口大小
@@ -244,12 +247,11 @@ class InstructionXMainWindow(QMainWindow):
         # 应用容器样式
         self._update_container_style()
 
-        # 窗口阴影：预渲染位图 + 9 宫格绘制（见 paintEvent）。
+        # 容器内阴影：预渲染位图 + 9 宫格绘制（见 paintEvent）。
         # 不用 QGraphicsDropShadowEffect：它会把整个容器子树的绘制重定向到
-        # 离屏缓存，而硬件加速视口的帧更新无法触发效果源缓存失效，
-        # 窗口化模式下画布会长期呈现旧帧（拖拽时画面卡死，最大化
-        # 时因阴影被禁用而不复发）；也不用 DWM 原生阴影（WM_NCCALCSIZE 方案
-        # 曾导致 Qt 与 Windows 坐标系错位）。
+        # 离屏缓存，而硬件加速视口的帧更新无法触发效果源缓存失效。
+        # Windows 外层圆角与阴影由 native_window_frame 经 DWM 提供，
+        # 不再通过 WM_NCCALCSIZE 修改客户区，避免 Qt 与 Windows 坐标错位。
         self._shadow_pixmap = None  # 惰性渲染，首次 paintEvent 时生成
 
         # 边缘 resize 相关变量

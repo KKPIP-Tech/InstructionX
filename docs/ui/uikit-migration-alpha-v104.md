@@ -20,6 +20,7 @@
 - `main.py` 不再调用 `QQuickWindow.setGraphicsApi()` 强制 OpenGL。
 - 新增 `ui/rhi_surface.py` 的 `prepare_rhi_surface(window)`：主窗口在窗口标志确定后、首次 `show()` 前匹配顶层 Surface，避免 Canvas/RHI 子控件触发可见窗口重建；macOS Cocoa 顶层则交给 Qt 自管理，防止 Qt 6.11 的 QRhiWidget 与 WebEngine 离屏帧在 `beginOffscreenFrame` 崩溃。
 - 删除 `_prewarm_blueprint_viewport()` 及全部旧 GL 导入；预渲染九宫格窗口阴影保留。
+- 后续 Windows 修复新增 `ui/native_window_frame.py`：顶层改用非分层宿主，并由 DWM 提供外层阴影与 Windows 11 圆角，解决直接 Canvas/RHI 下放大或最大化后的原生命中区域停留在初始尺寸的问题；macOS 路径不变。
 - `scripts/smoke_uikit_canvas.py` 使用 Win32 客户区原生抓图。`QWidget.grab()` 不能覆盖原生 QQuickView 子窗口，不能作为 RHI 整窗验收依据；最终帧在 resize 预览和入场动画结束后捕获。
 
 ### 2.2 用量趋势图

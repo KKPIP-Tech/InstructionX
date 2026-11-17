@@ -326,7 +326,7 @@ llm_settings 包内进一步封装为 `feedback.py`：`confirm` / `notice`（阻
 | 约定 | 说明 |
 |------|------|
 | 绘制视口自动选后端 | `ChartWidget` 在构造期创建视口：真实窗口默认 `QCanvasPainterWidget + QRhi`，显式 `UIKIT_CHART_BACKEND=rhi` 使用完整快照，`raster` 仅供软件参考；offscreen/minimal 自动使用软件视口。旧 `UIKIT_CHART_GL` 已删除 |
-| RHI Surface 与顶层窗口 | 主窗口在窗口标志确定后、首次显示前调用 `prepare_rhi_surface()`，避免重型子控件触发可见窗口重建；不再执行 GL 预热。真实验收使用 Win32 客户区抓图，`QWidget.grab()` 不能覆盖原生 QQuickView 子窗口 |
+| RHI Surface 与顶层窗口 | 主窗口在窗口标志确定后、首次显示前调用 `prepare_native_window_frame()` 与 `prepare_rhi_surface()`，避免重型子控件触发可见窗口重建；Windows 使用非分层宿主和 DWM 外层圆角/阴影，防止直接 Canvas/RHI 缩放后点击穿透，macOS 保持原透明路径。不再执行 GL 预热。真实验收使用 Win32 客户区抓图，`QWidget.grab()` 不能覆盖原生 QQuickView 子窗口 |
 | 两种数据入口 | `set_option(option)` 全量重建：深拷贝 option、重建渲染器与坐标系、播放旧→新插值动画；`set_stream_data(values, series=N)` 只换数据：不重建、不启动动画，适合同结构高频刷新。结构（系列构成 / 坐标范围 / 系列名）变化时必须走全量入口 |
 | 层级缓存与失效 | 引擎维护静态层（底色 / 坐标轴 / 图例 / 标题）与系列层位图缓存。静态层缓存键 = 尺寸 + 主题 + 系列显隐 + dataZoom 窗口 + 各轴解析结果 + 各坐标 `data_extent_version`，**不含仅由 option 时间范围决定的坐标（如 `calendar`）的 range** |
 | 日历类图表必读 | 因上一条，日历坐标系图表切换区间后必须全量 `set_option` 并随后调用 `invalidate_all_caches()`（或 `invalidate_static_layer()`），否则坐标轴标签停留在旧区间；`ui/usage_panel/trend_chart.py` 的 `_render_full()` 即按此实现 |

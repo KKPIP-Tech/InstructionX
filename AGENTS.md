@@ -371,6 +371,8 @@ ui/                         # 界面层
                             #   current_theme_mode() + 排除区（标题栏/技能面板/工作区）兼容 QSS 附录
   rhi_surface.py            # 顶层 RHI Surface 匹配（窗口标志确定后、show 前调用，
                             #   Qt 自动选择图形 API；不再强制 OpenGL 或预热 GL）
+  native_window_frame.py    # Windows 非分层主窗口宿主 + DWM 圆角/阴影；
+                            #   避免直接 Canvas/RHI 缩放后的点击穿透，其他平台保持原路径
   InstructionX_UIKit/       # PySide6 组件库（独立仓库 KKPIP-Tech/InstructionX_UIKit 的同步副本，
                             #   alpha-v1.0.4：tokens/theme 主题系统 + 59 组件（含 BudgetSliderGroup、
                             #   MarkdownView 与 math_render）+ 13 布局 + 52 动画 + 完整 Iconoir 图标库 +
@@ -438,7 +440,7 @@ config/ data/ logs/         # 运行时生成：配置、数据、日志
 - **接口与实现分离**：共享类型统一定义在 `core/interfaces/`，其他模块从这里 re-export，避免循环导入。
 - **关闭行为约定**：`main.py` 已 `setQuitOnLastWindowClosed(False)`，「关窗即退出」的隐式链路被切断，退出时机完全由代码显式控制（`QApplication.quit()`）；主窗口 `closeEvent` 统一拦截全部关闭路径（自绘叉子 / 标题栏右键 / Alt+F4 / 任务栏右键关闭），每次弹出 `CloseConfirmDialog` 询问「退出程序 / 最小化到托盘 / 取消」（无记忆选项）；托盘菜单「退出」与 Windows 注销/关机（`commitDataRequest` 回调置 `_force_quit`）走静默直退，不弹窗、不阻塞系统关机。`application.exec()` 返回后由 `core/application_lifecycle.py` 统一关闭外部调用、任务、MCP、插件、LLM 和存储，最后释放 UI，并输出全局截止期与逐步骤结果。
 - 后台任务回调在**工作线程**执行，更新 UI 必须通过 `utils/thread_utils.py` 封送到 UI 线程。
-- **RHI Surface 初始化**：主窗口在窗口标志确定后、首次 `show()` 前调用 `ui/rhi_surface.py` 的 `prepare_rhi_surface()`，让顶层 Surface 与 Qt 自动选择的 RHI API 一致，避免首个 Canvas/RHI 子控件重建可见窗口。macOS Cocoa 顶层交给 Qt 自管理，避免 QRhiWidget 与 WebEngine 离屏帧崩溃。不得强制 OpenGL，也不保留旧 GL 预热。
+- **原生宿主与 RHI Surface 初始化**：主窗口在窗口标志确定后、首次 `show()` 前依次调用 `ui/native_window_frame.py` 的 `prepare_native_window_frame()` 和 `ui/rhi_surface.py` 的 `prepare_rhi_surface()`。Windows 使用非分层宿主与 DWM 外层圆角/阴影，避免直接 Canvas/RHI 下原生命中区域停留在初始尺寸；不得恢复逐像素透明分层路径。macOS Cocoa 保留透明宿主并交给 Qt 自管理，避免 QRhiWidget 与 WebEngine 离屏帧崩溃。顶层 Surface 必须与 Qt 自动选择的 RHI API 一致，不得强制 OpenGL，也不保留旧 GL 预热。
 - **Canvas / RHI 视口**：Chart 与 Blueprint 真实窗口默认 `QCanvasPainterWidget + QRhi`；`UIKIT_CHART_BACKEND` / `UIKIT_BLUEPRINT_BACKEND` 可显式选择 `rhi` 完整快照回退，`raster` 仅供软件参考。框架内趋势图使用内置 `heatmap`，全量构建后清除渲染器显示名，让 Tooltip 回退到日期，同时保持直接 Canvas 所需的精确类型。真实验收使用 Win32 客户区抓图，不能用 `QWidget.grab()` 捕获原生 QQuickView 内容。
 
 ### 插件开发约定（重要）

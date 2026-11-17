@@ -498,6 +498,7 @@ InstructionX/
 │   ├── uikit_bootstrap.py   # sys.path 引导（使 UIKit 以顶层包可导入，main.py 第一个业务 import）
 │   ├── uikit_theme.py       # 全局主题入口（apply_uikit_theme 三模式 + 排除区兼容附录）
 │   ├── rhi_surface.py       # 顶层 RHI Surface 匹配（窗口标志确定后、show 前调用）
+│   ├── native_window_frame.py # Windows 非分层宿主与 DWM 圆角/阴影，其他平台保持原路径
 │   ├── main_window.py       # 主窗口
 │   ├── title_bar.py        # 自定义标题栏
 │   ├── usage_panel/         # 用量查询面板（包：panel/kpi_card/trend_chart/history_table/formatting）
