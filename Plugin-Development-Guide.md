@@ -4,7 +4,7 @@ InstructionX is a plugin-integration framework of no small versatility. By the j
 
 ## Part 1: The Preparation of the Environment
 
-The InstructionX framework has been composed in Python 3.14.x upon PySide6, and depends upon `uv` for the governance of its Python environment. It is therefore incumbent upon you, before all else, to install `uv` upon your machine.
+The InstructionX framework has been composed in Python 3.14.x upon PySide6 6.11.1 or a later compatible release, and depends upon `uv` for the governance of its Python environment. It is therefore incumbent upon you, before all else, to install `uv` upon your machine.
 
 Upon an IBM-compatible computer — that is to say, upon the Windows platform — be so good as to issue the following command from PowerShell:
 
@@ -85,3 +85,5 @@ Kindly enter plan mode, and set before me a detailed and workable plan of action
 ## Part 4: The Framework's Documentation
 
 The framework is attended by a complete and carefully tended body of documentation, to be found under the `docs/` path. That you may orient yourself with all due expedition, you would do well to begin with `docs/README.md`.
+
+The current UIKit baseline is **alpha-v1.0.4**. Chart and Blueprint views use direct `QCanvasPainterWidget + QRhi` by default, with an explicit RHI snapshot fallback and a raster path reserved for software verification. The former OpenGL probes, prewarming helpers and `UIKIT_*_GL` switches have been removed. Icons must use their original Iconoir names. If you maintain an existing plugin, read `docs/ui/uikit-migration-alpha-v104.md` before changing its UI code; it records the breaking changes, the required PySide6 6.11.1 baseline, backend-selection environment variables, and the validation expected of custom chart series.

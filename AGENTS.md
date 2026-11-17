@@ -14,7 +14,7 @@
 - 多厂商 LLM 集成（MiniMax、SiliconFlow、智谱 GLM、Ollama、OpenAI 兼容接口等），多会话管理、工具调用自动化（ToolCallExecutor）、多模态、用量统计
 - MCP 协议双向支持（内置 MCP Server 暴露插件 API；MCP Client 连接外部 MCP Server）
 - SQLite WAL 数据持久化层（DataProvider）、后台任务系统（BackgroundTaskManager）
-- InstructionX_UIKit 主题与组件体系（`ui/InstructionX_UIKit` 组件库：设计令牌 + light/dark/auto 全局主题，58 组件 + 原生图表引擎 + 仿 VS Code 代码编辑器）、字体管理器（`core/font` 子系统：字体安装/卸载/预览/系统字体回退，框架不自带字体）
+- InstructionX_UIKit 主题与组件体系（`ui/InstructionX_UIKit` 组件库：设计令牌 + light/dark/auto 全局主题，59 组件 + 原生 Canvas/RHI 图表引擎 + 蓝图节点图 + 仿 VS Code 代码编辑器 + 完整 Iconoir 图标库）、字体管理器（`core/font` 子系统：字体安装/卸载/预览/系统字体回退，框架不自带字体）
 - 多国语言（i18n）支持（`core/i18n` 子系统：XML 语言文件 + 回退链取词、界面语言实时切换、每插件语言覆盖；日志文案保持中文不国际化）
 
 - 应用标识：`InstructionX - CE`（组织名 `KKPIP-Tech`），当前版本 **Alpha 1.1.2**
@@ -28,11 +28,11 @@
 
 | 依赖 | 用途 |
 |------|------|
-| PySide6 >= 6.10 | Qt GUI 框架 |
+| PySide6 >= 6.11.1 | Qt GUI 框架与 Qt Canvas Painter（直接 Canvas / QRhi） |
 | requests >= 2.32 / aiohttp >= 3.14.5 | HTTP / 异步 HTTP（aiohttp 设安全最低版本） |
 | mcp >= 1.30.0, < 2 | MCP 协议（FastMCP） |
 | orjson | JSON 序列化（SQLite 后端） |
-| matplotlib | 用量统计与 UIKit MarkdownView LaTeX 公式渲染（math_render 异步渲染中枢）使用；旧用量面板图表曾使用，现用量面板已改用 UIKit 原生图表引擎 |
+| matplotlib >= 3.11.1 | 用量统计与 UIKit MarkdownView LaTeX 公式渲染（math_render 异步渲染中枢）使用；旧用量面板图表曾使用，现用量面板已改用 UIKit 原生图表引擎 |
 | packaging | 插件依赖版本检查 |
 | qrcode[pil] >= 7.4 | InstructionX_UIKit 组件库 QRCodeView 组件依赖 |
 | numpy >= 2.0 | InstructionX_UIKit 图表引擎依赖（alpha-v1.0.3 起在模块导入期即依赖）：大规模数据的紧凑存储、向量化降采样与坐标映射、分层采样金字塔 |
@@ -79,7 +79,7 @@ python -m pytest test/ -q --tb=short -p no:cacheprovider
 - **注意**：`test/` 下当前仅保留 `test/core/data/test_data_provider.py` 一个有效测试文件（其余旧测试已在重构中删除，残留的 `__pycache__` 是过期产物，不要参考）。现有测试约定：中文 docstring、`tmp_path` fixture、测试单例类时需重置 `XxxManager._instance = None`。
 - UI 测试不配置 offscreen 平台，CI 跑在 `windows-latest` 上使用真实 GUI。
 - 项目还有一类**独立验证脚本**（非 pytest，放在 `scripts/`，用 `.venv\Scripts\python.exe scripts\<name>.py` 直接运行）：
-  - `smoke_*.py`：核心链路无网冒烟测试（LLM、task、utils、i18n、字体管理、插件管理：安装/升级/降级/卸载/分组、本地插件包自动识别与插件集一次安装、包外文件兜底备份）；`smoke_setup_wizard.py` 针对原生 Setup（随包二进制、薄启动器、独立操作项、原生 CLI、兼容参数与 dry-run 安全）；`smoke_framework_update.py` 针对框架 Release 时间线、当前版本定位与指定 Tag 更新命令
+  - `smoke_*.py`：核心链路无网冒烟测试（LLM、task、utils、i18n、字体管理、插件管理：安装/升级/降级/卸载/分组、本地插件包自动识别与插件集一次安装、包外文件兜底备份）；`smoke_setup_wizard.py` 针对原生 Setup（随包二进制、薄启动器、独立操作项、原生 CLI、兼容参数与 dry-run 安全）；`smoke_framework_update.py` 针对框架 Release 时间线、当前版本定位与指定 Tag 更新命令；`smoke_uikit_sync.py` 校验 UIKit 版本/模块/图标，`smoke_uikit_canvas.py` 以真实窗口和 Win32 客户区抓图验证 Canvas/RHI/raster 后端、趋势图 Tooltip 与最终帧
   - `smoke_github_private.py`：GitHub 多 Key、私有识别与重新绑定无网冒烟；`smoke_github_private_live.py` 读取本机测试 PAT/私有仓库环境变量，执行真实安装与 Release 下载，临时数据只写入 `temp/`
   - `check_i18n_completeness.py`：语言文件完整性校验（默认语言必须覆盖源码全部 `tr()` 调用，缺键 exit 1；其他语言缺键/孤立键 WARNING；支持 `--text-dir`/`--src-dir`/`--plugin-root`）
   - `screenshot_*.py`：对话框截图对比脚本（输出到 `scripts/screenshots/`）
@@ -122,6 +122,7 @@ python -m pytest test/ -q --tb=short -p no:cacheprovider
 - 面向插件的公开接口（`core/interfaces/` 中的 `IPlugin`、`IPluginInfo`、`PluginServices`，以及 `PluginManager`、`DataProvider`、`LLMPluginService`、`MCPManager` 等暴露给插件的 API、插件文件结构约定、自动注册机制）**必须保持良好的向后兼容性**；
 - **任何影响插件兼容性的修改**（接口签名变更、行为语义变化、废弃旧 API、插件目录/文件约定调整等），必须先向开发者说明影响范围与迁移成本，**征得开发者同意后方可实施**；
 - 确需演进接口时，优先采用新增接口/参数默认值/兼容层等方式平滑过渡，避免直接破坏既有插件。
+- **本次 UIKit Alpha 破坏性升级例外**：经开发者明确批准，alpha-v1.0.4 不保留旧 UIKit 兼容 shim；旧 UIKit 插件须按 `docs/ui/uikit-migration-alpha-v104.md` 适配。该例外不放宽上述框架核心公共接口的兼容要求，也不授权修改 `plugin/` 或 `custom_plugin/` 下的代码。
 
 ### 临时文件约定
 
@@ -368,14 +369,15 @@ ui/                         # 界面层
                             #   InstructionX_UIKit 以顶层包导入，保证 ThemeManager 单例唯一）
   uikit_theme.py            # 全局主题入口：apply_uikit_theme(app, light/dark/auto) +
                             #   current_theme_mode() + 排除区（标题栏/技能面板/工作区）兼容 QSS 附录
+  rhi_surface.py            # 顶层 RHI Surface 匹配（窗口标志确定后、show 前调用，
+                            #   Qt 自动选择图形 API；不再强制 OpenGL 或预热 GL）
   InstructionX_UIKit/       # PySide6 组件库（独立仓库 KKPIP-Tech/InstructionX_UIKit 的同步副本，
-                            #   alpha-v1.0.3：tokens/theme 主题系统 + 58 组件（含 MarkdownView
-                            #   Markdown 渲染组件与 math_render 公式渲染中枢）+ 13 布局
-                            #   （含 chat_conversation 流式对话布局）+ 52 动画 + 原生图表引擎
-                            #   （alpha-v1.0.3 起：GL/软件双绘制视口 charts/viewport.py + 大数据
-                            #   紧凑存储/降采样/采样金字塔 + 流式实时入口 set_stream_data）+
-                            #   蓝图节点图（含 GL/软件双绘制视口 blueprint/viewport.py）+
-                            #   code_editor/ 仿 VS Code 代码编辑器（含并排/内联 DiffEditor）+
+                            #   alpha-v1.0.4：tokens/theme 主题系统 + 59 组件（含 BudgetSliderGroup、
+                            #   MarkdownView 与 math_render）+ 13 布局 + 52 动画 + 完整 Iconoir 图标库 +
+                            #   原生图表引擎（默认 QCanvasPainterWidget + QRhi 直接绘制，显式
+                            #   QQuickView + Scene Graph RHI 快照回退，offscreen/raster 软件参考；
+                            #   大数据紧凑存储/降采样/采样金字塔 + set_stream_data）+ 蓝图节点图 +
+                            #   code_editor/ 仿 VS Code 代码编辑器（含语言补全与并排/内联 DiffEditor）+
                             #   mermaid/ 子包（官方 mermaid.js WebEngine 渲染 + 自绘降级 +
                             #   交互查看器）；主项目不修改库内文件）
   skills_panel/             # 插件技能面板（含 plugin_group_widget.py 分组折叠控件：
@@ -436,8 +438,8 @@ config/ data/ logs/         # 运行时生成：配置、数据、日志
 - **接口与实现分离**：共享类型统一定义在 `core/interfaces/`，其他模块从这里 re-export，避免循环导入。
 - **关闭行为约定**：`main.py` 已 `setQuitOnLastWindowClosed(False)`，「关窗即退出」的隐式链路被切断，退出时机完全由代码显式控制（`QApplication.quit()`）；主窗口 `closeEvent` 统一拦截全部关闭路径（自绘叉子 / 标题栏右键 / Alt+F4 / 任务栏右键关闭），每次弹出 `CloseConfirmDialog` 询问「退出程序 / 最小化到托盘 / 取消」（无记忆选项）；托盘菜单「退出」与 Windows 注销/关机（`commitDataRequest` 回调置 `_force_quit`）走静默直退，不弹窗、不阻塞系统关机。`application.exec()` 返回后由 `core/application_lifecycle.py` 统一关闭外部调用、任务、MCP、插件、LLM 和存储，最后释放 UI，并输出全局截止期与逐步骤结果。
 - 后台任务回调在**工作线程**执行，更新 UI 必须通过 `utils/thread_utils.py` 封送到 UI 线程。
-- **蓝图 GL 视口预热**：主窗口构造期（`show()` 之前）调用 `_prewarm_blueprint_viewport()` 预创建一个隐藏蓝图画布并长期持有——蓝图画布的 GL 视口基于 `QOpenGLWidget`，若在窗口可见后才加入窗口树会触发顶层原生句柄重建（窗口短暂关闭重开）；预热让原生句柄首次创建时即按含 GL 子控件的方式建立（详见 `docs/ui/main-window.md` §4 与 UIKit USAGE.md §9.6）。
-- **图表 GL 视口**：UIKit 图表引擎（alpha-v1.0.3 起）的 `ChartWidget` 在构造期即创建绘制视口，GL 可用时为 `QOpenGLWidget`（不可用/offscreen 自动回退软件渲染）。框架内唯一的图表使用方是 `ui/usage_panel/trend_chart.py`，其控件在对话框 `exec()` 之前构造，不触发上述原生句柄重建。
+- **RHI Surface 初始化**：主窗口在窗口标志确定后、首次 `show()` 前调用 `ui/rhi_surface.py` 的 `prepare_rhi_surface()`，让顶层 Surface 与 Qt 自动选择的 RHI API 一致，避免首个 Canvas/RHI 子控件重建可见窗口。不得强制 OpenGL，也不保留旧 GL 预热。
+- **Canvas / RHI 视口**：Chart 与 Blueprint 真实窗口默认 `QCanvasPainterWidget + QRhi`；`UIKIT_CHART_BACKEND` / `UIKIT_BLUEPRINT_BACKEND` 可显式选择 `rhi` 完整快照回退，`raster` 仅供软件参考。框架内趋势图使用内置 `heatmap`，全量构建后清除渲染器显示名，让 Tooltip 回退到日期，同时保持直接 Canvas 所需的精确类型。真实验收使用 Win32 客户区抓图，不能用 `QWidget.grab()` 捕获原生 QQuickView 内容。
 
 ### 插件开发约定（重要）
 
@@ -514,7 +516,7 @@ config/ data/ logs/         # 运行时生成：配置、数据、日志
 ## 文档地图（docs/）
 
 - 架构：`docs/architecture/overview.md`、`module-dependencies.md`；SLO 与性能证据：`foundation-slo.md`、`foundation-performance.md`；故障/兼容/长稳：`foundation-validation.md`；可选进程隔离与 watchdog：`plugin-isolation.md`；部署灰度与最终证据：`foundation-deployment-guide.md`、`foundation-verification-report.md`
-- 主题与 UI 组件：`docs/utils/uikit-theme.md`（UIKit 主题系统）、`docs/ui/`
+- 主题与 UI 组件：`docs/utils/uikit-theme.md`（UIKit 主题系统）、`docs/ui/`；UIKit alpha-v1.0.4 迁移与插件适配：`docs/ui/uikit-migration-alpha-v104.md`
 - 运行时稳定性：`docs/utils/gc-main-thread.md`（主线程 GC 守卫与 paint 闪退排查）
 - 插件系统：`docs/core/plugin-system/`（含 `plugin-development.md`）
 - 数据层：`docs/core/data-provider/`

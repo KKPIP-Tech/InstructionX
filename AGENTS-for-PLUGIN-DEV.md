@@ -318,6 +318,15 @@ get_language_manager().plugin_language_changed.connect(self._on_plugin_language_
 
 在任何开发工作开始之前，必须完整阅读 InstructionX 框架 `docs/` 下的开发文档，以便了解插件的接口及框架工作原理；在需要深入了解 InstructionX 框架时，必须阅读框架源码。
 
+#### UIKit alpha-v1.0.4 基线与迁移
+
+- 当前 UI 基线为 `InstructionX_UIKit alpha-v1.0.4`、`PySide6>=6.11.1`。真实窗口的 Chart 与 Blueprint 默认使用 `QCanvasPainterWidget + QRhi`，Qt 自动选择图形 API；显式 `rhi` 是完整快照回退，`raster` 仅用于软件参考。
+- 禁止继续使用已删除的 `gl_available()`、`gl_series.py`、`QOpenGLWidget`、`UIKIT_CHART_GL`、`UIKIT_BLUEPRINT_GL`，不得恢复 GL 预热或通过 `QQuickWindow.setGraphicsApi()` 强制 OpenGL。
+- 图标统一使用 Iconoir 原名，经 `icon_names()` / `search_icons()` 查询；旧手绘图标名不再保留兼容映射。
+- 涉及图表或蓝图的插件优先使用内置系列和组件。自定义系列受 Canvas 精确类型检查限制，必须分别验证 Canvas 与 RHI，不得静默接受性能回退；需要日期 Tooltip 时可参考框架趋势图的内置 `heatmap` 接入方式。
+- `UIKIT_CHART_BACKEND` 与 `UIKIT_BLUEPRINT_BACKEND` 可取 `canvas` / `rhi` / `raster`；不得用软件或离屏耗时冒充真实性能。
+- alpha-v1.0.4 是经开发者批准的 UIKit 破坏性升级，不提供旧 UIKit 兼容 shim。既有插件必须按 `docs/ui/uikit-migration-alpha-v104.md` 完成适配；这不等于允许随意破坏插件自己的 `service_api`、发布订阅 key 或配置语义，这些公开业务契约仍按本文件兼容规则维护。
+
 #### 框架文档阅读清单
 
 按优先级分为三组。「必读」分组在开工前完整阅读，不阅读不得开始开发；「按需」与「参考」分组在开发涉及对应主题时阅读。
@@ -332,6 +341,7 @@ get_language_manager().plugin_language_changed.connect(self._on_plugin_language_
 6. `docs/core/data-provider/overview.md` — **DataProvider 概览**，数据持久化和发布/订阅
 7. `docs/architecture/overview.md` — **架构概览**，理解整体架构
 8. `docs/utils/uikit-theme.md` — **UIKit 主题系统**，插件 UI 主题与组件体系
+9. `docs/ui/uikit-migration-alpha-v104.md` — **UIKit alpha-v1.0.4 迁移指南**，涉及 UI 的既有插件升级必读
 
 **按需（用到再读）**：
 

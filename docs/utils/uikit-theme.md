@@ -14,7 +14,7 @@
 
 | 文件 | 说明 |
 |------|------|
-| `ui/InstructionX_UIKit/` | PySide6 组件库（独立仓库 KKPIP-Tech/InstructionX_UIKit 的同步副本，版本 alpha-v1.0.3），主项目不修改库内文件 |
+| `ui/InstructionX_UIKit/` | PySide6 组件库（独立仓库 KKPIP-Tech/InstructionX_UIKit 的同步副本，版本 alpha-v1.0.4），主项目不修改库内文件 |
 | `ui/uikit_bootstrap.py` | sys.path 引导，导入即生效，使 UIKit 以顶层包可导入 |
 | `ui/uikit_theme.py` | 全局主题入口：`apply_uikit_theme()` / `current_theme_mode()` + 排除区兼容附录 |
 
@@ -22,7 +22,7 @@
 
 - 浅色/深色/跟随系统三种主题模式（auto 读 Windows 注册表）
 - 设计令牌 `T()` 实时取色，主题切换全局生效
-- 58 个组件、13 布局、动画、原生图表引擎（GL/软件双视口）与仿 VS Code 代码编辑器
+- 59 个组件、13 布局、52 动画、原生 Canvas/RHI 图表引擎、蓝图节点图、完整 Iconoir 图标库与仿 VS Code 代码编辑器
 - 排除区兼容附录：为不做 UI 迁移的区域保留原选择器结构，颜色取 UIKit 令牌
 - 对话框与 QMessageBox 已迁移到 UIKit Dialog / Message 组件（仅遗留的 `ui/dialog/plugin_order_dialog.py` 除外，见 §6.1）
 
@@ -36,22 +36,22 @@
 ui/InstructionX_UIKit/
 ├── __init__.py          # 包入口：re-export ThemeManager/T/build_qss/set_property/apply_shadow、
 │                        #   LIGHT/DARK/TokenState/FONT_FAMILY/MONO_FAMILY/Breakpoint/DURATION/EASING、
-│                        #   get_icon/ICON_NAMES；__version__ = "alpha-v1.0.3"
+│                        #   get_icon/ICON_NAMES；__version__ = "alpha-v1.0.4"
 ├── tokens.py            # 设计令牌：LIGHT / DARK 两套令牌字典 + TokenState 状态机
 ├── theme.py             # ThemeManager 单例 + T() + build_qss() 全局 QSS + set_property + apply_shadow
-├── icons.py             # 图标（get_icon / ICON_NAMES）
-├── components/          # 58 个组件（Button/LineEdit/Dialog/Message/Table/ComboBox/DatePicker/
-│                        #   MarkdownView 等；math_render.py 为 MarkdownView 的 LaTeX 公式渲染中枢，
+├── icons.py / iconoir_icons.py  # Iconoir v7.12.1 全量图标（get_icon / search_icons / ICONOIR_NAMES）
+├── components/          # 59 个组件（Button/LineEdit/Dialog/Message/Table/ComboBox/DatePicker/
+│                        #   BudgetSliderGroup/MarkdownView 等；math_render.py 为公式渲染中枢，
 │                        #   matplotlib mathtext 异步渲染 + LRU 缓存）
 ├── layouts/             # 13 个布局（HolyGrail/SidebarLayout/MasterDetail/CardGrid/
 │                        #   chat_conversation 流式对话布局等）
 ├── anim/                # 动画（属性动画 / 自绘动画）
 ├── charts/              # 原生图表引擎（ChartWidget + set_option，ECharts 风格 option）；
-│                        #   alpha-v1.0.3 起：GL/软件双绘制视口（viewport.py，GL 可用时
-│                        #   QOpenGLWidget，否则软件回退）、大数据紧凑存储/降采样/采样金字塔、
-│                        #   静态层与系列层位图缓存、流式实时入口 set_stream_data
+│                        #   默认 QCanvasPainterWidget + QRhi 直接绘制，显式 RHI 完整快照回退，
+│                        #   offscreen/raster 软件参考；大数据紧凑存储/降采样/采样金字塔、
+│                        #   静态层与系列层缓存、流式实时入口 set_stream_data
 ├── code_editor/         # 仿 VS Code 代码编辑器（CodeEditor/DiffEditor：语法高亮、小地图、
-│                        #   查找替换、诊断/断点/折叠、补全与悬停 provider）
+│                        #   查找替换、诊断/断点/折叠、语言感知补全与悬停 provider）
 ├── mermaid/             # Mermaid 图表渲染（官方 mermaid.js WebEngine 光栅化 + 自绘降级渲染器 +
 │                        #   MermaidView 交互查看器，MarkdownView 内部依赖）
 └── blueprint/           # 蓝图（节点画布）
@@ -87,7 +87,7 @@ from InstructionX_UIKit.charts import ChartWidget
 
 ### 2.4 上游版本升级指引（同步副本维护）
 
-同步副本与上游 tag **逐字节一致**，升级时按下表逐项处理（本次 alpha-v1.0.2 → alpha-v1.0.3 的实践沉淀）：
+同步副本与上游 tag **逐字节一致**，升级时按下表逐项处理（本次 alpha-v1.0.3 → alpha-v1.0.4 的实践沉淀）：
 
 | 步骤 | 操作 | 说明 |
 |------|------|------|
@@ -319,18 +319,18 @@ QMessageBox 在框架中已基本移除（仅遗留的 `ui/dialog/plugin_order_d
 
 llm_settings 包内进一步封装为 `feedback.py`：`confirm` / `notice`（阻塞式 Dialog）与 `info` / `warn` / `success`（非阻塞 Message）。
 
-### 6.2 图表引擎接入约定（alpha-v1.0.3 起）
+### 6.2 图表引擎接入约定（alpha-v1.0.4 起）
 
 框架侧接入 `InstructionX_UIKit.charts` 必须遵守以下约定（当前唯一使用方为 `ui/usage_panel/trend_chart.py`）：
 
 | 约定 | 说明 |
 |------|------|
-| 绘制视口自动选后端 | `ChartWidget` 在**构造期**创建绘制视口：GL 可用时为 `QOpenGLWidget`（GPU 合成），不可用或 offscreen/minimal 平台自动回退软件渲染。控件自身不再绘制，`paintEvent` 仅为 `grab()` / `render()` 路径保留；`UIKIT_CHART_GL=off` 可强制软件路径用于对照排查 |
-| GL 视口与顶层窗口 | 视口若在顶层窗口**可见之后**才加入窗口树，Qt 会重建顶层原生句柄（窗口短暂关闭重开，见 `docs/ui/main-window.md` §4）。用法上应让控件先入树、后显示窗口（如对话框在 `exec()` 前构造面板） |
+| 绘制视口自动选后端 | `ChartWidget` 在构造期创建视口：真实窗口默认 `QCanvasPainterWidget + QRhi`，显式 `UIKIT_CHART_BACKEND=rhi` 使用完整快照，`raster` 仅供软件参考；offscreen/minimal 自动使用软件视口。旧 `UIKIT_CHART_GL` 已删除 |
+| RHI Surface 与顶层窗口 | 主窗口在窗口标志确定后、首次显示前调用 `prepare_rhi_surface()`，避免重型子控件触发可见窗口重建；不再执行 GL 预热。真实验收使用 Win32 客户区抓图，`QWidget.grab()` 不能覆盖原生 QQuickView 子窗口 |
 | 两种数据入口 | `set_option(option)` 全量重建：深拷贝 option、重建渲染器与坐标系、播放旧→新插值动画；`set_stream_data(values, series=N)` 只换数据：不重建、不启动动画，适合同结构高频刷新。结构（系列构成 / 坐标范围 / 系列名）变化时必须走全量入口 |
 | 层级缓存与失效 | 引擎维护静态层（底色 / 坐标轴 / 图例 / 标题）与系列层位图缓存。静态层缓存键 = 尺寸 + 主题 + 系列显隐 + dataZoom 窗口 + 各轴解析结果 + 各坐标 `data_extent_version`，**不含仅由 option 时间范围决定的坐标（如 `calendar`）的 range** |
 | 日历类图表必读 | 因上一条，日历坐标系图表切换区间后必须全量 `set_option` 并随后调用 `invalidate_all_caches()`（或 `invalidate_static_layer()`），否则坐标轴标签停留在旧区间；`ui/usage_panel/trend_chart.py` 的 `_render_full()` 即按此实现 |
-| 公开扩展点 | `register_series(type_name, cls)` 注册系列渲染器；`register_component(name, cls)` 注册 option 组件（协议：`option_key` 类属性 + `layout(rect)` + `paint(p, anim_t)`）。框架经此扩展实现日历热力图，**不修改库内文件** |
+| 公开扩展点 | `register_series(type_name, cls)` 注册系列渲染器；`register_component(name, cls)` 注册 option 组件（协议：`option_key` 类属性 + `layout(rect)` + `paint(p, anim_t)`）。自定义系列受 Canvas 精确类型检查限制，必须验证是否回退 RHI。框架趋势图改用内置 `heatmap` 并在全量构建后清除渲染器显示名，以兼顾直接 Canvas 与日期 Tooltip |
 
 ---
 
@@ -413,7 +413,7 @@ def switch_to_light(app: QApplication):
 3. **不修改库内文件**：`ui/InstructionX_UIKit/` 是独立仓库的同步副本，主项目不做任何修改
 4. **Fusion 样式**：`ThemeManager.apply()` 会将应用样式设置为 `Fusion`，这是全局 QSS 的基础
 5. **size 属性别名**：Qt 中 `setProperty("size", ...)` 无效，组件尺寸请通过 `set_property(widget, "size", v)` 设置（内部自动映射为 `uiksize`）
-6. **依赖**：组件库依赖 `PySide6`、`matplotlib`（MarkdownView 的 LaTeX 公式渲染）与 `qrcode[pil]>=7.4`（`QRCodeView` 组件）；自 alpha-v1.0.3 起新增 `numpy>=2.0`，图表引擎在**模块导入期**即依赖它（大数据紧凑存储、向量化降采样与坐标映射、分层采样金字塔）。三者由框架在 `pyproject.toml` 与 `requirements.txt` 双来源同步声明，缺失 numpy 会导致启动期导入失败
+6. **依赖**：组件库依赖 `PySide6`、`matplotlib`（MarkdownView 的 LaTeX 公式渲染）与 `qrcode[pil]>=7.4`（`QRCodeView` 组件）；自 alpha-v1.0.4 起新增 `numpy>=2.0`，图表引擎在**模块导入期**即依赖它（大数据紧凑存储、向量化降采样与坐标映射、分层采样金字塔）。三者由框架在 `pyproject.toml` 与 `requirements.txt` 双来源同步声明，缺失 numpy 会导致启动期导入失败
 7. **排除区只减不增**：兼容附录仅覆盖标题栏 / 技能面板 / 占位标签三个历史区域，新区域一律使用 UIKit 组件
 
 ---

@@ -7,7 +7,7 @@
 
 [![CI](https://github.com/KKPIP-Tech/InstructionX/actions/workflows/test.yml/badge.svg)](https://github.com/KKPIP-Tech/InstructionX/actions/workflows/test.yml)
 [![Python](https://img.shields.io/badge/Python-3.14+-blue.svg)](https://www.python.org/)
-[![PySide6](https://img.shields.io/badge/PySide6-6.10+-green.svg)](https://doc.qt.io/qtforpython/)
+[![PySide6](https://img.shields.io/badge/PySide6-6.11.1+-green.svg)](https://doc.qt.io/qtforpython/)
 [![Platform](https://img.shields.io/badge/Platform-Windows%2010%2F11-lightgrey.svg)](#)
 [![Version](https://img.shields.io/badge/Alpha-1.1.2%20CE-red.svg)](#)
 [![License](https://img.shields.io/badge/License-AGPL--3.0%2B%20%2B%20%C2%A77%20Terms-blue.svg)](LICENSE)
@@ -77,7 +77,7 @@ The framework itself ships no business functionality: every capability is plugge
 
 ### User Interface
 
-- **InstructionX_UIKit Component Library**: 58 components + 13 layouts + 52 animations, including a native chart engine, a blueprint node graph, and Mermaid rendering; three global theme modes (light / dark / auto) with design tokens that restyle in real time
+- **InstructionX_UIKit Component Library**: 59 components + 13 layouts + 52 animations, including a native chart engine (direct Canvas + QRhi by default with explicit RHI fallback), a blueprint node graph, a VS Code-style code editor, the complete Iconoir icon set, and Mermaid rendering; three global theme modes (light / dark / auto) with design tokens that restyle in real time
 - **Font Manager**: Application-level font install / uninstall / preview (process-local, no writes to the system font directory), with automatic fallback to system fonts
 - **System Tray**: The tray menu presents running plugins and background tasks in real time; closing the main window prompts a confirmation dialog offering exit or minimize-to-tray
 
@@ -317,15 +317,15 @@ python -m pytest test/ -q --tb=short -p no:cacheprovider
 | Technology | Purpose | Version |
 |------------|---------|---------|
 | Python | Programming language | >= 3.14 |
-| PySide6 | Qt GUI framework | >= 6.10 |
+| PySide6 | Qt GUI framework | >= 6.11.1 |
 | mcp | MCP protocol (FastMCP) | >= 1.28.1, < 2 |
 | requests / aiohttp | HTTP / async HTTP | >= 2.32 / >= 3.11 |
 | orjson | High-performance JSON serialization | >= 3.11.0, < 4 |
-| matplotlib | Usage statistics and UIKit MarkdownView LaTeX formula rendering | >= 3.10 |
+| matplotlib | Usage statistics and UIKit MarkdownView LaTeX formula rendering | >= 3.11.1 |
 | packaging | Plugin dependency version checking | >= 23.0 |
 | qrcode[pil] | UIKit QRCodeView component | >= 7.4 |
 | numpy | UIKit charts engine (large-data pipeline / downsampling) | >= 2.0 |
-| InstructionX_UIKit | UI theme & component library | Built-in (alpha-v1.0.3) |
+| InstructionX_UIKit | UI theme & component library | Built-in (alpha-v1.0.4) |
 
 ## License
 
