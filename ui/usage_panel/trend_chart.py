@@ -20,32 +20,11 @@ from core.llm.types import UsageRecord
 from core.observability.metrics import get_metrics_registry
 from core.observability.names import UI_CHART_INGEST_MS
 from InstructionX_UIKit import T, set_property
-from InstructionX_UIKit.charts import ChartWidget, register_series
-from InstructionX_UIKit.charts.series_cartesian import HeatmapSeriesRenderer
+from InstructionX_UIKit.charts import ChartWidget
 from InstructionX_UIKit.components import Button, ComboBox, DatePicker
 
 from .formatting import local_tz, to_local_time
 
-
-# ===================================================================
-# 图表引擎扩展（经 register_series 公开扩展点注册，不改库）
-class _CalendarHeatmapRenderer(HeatmapSeriesRenderer):
-    """日历热力图（悬停 tooltip 显示单元格日期）。
-
-    库内 hit_test 返回 ``series=系列名``，core 的 ``_tooltip_item`` 优先取
-    ``hit["series"]`` 作为行名，导致单元格日期（label）被丢弃。此处把
-    series 置空，让行名回退为日期；指标名由色点与工具行下拉框表达。
-    """
-
-    def hit_test(self, pos):
-        """命中单元格时返回 {name: 日期, value: 值}（series 置空）"""
-        hit = super().hit_test(pos)
-        if hit is not None:
-            hit["series"] = ""
-        return hit
-
-
-register_series("calendarHeatmap", _CalendarHeatmapRenderer)
 
 # ===== 时间范围选项（i18n 键，显示文案在取词时解析） =====
 RANGE_OPTION_KEYS = ("range.half_year", "range.year", "range.custom")
@@ -316,20 +295,20 @@ class TrendPanel(QFrame):
 
         Args:
             points: 按天聚合后的序列 [(日期, 聚合值), ...]
-            metric_idx: 当前指标下标（决定系列名，属图表结构的一部分）
+            metric_idx: 当前指标下标（区分数据语义并保留全量重建节奏）
         """
         start_d, end_d = points[0][0], points[-1][0]
         render_key = (metric_idx, start_d, end_d)
         series_data = [[d.isoformat(), v] for d, v in points]
         if render_key == self._render_key and self._push_series_data(series_data):
             return
-        self._render_full(series_data, metric_idx, start_d)
+        self._render_full(series_data, start_d)
         self._render_key = render_key
 
     def _push_series_data(self, series_data: List[List[object]]) -> bool:
         """结构未变时走流式数据入口：只换数据，不重建 option / 坐标系 / 渲染器
 
-        UIKit alpha-v1.0.3 的 ``set_stream_data`` 既不深拷贝 option 也不重建
+        UIKit alpha-v1.0.4 的 ``set_stream_data`` 既不深拷贝 option 也不重建
         渲染器，区间不变时静态层缓存持续命中；返回 False（系列序号越界、数据
         不可用等）时由调用方回退全量渲染，避免图表停留在上一次数据。
 
@@ -346,12 +325,10 @@ class TrendPanel(QFrame):
             elapsed_ms = (time.perf_counter() - started) * 1000
             get_metrics_registry().histogram(UI_CHART_INGEST_MS).observe(elapsed_ms)
 
-    def _render_full(
-        self, series_data: List[List[object]], metric_idx: int, start_d: date
-    ) -> None:
+    def _render_full(self, series_data: List[List[object]], start_d: date) -> None:
         """全量重建图表 option（首次渲染或指标 / 区间变化）并使层级缓存失效
 
-        失效缓存不可省略：alpha-v1.0.3 新增的静态层缓存键由尺寸、主题、轴解析
+        失效缓存不可省略：alpha-v1.0.4 的静态层缓存键由尺寸、主题、轴解析
         结果与坐标的 ``data_extent_version`` 构成，**不含日历 range**；日历图
         没有 xAxis/yAxis，坐标每次重建后该版本号恒为 1，因此同尺寸切换区间会
         命中上一次的静态位图，内建月份标签停留在旧区间。这里以一次静态层重绘
@@ -359,7 +336,6 @@ class TrendPanel(QFrame):
 
         Args:
             series_data: 热力图数据 [[ISO 日期, 数值], ...]
-            metric_idx: 当前指标下标（取 i18n 键作为系列名）
             start_d: 区间起始日（日历 range 的 year 取起始年）
         """
         self._chart.set_option({
@@ -372,12 +348,18 @@ class TrendPanel(QFrame):
                 "cellSize": "auto",
             },
             "series": [{
-                "type": "calendarHeatmap",
-                "name": tr("usage_panel", METRIC_OPTION_KEYS[metric_idx]),
+                "type": "heatmap",
+                "name": "",
                 "coordinateSystem": "calendar",
                 "data": series_data,
             }],
         })
+        # 内置类型可进入直接 Canvas，但核心会为空名补成 series0；全量构建后
+        # 同步清除渲染器显示名，使命中结果回退到单元格日期。增量入口不重建
+        # 渲染器，因此无需在每次数据刷新时重复处理。
+        renderer = self._chart.series_renderers[HEATMAP_SERIES_INDEX]
+        renderer.name = ""
+        renderer.opt["name"] = ""
         self._chart.invalidate_all_caches()
 
     # ------------------------------------------------------------- 事件
