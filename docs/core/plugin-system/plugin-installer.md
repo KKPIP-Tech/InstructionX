@@ -56,9 +56,9 @@
 | `homepage` | string | 否 | 插件主页 URL |
 | `keywords` | array | 否 | 关键词列表 |
 | `dependencies` | object | 否 | Python 依赖，key 为包名，value 为版本约束 |
-| `compatible_framework_versions` | array[string] | 否 | 作者声明该插件版本已验证的 InstructionX 框架版本；使用 `PluginVersion` 精确版本字符串 |
+| `compatible_framework_versions` | array[string] | **是（新开发、更新和发布）** | 作者声明该插件版本已验证的 InstructionX 框架版本；使用 `PluginVersion` 精确版本字符串 |
 
-**框架兼容性声明**：字段可省略，以兼容既有插件。框架逐项解析并保留声明顺序、去除重复项，与当前 `APP_VERSION` 精确匹配。包含当前版本时显示为已验证；未提供字段、未列入当前版本、数组为空或含非法项时均按“兼容性未经验证”处理。安装、重装、升级和降级会展示作者声明的版本；未验证场景明确提示继续安装不能得到兼容保证，用户可选择“仍然安装”或“取消”。该字段不是版本范围表达式，也不会在启动时自动禁用插件。
+**框架兼容性声明**：开发者必须为新开发、更新和发布的插件填写该字段；框架解析时允许省略，仅为兼容既有旧插件。框架逐项解析并保留声明顺序、去除重复项，与当前 `APP_VERSION` 精确匹配。包含当前版本时显示为已验证；未提供字段、未列入当前版本、数组为空或含非法项时均按“兼容性未经验证”处理。安装、重装、升级和降级会展示作者声明的版本；未验证场景明确提示继续安装不能得到兼容保证，用户可选择“仍然安装”或“取消”。该字段不是版本范围表达式，也不会在启动时自动禁用插件。
 
 > **当前实现说明**：上表 `id`（`^[a-zA-Z0-9_-]+$`）与 `version`（`^(release|pre-release|beta|alpha|internal)\.\d+\.\d+\.\d+$`）约束由 `core/plugin/package_discovery.py` 的 `validate_descriptor()` 做**代码级正则硬校验**；安装器的 `GitHubPluginInstaller.validate_descriptor()` 直接委托同一实现（本地包识别与安装校验共用一套规则，避免两处分叉）。格式不符会被拒绝安装；在**本地插件集**场景下仅该插件标记为不可安装，不影响其余插件。
 

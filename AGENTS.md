@@ -456,7 +456,7 @@ config/ data/ logs/         # 运行时生成：配置、数据、日志
   - **所有 import 必须放在文件顶部**（PEP 8 顺序：标准库/第三方/本地），禁止函数级 import（包括为规避循环导入）
   - 无魔法数字
 - GitHub 安装描述文件：`IXPlugin.json`（每个插件必需，位于插件子目录，文件名大小写敏感）、`IXRepo.json`（插件仓库索引，所有插件仓库必需，含单插件仓库）；KKPIP-Tech 组织下的插件自动归类为官方插件。
-- 可选兼容声明：`IXPlugin.json.compatible_framework_versions` 为精确 `PluginVersion` 字符串数组，表示作者实际验证过的框架版本。安装/重装/升级/降级时与当前 `APP_VERSION` 比较；缺字段、未列入或声明非法均提示兼容性未经验证，用户可明确选择仍然安装。不因此禁用旧插件，安装器公开方法签名不变。
+- **插件开发必需的兼容声明**：新开发、更新和发布的插件必须在 `IXPlugin.json.compatible_framework_versions` 填写精确 `PluginVersion` 字符串数组，列出作者实际验证过的框架版本。安装/重装/升级/降级时与当前 `APP_VERSION` 比较；为兼容既有插件，框架仍允许读取缺字段的旧描述文件。缺字段、未列入或声明非法均提示兼容性未经验证，用户可明确选择仍然安装，不因此禁用旧插件，安装器公开方法签名不变。
 - 详细文档：`docs/core/plugin-system/plugin-development.md`、`docs/plugins/llm-integration-guide.md`。
 - 参考示例：`plugin/` 目录下提供的官方/示例插件（仅用于本地开发验证，非框架公共契约的一部分）；其余能力按需通过 GitHub 安装器获取。
 

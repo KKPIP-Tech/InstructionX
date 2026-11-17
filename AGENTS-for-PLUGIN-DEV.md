@@ -160,7 +160,7 @@ content  = data_provider.load_asset(relative)
 | `name` | 是 | 插件显示名称，展示在技能面板与插件管理对话框中，可使用中文 |
 | `version` | 是 | 格式 `<类型>.<大>.<小>.<补丁>`，正则 `^(release|pre-release|beta|alpha|internal)\.\d+\.\d+\.\d+$`。五种类型与优先级（高→低）：`release`（正式发布）> `pre-release`（预发布）> `beta`（公开测试）> `alpha`（内部测试）> `internal`（内部构建）。**选用场景**：对外发布的稳定版本用 `release`；发布候选用 `pre-release`；邀请用户试用的未完成版本用 `beta`；开发期自测用 `alpha`；纯内部调试用 `internal` |
 | `main` | 是 | 入口文件路径，当前固定为 `entrance.py` |
-| `compatible_framework_versions` | 否 | 精确 `PluginVersion` 字符串数组，声明该插件版本实际验证过的 InstructionX 框架版本，如 `["alpha.1.1.2"]`。只填写真实测试过的版本；缺字段、未包含当前框架或声明非法时，安装界面提示兼容性未经验证，用户仍可明确选择仍然安装。不支持范围或通配符 |
+| `compatible_framework_versions` | **是（新开发、更新和发布）** | 精确 `PluginVersion` 字符串数组，声明该插件版本实际验证过的 InstructionX 框架版本，如 `["alpha.1.1.2"]`。只填写真实测试过的版本；缺字段、未包含当前框架或声明非法时，安装界面提示兼容性未经验证，用户仍可明确选择仍然安装。不支持范围或通配符。框架保留缺字段容错仅用于兼容既有旧插件，不免除开发者的填写义务 |
 | `description` | 否 | 插件功能简述，1–2 句话 |
 | `author` | 否 | 作者/组织名称 |
 | `homepage` | 否 | 插件主页或仓库 URL |
@@ -208,6 +208,7 @@ content  = data_provider.load_asset(relative)
 - `IXRepo.json` 中的 `id` 与子目录内 `IXPlugin.json` 的 `id` 不一致；
 - 在仓库根目录同时放置 `IXPlugin.json` 与 `IXRepo.json`（规范形态下根目录只有 `IXRepo.json`，`IXPlugin.json` 位于各插件子目录内）；
 - `dependencies` 声明了未实际使用的包，或把 Python 标准库写进依赖；
+- 新开发、更新或发布的插件遗漏 `compatible_framework_versions`，或填写未实际验证的版本、范围表达式或通配符；
 - 发布后修改 `id`，导致老用户无法升级；
 - 描述文件名大小写错误（如 `ixplugin.json`）。
 
@@ -524,7 +525,7 @@ get_language_manager().plugin_language_changed.connect(self._on_plugin_language_
 #### 插件结构合规
 
 - 必需文件齐全：`entrance.py`、`information.py`、`service.py`、`config/`；服务类名以 `Service` 结尾；
-- `IXPlugin.json` / `IXRepo.json` 字段填写符合逐字段规范（`id` 正则、`version` 类型前缀、`dependencies` 只声明真实依赖、`path`/`id` 一致性）；`compatible_framework_versions` 若提供，只列实际验证过的精确框架版本，不编造未来版本；
+- `IXPlugin.json` / `IXRepo.json` 字段填写符合逐字段规范（`id` 正则、`version` 类型前缀、`dependencies` 只声明真实依赖、`path`/`id` 一致性）；新开发、更新和发布的插件必须提供 `compatible_framework_versions`，且只列实际验证过的精确框架版本，不编造未来版本；
 - `information.py` 的 `service_api` 与 `function/` 子模块实际方法保持同步。
 
 #### 代码设计硬性原则落实
