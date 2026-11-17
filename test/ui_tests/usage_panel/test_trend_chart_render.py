@@ -4,9 +4,9 @@
 测试范围:
 
 - 渲染分流：首次与结构变化（指标 / 区间）走 ``set_option`` 全量重建，
-  结构未变时走 ``set_stream_data`` 增量通路（UIKit alpha-v1.0.3 新增能力）；
+  结构未变时走 ``set_stream_data`` 增量通路；
 - 异常回退：增量写入失败（返回 ``False``）时必须回退全量重建；
-- 缓存失效：全量重建必须调用 ``invalidate_all_caches``——alpha-v1.0.3 的静态层
+- 缓存失效：全量重建必须调用 ``invalidate_all_caches``——alpha-v1.0.4 的静态层
   缓存键不含日历 range，遗漏会令内建月份标签停留在旧区间；
 - 视觉回归（``@pytest.mark.ui``）：同尺寸切换区间后月份标签带随区间更新；
 - 边界：单日区间、跨年区间、无记录（全零序列）经公开 ``update_series`` 入口。
@@ -19,12 +19,7 @@ from datetime import date, timedelta
 import pytest
 from PySide6.QtCore import QBuffer, QIODevice, Qt
 
-from core.i18n import tr
-from ui.usage_panel.trend_chart import (
-    HEATMAP_SERIES_INDEX,
-    METRIC_OPTION_KEYS,
-    TrendPanel,
-)
+from ui.usage_panel.trend_chart import HEATMAP_SERIES_INDEX, TrendPanel
 
 # ===== 测试常量 =====
 #: 面板尺寸（固定尺寸是「同尺寸切换区间」这一缓存命中前提）
@@ -206,7 +201,7 @@ class TestCacheInvalidation:
         panel._render_series(_points(RANGE_A_START), 0)
 
         assert spy_invalidate.call_count == 1, (
-            "1.0.3 静态层缓存键不含日历 range，全量重建后必须失效缓存"
+            "1.0.4 静态层缓存键不含日历 range，全量重建后必须失效缓存"
         )
 
     def test_incremental_render_keeps_static_cache(self, qtbot, mocker):
@@ -307,9 +302,9 @@ class TestBoundaries:
         assert option["calendar"]["range"] == [
             RANGE_B_START.isoformat(), points[-1][0].isoformat()]
         assert option["calendar"]["cellSize"] == "auto"
-        assert series["type"] == "calendarHeatmap"
+        assert series["type"] == "heatmap"
         assert series["coordinateSystem"] == "calendar"
-        assert series["name"] == tr("usage_panel", METRIC_OPTION_KEYS[0])
+        assert series["name"] == ""
         assert len(series["data"]) == RANGE_DAYS
 
     def test_update_series_without_records(self, qtbot, mocker):
@@ -330,3 +325,18 @@ class TestBoundaries:
         start_iso, end_iso, days = panel._last_status
         assert days >= 1
         assert start_iso <= end_iso
+
+    def test_builtin_heatmap_preserves_date_hit_and_canvas_type(self, qtbot):
+        """内置热力图保留日期命中，且类型满足直接 Canvas 精确检查。"""
+        from InstructionX_UIKit.charts.series_cartesian import HeatmapSeriesRenderer
+        panel = _make_panel(qtbot)
+        points = _points(RANGE_A_START)
+        panel._render_series(points, 0)
+        panel._chart._layout_all(force=True)
+        renderer = panel._chart._series[HEATMAP_SERIES_INDEX]
+        assert type(renderer) is HeatmapSeriesRenderer
+        cell = renderer._cells[0]
+        hit = renderer.hit_test(cell["rect"].center())
+        assert hit is not None
+        assert hit["series"] == ""
+        assert hit["name"] == points[0][0].isoformat()

@@ -8,8 +8,7 @@ def _window(qtbot):
     from ui.main_window import InstructionXMainWindow
 
     with patch.object(InstructionXMainWindow, "_load_saved_theme"), \
-            patch.object(InstructionXMainWindow, "_create_main_layout"), \
-            patch.object(InstructionXMainWindow, "_prewarm_blueprint_viewport"):
+            patch.object(InstructionXMainWindow, "_create_main_layout"):
         window = InstructionXMainWindow()
     qtbot.addWidget(window)
     return window

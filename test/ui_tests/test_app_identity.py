@@ -8,10 +8,9 @@
     （防止两处组织名漂移——QSettings 键路径由组织名决定，不一致会导致
     「上次选中的实例」记忆写入与读取落在不同注册表位置）；
   - 应用名为 ``InstructionX - CE``。
-- 「main.py 统一顶层窗口图形 API 为 OpenGL」：
-  - ``main()`` 中 ``QQuickWindow.setGraphicsApi(...OpenGL)`` 调用必须先于
-    ``QApplication(...)`` 实例化（UIKit Mermaid WebEngine 与蓝图 GL 视口
-    同窗口混用的前置条件）。
+- 「RHI 图形 API 由 Qt 按平台自动选择」：
+  - ``main()`` 不得调用 ``QQuickWindow.setGraphicsApi`` 强制 OpenGL；
+  - ``QApplication(...)`` 正常实例化，顶层 Surface 由主窗口在显示前匹配。
 
 通过 AST 静态解析 ``main.py`` 实现，不启动应用、不触注册表。
 """
@@ -80,20 +79,17 @@ class TestOrganizationName:
         assert QSETTINGS_APP_NAME == EXPECTED_APP_NAME_DASHED
 
 
-class TestGraphicsApiUnification:
-    """main() 中 OpenGL 图形 API 统一必须先于 QApplication 实例化。"""
+class TestGraphicsApiInitialization:
+    """RHI 图形 API 由 Qt 自动选择，不得在创建应用前强制 OpenGL。"""
 
-    def test_set_graphics_api_called_with_opengl(self):
-        """存在 QQuickWindow.setGraphicsApi(...GraphicsApi.OpenGL) 调用。"""
-        calls = _main_function_calls()
-        call = _find_call(calls, "setGraphicsApi")
-        assert call is not None, "main() 中未找到 setGraphicsApi 调用"
-        # 参数应为 QSGRendererInterface.GraphicsApi.OpenGL 属性链
-        attr = call.args[0]
-        assert isinstance(attr, ast.Attribute) and attr.attr == "OpenGL"
+    def test_main_does_not_force_graphics_api(self):
+        """main() 不再调用 setGraphicsApi 或引用 OpenGL 专用初始化。"""
+        source = (PROJECT_ROOT / "main.py").read_text(encoding="utf-8")
+        assert "setGraphicsApi" not in source
+        assert "QSGRendererInterface" not in source
 
-    def test_graphics_api_set_before_qapplication(self):
-        """setGraphicsApi 在源码顺序上先于 QApplication(...) 实例化。"""
+    def test_qapplication_created_without_graphics_override(self):
+        """QApplication 正常创建，且前面没有图形 API 覆盖调用。"""
         tree = ast.parse((PROJECT_ROOT / "main.py").read_text(encoding="utf-8"))
         for node in tree.body:
             if isinstance(node, ast.FunctionDef) and node.name == "main":
@@ -104,7 +100,7 @@ class TestGraphicsApiUnification:
 
         order = []
         for stmt in main_func.body:
-            if not (isinstance(stmt, (ast.Expr, ast.Assign))):
+            if not isinstance(stmt, (ast.Expr, ast.Assign)):
                 continue
             value = stmt.value
             if not isinstance(value, ast.Call):
@@ -114,6 +110,4 @@ class TestGraphicsApiUnification:
                 order.append("setGraphicsApi")
             elif isinstance(func, ast.Name) and func.id == "QApplication":
                 order.append("QApplication")
-        assert order == ["setGraphicsApi", "QApplication"], (
-            f"main() 调用顺序非法: {order}（setGraphicsApi 必须先于 QApplication）"
-        )
+        assert order == ["QApplication"], f"main() 调用顺序非法: {order}"

@@ -94,8 +94,6 @@ def test_failure_dialog_is_requested_once_after_first_show(
     mocker.patch.object(InstructionXMainWindow, "_load_saved_theme")
     mocker.patch.object(InstructionXMainWindow, "_create_menus")
     mocker.patch.object(InstructionXMainWindow, "_create_main_layout")
-    mocker.patch.object(
-        InstructionXMainWindow, "_prewarm_blueprint_viewport")
     window = InstructionXMainWindow()
     qtbot.addWidget(window)
     window._show_plugin_load_failures = MagicMock()
