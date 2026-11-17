@@ -20,7 +20,7 @@
 - 应用标识：`InstructionX - CE`（组织名 `KKPIP-Tech`），当前版本 **Alpha 1.1.2**
 - **框架版本号单一来源为 `core/version.py` 的 `VERSION` 常量**（pyproject 通过 AST 静态读取，修改版本只改这里）
 - **Setup 对外基础版本号单一来源为 `setup/src/version.rs` 的 `SETUP_VERSION`**：格式 `YYYYMMDD-NN`（当天打包序号从 `01` 起），当前为 `20261114-01`；完整构建版本自动追加平台和架构，如 `20261114-01.win.x86_64` / `20261114-01.win.aarch64`，界面标题、`--version` 和 `--state` 均显示完整版本，与框架版本独立
-- 平台：**仅支持 Windows 10/11**，Python **>= 3.14**
+- 平台：**Windows 10/11 与 macOS（Cocoa）**，Python **>= 3.14**
 - 许可证：**GNU AGPL v3（或更高版本）+ §7 附加条款（署名与品牌标识保留 §7b、商标不授权 §7e）+ 双重许可**（闭源 SaaS、嵌入第三方商业产品、第三方服务后端、白标、批量捆绑销售需商业授权），详见 `LICENSE`
 - 项目主要语言（代码注释、文档、提交信息）：**中文**
 
@@ -438,7 +438,7 @@ config/ data/ logs/         # 运行时生成：配置、数据、日志
 - **接口与实现分离**：共享类型统一定义在 `core/interfaces/`，其他模块从这里 re-export，避免循环导入。
 - **关闭行为约定**：`main.py` 已 `setQuitOnLastWindowClosed(False)`，「关窗即退出」的隐式链路被切断，退出时机完全由代码显式控制（`QApplication.quit()`）；主窗口 `closeEvent` 统一拦截全部关闭路径（自绘叉子 / 标题栏右键 / Alt+F4 / 任务栏右键关闭），每次弹出 `CloseConfirmDialog` 询问「退出程序 / 最小化到托盘 / 取消」（无记忆选项）；托盘菜单「退出」与 Windows 注销/关机（`commitDataRequest` 回调置 `_force_quit`）走静默直退，不弹窗、不阻塞系统关机。`application.exec()` 返回后由 `core/application_lifecycle.py` 统一关闭外部调用、任务、MCP、插件、LLM 和存储，最后释放 UI，并输出全局截止期与逐步骤结果。
 - 后台任务回调在**工作线程**执行，更新 UI 必须通过 `utils/thread_utils.py` 封送到 UI 线程。
-- **RHI Surface 初始化**：主窗口在窗口标志确定后、首次 `show()` 前调用 `ui/rhi_surface.py` 的 `prepare_rhi_surface()`，让顶层 Surface 与 Qt 自动选择的 RHI API 一致，避免首个 Canvas/RHI 子控件重建可见窗口。不得强制 OpenGL，也不保留旧 GL 预热。
+- **RHI Surface 初始化**：主窗口在窗口标志确定后、首次 `show()` 前调用 `ui/rhi_surface.py` 的 `prepare_rhi_surface()`，让顶层 Surface 与 Qt 自动选择的 RHI API 一致，避免首个 Canvas/RHI 子控件重建可见窗口。macOS Cocoa 顶层交给 Qt 自管理，避免 QRhiWidget 与 WebEngine 离屏帧崩溃。不得强制 OpenGL，也不保留旧 GL 预热。
 - **Canvas / RHI 视口**：Chart 与 Blueprint 真实窗口默认 `QCanvasPainterWidget + QRhi`；`UIKIT_CHART_BACKEND` / `UIKIT_BLUEPRINT_BACKEND` 可显式选择 `rhi` 完整快照回退，`raster` 仅供软件参考。框架内趋势图使用内置 `heatmap`，全量构建后清除渲染器显示名，让 Tooltip 回退到日期，同时保持直接 Canvas 所需的精确类型。真实验收使用 Win32 客户区抓图，不能用 `QWidget.grab()` 捕获原生 QQuickView 内容。
 
 ### 插件开发约定（重要）
