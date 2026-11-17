@@ -16,6 +16,9 @@ fn launcher_uses_uv_and_never_opens_a_terminal() {
     if cfg!(windows) {
         assert!(launcher.contains("pythonw"));
         assert!(launcher.contains(", 0, False"));
+        assert!(launcher.contains(
+            "shell.Run \"\"\"C:/Tools/uv.exe\"\" run --frozen pythonw main.py\", 0, False"
+        ));
     } else if cfg!(target_os = "macos") {
         assert!(launcher.contains("python main.py"));
     } else {
