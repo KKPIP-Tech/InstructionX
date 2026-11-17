@@ -2,11 +2,27 @@
   "dependencies": [
     {
       "name": "PySide6",
-      "version": ">=6.10",
-      "license_type": "LGPL-3.0",
+      "version": ">=6.11.1",
+      "license_type": "LGPL-3.0 / GPL-3.0 / 商业许可（按 Qt 模块）",
       "license_file": "licenses/PySide6.txt",
       "url": "https://pypi.org/project/PySide6/",
       "copyright": "© Qt Company Ltd."
+    },
+    {
+      "name": "Qt Canvas Painter",
+      "version": "6.11.1",
+      "license_type": "GPL-3.0-only",
+      "license_file": "licenses/QtCanvasPainter-GPL-3.0.txt",
+      "url": "https://doc.qt.io/qt-6/qtcanvaspainter-module.html",
+      "copyright": "© Qt Company Ltd."
+    },
+    {
+      "name": "Iconoir",
+      "version": "v7.12.1",
+      "license_type": "MIT",
+      "license_file": "licenses/InstructionX_UIKit-THIRD-PARTY.md",
+      "url": "https://github.com/iconoir-icons/iconoir",
+      "copyright": "Copyright (c) 2021 Luca Burgio"
     },
     {
       "name": "requests",
