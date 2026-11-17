@@ -17,6 +17,17 @@ def test_software_platform_is_noop(mocker):
     window.winId.assert_not_called()
 
 
+def test_cocoa_surface_is_not_forced(mocker):
+    """macOS Cocoa 顶层交给 Qt 自管理，避免离屏 RHI 帧崩溃。"""
+    app = mocker.MagicMock()
+    app.platformName.return_value = "cocoa"
+    mocker.patch("ui.rhi_surface.QGuiApplication.instance", return_value=app)
+    window = mocker.MagicMock()
+    prepare_rhi_surface(window)
+    window.winId.assert_not_called()
+    window.windowHandle.assert_not_called()
+
+
 def test_d3d11_surface_is_selected_before_show(mocker):
     """Qt 自动选择 D3D11 时顶层 Surface 同步为 Direct3DSurface。"""
     app = mocker.MagicMock()
