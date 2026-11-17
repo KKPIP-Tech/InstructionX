@@ -35,6 +35,7 @@ InstructionX 是一个基于 PySide6 的**插件式桌面应用框架**。它将
 - **版本与身份治理**：语义化插件版本（alpha / beta / pre-release / release）与每插件 UUID 身份标识；已安装插件注册表记录版本 / 来源 / 安装时间，作为升级与更新检查依据；插件声明的 Python 依赖由框架自动安装（优先 uv，回退 pip）
 - **跨插件协作**：插件声明 `service_api` 即自动注册跨插件 API 并同步暴露为 MCP 工具；插件亦可通过 `llm_tools` 直接向 LLM 注册工具
 - **面板组织**：技能面板支持自定义分组、折叠与混排顺序；切换插件时自动缓存界面状态，返回时完整恢复
+- **可选进程隔离**：关键无 UI 插件 Service/API 可在独立宿主中运行，提供有界 RPC、心跳、有限重启、熔断与外部 watchdog；默认同进程加载方式不变
 
 ### LLM 集成
 
@@ -58,9 +59,9 @@ InstructionX 是一个基于 PySide6 的**插件式桌面应用框架**。它将
 
 ### 后台任务系统
 
-- **线程池异步任务**：4 个工作线程，避免阻塞 UI
-- **定时任务与长期任务**：固定间隔重复执行；长期任务支持优雅停止与自动重启
-- **任务持久化**：任务状态跨重启保留，配合任务工厂机制自动重建
+- **独立有界执行池**：普通任务 4 个、高优先级任务 2 个、长期任务 32 个工作线程，分别限制运行与排队总量，避免长期任务饿死短任务和无界积压
+- **定时任务与长期任务**：固定间隔重复执行，支持协作取消、重入策略、优雅停止与自动重启；队列满时显式拒绝
+- **任务持久化**：任务状态跨重启保留，配合任务工厂机制自动重建，关闭时按全局截止期统一清理
 
 ### 多语言（i18n）
 
@@ -77,32 +78,41 @@ InstructionX 是一个基于 PySide6 的**插件式桌面应用框架**。它将
 
 ## 快速开始
 
-### 方式一：TUI 向导（推荐给非开发用户）
+### 方式一：原生 Setup（推荐给非开发用户）
 
-**双击**根目录的 `setup.bat`（Windows）或 `setup.command`（macOS / Linux 终端）即可。
+**双击**根目录的 `setup.bat`（Windows）或 `setup.command`（macOS / Linux 终端）即可。Setup 的界面由 **Rust + Ratatui + Crossterm** 实现，不由 Python、PowerShell 或 Bash 编写；`setup.ps1` / `setup.sh` 等启动器只负责选择随包二进制，不包含界面逻辑，也不会下载 Setup。
 
-Setup 是由 **Rust + Ratatui** 编写的原生程序，Windows、macOS、Linux 共用同一套界面实现。
-Windows 用户**不需要安装 Rust、Cargo 或 Python**：Release 压缩包已包含 `tools/setup/` 下的
-Windows 10/11 x64 与 ARM64 原生程序，启动器按系统自动选择，不再下载 Setup。
-macOS 预编译版本是未来选项，本次不提供 macOS/Linux 原生资产。
-各功能页显示独立操作项，可通过方向键选择并用 Tab 切换到数据列表。
+Windows Release 源码压缩包已包含 `tools/setup/` 下的 **Windows x64 与 ARM64** 原生程序及 `SHA256SUMS`，用户无需安装 Rust、Cargo 或 Python。macOS / Linux 保留启动器映射和 Rust 平台实现，但当前不提供预编译资产，需要从源码构建。Setup 对外版本号独立于框架版本，格式为 `YYYYMMDD-NN.<平台>.<架构>`。
+
+Setup 包含六个页面：
+
+- **总览**：系统、硬件、网络、Git / uv / `.venv`、框架状态和桌面入口
+- **安装与修复**：安装、同版本修复、检查 GitHub Releases
+- **环境配置与修复**：查询 / 更新 / 移除包、重建环境、安装插件依赖
+- **升级管理**：检查更新、升级到所选版本
+- **插件列表**：刷新插件、检查插件更新、安装插件依赖
+- **杂项**：创建无窗口桌面快捷方式、切换 TUI 语言
+
+可通过方向键选择操作项，并用 Tab 在操作区、数据区和左侧菜单间切换。安装/修复会先备份并执行只覆盖、不删除的合并，保留插件、配置、数据、日志、`.venv` 等运行资产；升级只允许选择更高版本，检查仅由用户手动触发，且不自动重启。
 
 ```powershell
-# Windows（命令行，可选参数）
-powershell -NoProfile -ExecutionPolicy Bypass -File setup.ps1            # 打开原生向导
-powershell -NoProfile -ExecutionPolicy Bypass -File setup.ps1 -Check     # 只做环境体检并打印报告
-.\setup.bat --version                                                    # 查看 Setup 平台/架构完整版本
+# Windows：打开向导、环境体检、查看 Setup 完整构建版本
+powershell -NoProfile -ExecutionPolicy Bypass -File setup.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File setup.ps1 -Check
+.\setup.bat --version
+
+# 预览指定 Tag 的升级计划，不下载、不创建目录、不写配置、不删除环境
+.\setup.bat --action upgrade --release-tag alpha-v1.2.0 --dry-run
 ```
 
 ```bash
-# macOS / Linux（命令行，可选参数）
-./setup.sh            # 打开原生向导
-./setup.sh --check    # 只做环境体检并打印报告
+# macOS / Linux：打开向导、环境体检与 dry-run 升级预演
+./setup.sh
+./setup.sh --check
+./setup.sh --action upgrade --release-tag alpha-v1.2.0 --dry-run
 ```
 
-首次启动先选择中文 / English（默认）/ Français / Русский 并记住偏好。
-功能包括系统总览、安装与同版本修复、环境包管理、升级管理、插件列表、
-无窗口桌面快捷方式和环境修复；升级检查只由用户手动触发。详见 [原生 Setup](docs/tui-setup.md)。
+首次启动先选择中文 / English（默认）/ Français / Русский 并记住偏好。非交互接口还支持 `--state`、`--preview`、`--action`、`--archive`、`--yes`、`--lang`、`--project-root` 等参数；详见 [原生 Setup](docs/tui-setup.md)。
 
 ### 方式二：手动安装（开发者）
 
@@ -174,13 +184,14 @@ my_plugin/
     "name": {"zh": "我的插件", "en": "My Plugin"},
     "version": "release.1.0.0",
     "main": "entrance.py",
+    "compatible_framework_versions": ["alpha.1.1.3"],
     "description": {"zh": "插件简介", "en": "Short description."},
     "author": "Your Name",
     "keywords": ["instructionx", "plugin"]
 }
 ```
 
-多插件仓库需额外提供 `IXRepo.json` 索引文件。
+所有插件仓库都必须在根目录提供 `IXRepo.json` 索引文件（单插件仓库同样适用），每个插件位于独立的一级子目录。新开发、更新和发布的插件还必须在 `IXPlugin.json` 中填写 `compatible_framework_versions`，且只列实际验证过的精确框架版本。
 
 ### 插件可用框架服务
 
@@ -196,6 +207,7 @@ my_plugin/
 | `services.mcp_client` | MCP Client：连接外部 MCP Server |
 | `services.font_manager` | 字体管理器：带回退链的字体解析 |
 | `services.localization` | 多语言取词门面（绑定插件 UUID） |
+| `services.observability` | 插件健康状态、指标与关联上下文门面 |
 
 ### 最小插件示例
 
@@ -238,7 +250,7 @@ class MyPlugin(IPlugin):
 
 - **架构设计**：[系统架构概述](docs/architecture/overview.md)、[模块依赖关系](docs/architecture/module-dependencies.md)
 - **核心模块**：[插件系统](docs/core/plugin-system/overview.md)、[DataProvider 数据层](docs/core/data-provider/overview.md)、[后台任务](docs/core/background-task/overview.md)、[LLM Provider](docs/core/llm-provider/overview.md)、[MCP 协议](docs/core/mcp/overview.md)、[多语言子系统](docs/core/i18n/overview.md)、[字体管理器](docs/core/font-manager/overview.md)
-- **界面**：[主窗口](docs/ui/main-window.md)、[系统托盘与关闭行为](docs/ui/system-tray.md)、[UIKit 主题系统](docs/utils/uikit-theme.md)
+- **界面**：[主窗口](docs/ui/main-window.md)、[系统托盘与关闭行为](docs/ui/system-tray.md)、[UIKit 主题系统](docs/utils/uikit-theme.md)、[UIKit alpha-v1.0.4 迁移指南](docs/ui/uikit-migration-alpha-v104.md)
 - **API 参考**：[完整 API 索引](docs/api/full-reference.md)
 
 ## 项目结构
@@ -275,8 +287,8 @@ logs/              # 运行时生成：应用日志
 | `config/plugin_languages.json` | 每插件语言覆盖 |
 | `data/data.db` | 插件数据（SQLite + WAL） |
 | `data/tasks.json` | 后台任务状态 |
-| `data/llm_usage.json` | LLM 用量记录 |
-| `data/conversations.json` | LLM 会话持久化 |
+| `data/llm_usage.db` | LLM 用量记录（SQLite WAL 增量写入；旧 `llm_usage.json` 仅用于迁移与旧自定义路径兼容） |
+| `data/conversations.db` | LLM 会话与消息（SQLite WAL 按轮次提交；旧 `conversations.json` 仅用于迁移与应急导出） |
 | `data/fonts/` | 框架安装的字体及注册表 |
 | `logs/application.log` | 应用日志 |
 
@@ -290,6 +302,8 @@ logs/              # 运行时生成：应用日志
 | `INSTRUCTIONX_LOG_DIR` | 覆盖日志输出目录 |
 | `INSTRUCTIONX_LOG_LEVEL` | 覆盖日志级别（`DEBUG` / `INFO` / `WARNING` / `ERROR` / `CRITICAL`） |
 | `DEVELOPMENT_MODE` | 开发模式开关 |
+| `UIKIT_CHART_BACKEND` | 图表后端：`canvas`（默认）/ `rhi` / `raster` |
+| `UIKIT_BLUEPRINT_BACKEND` | 蓝图后端：`canvas`（默认）/ `rhi` / `raster` |
 
 ## 测试与 CI
 
@@ -298,14 +312,14 @@ pip install -e ".[test]"
 python -m pytest test/ -q --tb=short -p no:cacheprovider
 ```
 
-- CI 运行于 GitHub Actions（`windows-latest` + Python 3.14），push 至 `dev` / `main` 及所有 PR 触发
-- `scripts/` 目录提供核心链路无网冒烟脚本（`smoke_*.py`）、语言文件完整性校验（`check_i18n_completeness.py`）与 MCP SDK 冒烟测试等独立验证脚本
+- CI 运行于 GitHub Actions（`windows-latest` + Python 3.14），在任意分支 push、所有 PR、手动触发及每周一定时触发；执行锁文件校验、锁定依赖安装、OSV 审计、完整 pytest 和快速故障/契约门禁
+- `scripts/` 目录提供核心链路无网冒烟脚本（`smoke_*.py`）、语言文件完整性校验（`check_i18n_completeness.py`）、MCP SDK 冒烟测试，以及 UIKit 同步与真实 Canvas/RHI 后端验证脚本
 
 ## 贡献与支持
 
 - **问题反馈**：如遇到问题或有功能建议，欢迎提交 [Issue](https://github.com/KKPIP-Tech/InstructionX/issues)
 - **贡献代码**：向本项目提交贡献即表示你同意 [InstructionX 个人贡献者许可协议（ICLA）](ICLA.md)——你保留自己贡献的版权，并授予生产者双重许可（AGPL 社区版 + 专有商业版）所需的许可
-- **分支约定**：`dev` 为开发分支（不含测试代码），pytest 测试代码仅存在于 `test` 分支，`main` 为发布分支
+- **分支约定**：`dev` 为纯开发分支，pytest 测试代码仅存在于 `test` 分支，`main` 为发布分支；`test/core/data/test_data_provider.py` 作为 CI 冒烟基线暂例外保留在 `dev`
 - **文档语言**：项目文档与代码注释以中文为主
 
 ## 技术栈
