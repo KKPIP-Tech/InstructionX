@@ -493,10 +493,11 @@ InstructionX/
 │           └── openai_compatible.py  # 自定义 OpenAI 兼容兜底适配器
 │
 ├── ui/                       # UI 模块
-│   ├── InstructionX_UIKit/  # UIKit 组件库（alpha-v1.0.3：设计令牌 + ThemeManager + 58 组件/布局/图表
-│   │                        #   + 代码编辑器，同步副本不修改）
+│   ├── InstructionX_UIKit/  # UIKit 组件库（alpha-v1.0.4：设计令牌 + ThemeManager + 59 组件/布局/图表
+│   │                        #   + 蓝图 + 代码编辑器 + 完整 Iconoir，同步副本不修改）
 │   ├── uikit_bootstrap.py   # sys.path 引导（使 UIKit 以顶层包可导入，main.py 第一个业务 import）
 │   ├── uikit_theme.py       # 全局主题入口（apply_uikit_theme 三模式 + 排除区兼容附录）
+│   ├── rhi_surface.py       # 顶层 RHI Surface 匹配（窗口标志确定后、show 前调用）
 │   ├── main_window.py       # 主窗口
 │   ├── title_bar.py        # 自定义标题栏
 │   ├── usage_panel/         # 用量查询面板（包：panel/kpi_card/trend_chart/history_table/formatting）
@@ -571,7 +572,7 @@ InstructionX/
 ```mermaid
 flowchart TD
     A[main] --> B[QApplication 创建]
-    B --> B1[QQuickWindow.setGraphicsApi OpenGL<br/>统一图形 API，避免 GL/Qt Quick 混用]
+    B --> B1[RHI 由 Qt 按平台自动选择<br/>不再强制 OpenGL]
     B1 --> B2[uikit_bootstrap 扩展 sys.path<br/>使 InstructionX_UIKit 以顶层包可导入]
     B2 --> C[apply_uikit_theme<br/>UIKit 全局主题，auto 自动检测系统主题]
     C --> D[LoggerManager 初始化]
@@ -580,7 +581,7 @@ flowchart TD
     D3 --> E[InstructionXMainWindow 创建]
     E --> F[创建自定义标题栏 + 菜单栏]
     F --> G[_create_main_layout]
-    G --> G0[_prewarm_blueprint_viewport<br/>预创建隐藏蓝图画布<br/>让顶层原生句柄首次创建即含 GL 子控件]
+    G --> G0[prepare_rhi_surface<br/>窗口标志确定后、show 前匹配顶层 RHI Surface]
     G0 --> G1[初始化 PluginManager]
     G1 --> G2[load_plugins<br/>加载官方 + 第三方插件<br/>注册插件语言包]
     G2 --> G3[apply_custom_order<br/>应用自定义排序]

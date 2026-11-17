@@ -7,7 +7,7 @@
 
 [![CI](https://github.com/KKPIP-Tech/InstructionX/actions/workflows/test.yml/badge.svg)](https://github.com/KKPIP-Tech/InstructionX/actions/workflows/test.yml)
 [![Python](https://img.shields.io/badge/Python-3.14+-blue.svg)](https://www.python.org/)
-[![PySide6](https://img.shields.io/badge/PySide6-6.10+-green.svg)](https://doc.qt.io/qtforpython/)
+[![PySide6](https://img.shields.io/badge/PySide6-6.11.1+-green.svg)](https://doc.qt.io/qtforpython/)
 [![Platform](https://img.shields.io/badge/Platform-Windows%2010%2F11-lightgrey.svg)](#)
 [![Version](https://img.shields.io/badge/Alpha-1.1.2%20CE-red.svg)](#)
 [![License](https://img.shields.io/badge/License-AGPL--3.0%2B%20%2B%20%C2%A77%20Terms-blue.svg)](LICENSE)
@@ -71,7 +71,7 @@ InstructionX 是一个基于 PySide6 的**插件式桌面应用框架**。它将
 
 ### 界面体系
 
-- **InstructionX_UIKit 组件库**：58 个组件 + 13 种布局 + 52 个动画，含原生图表引擎（GL/软件双视口）、蓝图节点图、仿 VS Code 代码编辑器与 Mermaid 渲染；light / dark / auto 三种全局主题模式，设计令牌（Design Tokens）随主题实时换肤
+- **InstructionX_UIKit 组件库**：59 个组件 + 13 种布局 + 52 个动画，含原生图表引擎（默认直接 Canvas + QRhi，显式 RHI 回退）、蓝图节点图、仿 VS Code 代码编辑器、完整 Iconoir 图标库与 Mermaid 渲染；light / dark / auto 三种全局主题模式，设计令牌（Design Tokens）随主题实时换肤
 - **字体管理器**：应用级字体安装 / 卸载 / 预览（进程内生效，不写系统字体目录），字体缺失时自动回退系统字体
 - **系统托盘**：托盘菜单实时呈现运行中的插件与后台任务；关闭主窗口时弹出确认对话框，可选择退出程序或最小化到托盘
 
@@ -313,15 +313,15 @@ python -m pytest test/ -q --tb=short -p no:cacheprovider
 | 技术 | 用途 | 版本 |
 |------|------|------|
 | Python | 编程语言 | >= 3.14 |
-| PySide6 | Qt GUI 框架 | >= 6.10 |
+| PySide6 | Qt GUI 框架 | >= 6.11.1 |
 | mcp | MCP 协议（FastMCP） | >= 1.30.0, < 2 |
 | requests / aiohttp | HTTP / 异步 HTTP | >= 2.32 / >= 3.14.5 |
 | orjson | 高性能 JSON 序列化 | >= 3.11.0, < 4 |
-| matplotlib | 用量统计与 UIKit MarkdownView LaTeX 公式渲染 | >= 3.10 |
+| matplotlib | 用量统计与 UIKit MarkdownView LaTeX 公式渲染 | >= 3.11.1 |
 | packaging | 插件依赖版本检查 | >= 23.0 |
 | qrcode[pil] | UIKit QRCodeView 组件 | >= 7.4 |
 | numpy | UIKit 图表引擎（大数据管线/降采样） | >= 2.0 |
-| InstructionX_UIKit | 界面主题与组件库 | 内置（alpha-v1.0.3） |
+| InstructionX_UIKit | 界面主题与组件库 | 内置（alpha-v1.0.4） |
 
 ## 许可证
 
