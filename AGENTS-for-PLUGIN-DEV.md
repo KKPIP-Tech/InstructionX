@@ -143,7 +143,7 @@ content  = data_provider.load_asset(relative)
   "name": "<插件显示名称>",
   "version": "<类型>.<大>.<小>.<补丁>",
   "main": "entrance.py",
-  "compatible_framework_versions": ["alpha.1.1.2"],
+  "compatible_framework_versions": ["alpha.1.1.3"],
   "description": "<简短描述，1-2句话>",
   "author": "<开发者名称>",
   "homepage": "<插件主页URL>",
@@ -160,7 +160,7 @@ content  = data_provider.load_asset(relative)
 | `name` | 是 | 插件显示名称，展示在技能面板与插件管理对话框中，可使用中文 |
 | `version` | 是 | 格式 `<类型>.<大>.<小>.<补丁>`，正则 `^(release|pre-release|beta|alpha|internal)\.\d+\.\d+\.\d+$`。五种类型与优先级（高→低）：`release`（正式发布）> `pre-release`（预发布）> `beta`（公开测试）> `alpha`（内部测试）> `internal`（内部构建）。**选用场景**：对外发布的稳定版本用 `release`；发布候选用 `pre-release`；邀请用户试用的未完成版本用 `beta`；开发期自测用 `alpha`；纯内部调试用 `internal` |
 | `main` | 是 | 入口文件路径，当前固定为 `entrance.py` |
-| `compatible_framework_versions` | **是（新开发、更新和发布）** | 精确 `PluginVersion` 字符串数组，声明该插件版本实际验证过的 InstructionX 框架版本，如 `["alpha.1.1.2"]`。只填写真实测试过的版本；缺字段、未包含当前框架或声明非法时，安装界面提示兼容性未经验证，用户仍可明确选择仍然安装。不支持范围或通配符。框架保留缺字段容错仅用于兼容既有旧插件，不免除开发者的填写义务 |
+| `compatible_framework_versions` | **是（新开发、更新和发布）** | 精确 `PluginVersion` 字符串数组，声明该插件版本实际验证过的 InstructionX 框架版本，如 `["alpha.1.1.3"]`。只填写真实测试过的版本；缺字段、未包含当前框架或声明非法时，安装界面提示兼容性未经验证，用户仍可明确选择仍然安装。不支持范围或通配符。框架保留缺字段容错仅用于兼容既有旧插件，不免除开发者的填写义务 |
 | `description` | 否 | 插件功能简述，1–2 句话 |
 | `author` | 否 | 作者/组织名称 |
 | `homepage` | 否 | 插件主页或仓库 URL |

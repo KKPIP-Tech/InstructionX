@@ -502,7 +502,7 @@ class TextFormattingPlugin(IPlugin):
   "name": "My Awesome Plugin",
   "version": "release.1.0.0",
   "main": "entrance.py",
-  "compatible_framework_versions": ["alpha.1.1.2", "alpha.1.2.0"],
+  "compatible_framework_versions": ["alpha.1.1.3", "alpha.1.2.0"],
   "description": "一个强大的插件",
   "author": "Your Name",
   "homepage": "https://example.com/my-awesome-plugin",
@@ -524,7 +524,7 @@ class TextFormattingPlugin(IPlugin):
 | `homepage` | string | 否 | 插件主页 URL（文档、问题反馈页等） |
 | `keywords` | array | 否 | 关键词数组，便于检索与分类 |
 | `dependencies` | object | 否 | Python 依赖声明，格式 `{"包名": "PEP 440 版本约束"}`（如 `"requests": ">=2.31.0"`）。安装时由框架 DependencyManager 自动检查并安装。**只声明真实使用的依赖**，避免拖慢安装、引入不必要的安全风险 |
-| `compatible_framework_versions` | array[string] | **是（新开发、更新和发布）** | 声明当前插件版本实际验证过的 InstructionX 框架版本，例如 `["alpha.1.1.2", "alpha.1.2.0"]`；使用精确 `PluginVersion`，不支持范围或通配符 |
+| `compatible_framework_versions` | array[string] | **是（新开发、更新和发布）** | 声明当前插件版本实际验证过的 InstructionX 框架版本，例如 `["alpha.1.1.3", "alpha.1.2.0"]`；使用精确 `PluginVersion`，不支持范围或通配符 |
 
 **框架兼容性验证声明（开发者必填）**：新开发、更新和发布的插件必须提供该字段，且只填写确实测试过的框架版本，不要编造未来版本。安装、重装、升级和降级会展示该列表并与当前 `APP_VERSION` 精确比较。缺少字段、当前版本未列入或声明非法时，界面会明确提示“兼容性未经验证，继续安装不能得到兼容保证”，但允许用户主动选择“仍然安装”。框架对缺字段的读取容错只用于兼容既有旧插件，不表示新插件可以省略；该声明不会在启动时自动禁用插件。
 

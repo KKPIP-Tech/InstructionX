@@ -34,7 +34,7 @@
   "name": "My Awesome Plugin",
   "version": "release.1.0.0",
   "main": "entrance.py",
-  "compatible_framework_versions": ["alpha.1.1.2", "alpha.1.2.0"],
+  "compatible_framework_versions": ["alpha.1.1.3", "alpha.1.2.0"],
   "description": "一个强大的插件",
   "author": "John Doe",
   "homepage": "https://github.com/user/my-awesome-plugin",
