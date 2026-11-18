@@ -366,8 +366,7 @@ class MyPlugin(IPlugin):
 #### 7.5.1 推荐实现：文案绑定表（不重建控件）
 
 插件界面文案在构建期取词后即固化在控件上，因此"重取词"必须能定位到**具体控件**。
-推荐做法是在插件内维护一张绑定表（参考实现：`plugin/robospine-control/ui/i18n_bind.py`
-与另一工程 `plugin/framework_api_demo/ui/tabs/base_tab.py`）：
+推荐做法是在插件内维护一张绑定表：
 
 - 构建期登记：控件用取词结果创建后立刻登记 `(控件, setter, 分组, 键, 占位符参数)`，
   例如 `label = Label(self._tr("form.name")); self._bind(label, "form.name")`；
@@ -384,10 +383,10 @@ class MyPlugin(IPlugin):
 #### 7.5.2 插件显示名（技能面板按钮）
 
 技能面板按钮名取自 `IPlugin.plugin_name`。插件若希望名称本地化，应在该属性内经
-`PluginServices.localization.tr(...)` 取词（如 RoboSpine 用插件语言包的
-`common.panel_title`）；框架在语言变化后会刷新技能面板按钮：先比对各插件显示名
-快照，**只有显示名确实变化才重建按钮**（固定品牌名的插件不受影响，不会重置分组
-展开状态与焦点），重建时保留激活插件的高亮。插件无需为此做任何额外接线。
+`PluginServices.localization.tr(...)` 取词，例如面板标题可使用 `common.panel_title`；
+框架在语言变化后会刷新技能面板按钮：先比对各插件显示名快照，**只有显示名确实变化
+才重建按钮**（固定品牌名的插件不受影响，不会重置分组展开状态与焦点），重建时保留
+激活插件的高亮。插件无需为此做任何额外接线。
 
 ---
 

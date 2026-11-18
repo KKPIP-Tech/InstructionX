@@ -84,7 +84,13 @@ renderer.opt["name"] = ""
 
 本次完成的是**最新默认直接 Canvas 路径的完整迁移与功能适配**，不是正式 4K 性能验收通过。
 
-## 6. 提交边界
+## 6. 后续 Cocoa 多视口同步修复（2026-11-18）
+
+多 Canvas 视口持续更新时，option 和帧提交次数可能仍增长，但实际内容 `paint()` 停在早期画面。根因是 Canvas 视口在每次 `update()` 和 `frameSubmitted` 中都重新 `start(0)`，不断重置同一个单次同步定时器；多视口事件密集时，`_sync_now()` 被持续推迟。
+
+`canvas_item_viewport.py` 新增 `_schedule_sync()`：仅 Cocoa 在已有待执行同步时保留原定时器，其他平台仍按原行为重新 `start(0)`。公开接口、默认后端、数据与 Windows 调度均不变。多视口验收必须同时核对实际内容绘制与最终帧，不能只依据 option 版本或帧提交次数；该修复解决内容同步饥饿，不构成高负载 60fps 承诺。
+
+## 7. 提交边界
 
 - `dev`：UIKit/依赖、RHI 初始化、趋势图、框架文档分别提交，不含测试代码。
 - `test`：`test/ui_tests/` 与 `test/uikit/` 的适配测试单独提交。

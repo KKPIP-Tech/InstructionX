@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """Chart / Blueprint 的局部 QCanvasPainterWidget RHI 绘制视口。"""
 
+import sys
 import time
 import weakref
 
@@ -175,7 +176,7 @@ class CanvasItemLineChartViewport(_ViewportMixin, QCanvasPainterWidget):
             self._window_ref = weakref.ref(window)
             window.installEventFilter(self)
         self._sync_dirty = True
-        self._sync_timer.start(0)
+        self._schedule_sync()
 
     def _detach(self):
         self._view = None
@@ -196,7 +197,7 @@ class CanvasItemLineChartViewport(_ViewportMixin, QCanvasPainterWidget):
             return
         self._attach()
         self._chart.on_ui_activated()
-        self._sync_timer.start(0)
+        self._schedule_sync()
 
     def eventFilter(self, obj, event):  # noqa: N802
         window = self._window_ref() if self._window_ref is not None else None
@@ -234,7 +235,7 @@ class CanvasItemLineChartViewport(_ViewportMixin, QCanvasPainterWidget):
             return
         self._attach()
         self._chart.on_ui_activated()
-        self._sync_timer.start(0)
+        self._schedule_sync()
 
     def hideEvent(self, event):  # noqa: N802
         if not self._ready:
@@ -263,7 +264,7 @@ class CanvasItemLineChartViewport(_ViewportMixin, QCanvasPainterWidget):
             animation = getattr(self._chart, "anim", None)
             animating = animation is not None and animation.is_running()
             if self._sync_dirty or self._continuous_sync or animating:
-                self._sync_timer.start(0)
+                self._schedule_sync()
             self.frameSwapped.emit()
 
     def paint(self, painter):
@@ -272,12 +273,24 @@ class CanvasItemLineChartViewport(_ViewportMixin, QCanvasPainterWidget):
         self._canvas_renderer.synchronizeData(self)
         self._canvas_renderer.paint(painter)
 
+    def _schedule_sync(self):
+        """在 Cocoa 合并待执行同步，避免重复 start(0) 重置单次定时器。
+
+        高频 update 与 frameSubmitted 会反复请求同步；若每次都重新启动零延迟
+        定时器，多视口持续更新时回调可能一直被推迟，表现为帧仍在提交但内容
+        停在早期画面。Cocoa 已有待执行同步时保留原定时器；其他平台维持原有
+        重新启动定时器的行为，避免引入跨平台调度差异。
+        """
+        if sys.platform == "darwin" and self._sync_timer.isActive():
+            return
+        self._sync_timer.start(0)
+
     def update(self, *_args):
         if not self._ready:
             return
         self._sync_dirty = True
         if self._chart._ui_active and self.isVisible() and not self._waiting_for_frame:
-            self._sync_timer.start(0)
+            self._schedule_sync()
 
     def _sync_series_model(self, model):
         model._visible = model._renderer.visible
