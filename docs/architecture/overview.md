@@ -338,10 +338,11 @@ from core.interfaces import (
 - 以 Ratatui + Crossterm 提供 Windows/macOS/Linux 共用的原生 TUI，不使用脚本语言实现界面。
 - 首次提供中/英（默认）/法/俄语言选择并持久化偏好，支持 0–5 六类页面和兼容非交互 CLI。
 - 采集系统硬件与框架状态；执行安装、同版本修复、Release 升级、环境包管理和环境重建。
+- 通过后台工作线程执行耗时操作，以 Activity 区域持续显示步骤与结果；交互和 CLI 共用操作执行器，过程写入 `logs/tui_setup.log`。
 - 复用框架插件依赖安装与更新检查后端，逐插件报告结果；创建三平台无窗口桌面入口。
 - 开发者本机构建并校验 Windows x64/ARM64 预编译二进制与 SHA256，随源码包分发；不使用 GitHub Actions 构建 Setup，Windows 用户不需要安装 Rust。macOS 预编译版本为未来选项。
 
-**模块划分**: `app.rs`（页面与终端事件）、`workspace.rs`（操作编排）、`system/`（平台信息）、`github.rs`（Release）、`actions.rs`（备份回滚）、`uv.rs`（环境）、`plugins.rs`（插件）、`shortcuts.rs`（桌面入口）、`cli.rs`（兼容接口）。
+**模块划分**: `app.rs`（页面与终端事件）、`workspace.rs`（操作确认与结果应用）、`operations.rs`（后台执行、进度事件与日志）、`system/`（平台信息）、`github.rs`（Release）、`actions.rs`（备份回滚）、`uv.rs`（环境）、`plugins.rs`（插件）、`shortcuts.rs`（桌面入口）、`cli.rs`（兼容接口）。
 
 ### 3.15 可靠性与可选进程隔离
 

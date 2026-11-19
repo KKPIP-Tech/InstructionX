@@ -5,9 +5,9 @@ use clap::Parser;
 
 use crate::app::{App, Page};
 use crate::i18n::{Language, Preferences};
+use crate::operations::{OperationUpdate, execute_operation, request_for_action};
 use crate::system::SystemOverview;
 use crate::version::setup_build_version;
-use crate::workspace::Workspace;
 
 #[derive(Debug, Parser)]
 #[command(
@@ -89,16 +89,46 @@ pub fn execute(cli: Cli) -> Result<(), Box<dyn Error>> {
 }
 
 fn execute_action(root: PathBuf, cli: &Cli) -> Result<(), Box<dyn Error>> {
-    let mut workspace = Workspace::new(&root);
-    let output = workspace.run_action(
-        cli.action.as_deref().unwrap_or_default(),
+    let action = cli.action.as_deref().unwrap_or_default();
+    if action == "doctor" {
+        let overview = SystemOverview::collect(&root);
+        println!("Framework installed: {}", overview.framework.installed);
+        return Ok(());
+    }
+    if cli.dry_run {
+        print_dry_run(&root, cli, action);
+        return Ok(());
+    }
+    let request = request_for_action(
+        &root,
+        action,
         cli.archive.as_deref(),
         cli.release_tag.as_deref(),
-        cli.dry_run,
         cli.yes,
     )?;
-    println!("{output}");
+    let success = execute_operation(request, print_update)?;
+    println!("{}", success.summary);
+    for detail in success.details {
+        println!("{detail}");
+    }
     Ok(())
+}
+
+fn print_dry_run(root: &Path, cli: &Cli, action: &str) {
+    println!("Dry run: no files, directories, configuration or environments will be changed");
+    println!("Project root: {}", root.display());
+    println!("Action: {action}");
+    println!("Archive: {:?}", cli.archive);
+    println!("Release Tag: {:?}", cli.release_tag);
+    println!("Automatic tool installation and confirmations: {}", cli.yes);
+}
+
+fn print_update(update: OperationUpdate) {
+    if update.total > 0 {
+        println!("[{}/{}] {}", update.current, update.total, update.message);
+    } else {
+        println!("  {}", update.message);
+    }
 }
 
 fn execute_interactive(root: PathBuf, cli: &Cli) -> Result<(), Box<dyn Error>> {

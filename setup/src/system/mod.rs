@@ -64,7 +64,7 @@ impl FrameworkStatus {
             root: root.to_path_buf(),
             installed,
             git_present: root.join(".git").exists(),
-            uv_present: executable_exists("uv"),
+            uv_present: crate::uv::uv_program(root).is_file() || executable_exists("uv"),
             venv_present: root.join(".venv").exists(),
             version: read_framework_version(root),
         }

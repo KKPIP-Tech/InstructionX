@@ -24,4 +24,5 @@ fi
 if [ ! -x "$NATIVE" ]; then
     chmod +x "$NATIVE"
 fi
+export INSTRUCTIONX_PROJECT_ROOT="$PROJECT_ROOT"
 exec "$NATIVE" "$@"

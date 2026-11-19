@@ -3,6 +3,7 @@
 
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -106,6 +107,22 @@ def check_native_cli() -> None:
     ])
     check("dry-run 接受 Release Tag", result.returncode == 0 and "alpha-v9.9.9" in result.stdout)
     check("dry-run 未创建下载目录", not (ROOT / ".tui" / "work").exists())
+    check_operation_feedback()
+
+
+def check_operation_feedback() -> None:
+    """真实操作必须显示步骤、结果并留下持久日志。"""
+    print("== 进度与结果反馈 ==")
+    preview = run_command([str(NATIVE), "--preview", "misc", "--lang", "en"])
+    check("界面包含 Activity 区域", preview.returncode == 0 and "Activity" in preview.stdout)
+    check("界面显示日志位置", "logs/tui_setup.log" in preview.stdout)
+    with tempfile.TemporaryDirectory(prefix="setup-feedback-", dir=ROOT / "temp") as work:
+        result = run_command([str(NATIVE), "--action", "clean-temp", "--project-root", work])
+        check("CLI 显示执行步骤", result.returncode == 0 and "[1/1] Clean temporary files" in result.stdout,
+              result.stdout + result.stderr)
+        check("CLI 显示完成结果", "Temporary files cleaned" in result.stdout)
+        log = Path(work) / "logs/tui_setup.log"
+        check("操作写入持久日志", log.is_file() and "Operation completed" in log.read_text(encoding="utf-8"))
 
 
 def check_wrapper_cli() -> None:
@@ -131,12 +148,36 @@ def check_wrapper_cli() -> None:
         check("setup.sh 语法正确", syntax.returncode == 0)
 
 
+def check_external_working_directory() -> None:
+    """从项目外启动时仍必须操作启动器所在的框架根目录。"""
+    print("== 项目外启动 ==")
+    with tempfile.TemporaryDirectory(prefix="setup-launcher-", dir=ROOT / "temp") as work:
+        commands = []
+        if POWERSHELL.is_file():
+            commands.append(("PowerShell", [
+                str(POWERSHELL), "-NoProfile", "-ExecutionPolicy", "Bypass",
+                "-File", str(ROOT / "setup.ps1"), "-State",
+            ]))
+        if GIT_BASH.is_file():
+            commands.append(("Unix", [str(GIT_BASH), str(ROOT / "setup.sh"), "--state"]))
+        for name, argv in commands:
+            result = subprocess.run(
+                argv, cwd=work, capture_output=True, text=True,
+                encoding="utf-8", errors="replace", timeout=120,
+            )
+            expected = (f"project_root={ROOT}\n", f"project_root={ROOT.as_posix()}\n")
+            root_correct = any(line in result.stdout for line in expected)
+            check(f"{name} 启动器固定项目根目录", result.returncode == 0 and root_correct,
+                  result.stdout + result.stderr)
+
+
 def main() -> int:
     """执行全部检查并返回退出码。"""
     print(f"项目根: {ROOT}\n")
     check_launchers()
     check_native_cli()
     check_wrapper_cli()
+    check_external_working_directory()
     print(f"\n结果: {_passed} 通过, {_failed} 失败")
     return 1 if _failed else 0
 

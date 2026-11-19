@@ -111,6 +111,10 @@ impl UvClient {
         if locked.code == 0 {
             return Ok(());
         }
+        self.install_requirements()
+    }
+
+    pub fn install_requirements(&mut self) -> Result<(), Box<dyn Error>> {
         self.run_checked(&["pip", "install", "-r", "requirements.txt"])?;
         Ok(())
     }
@@ -294,4 +298,42 @@ fn command_spec(program: &str, arguments: &[&str]) -> (String, Vec<String>) {
         program.to_string(),
         arguments.iter().map(|value| value.to_string()).collect(),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::{Arc, Mutex};
+
+    use super::*;
+
+    struct RecordingRunner {
+        arguments: Arc<Mutex<Vec<Vec<String>>>>,
+    }
+
+    impl CommandRunner for RecordingRunner {
+        fn run(&self, _program: &str, args: &[String], _root: &Path) -> io::Result<CommandOutput> {
+            self.arguments.lock().expect("记录锁").push(args.to_vec());
+            Ok(CommandOutput {
+                code: 0,
+                stdout: String::new(),
+                stderr: String::new(),
+            })
+        }
+    }
+
+    #[test]
+    fn incremental_requirements_install_never_uses_uv_sync() {
+        let arguments = Arc::new(Mutex::new(Vec::new()));
+        let runner = RecordingRunner {
+            arguments: Arc::clone(&arguments),
+        };
+        let mut client =
+            UvClient::with_runner(PathBuf::from("uv"), Box::new(runner), PathBuf::from("."));
+
+        client.install_requirements().expect("增量安装依赖");
+
+        let recorded = arguments.lock().expect("记录锁");
+        assert_eq!(recorded.len(), 1);
+        assert_eq!(recorded[0], ["pip", "install", "-r", "requirements.txt"]);
+    }
 }

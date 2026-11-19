@@ -25,8 +25,10 @@ use crate::workspace::Workspace;
 const NAVIGATION_WIDTH: u16 = 30;
 const HEADER_HEIGHT: u16 = 3;
 const FOOTER_HEIGHT: u16 = 3;
+const ACTIVITY_HEIGHT: u16 = 9;
 const MINIMUM_WIDTH: u16 = 60;
-const MINIMUM_HEIGHT: u16 = 15;
+const MINIMUM_HEIGHT: u16 = 24;
+const EVENT_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_millis(80);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Page {
@@ -161,7 +163,13 @@ impl App {
             return Ok(());
         }
         if key.code == KeyCode::Char('q') {
-            self.should_quit = true;
+            if self.workspace.is_running() {
+                self.workspace.show_message(
+                    "An operation is still running; wait for its result before quitting",
+                );
+            } else {
+                self.should_quit = true;
+            }
             return Ok(());
         }
         if self.show_language_selection {
@@ -332,6 +340,7 @@ impl App {
         let rows = Layout::vertical([
             Constraint::Length(HEADER_HEIGHT),
             Constraint::Min(5),
+            Constraint::Length(ACTIVITY_HEIGHT),
             Constraint::Length(FOOTER_HEIGHT),
         ])
         .split(area);
@@ -341,7 +350,20 @@ impl App {
         } else {
             self.render_navigation(frame, rows[1]);
         }
-        self.render_footer(frame, rows[2]);
+        self.render_activity(frame, rows[2]);
+        self.render_footer(frame, rows[3]);
+    }
+
+    fn render_activity(&self, frame: &mut Frame, area: Rect) {
+        let title = if self.workspace.is_running() {
+            " Activity · Running "
+        } else {
+            " Activity "
+        };
+        let activity = Paragraph::new(self.workspace.activity_text())
+            .block(Block::default().title(title).borders(Borders::ALL))
+            .wrap(Wrap { trim: false });
+        frame.render_widget(activity, area);
     }
 
     fn render_header(&self, frame: &mut Frame, area: Rect) {
@@ -638,7 +660,13 @@ fn run_event_loop(
     app: &mut App,
 ) -> Result<(), Box<dyn Error>> {
     while !app.should_quit {
+        if app.workspace.poll_operation() {
+            app.refresh_overview();
+        }
         terminal.draw(|frame| app.render(frame))?;
+        if !event::poll(EVENT_POLL_INTERVAL)? {
+            continue;
+        }
         match event::read()? {
             Event::Key(key) => app.handle_key_event(key)?,
             Event::Mouse(mouse) => app.handle_mouse(mouse.kind),
@@ -646,4 +674,27 @@ fn run_event_loop(
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn workspace_page_includes_persistent_activity_panel() {
+        let temporary = tempfile::tempdir().expect("创建临时目录");
+        let preferences = Preferences {
+            needs_language_selection: true,
+            ..Preferences::default()
+        };
+        let mut app = App::new(preferences, temporary.path().join(".tui/preferences.toml"));
+        app.show_language_selection = false;
+        app.page = Page::Misc;
+
+        let rendered = app.render_text(100, 30).expect("渲染界面");
+
+        assert!(rendered.contains("Activity"));
+        assert!(rendered.contains("Ready"));
+        assert!(rendered.contains("logs/tui_setup.log"));
+    }
 }

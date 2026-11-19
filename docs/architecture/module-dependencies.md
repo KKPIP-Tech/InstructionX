@@ -184,7 +184,8 @@ shutdown()                         # 安全关闭任务管理器
 
 | 功能 | 说明 |
 |------|------|
-| 原生界面 | Rust `app.rs` / `workspace.rs` 实现六类页面、四语言偏好与操作状态机 |
+| 原生界面 | Rust `app.rs` / `workspace.rs` 实现六类页面、四语言偏好、二次确认、Activity 区域与后台结果轮询 |
+| 操作执行 | `operations.rs` 统一交互与 CLI 的操作请求、后台工作线程、步骤/结果事件及 `logs/tui_setup.log` 持久日志 |
 | 系统信息 | `system/` 在 Windows 使用 WMI，macOS 使用原生工具，Linux 使用 proc/sys 与系统命令 |
 | 安装与升级 | `github.rs` 读取 Release；`actions.rs` 负责版本校验、暂存、备份、覆盖与回滚 |
 | 环境管理 | `uv.rs` 处理包列表、更新/移除、uv 安装与环境重建 |

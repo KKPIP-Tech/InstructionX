@@ -9,7 +9,7 @@
 **InstructionX** 是一个基于 **PySide6** 的**插件式桌面应用框架**（应用型项目，不作为库分发），支持：
 
 - 插件热加载 / 热卸载，GitHub 插件一键安装
-- 原生 Setup（Rust + Ratatui，Windows/macOS/Linux）：四语言偏好、系统总览、安装/修复/升级、环境与插件管理、无窗口快捷方式
+- 原生 Setup（Rust + Ratatui，Windows/macOS/Linux）：四语言偏好、系统总览、安装/修复/升级、环境与插件管理、无窗口快捷方式；后台操作、Activity 步骤/结果反馈与 `logs/tui_setup.log` 持久日志
 - 手动检查框架更新（帮助菜单触发，完整 GitHub Release 时间线含 Pre-release、当前版本定位、用户确认后按 Tag 升级；不自动检查）
 - 多厂商 LLM 集成（MiniMax、SiliconFlow、智谱 GLM、Ollama、OpenAI 兼容接口等），多会话管理、工具调用自动化（ToolCallExecutor）、多模态、用量统计
 - MCP 协议双向支持（内置 MCP Server 暴露插件 API；MCP Client 连接外部 MCP Server）
@@ -79,7 +79,7 @@ python -m pytest test/ -q --tb=short -p no:cacheprovider
 - **注意**：`test/` 下当前仅保留 `test/core/data/test_data_provider.py` 一个有效测试文件（其余旧测试已在重构中删除，残留的 `__pycache__` 是过期产物，不要参考）。现有测试约定：中文 docstring、`tmp_path` fixture、测试单例类时需重置 `XxxManager._instance = None`。
 - UI 测试不配置 offscreen 平台，CI 跑在 `windows-latest` 上使用真实 GUI。
 - 项目还有一类**独立验证脚本**（非 pytest，放在 `scripts/`，用 `.venv\Scripts\python.exe scripts\<name>.py` 直接运行）：
-  - `smoke_*.py`：核心链路无网冒烟测试（LLM、task、utils、i18n、字体管理、插件管理：安装/升级/降级/卸载/分组、本地插件包自动识别与插件集一次安装、包外文件兜底备份）；`smoke_setup_wizard.py` 针对原生 Setup（随包二进制、薄启动器、独立操作项、原生 CLI、兼容参数与 dry-run 安全）；`smoke_framework_update.py` 针对框架 Release 时间线、当前版本定位与指定 Tag 更新命令；`smoke_uikit_sync.py` 校验 UIKit 版本/模块/图标，`smoke_uikit_canvas.py` 以真实窗口和 Win32 客户区抓图验证 Canvas/RHI/raster 后端、趋势图 Tooltip 与最终帧
+  - `smoke_*.py`：核心链路无网冒烟测试（LLM、task、utils、i18n、字体管理、插件管理：安装/升级/降级/卸载/分组、本地插件包自动识别与插件集一次安装、包外文件兜底备份）；`smoke_setup_wizard.py` 针对原生 Setup（随包二进制、薄启动器与项目外工作目录、独立操作项、Activity/CLI 进度与持久日志、原生 CLI、兼容参数与 dry-run 安全）；`smoke_framework_update.py` 针对框架 Release 时间线、当前版本定位与指定 Tag 更新命令；`smoke_uikit_sync.py` 校验 UIKit 版本/模块/图标，`smoke_uikit_canvas.py` 以真实窗口和 Win32 客户区抓图验证 Canvas/RHI/raster 后端、趋势图 Tooltip 与最终帧
   - `smoke_github_private.py`：GitHub 多 Key、私有识别与重新绑定无网冒烟；`smoke_github_private_live.py` 读取本机测试 PAT/私有仓库环境变量，执行真实安装与 Release 下载，临时数据只写入 `temp/`
   - `check_i18n_completeness.py`：语言文件完整性校验（默认语言必须覆盖源码全部 `tr()` 调用，缺键 exit 1；其他语言缺键/孤立键 WARNING；支持 `--text-dir`/`--src-dir`/`--plugin-root`）
   - `screenshot_*.py`：对话框截图对比脚本（输出到 `scripts/screenshots/`）
@@ -229,14 +229,16 @@ python -m pytest test/ -q --tb=short -p no:cacheprovider
 ```
 main.py                     # 应用入口
 setup/                      # 原生 Setup · Rust crate（Ratatui + Crossterm，Windows/macOS/Linux）：
-                            #   app/workspace 页面状态机与操作编排、version.rs 日期版本、四语言偏好、系统总览、
-                            #   Release 安装/同版本修复/升级、uv 包管理、逐插件依赖安装、
-                            #   插件列表与更新检查、无窗口快捷方式、兼容 CLI 与 dry-run；
+                            #   app/workspace 页面状态机、二次确认与 Activity 进度轮询；operations.rs 统一
+                            #   交互/CLI 操作请求、后台执行、结果数据和 logs/tui_setup.log 持久日志；
+                            #   version.rs 日期版本、四语言偏好、系统总览、Release 安装/同版本修复/升级、
+                            #   uv 包管理、逐插件依赖安装、插件列表与更新检查、无窗口快捷方式、兼容 CLI 与 dry-run；
                             #   Rust 集成测试仅放 test 分支；build_windows.ps1 在本机构建/交叉编译
                             #   Windows x64/ARM64、准备并校验 LLVM-MinGW、检查 PE 架构并更新 SHA256
 tools/setup/                # 随源码包分发的 Windows x64/ARM64 原生 Setup 与 SHA256SUMS；
                             #   macOS 预编译资产为未来选项，本次不包含 macOS/Linux 二进制
-setup.ps1 / setup.sh        # Windows / macOS / Linux 薄启动器：按系统与架构选择随包二进制，不含 TUI
+setup.ps1 / setup.sh        # Windows / macOS / Linux 薄启动器：按系统与架构选择随包二进制，
+                            #   通过 INSTRUCTIONX_PROJECT_ROOT 固定启动器所在项目根，不含 TUI
 setup.bat / setup.command   # Windows / macOS 双击入口（只转发参数到薄启动器）
 setup_text/                 # 旧版脚本向导的中英双语文案（保留作历史兼容；原生 TUI 使用内置四语言资源）
 core/
