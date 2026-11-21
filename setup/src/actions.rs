@@ -228,12 +228,15 @@ fn copy_directory(
         let entry = entry?;
         let name = entry.file_name();
         let name_text = name.to_string_lossy();
-        let preserved =
-            destination == root && should_preserve_directory(&name_text, preserve_plugins);
+        let target = destination.join(&name);
+        let existing_plugin = !preserve_plugins
+            && matches!(name_text.as_ref(), "plugin" | "custom_plugin")
+            && target.exists();
+        let preserved = destination == root
+            && (should_preserve_directory(&name_text, preserve_plugins) || existing_plugin);
         if preserved || name_text == "__pycache__" {
             continue;
         }
-        let target = destination.join(&name);
         if entry.file_type()?.is_dir() {
             fs::create_dir_all(&target)?;
             copy_directory(
