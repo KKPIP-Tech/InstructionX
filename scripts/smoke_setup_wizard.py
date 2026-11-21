@@ -101,12 +101,13 @@ def check_native_cli() -> None:
     result = run_command([str(NATIVE), "--preview", "environment", "--lang", "en"])
     check("环境页显示独立操作项", result.returncode == 0
           and "Query package list" in result.stdout and "Rebuild environment" in result.stdout)
-    result = run_command([
-        str(NATIVE), "--action", "upgrade", "--yes", "--dry-run",
-        "--release-tag", "alpha-v9.9.9",
-    ])
-    check("dry-run 接受 Release Tag", result.returncode == 0 and "alpha-v9.9.9" in result.stdout)
-    check("dry-run 未创建下载目录", not (ROOT / ".tui" / "work").exists())
+    with tempfile.TemporaryDirectory(prefix="setup-dry-run-", dir=ROOT / "temp") as work:
+        result = run_command([
+            str(NATIVE), "--action", "upgrade", "--yes", "--dry-run",
+            "--release-tag", "alpha-v9.9.9", "--project-root", work,
+        ])
+        check("dry-run 接受 Release Tag", result.returncode == 0 and "alpha-v9.9.9" in result.stdout)
+        check("dry-run 未创建下载目录", not (Path(work) / ".tui" / "work").exists())
     check_operation_feedback()
 
 
@@ -123,6 +124,21 @@ def check_operation_feedback() -> None:
         check("CLI 显示完成结果", "Temporary files cleaned" in result.stdout)
         log = Path(work) / "logs/tui_setup.log"
         check("操作写入持久日志", log.is_file() and "Operation completed" in log.read_text(encoding="utf-8"))
+        localized_action = run_command([
+            str(NATIVE), "--action", "clean-temp", "--project-root", work, "--lang", "zh",
+        ])
+        check("CLI 步骤与结果跟随中文", localized_action.returncode == 0
+              and "清理临时文件" in localized_action.stdout
+              and "临时文件已清理" in localized_action.stdout)
+    localized = run_command([str(NATIVE), "--preview", "misc", "--lang", "zh"])
+    compact = "".join(localized.stdout.split())
+    check("Activity 状态与日志标签跟随中文", localized.returncode == 0
+          and "状态：已就绪" in compact and "日志：" in compact)
+    install_preview = run_command([str(NATIVE), "--preview", "install", "--lang", "zh"])
+    install_compact = "".join(install_preview.stdout.split())
+    check("安装页工具与空 Release 提示跟随中文", install_preview.returncode == 0
+          and "工具：" in install_compact and "尚未加载Release" in install_compact
+          and "Tools:" not in install_preview.stdout and "No Releases loaded" not in install_preview.stdout)
 
 
 def check_wrapper_cli() -> None:

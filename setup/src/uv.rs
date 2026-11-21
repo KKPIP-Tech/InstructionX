@@ -1,8 +1,10 @@
 use std::error::Error;
 use std::fs;
-use std::io;
+use std::io::{self, BufRead, BufReader};
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
+use std::sync::mpsc::Sender;
+use std::thread;
 
 use crate::actions::tool_available;
 
@@ -33,6 +35,76 @@ impl CommandRunner for ProcessRunner {
             stderr: String::from_utf8_lossy(&output.stderr).to_string(),
         })
     }
+}
+
+pub fn stream_process<F>(
+    program: &str,
+    arguments: &[String],
+    root: &Path,
+    mut on_output: F,
+) -> io::Result<CommandOutput>
+where
+    F: FnMut(&str),
+{
+    let mut child = Command::new(program)
+        .args(arguments)
+        .current_dir(root)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()?;
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| io::Error::other("缺少标准输出管道"))?;
+    let stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| io::Error::other("缺少错误输出管道"))?;
+    let (sender, receiver) = std::sync::mpsc::channel();
+    let stdout_reader = spawn_output_reader(stdout, sender.clone());
+    let stderr_reader = spawn_output_reader(stderr, sender);
+    for chunk in receiver {
+        on_output(&chunk);
+    }
+    let status = child.wait()?;
+    let stdout = join_output(stdout_reader)?;
+    let stderr = join_output(stderr_reader)?;
+    Ok(CommandOutput {
+        code: status.code().unwrap_or(-1),
+        stdout,
+        stderr,
+    })
+}
+
+fn spawn_output_reader<R>(
+    reader: R,
+    sender: Sender<String>,
+) -> thread::JoinHandle<io::Result<String>>
+where
+    R: io::Read + Send + 'static,
+{
+    thread::spawn(move || {
+        let mut reader = BufReader::new(reader);
+        let mut collected = String::new();
+        loop {
+            let mut bytes = Vec::new();
+            if reader.read_until(b'\n', &mut bytes)? == 0 {
+                break;
+            }
+            let text = String::from_utf8_lossy(&bytes).to_string();
+            collected.push_str(&text);
+            sender
+                .send(text)
+                .map_err(|_| io::Error::new(io::ErrorKind::BrokenPipe, "输出接收端已关闭"))?;
+        }
+        Ok(collected)
+    })
+}
+
+fn join_output(handle: thread::JoinHandle<io::Result<String>>) -> io::Result<String> {
+    handle
+        .join()
+        .map_err(|_| io::Error::other("输出读取线程异常终止"))?
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Deserialize)]
@@ -183,8 +255,8 @@ pub fn install_uv(root: &Path) -> Result<PathBuf, Box<dyn Error>> {
     }
     fs::copy(source, &target)?;
     set_executable(&target)?;
-    let status = Command::new(&target).arg("--version").status()?;
-    if !status.success() {
+    let output = Command::new(&target).arg("--version").output()?;
+    if !output.status.success() {
         return Err("Downloaded uv failed verification".into());
     }
     Ok(target)
@@ -230,10 +302,18 @@ fn set_executable(_path: &Path) -> Result<(), Box<dyn Error>> {
 }
 
 pub fn install_git() -> Result<(), Box<dyn Error>> {
+    let root = std::env::current_dir()?;
+    install_git_with_output(&root, |_| {})
+}
+
+pub fn install_git_with_output<F>(root: &Path, on_output: F) -> Result<(), Box<dyn Error>>
+where
+    F: FnMut(&str),
+{
     let (program, arguments) = git_install_command()?;
-    let status = Command::new(program).args(arguments).status()?;
-    if !status.success() {
-        return Err("Git installation failed".into());
+    let output = stream_process(&program, &arguments, root, on_output)?;
+    if output.code != 0 {
+        return Err(format!("Git installation failed: {}", output.stderr.trim()).into());
     }
     if !tool_available("git") {
         return Err("Git is still unavailable after installation".into());
@@ -335,5 +415,31 @@ mod tests {
         let recorded = arguments.lock().expect("记录锁");
         assert_eq!(recorded.len(), 1);
         assert_eq!(recorded[0], ["pip", "install", "-r", "requirements.txt"]);
+    }
+
+    #[test]
+    fn streaming_process_captures_output_and_reports_each_chunk() {
+        let temporary = tempfile::tempdir().expect("创建临时目录");
+        let (program, arguments) = if cfg!(windows) {
+            (
+                "cmd",
+                vec!["/c".to_string(), "echo streaming-test".to_string()],
+            )
+        } else {
+            (
+                "sh",
+                vec!["-c".to_string(), "printf streaming-test".to_string()],
+            )
+        };
+        let mut reported = Vec::new();
+
+        let output = stream_process(program, &arguments, temporary.path(), |text| {
+            reported.push(text.to_string())
+        })
+        .expect("执行流式命令");
+
+        assert_eq!(output.code, 0);
+        assert!(output.stdout.contains("streaming-test"));
+        assert!(reported.join("").contains("streaming-test"));
     }
 }

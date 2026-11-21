@@ -80,8 +80,8 @@ impl ShortcutManager {
             self.root.join("ui/logo.ico").display()
         );
         fs::write(&script, arguments)?;
-        let status = Command::new("wscript.exe").arg(&script).status()?;
-        if !status.success() {
+        let output = Command::new("wscript.exe").arg(&script).output()?;
+        if !output.status.success() {
             return Err("Failed to create Windows shortcut".into());
         }
         Ok(())

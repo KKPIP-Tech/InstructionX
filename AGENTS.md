@@ -229,8 +229,9 @@ python -m pytest test/ -q --tb=short -p no:cacheprovider
 ```
 main.py                     # 应用入口
 setup/                      # 原生 Setup · Rust crate（Ratatui + Crossterm，Windows/macOS/Linux）：
-                            #   app/workspace 页面状态机、二次确认与 Activity 进度轮询；operations.rs 统一
-                            #   交互/CLI 操作请求、后台执行、结果数据和 logs/tui_setup.log 持久日志；
+                            #   app/workspace 页面状态机、二次确认与 Activity 自动底部跟随；operations.rs 统一
+                            #   交互/CLI 操作请求、后台执行、四语言结构化消息、子进程流式捕获与
+                            #   logs/tui_setup.log 持久日志；
                             #   version.rs 日期版本、四语言偏好、系统总览、Release 安装/同版本修复/升级、
                             #   uv 包管理、逐插件依赖安装、插件列表与更新检查、无窗口快捷方式、兼容 CLI 与 dry-run；
                             #   Rust 集成测试仅放 test 分支；build_windows.ps1 在本机构建/交叉编译

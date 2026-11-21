@@ -110,6 +110,7 @@ pub struct App {
     project_root: PathBuf,
     overview: Option<SystemOverview>,
     public_ip: Option<String>,
+    public_ip_error: Option<String>,
     pub workspace: Workspace,
     pub content_scroll: u16,
     content_height: Cell<u16>,
@@ -144,6 +145,7 @@ impl App {
             project_root: project_root.clone(),
             overview,
             public_ip: None,
+            public_ip_error: None,
             workspace: Workspace::new(&project_root),
             content_scroll: 0,
             content_height: Cell::new(0),
@@ -164,7 +166,9 @@ impl App {
         }
         if key.code == KeyCode::Char('q') {
             if self.workspace.is_running() {
-                self.workspace.show_message(
+                self.workspace.show_localized_message(
+                    "activity.quit_blocked",
+                    &[],
                     "An operation is still running; wait for its result before quitting",
                 );
             } else {
@@ -325,10 +329,16 @@ impl App {
 
     fn refresh_public_ip(&mut self) {
         const PUBLIC_IP_URL: &str = "https://api.ipify.org";
-        self.public_ip = Some(match fetch_public_ip_with_url(PUBLIC_IP_URL) {
-            Ok(address) => address,
-            Err(error) => format!("Unavailable: {error}"),
-        });
+        match fetch_public_ip_with_url(PUBLIC_IP_URL) {
+            Ok(address) => {
+                self.public_ip = Some(address);
+                self.public_ip_error = None;
+            }
+            Err(error) => {
+                self.public_ip = None;
+                self.public_ip_error = Some(error.to_string());
+            }
+        }
     }
 
     pub fn render(&self, frame: &mut Frame) {
@@ -356,26 +366,39 @@ impl App {
 
     fn render_activity(&self, frame: &mut Frame, area: Rect) {
         let title = if self.workspace.is_running() {
-            " Activity · Running "
+            format!(
+                " {} · {} ",
+                self.i18n.t("activity.title"),
+                self.i18n.t("activity.running")
+            )
         } else {
-            " Activity "
+            format!(" {} ", self.i18n.t("activity.title"))
         };
-        let activity = Paragraph::new(self.workspace.activity_text())
+        let content = self.workspace.activity_text_with_i18n(&self.i18n);
+        let content_width = area.width.saturating_sub(2);
+        let viewport = area.height.saturating_sub(2);
+        let line_count = wrapped_line_count(&content, content_width);
+        let bottom = u16::try_from(line_count)
+            .unwrap_or(u16::MAX)
+            .saturating_sub(viewport);
+        let activity = Paragraph::new(content)
             .block(Block::default().title(title).borders(Borders::ALL))
-            .wrap(Wrap { trim: false });
+            .wrap(Wrap { trim: false })
+            .scroll((bottom, 0));
         frame.render_widget(activity, area);
     }
 
     fn render_header(&self, frame: &mut Frame, area: Rect) {
         let focus = match self.focus {
-            Focus::Navigation => "Menu",
-            Focus::Content => "Content",
+            Focus::Navigation => "focus.menu",
+            Focus::Content => "focus.content",
         };
         let title = format!(
-            " InstructionX Setup {} · {} · Focus: {} ",
+            " InstructionX Setup {} · {} · {}: {} ",
             setup_build_version(),
             self.i18n.t(self.page.title_key()),
-            focus
+            self.i18n.t("focus.label"),
+            self.i18n.t(focus)
         );
         let block = Block::default()
             .title(title)
@@ -421,7 +444,7 @@ impl App {
         });
         let navigation = List::new(items).block(
             Block::default()
-                .title(" Menu ")
+                .title(format!(" {} ", self.i18n.t("focus.menu")))
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(if self.focus == Focus::Navigation {
                     Color::LightCyan
@@ -462,60 +485,87 @@ impl App {
             return self.i18n.t("overview.placeholder").to_string();
         };
         let mut text = String::new();
-        let _ = writeln!(
-            text,
-            "OS: {} {} ({})",
-            overview.os_name, overview.os_version, overview.architecture
+        self.write_localized(
+            &mut text,
+            "overview.os",
+            &[
+                ("name", &overview.os_name),
+                ("version", &overview.os_version),
+                ("architecture", &overview.architecture),
+            ],
         );
-        let _ = writeln!(
-            text,
-            "Kernel: {} | Host: {}",
-            overview.kernel_version, overview.host_name
+        self.write_localized(
+            &mut text,
+            "overview.kernel_host",
+            &[
+                ("kernel", &overview.kernel_version),
+                ("host", &overview.host_name),
+            ],
         );
-        let _ = writeln!(
-            text,
-            "CPU: {} | Cores: {:?} physical / {} logical",
-            overview.cpu_model, overview.physical_cores, overview.logical_cores
+        let physical = display_optional(overview.physical_cores, &self.i18n);
+        let logical = overview.logical_cores.to_string();
+        self.write_localized(
+            &mut text,
+            "overview.cpu",
+            &[
+                ("model", &overview.cpu_model),
+                ("physical", &physical),
+                ("logical", &logical),
+            ],
         );
-        let _ = writeln!(
-            text,
-            "Memory: {} total / {} available",
-            format_bytes(overview.memory_total_bytes),
-            format_bytes(overview.memory_available_bytes)
+        let total = format_bytes(overview.memory_total_bytes);
+        let available = format_bytes(overview.memory_available_bytes);
+        self.write_localized(
+            &mut text,
+            "overview.memory",
+            &[("total", &total), ("available", &available)],
         );
         self.append_hardware_text(&mut text, overview);
         self.append_framework_text(&mut text, overview);
         text
     }
 
+    fn write_localized(&self, text: &mut String, key: &str, arguments: &[(&str, &str)]) {
+        let line = self.i18n.format_values(key, arguments);
+        let _ = writeln!(text, "{line}");
+    }
+
     fn append_hardware_text(&self, text: &mut String, overview: &SystemOverview) {
         for module in &overview.memory_modules {
-            let _ = writeln!(
+            let capacity = format_bytes(module.capacity_bytes.unwrap_or_default());
+            let speed = display_optional(module.speed_mts, &self.i18n);
+            self.write_localized(
                 text,
-                "RAM {}: {} {} {} {:?} MT/s",
-                module.slot,
-                format_bytes(module.capacity_bytes.unwrap_or_default()),
-                module.manufacturer,
-                module.part_number,
-                module.speed_mts
+                "overview.ram",
+                &[
+                    ("slot", &module.slot),
+                    ("capacity", &capacity),
+                    ("manufacturer", &module.manufacturer),
+                    ("part", &module.part_number),
+                    ("speed", &speed),
+                ],
             );
         }
         for disk in &overview.disks {
-            let _ = writeln!(
+            let size = format_bytes(disk.size_bytes.unwrap_or_default());
+            self.write_localized(
                 text,
-                "Disk: {} ({})",
-                disk.model,
-                format_bytes(disk.size_bytes.unwrap_or_default())
+                "overview.disk",
+                &[("model", &disk.model), ("size", &size)],
             );
         }
         for volume in &overview.volumes {
-            let _ = writeln!(
+            let total = format_bytes(volume.total_bytes);
+            let free = format_bytes(volume.available_bytes);
+            self.write_localized(
                 text,
-                "Volume {} [{}]: {} total / {} free",
-                volume.mount_point,
-                volume.file_system,
-                format_bytes(volume.total_bytes),
-                format_bytes(volume.available_bytes)
+                "overview.volume",
+                &[
+                    ("mount", &volume.mount_point),
+                    ("filesystem", &volume.file_system),
+                    ("total", &total),
+                    ("free", &free),
+                ],
             );
         }
         self.append_display_network_text(text, overview);
@@ -523,45 +573,71 @@ impl App {
 
     fn append_display_network_text(&self, text: &mut String, overview: &SystemOverview) {
         for monitor in &overview.monitors {
-            let _ = writeln!(text, "Monitor {}: {}", monitor.name, monitor.details);
+            self.write_localized(
+                text,
+                "overview.monitor",
+                &[("name", &monitor.name), ("details", &monitor.details)],
+            );
         }
         for network in &overview.networks {
-            let _ = writeln!(
+            let addresses = network.ip_addresses.join(", ");
+            self.write_localized(
                 text,
-                "Network {} [{}]: {}",
-                network.name,
-                network.mac_address,
-                network.ip_addresses.join(", ")
+                "overview.network",
+                &[
+                    ("name", &network.name),
+                    ("mac", &network.mac_address),
+                    ("addresses", &addresses),
+                ],
             );
         }
         for warning in &overview.warnings {
-            let _ = writeln!(text, "Warning: {warning}");
+            self.write_localized(text, "overview.warning", &[("warning", warning)]);
         }
     }
 
     fn append_framework_text(&self, text: &mut String, overview: &SystemOverview) {
         let status = &overview.framework;
-        let _ = writeln!(text, "TUI path: {}", overview.tui_path.display());
-        let _ = writeln!(
+        let path = overview.tui_path.display().to_string();
+        self.write_localized(text, "overview.tui_path", &[("path", &path)]);
+        let installed = if status.installed {
+            "overview.installed"
+        } else {
+            "overview.not_installed"
+        };
+        let installed = self.i18n.t(installed).to_string();
+        let version = status
+            .version
+            .as_deref()
+            .unwrap_or_else(|| self.i18n.t("common.unknown"))
+            .to_string();
+        self.write_localized(
             text,
-            "Framework: {} | version: {}",
-            if status.installed {
-                "installed"
-            } else {
-                "not installed"
-            },
-            status.version.as_deref().unwrap_or("unknown")
+            "overview.framework",
+            &[("status", &installed), ("version", &version)],
         );
-        let _ = writeln!(
+        let git = status.git_present.to_string();
+        let uv = status.uv_present.to_string();
+        let venv = status.venv_present.to_string();
+        self.write_localized(
             text,
-            "Git: {} | uv: {} | .venv: {}",
-            status.git_present, status.uv_present, status.venv_present
+            "overview.tools",
+            &[("git", &git), ("uv", &uv), ("venv", &venv)],
         );
-        let _ = writeln!(
-            text,
-            "Public IP: {} (press p to refresh)",
-            self.public_ip.as_deref().unwrap_or("not fetched")
-        );
+        let address = self.public_ip_text();
+        self.write_localized(text, "overview.public_ip", &[("address", &address)]);
+    }
+
+    fn public_ip_text(&self) -> String {
+        if let Some(address) = &self.public_ip {
+            return address.clone();
+        }
+        if let Some(error) = &self.public_ip_error {
+            return self
+                .i18n
+                .format_values("overview.unavailable", &[("error", error)]);
+        }
+        self.i18n.t("overview.not_fetched").to_string()
     }
 
     fn render_footer(&self, frame: &mut Frame, area: Rect) {
@@ -577,7 +653,12 @@ impl App {
     }
 
     fn render_small_terminal(&self, frame: &mut Frame, area: Rect) {
-        let message = format!("Terminal too small: {}x{}", area.width, area.height);
+        let width = area.width.to_string();
+        let height = area.height.to_string();
+        let message = self.i18n.format_values(
+            "terminal.too_small",
+            &[("width", &width), ("height", &height)],
+        );
         frame.render_widget(Paragraph::new(message), area);
     }
 
@@ -596,6 +677,15 @@ fn language_display_name(language: Language) -> &'static str {
         Language::French => "Français",
         Language::Russian => "Русский",
     }
+}
+
+fn display_optional<T>(value: Option<T>, i18n: &I18n) -> String
+where
+    T: std::fmt::Display,
+{
+    value
+        .map(|value| value.to_string())
+        .unwrap_or_else(|| i18n.t("common.unknown").to_string())
 }
 
 fn format_bytes(bytes: u64) -> String {
@@ -696,5 +786,87 @@ mod tests {
         assert!(rendered.contains("Activity"));
         assert!(rendered.contains("Ready"));
         assert!(rendered.contains("logs/tui_setup.log"));
+    }
+
+    #[test]
+    fn activity_automatically_scrolls_wrapped_output_to_the_latest_line() {
+        let temporary = tempfile::tempdir().expect("创建临时目录");
+        let preferences = Preferences {
+            needs_language_selection: true,
+            ..Preferences::default()
+        };
+        let mut app = App::new(preferences, temporary.path().join(".tui/preferences.toml"));
+        app.show_language_selection = false;
+        app.page = Page::Misc;
+        app.workspace.record_output(&"x".repeat(800));
+        app.workspace.record_output("latest-activity-marker");
+
+        let rendered = app.render_text(80, 30).expect("渲染界面");
+
+        assert!(rendered.contains("latest-activity-marker"));
+    }
+
+    #[test]
+    fn chinese_overview_translates_framework_and_network_labels() {
+        let temporary = tempfile::tempdir().expect("创建临时目录");
+        let preferences = Preferences {
+            language: Language::Chinese,
+            needs_language_selection: true,
+        };
+        let mut app = App::new(preferences, temporary.path().join(".tui/preferences.toml"));
+        app.show_language_selection = false;
+        app.overview = Some(SystemOverview::collect(temporary.path()));
+
+        let text = app.overview_text();
+
+        assert!(text.contains("操作系统："), "{text}");
+        assert!(text.contains("框架："), "{text}");
+        assert!(text.contains("公网 IP"), "{text}");
+        assert!(!text.contains("Public IP"));
+    }
+
+    #[test]
+    fn chinese_install_page_translates_tools_empty_release_and_menu() {
+        let temporary = tempfile::tempdir().expect("创建临时目录");
+        let preferences = Preferences {
+            language: Language::Chinese,
+            needs_language_selection: true,
+        };
+        let mut app = App::new(preferences, temporary.path().join(".tui/preferences.toml"));
+        app.show_language_selection = false;
+        app.page = Page::Install;
+
+        let rendered = app.render_text(120, 30).expect("渲染界面");
+        let compact = rendered.replace(' ', "");
+
+        assert!(compact.contains("工具："), "{rendered}");
+        assert!(compact.contains("尚未加载Release"), "{rendered}");
+        assert!(compact.contains("菜单"), "{rendered}");
+        assert!(!rendered.contains("Tools:"));
+        assert!(!rendered.contains("No Releases loaded"));
+    }
+
+    #[test]
+    fn chinese_activity_uses_chinese_status_and_progress_labels() {
+        let temporary = tempfile::tempdir().expect("创建临时目录");
+        let preferences = Preferences {
+            language: Language::Chinese,
+            needs_language_selection: true,
+        };
+        let mut app = App::new(preferences, temporary.path().join(".tui/preferences.toml"));
+        app.show_language_selection = false;
+        app.page = Page::Misc;
+        app.workspace
+            .start_operation(crate::operations::OperationRequest::CleanTemp {
+                root: temporary.path().to_path_buf(),
+            })
+            .expect("启动操作");
+
+        let rendered = app.render_text(100, 30).expect("渲染界面");
+
+        let compact = rendered.replace(' ', "");
+        assert!(compact.contains("状态：正在运行"), "{rendered}");
+        assert!(compact.contains("清理临时文件"));
+        assert!(compact.contains("日志："));
     }
 }

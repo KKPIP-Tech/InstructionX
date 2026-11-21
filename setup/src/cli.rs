@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use clap::Parser;
 
 use crate::app::{App, Page};
-use crate::i18n::{Language, Preferences};
+use crate::i18n::{I18n, Language, Preferences};
 use crate::operations::{OperationUpdate, execute_operation, request_for_action};
 use crate::system::SystemOverview;
 use crate::version::setup_build_version;
@@ -106,12 +106,31 @@ fn execute_action(root: PathBuf, cli: &Cli) -> Result<(), Box<dyn Error>> {
         cli.release_tag.as_deref(),
         cli.yes,
     )?;
-    let success = execute_operation(request, print_update)?;
-    println!("{}", success.summary);
+    let i18n = action_i18n(&root, cli)?;
+    let success = execute_operation(request, |update| print_update(update, &i18n))?;
+    let summary = success.summary_key.map_or_else(
+        || success.summary.clone(),
+        |key| i18n.format(key, &success.summary_args),
+    );
+    println!("{summary}");
     for detail in success.details {
-        println!("{detail}");
+        let text = detail
+            .key
+            .map(|key| i18n.format(key, &detail.args))
+            .unwrap_or(detail.text);
+        println!("{text}");
     }
     Ok(())
+}
+
+fn action_i18n(root: &Path, cli: &Cli) -> Result<I18n, Box<dyn Error>> {
+    let preferences_path = root.join(".tui/preferences.toml");
+    let preferences = Preferences::load(&preferences_path)?;
+    let language = cli
+        .lang
+        .as_deref()
+        .map_or(preferences.language, Language::from_code);
+    Ok(I18n::new(language))
 }
 
 fn print_dry_run(root: &Path, cli: &Cli, action: &str) {
@@ -123,11 +142,12 @@ fn print_dry_run(root: &Path, cli: &Cli, action: &str) {
     println!("Automatic tool installation and confirmations: {}", cli.yes);
 }
 
-fn print_update(update: OperationUpdate) {
+fn print_update(update: OperationUpdate, i18n: &I18n) {
+    let message = i18n.format(update.key, &update.args);
     if update.total > 0 {
-        println!("[{}/{}] {}", update.current, update.total, update.message);
+        println!("[{}/{}] {message}", update.current, update.total);
     } else {
-        println!("  {}", update.message);
+        println!("  {message}");
     }
 }
 
