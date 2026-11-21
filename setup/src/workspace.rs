@@ -199,6 +199,42 @@ impl Workspace {
         }
     }
 
+    pub fn run_action(
+        &mut self,
+        action: &str,
+        archive: Option<&Path>,
+        release_tag: Option<&str>,
+        dry_run: bool,
+        auto_install: bool,
+    ) -> Result<String, Box<dyn Error>> {
+        if dry_run {
+            return Ok(format!(
+                "Dry run: action={action}, archive={archive:?}, release_tag={release_tag:?}"
+            ));
+        }
+        if action == "doctor" {
+            let overview = crate::system::SystemOverview::collect(&self.root);
+            return Ok(format!(
+                "Framework installed: {}",
+                overview.framework.installed
+            ));
+        }
+        let request = crate::operations::request_for_action(
+            &self.root,
+            action,
+            archive,
+            release_tag,
+            auto_install,
+        )?;
+        let success = crate::operations::execute_operation(request, |_| {})?;
+        let mut output = success.summary;
+        for detail in success.details {
+            output.push('\n');
+            output.push_str(&detail.text);
+        }
+        Ok(output)
+    }
+
     pub fn start_operation(&mut self, request: OperationRequest) -> Result<(), Box<dyn Error>> {
         if self.is_running() {
             return Err("Another operation is still running".into());
