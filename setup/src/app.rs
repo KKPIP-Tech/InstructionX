@@ -27,7 +27,7 @@ const HEADER_HEIGHT: u16 = 3;
 const FOOTER_HEIGHT: u16 = 3;
 const ACTIVITY_HEIGHT: u16 = 9;
 const MINIMUM_WIDTH: u16 = 60;
-const MINIMUM_HEIGHT: u16 = 24;
+const MINIMUM_HEIGHT: u16 = 20;
 const EVENT_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_millis(80);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
