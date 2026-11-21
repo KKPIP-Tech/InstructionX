@@ -133,6 +133,12 @@ from core.interfaces import ILocalizationFacade
 | `load_official_plugins()` | 加载官方插件 | List[IPlugin] |
 | `load_thirdparty_plugins()` | 加载第三方插件 | List[IPlugin] |
 | `get_plugin_load_failures()` | 获取最近一次加载的依赖/入口失败列表 | List[PluginLoadFailure] |
+| `get_service_health(plugin_id)` | 获取插件最严重核心服务的健康快照 | HealthSnapshot |
+| `get_unavailable_capabilities(plugin_id)` | 获取完全不可用的核心能力名称列表 | List[str] |
+| `get_service_health_issues()` | 获取全部降级或不可用插件的健康快照 | Dict[str, HealthSnapshot] |
+| `cancel_all_plugin_tasks()` | 取消全部插件拥有的任务并汇总未结束数量 | Dict[str, int] |
+| `release_plugin_resources(plugin_id)` | 回收插件任务、订阅、API 和生命周期资源 | ResourceReleaseReport |
+| `shutdown_plugins()` | 卸载全部插件并返回逐插件回收报告 | List[ResourceReleaseReport] |
 | `get_all_plugins()` | 获取所有插件 | List[IPlugin] |
 | `get_plugin_by_id(plugin_id)` | 根据 UUID 获取插件 | Optional[IPlugin] |
 | `get_plugin_by_name(name)` | 根据名称获取插件 | Optional[IPlugin] |
@@ -167,6 +173,17 @@ from core.interfaces import ILocalizationFacade
 显示后统一弹出提示框。`docs/`、`assets/` 等不含插件特征文件的资源目录会被
 静默跳过，不会被误报为插件。
 
+核心服务健康类型定义在 `core/interfaces/health.py`：`HealthStatus` 包含
+`UNKNOWN / HEALTHY / DEGRADED / UNAVAILABLE`，`HealthErrorCode` 包含配置、资源、
+网络、权限、持久化、插件代码和内部错误。`HealthSnapshot` 包含状态、错误码、
+脱敏消息、UTC 时间戳和关联 ID。`core/plugin/service_health.py` 按插件与能力
+聚合状态，任一必需服务不可用不会被后续健康服务覆盖。
+
+`core/application_lifecycle.py` 提供 `ApplicationLifecycle.shutdown(timeout=15.0)`，
+按外部调用、任务、MCP、插件、任务管理器、LLM、用量、DataProvider、UI 的顺序
+关闭资源并返回 `ShutdownReport`。报告含逐步骤状态、耗时、异常和全局超时；
+重复调用返回 skipped，单步失败不阻断后续清理。
+
 #### GitHubPluginInstaller 主要 API
 
 **文件**: `core/plugin/github_plugin_installer.py`
@@ -179,6 +196,8 @@ from core.interfaces import ILocalizationFacade
 | `install_from_zip(zip_path, target_dir=None, progress_callback=None, selected_plugins=None, target_scope=None)` | 从本地 zip 安装/升级/降级插件（自动识别单插件与插件集；`selected_plugins` 按包内相对路径或插件 id 筛选；`target_scope` 决定新插件的目标目录，已安装同 id 插件沿用原目录） | List[InstallResult] |
 | `get_available_versions(source_url, descriptor_path="", key_id="")` | 使用绑定 Key 列出远程仓库可用版本（按插件版本号降序） | List[ReleaseInfo] |
 | `install_release(owner, repo, tag, target_dir, selected_plugins=None, progress_callback=None, key_id="")` | 使用绑定 Key 安装指定 GitHub Release tag | List[InstallResult] |
+
+`PluginCandidate`、`PluginInfo` 和 `ReleaseInfo` 末尾均带可选 `framework_compatibility` 结果字段，由 `core/plugin/framework_compatibility.py` 根据 `compatible_framework_versions` 生成。结果包含 `status`、`current_version`、`declared_versions`、`invalid_entries` 和 `is_verified`。只有合法非空数组精确包含当前 `APP_VERSION` 时 `is_verified=True`；缺字段、未列入或非法声明均为未验证，由安装界面允许用户取消或主动继续。上述安装方法的公开签名不变。
 
 `core/github/` 同时提供 `GitHubKeyManager`、`PluginSourceKeyBinder` 和 `GitHubApiClient`；这些是框架内部服务，不加入面向插件的 `PluginServices`。
 
@@ -241,6 +260,8 @@ from core.interfaces import ILocalizationFacade
 | `subscribe(subscriber_id, target_plugin_id, target_key, callback)` | 订阅数据 | None |
 | `unsubscribe(subscriber_id, target_plugin_id=None)` | 取消订阅，target_plugin_id 为 None 时取消所有订阅 | None |
 | `publish(publisher_id, key, value, namespace)` | 发布数据 | None |
+| `publish_async(publisher_id, key, value, policy)` | 持久化后按 REJECT/COALESCE/DROP_OLDEST 策略异步分发 | PublishReceipt |
+| `get_event_delivery_stats(subscriber_id)` | 获取异步队列、送达、合并、丢弃、失败和延迟指标 | EventDeliveryStats |
 | `save_asset(plugin_id, filename, content)` | 保存资源 | str |
 | `get_asset_path(relative_path)` | 获取绝对路径 | str |
 | `load_asset(relative_path)` | 加载资源 | bytes |
@@ -248,6 +269,7 @@ from core.interfaces import ILocalizationFacade
 | `load_data(force_reload)` | 加载数据 | Dict |
 | `save_data()` | 保存数据 | None |
 | `clear_cache()` | 清除缓存 | None |
+| `close()` | 停止异步事件邮箱并关闭持久化连接；JSON 后端也可安全重复调用，SQLite 后续访问可按惰性连接语义重开 | None |
 | `get_all_plugins()` | 获取所有插件 | Dict |
 | `get_plugin_info(instance_id)` | 获取插件信息 | Optional[Dict] |
 | `reset_all_data()` | 重置所有数据 | None |
@@ -276,7 +298,10 @@ from core.interfaces import ILocalizationFacade
 | `BackgroundTaskManager()` | 获取单例实例（单例模式） | BackgroundTaskManager |
 | `register_sync_task(plugin_id, name, func, callback, args, kwargs)` | 注册同步任务 | str (task_id) |
 | `register_async_task(plugin_id, name, func, callback, args, kwargs)` | 注册异步任务 | Optional[str]（task_id；shutdown 后为 None） |
-| `register_scheduled_task(plugin_id, name, func, interval, callback, args, kwargs)` | 注册定时任务 | Optional[str]（task_id；shutdown 后为 None） |
+| `register_priority_task(plugin_id, name, func, priority, args, kwargs)` | 按 `TaskPriority` 注册独立池短任务 | Optional[str]（队列/配额满或 shutdown 后为 None） |
+| `register_cancellable_task(plugin_id, name, func, callback, args, kwargs, priority)` | 注册首参数接收 `CancellationToken` 的协作任务 | Optional[str] |
+| `request_task_cancellation(task_id, timeout=None)` | 请求协作取消，实际停止前为 `CANCELLING` | CancellationResult |
+| `register_scheduled_task(plugin_id, name, func, interval, callback, args, kwargs, overlap_policy)` | 注册定时任务并指定重入策略 | Optional[str]（task_id；shutdown 后为 None） |
 | `register_scheduled_task_factory(plugin_id, func, callback)` | 注册任务工厂 | None |
 | `restore_scheduled_tasks(plugin_id)` | 恢复定时任务 | int |
 | `enable_scheduled_task(task_id)` | 启用定时任务 | bool |
@@ -293,7 +318,7 @@ from core.interfaces import ILocalizationFacade
 | `get_all_tasks()` | 获取所有任务 | List[BackgroundTask] |
 | `get_task_status(task_id)` | 获取任务状态 | Optional[TaskStatus] |
 | `get_scheduled_tasks(plugin_id)` | 获取定时任务 | List[ScheduledTask] |
-| `cancel_task(task_id)` | 取消任务 | bool |
+| `cancel_task(task_id)` | 旧状态取消 API，运行中函数仍可能继续执行；新代码使用 `request_task_cancellation` | bool |
 | `clear_completed_tasks(plugin_id)` | 清理已完成任务 | int |
 | `shutdown()` | 关闭任务管理器 | None |
 
@@ -349,8 +374,9 @@ from core.interfaces import ILocalizationFacade
 | `remove_provider(name)` | 移除 Provider | bool |
 | `reload_config()` | 重新加载配置（公开入口已具备版本比对惰性刷新，本方法为强制热重载） | None |
 | `get_provider_health(name=None)` | 健康状态（None 返回全量 dict） | Dict 或 Tuple |
-| `check_provider(name)` | 连通性检查（强制刷新模型列表） | Tuple[bool, Optional[str], int] |
-| `check_model(provider_name, model_id, timeout)` | 单模型最小化探测 | ModelCheckResult |
+| `check_provider(name)` | 连通性检查（旧返回签名，失败返回 `(False, 错误, 0)`） | Tuple[bool, Optional[str], int] |
+| `check_provider_detailed(provider_id)` | 返回真实模型数、错误和 `HealthStatus`，支持熔断恢复 | ProviderCheckResult |
+| `check_model(provider_name, model_id, timeout)` | 单模型最小化探测，timeout 仅作用于本次请求 | ModelCheckResult |
 | `resolve_provider_name(name, feature)` | 解析 "default" 为实际实例 id（带粘性缓存） | str |
 | `get_default_provider_id(feature)` | 默认实例解析结果（不抛异常） | Optional[str] |
 | `close()` | 关闭所有提供商连接 | None |
@@ -401,6 +427,8 @@ from core.interfaces import ILocalizationFacade
 | `get_usage_stats(conversation_id?)` | 获取用量统计（conversation_id 不存在时返回 None） | Optional[UsageStats] |
 | `validate_provider(provider)` | 验证 Provider 配置 | Tuple[bool, str] |
 | `last_stream_response` (property) | 最近一次流式请求的聚合响应 | Optional[ChatResponse] |
+| `last_stream_metrics` (property) | 首 token、总耗时和中断原因（按线程隔离） | Dict[str, Any] |
+| `request_timeout` / `request_id`（kwargs） | 请求级超时和 X-Request-ID，不改变共享 Provider 配置，重试复用 ID | 按调用生效 |
 
 > 已移除：`get_provider` / `get_all_providers` / `get_raw_provider` / `get_cached_models` / `get_available_providers` / `load_image_as_base64`（后者迁至 `utils/image_utils.py`）。
 
@@ -418,7 +446,26 @@ from core.interfaces import ILocalizationFacade
 | `delete_conversation(conv_id)` | 删除对话 | bool |
 | `get_usage_stats(conv_id?)` | 获取用量统计（conv_id 不存在时返回 None） | Optional[UsageStats] |
 
-### 5.5 ToolCallExecutor / ToolRegistry
+### 5.5 用量与会话持久化
+
+**文件**: `core/llm/usage_record_store.py`、`core/llm/usage_sqlite_store.py`、`core/llm/conversation_sqlite_store.py`
+
+| 接口 | 说明 | 返回值 |
+|------|------|--------|
+| `UsageRecordStore.record(record)` | SQLite 事务追加用量，写失败显式抛出 | None |
+| `UsageRecordStore.get_records(...)` | 按时间、Provider、模型、会话和分页查询 | List[UsageRecord] |
+| `UsageRecordStore.aggregate(...)` | 按 Provider、模型或日期聚合 | Dict |
+| `UsageRecordStore.flush(timeout=2.0)` | 冲刷 SQLite 或旧 JSON 兼容队列，超时不伪报成功 | None |
+| `UsageRecordStore.flush_detailed(timeout=2.0)` | 返回成功、未落盘数和错误信息 | FlushReport |
+| `ConversationStore.create_conversation(conversation)` | 创建或更新会话元数据 | None |
+| `ConversationStore.import_conversations(conversations)` | 单事务批量迁移旧会话，失败整体回滚 | None |
+| `ConversationStore.append_turn(conversation_id, turn)` | 在事务中更新统计并追加完整轮次 | WriteReceipt |
+| `ConversationStore.load_conversations()` | 恢复全部会话及有序消息 | Dict[str, Conversation] |
+| `ConversationStore.delete_conversation(conversation_id)` | 删除会话及级联消息 | bool |
+| `ConversationStore.flush()` | WAL 被动检查点和快速完整性检查 | None |
+| `ConversationStore.close()` | 关闭数据库连接 | None |
+
+### 5.6 ToolCallExecutor / ToolRegistry
 
 **文件**: `core/llm/tool_call_executor.py`
 
@@ -432,7 +479,7 @@ from core.interfaces import ILocalizationFacade
 | `ToolCallExecutor` | `chat_with_tools(messages, provider?, model?, max_turns?, ...)` | 工具调用循环，返回 `ToolChatResult` |
 | `ToolCallExecutor` | `chat_with_tools(..., stream, stream_callback)` | 流式工具调用，返回 `ToolChatResult` |
 
-### 5.6 MCPManager
+### 5.7 MCPManager
 
 **文件**: `core/mcp/manager.py`
 

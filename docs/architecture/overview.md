@@ -154,7 +154,9 @@ graph TB
 - 按实例 `adapter` 查询适配器注册表创建实例（注册表键为适配器家族）
 - 统一 API 接口（chat、stream_chat、embed）
 - 模型列表获取与缓存（缓存键为实例 id）
-- 连通性检查（`check_provider` / `check_model`）与健康跟踪
+- 连通性检查（`check_provider` / `check_provider_detailed` / `check_model`）与真实健康跟踪、失败熔断和半开恢复
+- 启动按注册顺序逐个读取磁盘缓存并完成远程刷新，`ProviderSupervisor` 单 worker 顺序写缓存
+- 请求级 `request_timeout` 与 `X-Request-ID`，流式首 token、总耗时和中断指标
 - 配置版本比对惰性刷新（无需手动 `reload_config()`）
 - Function Calling 支持
 
@@ -192,7 +194,9 @@ graph TB
 - `core/llm/pricing.py` — 提供 `DEFAULT_PRICING` 定价表
 - `core/llm/types_cache.py` — 统一缓存信息类型（CacheInfo、CacheType）
 - `core/llm/cache_adapter.py` — 各 Provider 缓存适配器
-- `core/llm/usage_record_store.py` — 用量记录持久化（`data/llm_usage.json`）
+- `core/llm/usage_record_store.py` — 用量记录持久化门面（默认 `data/llm_usage.db`）
+- `core/llm/usage_sqlite_store.py` — 用量 SQLite 增量事务与 JSON 批量迁移
+- `core/llm/conversation_sqlite_store.py` — 会话与消息 SQLite 按轮次增量提交
 
 ### 3.5 PluginVersion（版本管理）
 
@@ -293,7 +297,7 @@ graph TB
 | `ILLMService` | `i_llm_service.py` | LLM 插件服务接口 | `core/llm/plugin_service.py`（`LLMPluginService` 显式继承） |
 | `ILogger` | `i_logger.py`（`core/interfaces/` 重导出） | 日志接口 | `utils/logging_tools.py`（LoggerManager） |
 | `ILocalizationFacade` | `i_localization.py` | 插件文案取词门面接口（绑定插件 UUID） | `core/i18n/facade.py` 的 `PluginI18nFacade` |
-| `PluginServices` | `plugin_services.py` | 服务封装（依赖注入容器，8 字段） | — |
+| `PluginServices` | `plugin_services.py` | 服务封装（依赖注入容器，9 字段，含 observability） | — |
 
 **导入指南**:
 ```python
@@ -313,6 +317,43 @@ from core.interfaces import (
 ```
 
 **详细文档**: [接口层概述](../core/interfaces/overview.md)
+
+### 3.13 框架更新子系统
+
+**文件位置**: `core/framework_update/`、`ui/dialog/update_dialog.py`
+
+**职责**:
+- 仅在用户点击「帮助 → 检查更新...」后读取官方 GitHub Release，不进行启动或定时自动检查。
+- 完整分页读取已发布 Release（含 Pre-release、排除 Draft），按发布时间倒序生成时间线并定位当前版本。
+- 通过 `BackgroundTaskManager` 执行一次性检查，结果经 `run_in_ui_thread` 返回 UI；弹窗关闭后忽略迟到结果。
+- 用户明确选择更高版本后，由 `FrameworkUpdateLauncher` 校验目标与本地修改，启动外部安装向导下载指定 Tag；更新过程不自动重启应用。
+
+**模块划分**: `models.py`（Release/结果模型与 Tag 解析）、`checker.py`（Release 检查与时间线）、`launcher.py`（原生 Setup 启动保护）。
+
+### 3.14 原生 Setup 子系统
+
+**文件位置**: `setup/`（Rust crate）、`core/plugin/setup_dependency_cli.py`
+
+**职责**:
+- 以 Ratatui + Crossterm 提供 Windows/macOS/Linux 共用的原生 TUI，不使用脚本语言实现界面。
+- 首次提供中/英（默认）/法/俄语言选择并持久化偏好，支持 0–5 六类页面和兼容非交互 CLI。
+- 采集系统硬件与框架状态；执行安装、同版本修复、Release 升级、环境包管理和环境重建。
+- 通过后台工作线程执行耗时操作，以 Activity 区域持续显示步骤与结果；交互和 CLI 共用操作执行器，过程写入 `logs/tui_setup.log`。
+- 复用框架插件依赖安装与更新检查后端，逐插件报告结果；创建三平台无窗口桌面入口。
+- 开发者本机构建并校验 Windows x64/ARM64 预编译二进制与 SHA256，随源码包分发；不使用 GitHub Actions 构建 Setup，Windows 用户不需要安装 Rust。macOS 预编译版本为未来选项。
+
+**模块划分**: `app.rs`（页面与终端事件）、`workspace.rs`（操作确认与结果应用）、`operations.rs`（后台执行、进度事件与日志）、`system/`（平台信息）、`github.rs`（Release）、`actions.rs`（备份回滚）、`uv.rs`（环境）、`plugins.rs`（插件）、`shortcuts.rs`（桌面入口）、`cli.rs`（兼容接口）。
+
+### 3.15 可靠性与可选进程隔离
+
+**文件位置**: `core/application_lifecycle.py`、`core/observability/`、`core/plugin_host/`、`core/external_watchdog.py`
+
+- `ApplicationLifecycle` 统一关闭外部调用、任务、MCP、插件、LLM 和存储，输出逐步骤与全局截止期报告。
+- 分池任务、有界异步事件、增量 SQLite 用量/会话、健康快照和框架事件提供可观测的显式故障边界；异步事件不是可靠消息队列。
+- `PluginHost` 只承载显式选择的无 UI、可 JSON 序列化 Service/API，提供版本化长度帧 RPC、有界调用、心跳、有限重启、熔断和崩溃回收；默认 `PluginManager` 同进程加载不变。
+- 外部 watchdog 只执行用户配置的 `none/exit/restart`，不执行设备控制或安全联锁。隔离不是权限沙箱，断电与行业业务正确性仍需外部验证。
+
+部署、灰度与实测限制见 [部署指南](foundation-deployment-guide.md) 和 [验证报告](foundation-verification-report.md)。
 
 ---
 
@@ -385,6 +426,8 @@ InstructionX/
 │   │   ├── plugin_module_loader.py # 插件入口导入与 IPlugin 子类发现
 │   │   ├── tool_name.py       # 工具命名/清洗工具
 │   │   ├── dependency_manager.py  # 插件依赖管理
+│   │   ├── framework_compatibility.py # 框架兼容性声明评估
+│   │   ├── package_discovery.py   # 本地包识别与兼容性结果传播
 │   │   └── github_plugin_installer.py  # GitHub 插件安装器
 │   ├── github/               # GitHub 私有仓库访问子系统
 │   │   ├── api_client.py     # GitHub REST API 与状态码映射
@@ -451,10 +494,12 @@ InstructionX/
 │           └── openai_compatible.py  # 自定义 OpenAI 兼容兜底适配器
 │
 ├── ui/                       # UI 模块
-│   ├── InstructionX_UIKit/  # UIKit 组件库（alpha-v1.0.3：设计令牌 + ThemeManager + 58 组件/布局/图表
-│   │                        #   + 代码编辑器，同步副本不修改）
+│   ├── InstructionX_UIKit/  # UIKit 组件库（alpha-v1.0.4：设计令牌 + ThemeManager + 59 组件/布局/图表
+│   │                        #   + 蓝图 + 代码编辑器 + 完整 Iconoir，同步副本不修改）
 │   ├── uikit_bootstrap.py   # sys.path 引导（使 UIKit 以顶层包可导入，main.py 第一个业务 import）
 │   ├── uikit_theme.py       # 全局主题入口（apply_uikit_theme 三模式 + 排除区兼容附录）
+│   ├── rhi_surface.py       # 顶层 RHI Surface 匹配（窗口标志确定后、show 前调用）
+│   ├── native_window_frame.py # Windows 非分层宿主与 DWM 圆角/阴影，其他平台保持原路径
 │   ├── main_window.py       # 主窗口
 │   ├── title_bar.py        # 自定义标题栏
 │   ├── usage_panel/         # 用量查询面板（包：panel/kpi_card/trend_chart/history_table/formatting）
@@ -491,8 +536,8 @@ InstructionX/
 │   ├── data.db-wal           # WAL 日志（运行时自动生成）
 │   ├── data.db-shm           # WAL 共享内存索引（运行时自动生成）
 │   ├── tasks.json
-│   ├── llm_usage.json
-│   ├── conversations.json    # LLM 会话持久化
+│   ├── llm_usage.db          # LLM 用量 SQLite 增量存储（旧 llm_usage.json 仅迁移/兼容）
+│   ├── conversations.db      # LLM 会话 SQLite 按轮次存储（旧 conversations.json 仅迁移/导出）
 │   ├── fonts/                # 框架安装字体目录（fonts.json 注册表，schema v1）
 │   ├── plugin_identity/      # 插件 UUID 回退存储（{插件目录名}.json）
 │   └── assets/
@@ -529,7 +574,7 @@ InstructionX/
 ```mermaid
 flowchart TD
     A[main] --> B[QApplication 创建]
-    B --> B1[QQuickWindow.setGraphicsApi OpenGL<br/>统一图形 API，避免 GL/Qt Quick 混用]
+    B --> B1[RHI 由 Qt 按平台自动选择<br/>不再强制 OpenGL]
     B1 --> B2[uikit_bootstrap 扩展 sys.path<br/>使 InstructionX_UIKit 以顶层包可导入]
     B2 --> C[apply_uikit_theme<br/>UIKit 全局主题，auto 自动检测系统主题]
     C --> D[LoggerManager 初始化]
@@ -538,7 +583,7 @@ flowchart TD
     D3 --> E[InstructionXMainWindow 创建]
     E --> F[创建自定义标题栏 + 菜单栏]
     F --> G[_create_main_layout]
-    G --> G0[_prewarm_blueprint_viewport<br/>预创建隐藏蓝图画布<br/>让顶层原生句柄首次创建即含 GL 子控件]
+    G --> G0[prepare_rhi_surface<br/>窗口标志确定后、show 前匹配顶层 RHI Surface]
     G0 --> G1[初始化 PluginManager]
     G1 --> G2[load_plugins<br/>加载官方 + 第三方插件<br/>注册插件语言包]
     G2 --> G3[apply_custom_order<br/>应用自定义排序]
@@ -549,7 +594,7 @@ flowchart TD
     K --> L[等待用户交互]
 ```
 
-> **托盘与退出**：`main.py` 通过 `setQuitOnLastWindowClosed(False)` 切断「最后一个窗口关闭即退出」的隐式链路，退出时机完全由代码显式控制。主窗口 `closeEvent` 拦截全部关闭路径（自绘叉号 / Alt+F4 / 任务栏关闭），每次弹出 `CloseConfirmDialog` 询问「退出程序 / 最小化到托盘 / 取消」；托盘菜单「退出」与 Windows 注销/关机（`commitDataRequest` 守卫置 `_force_quit`）静默直退。`application.exec()` 返回后依次执行 `BackgroundTaskManager.shutdown()` 与 LLM 用量记录冲刷（`UsageRecordStore.flush()`）。详见 [系统托盘](../ui/system-tray.md)。
+> **托盘与退出**：`main.py` 通过 `setQuitOnLastWindowClosed(False)` 切断「最后一个窗口关闭即退出」的隐式链路，退出时机完全由代码显式控制。主窗口 `closeEvent` 拦截全部关闭路径（自绘叉号 / Alt+F4 / 任务栏关闭），每次弹出 `CloseConfirmDialog` 询问「退出程序 / 最小化到托盘 / 取消」；托盘菜单「退出」与 Windows 注销/关机（`commitDataRequest` 守卫置 `_force_quit`）静默直退。`application.exec()` 返回后由 `ApplicationLifecycle` 统一执行停止外部调用、停止新任务、取消插件任务、关闭 MCP、卸载插件、关闭任务管理器与 LLM、冲刷用量、关闭 DataProvider，最后释放 UI；每一步记录耗时、异常和全局截止期结果。详见 [系统托盘](../ui/system-tray.md)。
 
 ---
 
@@ -633,3 +678,6 @@ def get_mcp_manager() -> "MCPManager":
 - [后台任务概述](../core/background-task/overview.md)
 - [LLM Provider 概述](../core/llm-provider/overview.md)
 - [MCP 协议模块概述](../core/mcp/overview.md)
+- [行业辅助部署、灰度与回滚指南](foundation-deployment-guide.md)
+- [基础框架可靠性验证报告](foundation-verification-report.md)
+- [关键插件进程隔离与 watchdog](plugin-isolation.md)

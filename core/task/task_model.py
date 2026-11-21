@@ -6,6 +6,7 @@
 """
 
 import json
+import time
 import uuid
 import threading
 from datetime import datetime, timedelta
@@ -15,6 +16,7 @@ from dataclasses import dataclass, field
 # TaskType/TaskStatus 单一来源在接口层，此处 re-export 以保持
 # `from core.task.task_model import TaskType, TaskStatus` 导入路径可用
 from ..interfaces.i_task_manager import TaskType, TaskStatus  # noqa: F401
+from .cancellation import ScheduledOverlapPolicy
 
 # 定时任务默认执行间隔（秒），dataclass 字段默认值与 from_dict 反序列化共用
 DEFAULT_SCHEDULED_INTERVAL = 60
@@ -149,6 +151,11 @@ class BackgroundTask:
         self.error = error
         self.finished_at = datetime.now()
 
+    def mark_cancelling(self) -> None:
+        """标记已请求取消但尚未确认停止，不写入完成时间。"""
+        self.status = TaskStatus.CANCELLING
+        self.finished_at = None
+
     def mark_cancelled(self) -> None:
         """标记任务为已取消状态，记录取消时间"""
         self.status = TaskStatus.CANCELLED
@@ -176,9 +183,12 @@ class ScheduledTask:
     callback: Optional[Callable] = field(default=None, repr=False)
     args: tuple = field(default_factory=tuple)
     kwargs: dict = field(default_factory=dict)
+    # 单调时钟计划时间，仅用于运行时调度，避免系统时间回拨影响
+    next_run_monotonic: Optional[float] = field(default=None, repr=False)
 
     # 控制属性
     enabled: bool = True
+    overlap_policy: str = ScheduledOverlapPolicy.COALESCE
 
     # 时间戳
     last_run: Optional[datetime] = None
@@ -201,6 +211,7 @@ class ScheduledTask:
             "interval": self.interval,
             "func_name": self.func_name,
             "enabled": self.enabled,
+            "overlap_policy": self.overlap_policy,
             "args": list(self.args) if self.args else [],
             "kwargs": dict(self.kwargs) if self.kwargs else {},
             "last_run": self.last_run.isoformat() if self.last_run else None,
@@ -227,6 +238,8 @@ class ScheduledTask:
         # 旧版记录没有 func_name 字段，缺省为空串（恢复时回退到插件唯一工厂）
         task.func_name = data.get("func_name", "")
         task.enabled = data.get("enabled", True)
+        policy = data.get("overlap_policy", ScheduledOverlapPolicy.COALESCE)
+        task.overlap_policy = policy if policy in ScheduledOverlapPolicy.ALL else ScheduledOverlapPolicy.COALESCE
 
         # 解析参数
         task.args = tuple(data.get("args", []))
@@ -254,6 +267,7 @@ class ScheduledTask:
         基于当前时间加上间隔秒数计算下一次执行的时间点。
         """
         self.next_run = datetime.now() + timedelta(seconds=self.interval)
+        self.next_run_monotonic = time.monotonic() + self.interval
 
 
 @dataclass

@@ -19,7 +19,7 @@ from PySide6.QtGui import (
     QAction, QCursor, QMouseEvent, QColor, QCloseEvent, QIcon, QSessionManager,
     QImage, QPainter, QPixmap
 )
-from PySide6.QtCore import Qt, QRectF, QEvent
+from PySide6.QtCore import Qt, QRectF, QEvent, QTimer
 
 # ===================================================================
 # 自定义工具
@@ -37,6 +37,7 @@ from ui.title_bar import CustomTitleBar
 from ui.usage_panel import UsagePanel
 from ui.tray import TrayIconManager
 from ui.dialog.close_confirm_dialog import CloseChoice, CloseConfirmDialog
+from ui.dialog.update_dialog import UpdateDialog
 from core.plugin.manager import PluginManager
 from core.plugin.plugin_startup import (
     FAILURE_DEPENDENCY_CHECK,
@@ -50,15 +51,17 @@ from core.plugin.plugin_startup import (
 from core.github import get_github_key_manager
 from core.data.data_provider import DataProvider, DataNamespace
 from core.interfaces import IPlugin, TaskStatus
+from core.interfaces.health import HealthSnapshot, sanitize_health_message
+from core.plugin.service_health import PluginServiceHealth
 from core.task.background_task import BackgroundTaskManager
 from core.llm.llm_provider import get_llm_provider
 from core.i18n import tr, get_language_manager
 from utils.logging_tools import LoggerManager, get_name
 from ui.uikit_theme import apply_uikit_theme, current_theme_mode
+from ui.rhi_surface import prepare_rhi_surface
+from ui.native_window_frame import prepare_native_window_frame
 from InstructionX_UIKit import T
 from InstructionX_UIKit.components import Dialog
-from InstructionX_UIKit.blueprint import BlueprintCanvas, BlueprintGraph
-from InstructionX_UIKit.blueprint.viewport import gl_available
 
 
 # ===================================================================
@@ -197,9 +200,13 @@ class InstructionXMainWindow(QMainWindow):
         self._logger = LoggerManager()
         self._startup_failure_dialog_shown = False
 
-        # 设置无边框窗口
+        # 窗口标志确定后先配置原生边框，再匹配 RHI Surface，避免首个
+        # Canvas/RHI 子控件在可见窗口上触发原生句柄重建；Windows 不使用
+        # 会把缩放后新增输入区域留给后台窗口的逐像素分层宿主。
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        prepare_native_window_frame(self)
+        prepare_rhi_surface(self)
 
         # 设置初始窗口大小
         self.setMinimumSize(WINDOW_MIN_WIDTH, WINDOW_MIN_HEIGHT)
@@ -237,18 +244,14 @@ class InstructionXMainWindow(QMainWindow):
         # 创建主布局内容
         self._create_main_layout()
 
-        # 预热蓝图 GL 视口（须在窗口 show() 之前，见该方法 docstring）
-        self._prewarm_blueprint_viewport()
-
         # 应用容器样式
         self._update_container_style()
 
-        # 窗口阴影：预渲染位图 + 9 宫格绘制（见 paintEvent）。
+        # 容器内阴影：预渲染位图 + 9 宫格绘制（见 paintEvent）。
         # 不用 QGraphicsDropShadowEffect：它会把整个容器子树的绘制重定向到
-        # 离屏缓存，而 QOpenGLWidget（蓝图 GL 视口）的帧更新无法触发效果源
-        # 缓存失效，窗口化模式下画布会长期呈现旧帧（拖拽时画面卡死，最大化
-        # 时因阴影被禁用而不复发）；也不用 DWM 原生阴影（WM_NCCALCSIZE 方案
-        # 曾导致 Qt 与 Windows 坐标系错位）。
+        # 离屏缓存，而硬件加速视口的帧更新无法触发效果源缓存失效。
+        # Windows 外层圆角与阴影由 native_window_frame 经 DWM 提供，
+        # 不再通过 WM_NCCALCSIZE 修改客户区，避免 Qt 与 Windows 坐标错位。
         self._shadow_pixmap = None  # 惰性渲染，首次 paintEvent 时生成
 
         # 边缘 resize 相关变量
@@ -288,23 +291,61 @@ class InstructionXMainWindow(QMainWindow):
         self._show_plugin_load_failures()
 
     def _show_plugin_load_failures(self) -> None:
-        """把插件启动失败列表以用户可见的提示框展示。"""
+        """集中展示插件加载失败和核心服务降级，不执行恢复业务逻辑。"""
         manager = getattr(self, "plugin_manager", None)
         get_failures = getattr(manager, "get_plugin_load_failures", None)
         if not callable(get_failures):
             return
         failures = get_failures()
-        if not failures:
+        issues = InstructionXMainWindow._get_service_health_issues(manager)
+        if not failures and not issues:
             return
-        details = "\n\n".join(
-            self._format_plugin_load_failure(failure)
-            for failure in failures
-        )
+        details = [self._format_plugin_load_failure(failure) for failure in failures]
+        details.extend(InstructionXMainWindow._format_health_issues(manager, issues))
         Dialog.info(
             self,
             tr("plugin_startup", "title"),
-            tr("plugin_startup", "message", details=details),
+            tr("plugin_startup", "message", details="\n\n".join(details)),
             ok_text=tr("plugin_startup", "button.acknowledge"),
+        )
+
+    @staticmethod
+    def _get_service_health_issues(manager):
+        """读取健康异常；旧管理器没有该接口时按无异常处理。"""
+        get_issues = getattr(manager, "get_service_health_issues", None)
+        if not callable(get_issues):
+            return {}
+        issues = get_issues()
+        return issues if isinstance(issues, dict) else {}
+
+    @staticmethod
+    def _format_health_issues(manager, issues) -> List[str]:
+        """将健康快照格式化为启动提示条目。"""
+        formatted = []
+        for plugin_id, snapshot in issues.items():
+            plugin = manager.get_plugin_by_id(plugin_id)
+            name = plugin.plugin_name if plugin is not None else plugin_id
+            capabilities = manager.get_unavailable_capabilities(plugin_id)
+            formatted.append(
+                InstructionXMainWindow._format_service_health_issue(
+                    name, snapshot, capabilities
+                )
+            )
+        return formatted
+
+    @staticmethod
+    def _format_service_health_issue(name, snapshot: HealthSnapshot, capabilities) -> str:
+        """生成脱敏的受影响能力、错误原因、恢复建议和关联 ID。"""
+        capability_text = ", ".join(capabilities) if capabilities else "部分核心能力"
+        suggestion = PluginServiceHealth.get_recovery_suggestion(snapshot.error_code)
+        return tr(
+            "plugin_startup", "health.item",
+            name=name,
+            capabilities=capability_text,
+            status=snapshot.status.value,
+            detail=sanitize_health_message(snapshot.message),
+            suggestion=suggestion,
+            correlation_id=snapshot.correlation_id,
         )
 
     def _format_plugin_load_failure(
@@ -411,6 +452,11 @@ class InstructionXMainWindow(QMainWindow):
         # 帮助
         self._menu_help = menu_bar.addMenu("")
 
+        # 检查更新（仅用户点击后触发，不做启动或定时自动检查）
+        self._action_check_update = QAction(self)
+        self._action_check_update.triggered.connect(self._open_update_dialog)
+        self._menu_help.addAction(self._action_check_update)
+
         # 关于软件
         self._action_about = QAction(self)
         self._action_about.triggered.connect(self._open_about_dialog)
@@ -444,6 +490,7 @@ class InstructionXMainWindow(QMainWindow):
         self._action_llm_settings.setText(tr("main_window", "menu.ai.llm_settings"))
         self._action_usage.setText(tr("main_window", "menu.ai.usage"))
         self._menu_help.setTitle(tr("main_window", "menu.help"))
+        self._action_check_update.setText(tr("main_window", "menu.help.check_updates"))
         self._action_about.setText(tr("main_window", "menu.help.about"))
         self._action_license.setText(tr("main_window", "menu.help.licenses"))
         self._update_theme_action_text()
@@ -486,29 +533,6 @@ class InstructionXMainWindow(QMainWindow):
 
         # 连接技能点击信号
         self.skills_panel.skill_clicked.connect(self._on_skill_clicked)
-
-    def _prewarm_blueprint_viewport(self) -> None:
-        """预创建蓝图画布以预热 GL 视口，规避顶层窗口原生句柄重建闪烁。
-
-        UIKit 蓝图画布的绘制视口在 GL 可用时基于 ``QOpenGLWidget``；若其
-        在顶层窗口**可见之后**才加入窗口树，Qt 会重建顶层原生窗口句柄，
-        表现为整个窗口短暂关闭后重开一次（Qt 固有行为，见 UIKit
-        USAGE.md §9.6）。插件的蓝图画布均在主窗口显示后才创建，因此在
-        构造阶段预创建一个隐藏画布并长期持有，让顶层原生句柄首次创建时
-        即按「含 GL 子控件」的方式建立，后续插件画布加入时不再触发重建。
-
-        软件渲染回退环境（无 GL / offscreen）不存在该问题，直接跳过；
-        预热失败不影响主窗口启动，仅记录 WARNING 日志。
-        """
-        if not gl_available():
-            return
-        try:
-            # 长期持有引用，防止被 GC 回收后失去预热效果
-            self._blueprint_prewarm_canvas = BlueprintCanvas(
-                BlueprintGraph(), self._container)
-            self._blueprint_prewarm_canvas.hide()
-        except Exception as e:  # 预热失败不阻断启动，仅降级为旧行为
-            self._logger.warning(get_name(), f"蓝图 GL 视口预热失败（不影响使用）: {e}")
 
     def _on_skill_clicked(self, plugin):
         """
@@ -576,6 +600,18 @@ class InstructionXMainWindow(QMainWindow):
         self.skills_panel.load_skills_from_manager()
         # 清空工作区，避免残留已卸载插件的 Widget
         self.work_area.clear()
+
+    def _open_update_dialog(self):
+        """手动打开检查更新对话框；除此入口外不创建检查任务。"""
+        dialog = UpdateDialog(self)
+        dialog.update_started.connect(self._on_update_started)
+        dialog.exec()
+        dialog.deleteLater()
+
+    def _on_update_started(self, tag_name: str):
+        """外部向导启动后延迟静默退出，让更新弹窗先完成关闭。"""
+        self._force_quit = True
+        QTimer.singleShot(0, self._quit_application)
 
     def _open_about_dialog(self):
         """打开关于对话框"""

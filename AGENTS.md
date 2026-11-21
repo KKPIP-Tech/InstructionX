@@ -9,15 +9,18 @@
 **InstructionX** 是一个基于 **PySide6** 的**插件式桌面应用框架**（应用型项目，不作为库分发），支持：
 
 - 插件热加载 / 热卸载，GitHub 插件一键安装
+- 原生 Setup（Rust + Ratatui，Windows/macOS/Linux）：四语言偏好、系统总览、安装/修复/升级、环境与插件管理、无窗口快捷方式；后台操作、Activity 步骤/结果反馈与 `logs/tui_setup.log` 持久日志
+- 手动检查框架更新（帮助菜单触发，完整 GitHub Release 时间线含 Pre-release、当前版本定位、用户确认后按 Tag 升级；不自动检查）
 - 多厂商 LLM 集成（MiniMax、SiliconFlow、智谱 GLM、Ollama、OpenAI 兼容接口等），多会话管理、工具调用自动化（ToolCallExecutor）、多模态、用量统计
 - MCP 协议双向支持（内置 MCP Server 暴露插件 API；MCP Client 连接外部 MCP Server）
 - SQLite WAL 数据持久化层（DataProvider）、后台任务系统（BackgroundTaskManager）
-- InstructionX_UIKit 主题与组件体系（`ui/InstructionX_UIKit` 组件库：设计令牌 + light/dark/auto 全局主题，58 组件 + 原生图表引擎 + 仿 VS Code 代码编辑器）、字体管理器（`core/font` 子系统：字体安装/卸载/预览/系统字体回退，框架不自带字体）
+- InstructionX_UIKit 主题与组件体系（`ui/InstructionX_UIKit` 组件库：设计令牌 + light/dark/auto 全局主题，59 组件 + 原生 Canvas/RHI 图表引擎 + 蓝图节点图 + 仿 VS Code 代码编辑器 + 完整 Iconoir 图标库）、字体管理器（`core/font` 子系统：字体安装/卸载/预览/系统字体回退，框架不自带字体）
 - 多国语言（i18n）支持（`core/i18n` 子系统：XML 语言文件 + 回退链取词、界面语言实时切换、每插件语言覆盖；日志文案保持中文不国际化）
 
-- 应用标识：`InstructionX - CE`（组织名 `KKPIP-Tech`），当前版本 **Alpha 1.1.2**
-- **版本号单一来源为 `core/version.py` 的 `VERSION` 常量**（pyproject 通过 AST 静态读取，修改版本只改这里）
-- 平台：**仅支持 Windows 10/11**，Python **>= 3.14**
+- 应用标识：`InstructionX - CE`（组织名 `KKPIP-Tech`），当前版本 **Alpha 1.1.3**
+- **框架版本号单一来源为 `core/version.py` 的 `VERSION` 常量**（pyproject 通过 AST 静态读取，修改版本只改这里）
+- **Setup 对外基础版本号单一来源为 `setup/src/version.rs` 的 `SETUP_VERSION`**：格式 `YYYYMMDD-NN`（当天打包序号从 `01` 起），当前为 `20261114-01`；完整构建版本自动追加平台和架构，如 `20261114-01.win.x86_64` / `20261114-01.win.aarch64`，界面标题、`--version` 和 `--state` 均显示完整版本，与框架版本独立
+- 平台：**Windows 10/11 与 macOS（Cocoa）**，Python **>= 3.14**
 - 许可证：**GNU AGPL v3（或更高版本）+ §7 附加条款（署名与品牌标识保留 §7b、商标不授权 §7e）+ 双重许可**（闭源 SaaS、嵌入第三方商业产品、第三方服务后端、白标、批量捆绑销售需商业授权），详见 `LICENSE`
 - 项目主要语言（代码注释、文档、提交信息）：**中文**
 
@@ -25,11 +28,11 @@
 
 | 依赖 | 用途 |
 |------|------|
-| PySide6 >= 6.10 | Qt GUI 框架 |
+| PySide6 >= 6.11.1 | Qt GUI 框架与 Qt Canvas Painter（直接 Canvas / QRhi） |
 | requests >= 2.32 / aiohttp >= 3.14.5 | HTTP / 异步 HTTP（aiohttp 设安全最低版本） |
 | mcp >= 1.30.0, < 2 | MCP 协议（FastMCP） |
 | orjson | JSON 序列化（SQLite 后端） |
-| matplotlib | 用量统计与 UIKit MarkdownView LaTeX 公式渲染（math_render 异步渲染中枢）使用；旧用量面板图表曾使用，现用量面板已改用 UIKit 原生图表引擎 |
+| matplotlib >= 3.11.1 | 用量统计与 UIKit MarkdownView LaTeX 公式渲染（math_render 异步渲染中枢）使用；旧用量面板图表曾使用，现用量面板已改用 UIKit 原生图表引擎 |
 | packaging | 插件依赖版本检查 |
 | qrcode[pil] >= 7.4 | InstructionX_UIKit 组件库 QRCodeView 组件依赖 |
 | numpy >= 2.0 | InstructionX_UIKit 图表引擎依赖（alpha-v1.0.3 起在模块导入期即依赖）：大规模数据的紧凑存储、向量化降采样与坐标映射、分层采样金字塔 |
@@ -76,20 +79,23 @@ python -m pytest test/ -q --tb=short -p no:cacheprovider
 - **注意**：`test/` 下当前仅保留 `test/core/data/test_data_provider.py` 一个有效测试文件（其余旧测试已在重构中删除，残留的 `__pycache__` 是过期产物，不要参考）。现有测试约定：中文 docstring、`tmp_path` fixture、测试单例类时需重置 `XxxManager._instance = None`。
 - UI 测试不配置 offscreen 平台，CI 跑在 `windows-latest` 上使用真实 GUI。
 - 项目还有一类**独立验证脚本**（非 pytest，放在 `scripts/`，用 `.venv\Scripts\python.exe scripts\<name>.py` 直接运行）：
-  - `smoke_*.py`：核心链路无网冒烟测试（LLM、task、utils、i18n、字体管理、插件管理：安装/升级/降级/卸载/分组、本地插件包自动识别与插件集一次安装、包外文件兜底备份）；`smoke_setup_wizard.py` 针对原生安装向导（`setup.ps1` / `setup.sh`：文案完整性、两平台界面逐行一致性、uv 命令口径、干跑安全、Python 向导已移除）
+  - `smoke_*.py`：核心链路无网冒烟测试（LLM、task、utils、i18n、字体管理、插件管理：安装/升级/降级/卸载/分组、本地插件包自动识别与插件集一次安装、包外文件兜底备份）；`smoke_setup_wizard.py` 针对原生 Setup（随包二进制、薄启动器与项目外工作目录、独立操作项、Activity/CLI 进度与持久日志、原生 CLI、兼容参数与 dry-run 安全）；`smoke_framework_update.py` 针对框架 Release 时间线、当前版本定位与指定 Tag 更新命令；`smoke_uikit_sync.py` 校验 UIKit 版本/模块/图标，`smoke_uikit_canvas.py` 以真实窗口和 Win32 客户区抓图验证 Canvas/RHI/raster 后端、趋势图 Tooltip 与最终帧
   - `smoke_github_private.py`：GitHub 多 Key、私有识别与重新绑定无网冒烟；`smoke_github_private_live.py` 读取本机测试 PAT/私有仓库环境变量，执行真实安装与 Release 下载，临时数据只写入 `temp/`
   - `check_i18n_completeness.py`：语言文件完整性校验（默认语言必须覆盖源码全部 `tr()` 调用，缺键 exit 1；其他语言缺键/孤立键 WARNING；支持 `--text-dir`/`--src-dir`/`--plugin-root`）
   - `screenshot_*.py`：对话框截图对比脚本（输出到 `scripts/screenshots/`）
-  - `_mcp_smoke*.py`：真实 MCP SDK 冒烟测试
+  - `_mcp_smoke*.py`：真实 MCP SDK 冒烟测试（各 100 次 stdio/HTTP 重连及清理门禁）
+  - `validate_plugin_contracts.py`：公开签名、依赖注入、官方插件生命周期和旧格式兼容验证
+  - `fault_inject_foundation.py`：故障矩阵、回环网络故障和 100 次恢复；`--quick` 用于 PR 快速门禁
+  - `soak_foundation.py`：仅限用户在基准机通过专用命令手动触发的混合负载长稳，禁止 pytest 或 CI/CD 启动；默认预热 300 秒，周期输出内存、句柄、队列、p95/p99 与错误日志并检查全部资源峰值；本次实际执行约 7.04 小时并经开发者确认接受，未完成命令指定时长时保持 NOT_RUN
   - `demo_*.py`：功能演示脚本
-- **安装向导是原生脚本**（`setup.ps1` / `setup.sh`），不依赖 Python 与第三方库：任何改动都要**两个平台同步修改**并保持界面逐字一致，改完必须运行 `scripts/smoke_setup_wizard.py`（它会让两个脚本各渲染全部页面并逐行比对）。界面文字一律放进 `setup_text/*.txt`，脚本正文保持纯 ASCII（`setup.ps1` 另需保存为 UTF-8 with BOM，冒烟测试会检查）。
+- **Setup 是 Rust + Ratatui + Crossterm 原生程序**（`setup/` crate，Windows/macOS/Linux 源码实现），TUI 不得使用 Python、PowerShell 或 Bash 编写；`setup.ps1` / `setup.sh` / `setup.bat` / `setup.command` 只按系统与架构选择 `tools/setup/` 随包二进制，不下载 Setup。改动后必须运行 `cargo fmt --check`、`cargo clippy --locked --all-targets -- -D warnings`、`cargo test --locked` 和 `scripts/smoke_setup_wizard.py`；Rust 集成测试放在 `test` 分支。当前只在开发者本机构建并随包 Windows x64/ARM64，macOS 资产为未来选项；发布前必须更新这两个二进制与 `SHA256SUMS`。
 - 另外，`scripts/` 下有 4 个 `test_*.py` 文件属 UI 验证脚本（`test_debug_cluster_framework_api_demo.py`、`test_long_running_task.py`、`test_model_edit_sync.py`、`test_provider_switch_rendering.py`），命名虽似 pytest 测试，但不在 `testpaths = ["test"]` 的收集范围内，需直接运行。
 
 ## CI / 部署
 
-- 唯一工作流：`.github/workflows/test.yml`，任意分支 push、所有 PR、手动触发及每周一定时触发；在 `windows-latest` + Python 3.14 上校验 `uv.lock`、安装锁定依赖、执行 OSV 漏洞审计并运行 pytest。
+- 唯一工作流：`.github/workflows/test.yml`，任意分支 push、所有 PR、手动触发及每周一定时触发；Windows + Python 3.14 执行 `uv.lock` 校验、锁定依赖安装、OSV 审计、完整 pytest（真实 GUI）和快速故障/契约门禁；长稳负载只允许用户通过专用命令手动触发，禁止 pytest 或任何 CI/CD 任务启动。**不在 GitHub Actions 构建或发布 Setup 原生二进制**。
 - `.github/dependabot.yml` 每周检查 Python 与 GitHub Actions 依赖，安全更新按组创建 PR。
-- 无打包/发布流程；本项目以源码方式直接运行。
+- 框架以源码方式直接运行；`tools/setup/` 中 Windows x64/ARM64 的预编译 Setup 随源码提交并自动包含在 GitHub Release 源码压缩包中，Windows 用户无需安装 Rust 或等待二次下载。
 
 ## 框架开发流程与注意事项（重要）
 
@@ -116,6 +122,7 @@ python -m pytest test/ -q --tb=short -p no:cacheprovider
 - 面向插件的公开接口（`core/interfaces/` 中的 `IPlugin`、`IPluginInfo`、`PluginServices`，以及 `PluginManager`、`DataProvider`、`LLMPluginService`、`MCPManager` 等暴露给插件的 API、插件文件结构约定、自动注册机制）**必须保持良好的向后兼容性**；
 - **任何影响插件兼容性的修改**（接口签名变更、行为语义变化、废弃旧 API、插件目录/文件约定调整等），必须先向开发者说明影响范围与迁移成本，**征得开发者同意后方可实施**；
 - 确需演进接口时，优先采用新增接口/参数默认值/兼容层等方式平滑过渡，避免直接破坏既有插件。
+- **本次 UIKit Alpha 破坏性升级例外**：经开发者明确批准，alpha-v1.0.4 不保留旧 UIKit 兼容 shim；旧 UIKit 插件须按 `docs/ui/uikit-migration-alpha-v104.md` 适配。该例外不放宽上述框架核心公共接口的兼容要求，也不授权修改 `plugin/` 或 `custom_plugin/` 下的代码。
 
 ### 临时文件约定
 
@@ -221,24 +228,39 @@ python -m pytest test/ -q --tb=short -p no:cacheprovider
 
 ```
 main.py                     # 应用入口
-setup.ps1                   # 安装向导 · Windows 原生 TUI（PowerShell 5.1，不依赖 Python / 第三方库）：
-                            #   环境总览 / 安装与修复 / 升级 / 环境管理 / 一键体检 / 清理卸载 / 启动（调试用途）/ 中英双语；
-                            #   首次安装成功自动创建桌面快捷方式（ui/logo.ico，pythonw 启动无控制台窗口），卸载时删除；
-                            #   支持 -Check 文本体检、-State 状态导出、-Preview 渲染、-Action 非交互动作、-DryRun/-Yes
-setup.sh                    # 安装向导 · macOS 原生 TUI（bash 3.2，同样不依赖 Python），界面与 setup.ps1 逐字一致；
-                            #   首次安装成功创建 ~/Desktop/InstructionX.app 启动器（logo.png 转 icns），卸载时删除
-setup.bat / setup.command   # Windows / macOS 双击入口（只调用上面的原生脚本；无 Python 也能跑）
-setup_text/                 # 向导中英双语文案（zh.txt / en.txt，两个脚本共用的唯一来源；
-                            #   脚本正文保持纯 ASCII，装饰字符由码位构造）
+setup/                      # 原生 Setup · Rust crate（Ratatui + Crossterm，Windows/macOS/Linux）：
+                            #   app/workspace 页面状态机、二次确认与 Activity 自动底部跟随；operations.rs 统一
+                            #   交互/CLI 操作请求、后台执行、四语言结构化消息、子进程流式捕获与
+                            #   logs/tui_setup.log 持久日志；
+                            #   version.rs 日期版本、四语言偏好、系统总览、Release 安装/同版本修复/升级、
+                            #   uv 包管理、逐插件依赖安装、插件列表与更新检查、无窗口快捷方式、兼容 CLI 与 dry-run；
+                            #   Rust 集成测试仅放 test 分支；build_windows.ps1 在本机构建/交叉编译
+                            #   Windows x64/ARM64、准备并校验 LLVM-MinGW、检查 PE 架构并更新 SHA256
+tools/setup/                # 随源码包分发的 Windows x64/ARM64 原生 Setup 与 SHA256SUMS；
+                            #   macOS 预编译资产为未来选项，本次不包含 macOS/Linux 二进制
+setup.ps1 / setup.sh        # Windows / macOS / Linux 薄启动器：按系统与架构选择随包二进制，
+                            #   通过 INSTRUCTIONX_PROJECT_ROOT 固定启动器所在项目根，不含 TUI
+setup.bat / setup.command   # Windows / macOS 双击入口（只转发参数到薄启动器）
+setup_text/                 # 旧版脚本向导的中英双语文案（保留作历史兼容；原生 TUI 使用内置四语言资源）
 core/
   __init__.py               # PEP-562 惰性导出，避免 import core 时拉起 PySide6
   version.py                # VERSION 常量（版本单一来源）
+  application_lifecycle.py  # 应用关闭协调器：外部调用/任务/MCP/插件/LLM/存储/UI 顺序与全局截止期报告
+  external_watchdog.py      # 独立 watchdog：严格心跳校验、仅执行显式退出/重启配置、Windows 有界终止
+  process_control.py        # 跨平台进程存活与终止原语：Windows 原生退出码和等待句柄
+  plugin_host/              # 可选关键插件进程隔离；默认 PluginManager 同进程加载路径不变
+    protocol.py             # 版本化四字节长度帧 JSON-RPC、严格字段/ID/错误码与大小校验
+    runtime.py              # 子进程运行时：复用既有插件加载/注入/API 注册与统一生命周期
+    supervisor.py           # 有界 RPC、独立写入、心跳、累计重启预算、熔断、代际防重放与回收
+    proxy.py                # 无 UI、可 JSON 序列化 Service/API 的动态代理（返回 RpcResult）
   interfaces/               # 抽象接口层：IPlugin、IPluginInfo、IDataProvider、ITaskManager、
-                            #   ILLMService（i_llm_service.py，LLM 插件服务契约）、PluginServices（依赖注入容器）
+                            #   ILLMService（i_llm_service.py，LLM 插件服务契约）、PluginServices（依赖注入容器）、
+                            #   health.py（核心服务健康状态、错误码、快照与脱敏契约）
   plugin/                   # 插件系统核心
     manager.py              # PluginManager 单例：加载/注册插件、热重载（完整卸载旧实例）、
                             #   跨插件 API 注册、插件卸载（uninstall_plugin）、
                             #   插件分类移动（move_plugin_to_scope，官方 ↔ 第三方）、自定义分组与排序
+    service_health.py       # 按插件与能力聚合健康快照、错误分类、恢复建议与关联 ID
     plugin_identity.py      # 插件 UUID（优先 {插件目录}/.plugin_info.json，不可写时回退
                             #   data/plugin_identity/{插件目录名}.json；卸载时 delete() 清理）
     config_manager.py       # 插件显示顺序（config/plugin_order.json）
@@ -249,6 +271,7 @@ core/
                             #   PluginGroup + PluginGroupStore）
     plugin_version.py       # PluginVersion（如 release.1.0.0）、VersionType
     dependency_manager.py   # 插件 Python 依赖检查/自动安装（优先 uv，回退 pip）
+    setup_dependency_cli.py # 原生 Setup 的无 GUI 后端：逐插件依赖安装、失败汇总与更新检查（JSON）
     github_plugin_installer.py  # 插件安装器：GitHub 一键安装（IXPlugin.json / IXRepo.json）、
                             #   本地 zip 安装（自动识别单插件/插件集，见 package_discovery.py）、
                             #   GitHub Release 升级/降级、版本关系检测与注册表登记
@@ -263,17 +286,31 @@ core/
     key_manager.py          # 多 Key CRUD、默认 Key、身份验证、环境变量兼容
     api_client.py           # api.github.com 鉴权、仓库/Contents/Release/zipball
     source_binding.py       # 插件来源 Key 解析、重新绑定和失败不覆盖语义
+  framework_update/         # 框架手动更新子系统（不暴露给插件）
+    models.py               # GitHub Release / 检查结果模型、Release Tag 解析、时间线版本判断
+    checker.py              # 完整分页读取已发布 Release（含 Pre-release、排除 Draft）、
+                            #   按发布时间倒序排列并定位当前版本
+    launcher.py             # 校验更高版本与 Git 已跟踪文件修改，调用原生 Setup 按 Tag 升级
   data/                     # 数据持久化层
-    data_provider.py        # DataProvider 单例：PRIVATE/PUBLIC 双命名空间、发布订阅、内存缓存
-    sqlite_backend.py       # SQLite WAL 后端（默认），schema 迁移
+    data_provider.py        # DataProvider 单例：PRIVATE/PUBLIC 双命名空间、发布订阅、兼容全量缓存、统一关闭；
+                            #   正常点写不强制全库加载，单键 API 保持不变
+    plugin_data_operations.py # PluginDataOperations：批量单事务写入、分页读取、COUNT 聚合
+    errors.py               # DataProviderError 共享异常（data_provider re-export 保持兼容）
+    event_dispatcher.py     # 每订阅者独立有界邮箱与 worker、三种背压策略、单调序号和分发指标
+    sqlite_backend.py       # SQLite WAL 后端（默认），schema 迁移、批量事务、SQL 分页/聚合
   task/                     # 后台任务系统
-    background_task.py      # BackgroundTaskManager 单例：4 线程池、定时/长期任务、优雅关闭
+    background_task.py      # BackgroundTaskManager 单例：任务生命周期与兼容门面、全局截止期关闭
+    executor_pools.py       # 长期/普通/高优独立有界执行池（4/2/32 worker）与工厂注入
+    cancellation.py         # 协作取消令牌、取消结果、任务优先级与定时重入策略
+    supervisor.py           # 提交/完成/拒绝、队列深度与单调时钟调度延迟指标
     task_model.py           # BackgroundTask / ScheduledTask / LongRunningTask 数据模型
     scheduler.py            # TaskScheduler（轻量生命周期占位）+ SchedulerCallback
-    task_storage.py         # 任务状态持久化（data/tasks.json）
+    task_storage.py         # 任务状态持久化（data/tasks.json；save_data 返回 bool 回执，失败保留脏标记）
   llm/                      # LLM 框架
     llm_provider.py         # LLMProvider 单例：对话/流式/embedding/模型列表缓存、
-                            #   adapter 分发、check_provider/check_model、配置版本惰性刷新
+                            #   adapter 分发、check_provider/check_model、配置版本惰性刷新、
+                            #   refresh_all_models 按注册顺序逐个刷新并顺序写缓存（timeout 仅兼容保留）
+    provider_supervisor.py  # 单 worker 模型刷新、真实健康结果、失败熔断与半开恢复
     model_schema.py         # 统一模型 schema：capabilities 闭集/normalize_model_entry/
                             #   merge_model_entries 三路合并/infer_model_group
     catalog/                # 提供商预设目录（随程序发布只读）：ProviderPreset/PROVIDER_PRESETS（5 家）、
@@ -282,16 +319,33 @@ core/
                             #   会话管理、工具调用、list_providers/get_models、定价热更新）
     tool_call_executor.py   # ToolRegistry（register/register_typed）+ ToolCallExecutor
                             #   （工具调用多轮循环返回 ToolChatResult，默认 max_turns=5）
+    conversation_manager.py # 会话生命周期、每会话串行轮次与增量消息计数
+    conversation_sqlite_store.py # 会话与消息 SQLite 单事务迁移、按轮次提交与写回执
+    usage_record_store.py   # 用量持久化门面：默认 SQLite、旧 JSON 兼容与结构化冲刷
+    usage_sqlite_store.py   # 用量 SQLite 增量事务、JSON 批量迁移与完整性检查
     providers/              # 适配器注册表（PROVIDER_REGISTRY 键为 adapter 家族）+ 各厂商实现
                             #   + OpenAICompatibleProvider（自定义 OpenAI 兼容兜底适配器）
     config.py / secure_keys.py  # ProviderConfig（实例：preset_id/adapter/order）/ LLMConfig 单例
                             #   （config/llm_providers.json schema v2 + v1→v2 迁移备份、变更订阅/version）、
                             #   API Key 混淆存储
   mcp/                      # MCP 协议
-    manager.py              # MCPManager 单例：start_server / connect
-    server.py               # MCPHostServer（FastMCP，默认 127.0.0.1:8765，可选 Bearer 鉴权）
-    client.py               # 连接外部 MCP Server，工具注册进 ToolRegistry
-    bridge.py               # 插件 API 注册表 ↔ MCP Server 双向同步
+    manager.py              # MCPManager 单例：start_server / connect、MCPShutdownReport 汇总清理异常
+    server.py               # MCPHostServer（FastMCP，默认 127.0.0.1:8765；非回环无 token 失败关闭、
+                            #   Host 白名单、按客户端限流、TLS、停止超时禁止假成功）
+    client.py               # 连接外部 MCP Server，工具注册进 ToolRegistry；shutdown 返回清理错误元组
+    connection_actor.py     # 单连接唯一 coroutine owner：同一 Task 进出 AsyncExitStack、串行调用、超时关闭
+    client_support.py       # MCP Client 可选依赖导入与检查
+    async_cleanup.py        # Server/Client 自有事件循环遗留 Task 的取消与等待
+    bridge.py               # 插件 API 注册表 ↔ MCP Server 双向同步（exposed_plugins 白名单失败关闭）
+  observability/            # 本地可观测性（无外部监控运行前提）
+    context.py              # CorrelationContext 与 ContextVar 调用链、耗时
+    metrics.py              # 有界 counter/histogram/gauge、标签基数与失败降级
+    health_registry.py      # 本地脱敏健康快照，插件卸载清理
+    events.py               # PLUGIN_LOADED/TASK_CANCELLED/DATA_RECOVERED/MCP_EXPOSED 有界框架事件
+    plugin_facade.py        # PluginObservability 绑定插件身份的健康、指标与上下文门面
+    sanitize.py             # 凭据、患者及插件自定义敏感字段递归脱敏
+    instrumentation.py      # 数据库写入测量（原异常照常传播）
+    names.py                # 框架指标名称单一来源
   font/                     # 字体子系统（框架不自带字体）
     font_record.py          # FontRecord dataclass（frozen, slots）：字体注册记录
     exceptions.py           # FontInstallError：字体安装失败异常
@@ -318,14 +372,17 @@ ui/                         # 界面层
                             #   InstructionX_UIKit 以顶层包导入，保证 ThemeManager 单例唯一）
   uikit_theme.py            # 全局主题入口：apply_uikit_theme(app, light/dark/auto) +
                             #   current_theme_mode() + 排除区（标题栏/技能面板/工作区）兼容 QSS 附录
+  rhi_surface.py            # 顶层 RHI Surface 匹配（窗口标志确定后、show 前调用，
+                            #   Qt 自动选择图形 API；不再强制 OpenGL 或预热 GL）
+  native_window_frame.py    # Windows 非分层主窗口宿主 + DWM 圆角/阴影；
+                            #   避免直接 Canvas/RHI 缩放后的点击穿透，其他平台保持原路径
   InstructionX_UIKit/       # PySide6 组件库（独立仓库 KKPIP-Tech/InstructionX_UIKit 的同步副本，
-                            #   alpha-v1.0.3：tokens/theme 主题系统 + 58 组件（含 MarkdownView
-                            #   Markdown 渲染组件与 math_render 公式渲染中枢）+ 13 布局
-                            #   （含 chat_conversation 流式对话布局）+ 52 动画 + 原生图表引擎
-                            #   （alpha-v1.0.3 起：GL/软件双绘制视口 charts/viewport.py + 大数据
-                            #   紧凑存储/降采样/采样金字塔 + 流式实时入口 set_stream_data）+
-                            #   蓝图节点图（含 GL/软件双绘制视口 blueprint/viewport.py）+
-                            #   code_editor/ 仿 VS Code 代码编辑器（含并排/内联 DiffEditor）+
+                            #   alpha-v1.0.4：tokens/theme 主题系统 + 59 组件（含 BudgetSliderGroup、
+                            #   MarkdownView 与 math_render）+ 13 布局 + 52 动画 + 完整 Iconoir 图标库 +
+                            #   原生图表引擎（默认 QCanvasPainterWidget + QRhi 直接绘制，显式
+                            #   QQuickView + Scene Graph RHI 快照回退，offscreen/raster 软件参考；
+                            #   大数据紧凑存储/降采样/采样金字塔 + set_stream_data）+ 蓝图节点图 +
+                            #   code_editor/ 仿 VS Code 代码编辑器（含语言补全与并排/内联 DiffEditor）+
                             #   mermaid/ 子包（官方 mermaid.js WebEngine 渲染 + 自绘降级 +
                             #   交互查看器）；主项目不修改库内文件）
   skills_panel/             # 插件技能面板（含 plugin_group_widget.py 分组折叠控件：
@@ -338,6 +395,8 @@ ui/                         # 界面层
                             #   aboutToShow 动态重建）+ TrayBackend 平台后端注册表/工厂
                             #   （win32 后端 + generic 兜底，macOS/Linux 预留扩展点）
   dialog/                   # 各类对话框（GitHub 安装、开源许可等）
+    update_dialog.py           # 手动检查更新：完整 Release 时间线（含 Pre-release、按时间倒序）、
+                               #   最新/当前版本标识与定位、发布说明、用户确认后按 Tag 启动外部向导
     close_confirm_dialog.py    # 关闭确认对话框：退出程序/最小化到托盘/取消 三按钮，
                                #   每次关闭必问（无记忆选项），Esc/叉号等价于取消
     plugin_management_dialog.py  # 插件管理对话框：安装/升级/降级/卸载 + 分组与排序
@@ -366,6 +425,7 @@ utils/
   i_logger.py               # ILogger 接口
   image_utils.py            # 图片工具（load_image_as_base64，原 LLMPluginService 方法迁出）
   thread_utils.py           # 工作线程 → UI 线程封送（run_in_ui_thread 等）
+  gc_main_thread.py         # 主线程循环 GC 守卫（gc.freeze/disable + QTimer 回收，缓解原生闪退）
   macos_dock_icon.py        # macOS Dock 栏应用图标设置（AppKit，非 macOS 空操作）
 plugin/                     # 官方/示例插件（kebab-case 目录；仅用于本地开发验证，非框架捆绑列表，
                             #   不视为框架公共契约的一部分，其余能力按需通过 GitHub 安装器获取）
@@ -381,10 +441,10 @@ config/ data/ logs/         # 运行时生成：配置、数据、日志
 
 - **单例模式**：`PluginManager`、`DataProvider`、`BackgroundTaskManager`、`LLMProvider`、`LLMConfig`、`LLMPluginService`、`MCPManager`、`FontManager`、`LanguageManager`、`LoggerManager` 均为单例（`XxxManager._instance`，部分提供 `get_xxx()` 访问器；`LLMPluginService` 为模块级 `_instance`）。测试中重置单例要清 `_instance`。
 - **接口与实现分离**：共享类型统一定义在 `core/interfaces/`，其他模块从这里 re-export，避免循环导入。
-- **关闭行为约定**：`main.py` 已 `setQuitOnLastWindowClosed(False)`，「关窗即退出」的隐式链路被切断，退出时机完全由代码显式控制（`QApplication.quit()`）；主窗口 `closeEvent` 统一拦截全部关闭路径（自绘叉子 / 标题栏右键 / Alt+F4 / 任务栏右键关闭），每次弹出 `CloseConfirmDialog` 询问「退出程序 / 最小化到托盘 / 取消」（无记忆选项）；托盘菜单「退出」与 Windows 注销/关机（`commitDataRequest` 回调置 `_force_quit`）走静默直退，不弹窗、不阻塞系统关机。
+- **关闭行为约定**：`main.py` 已 `setQuitOnLastWindowClosed(False)`，「关窗即退出」的隐式链路被切断，退出时机完全由代码显式控制（`QApplication.quit()`）；主窗口 `closeEvent` 统一拦截全部关闭路径（自绘叉子 / 标题栏右键 / Alt+F4 / 任务栏右键关闭），每次弹出 `CloseConfirmDialog` 询问「退出程序 / 最小化到托盘 / 取消」（无记忆选项）；托盘菜单「退出」与 Windows 注销/关机（`commitDataRequest` 回调置 `_force_quit`）走静默直退，不弹窗、不阻塞系统关机。`application.exec()` 返回后由 `core/application_lifecycle.py` 统一关闭外部调用、任务、MCP、插件、LLM 和存储，最后释放 UI，并输出全局截止期与逐步骤结果。
 - 后台任务回调在**工作线程**执行，更新 UI 必须通过 `utils/thread_utils.py` 封送到 UI 线程。
-- **蓝图 GL 视口预热**：主窗口构造期（`show()` 之前）调用 `_prewarm_blueprint_viewport()` 预创建一个隐藏蓝图画布并长期持有——蓝图画布的 GL 视口基于 `QOpenGLWidget`，若在窗口可见后才加入窗口树会触发顶层原生句柄重建（窗口短暂关闭重开）；预热让原生句柄首次创建时即按含 GL 子控件的方式建立（详见 `docs/ui/main-window.md` §4 与 UIKit USAGE.md §9.6）。
-- **图表 GL 视口**：UIKit 图表引擎（alpha-v1.0.3 起）的 `ChartWidget` 在构造期即创建绘制视口，GL 可用时为 `QOpenGLWidget`（不可用/offscreen 自动回退软件渲染）。框架内唯一的图表使用方是 `ui/usage_panel/trend_chart.py`，其控件在对话框 `exec()` 之前构造，不触发上述原生句柄重建。
+- **原生宿主与 RHI Surface 初始化**：主窗口在窗口标志确定后、首次 `show()` 前依次调用 `ui/native_window_frame.py` 的 `prepare_native_window_frame()` 和 `ui/rhi_surface.py` 的 `prepare_rhi_surface()`。Windows 使用非分层宿主与 DWM 外层圆角/阴影，避免直接 Canvas/RHI 下原生命中区域停留在初始尺寸；不得恢复逐像素透明分层路径。macOS Cocoa 保留透明宿主并交给 Qt 自管理，避免 QRhiWidget 与 WebEngine 离屏帧崩溃。顶层 Surface 必须与 Qt 自动选择的 RHI API 一致，不得强制 OpenGL，也不保留旧 GL 预热。
+- **Canvas / RHI 视口**：Chart 与 Blueprint 真实窗口默认 `QCanvasPainterWidget + QRhi`；`UIKIT_CHART_BACKEND` / `UIKIT_BLUEPRINT_BACKEND` 可显式选择 `rhi` 完整快照回退，`raster` 仅供软件参考。Cocoa 多视口持续更新时，Canvas 同步调度保留已经激活的单次零延迟定时器，避免 `update()` 与 `frameSubmitted` 反复 `start(0)` 造成内容同步饥饿；Windows 维持原有调度行为。框架内趋势图使用内置 `heatmap`，全量构建后清除渲染器显示名，让 Tooltip 回退到日期，同时保持直接 Canvas 所需的精确类型。真实验收使用 Win32 客户区抓图，不能用 `QWidget.grab()` 捕获原生 QQuickView 内容。
 
 ### 插件开发约定（重要）
 
@@ -401,6 +461,7 @@ config/ data/ logs/         # 运行时生成：配置、数据、日志
   - **所有 import 必须放在文件顶部**（PEP 8 顺序：标准库/第三方/本地），禁止函数级 import（包括为规避循环导入）
   - 无魔法数字
 - GitHub 安装描述文件：`IXPlugin.json`（每个插件必需，位于插件子目录，文件名大小写敏感）、`IXRepo.json`（插件仓库索引，所有插件仓库必需，含单插件仓库）；KKPIP-Tech 组织下的插件自动归类为官方插件。
+- **插件开发必需的兼容声明**：新开发、更新和发布的插件必须在 `IXPlugin.json.compatible_framework_versions` 填写精确 `PluginVersion` 字符串数组，列出作者实际验证过的框架版本。安装/重装/升级/降级时与当前 `APP_VERSION` 比较；为兼容既有插件，框架仍允许读取缺字段的旧描述文件。缺字段、未列入或声明非法均提示兼容性未经验证，用户可明确选择仍然安装，不因此禁用旧插件，安装器公开方法签名不变。
 - 详细文档：`docs/core/plugin-system/plugin-development.md`、`docs/plugins/llm-integration-guide.md`。
 - 参考示例：`plugin/` 目录下提供的官方/示例插件（仅用于本地开发验证，非框架公共契约的一部分）；其余能力按需通过 GitHub 安装器获取。
 
@@ -421,12 +482,12 @@ config/ data/ logs/         # 运行时生成：配置、数据、日志
 | `config/plugin_languages.json` | 每插件语言覆盖（schema v1：`overrides` {插件UUID: 语言代码}，无键=跟随框架；卸载插件自动清除） |
 | `data/data.db` | 插件数据（SQLite + WAL；另有 `-wal`/`-shm` 伴生文件） |
 | `data/tasks.json` | 后台任务状态 |
-| `data/llm_usage.json` | LLM 用量记录 |
-| `data/conversations.json` | LLM 会话持久化 |
+| `data/llm_usage.db` | LLM 用量记录（SQLite WAL 增量写入；旧 `llm_usage.json` 仅作迁移来源与旧自定义路径兼容） |
+| `data/conversations.db` | LLM 会话持久化（SQLite WAL 按轮次增量提交；旧 `conversations.json` 仅作迁移来源与应急导出） |
 | `data/fonts/` | 框架安装字体的存储目录（字体文件 + `fonts.json` 注册表，schema v1：顶层 `version` + `fonts` 数组） |
 | `{插件目录}/.plugin_info.json` 或 `data/plugin_identity/{插件目录名}.json` | 插件 UUID（优先前者，插件目录不可写时回退后者） |
 | `logs/application.log` | 应用日志 |
-| `.tui/lang`、`.tui/work/` | 安装向导运行时目录（已在 `.gitignore` 忽略；向导为原生脚本，**不创建 `.tui/venv`**）：`lang` 记录界面语言偏好（下次启动时读取）；`work/` 为升级下载/解压的临时目录 |
+| `.tui/` | 原生 Setup 运行时目录（已在 `.gitignore` 忽略）：`preferences.toml` 记录四语言偏好（旧 `lang` 自动迁移）；`work/` 为框架包下载/解压暂存；`backups/` 为覆盖前备份；`tools/` 为自动安装的 uv；`launchers/` 为无窗口启动器。Setup 本体只从 `tools/setup/` 随包目录启动 |
 | `logs/tui_setup.log` | TUI 安装向导日志（与应用日志同目录，便于用户反馈问题时一并提供） |
 
 ### 环境变量
@@ -451,15 +512,17 @@ config/ data/ logs/         # 运行时生成：配置、数据、日志
 ## 安全注意事项
 
 - **不要提交真实 API Key**：LLM Key 存于 `config/llm_providers.json`（混淆存储，非加密），该目录为运行时数据。
-- MCP Server 默认仅监听 `127.0.0.1`；对外开放时务必启用 Bearer token 鉴权（`MCPHostServer` 内置中间件）。
+- MCP Server 默认仅监听 `127.0.0.1`；非回环 HTTP 无 Bearer token 必须在绑定端口前失败关闭。对外暴露应同时配置 Host 白名单、请求限流与 TLS；token 使用 Windows DPAPI 保存，兼容读取旧 Base64/明文但不得再以其作为安全边界。
 - `dependency_manager.py` 会自动 `pip install` 插件声明的依赖——审查第三方插件的依赖声明。
 - `data/`、`config/`、`logs/` 含用户数据，改动其读写逻辑时保持向后兼容（SQLite 后端有 schema 迁移机制，改表结构需新增 migration）。
+- 日志、指标标签、健康快照和框架事件必须经 `core/observability/sanitize.py` 脱敏；患者和插件自定义敏感字段标记不得写入诊断产物。框架事件仅用于基础设施诊断，业务审计格式与持久化仍由插件负责。
 - 许可证边界：项目为 AGPL 开源 + 双重许可——修改/衍生作品与网络服务须开源回馈；`./ui/` 界面的名称、LOGO、版权信息与框架标识性描述不得移除（白标需授权）；闭源 SaaS、嵌入第三方商业产品、批量捆绑销售等场景需商业授权；仅经公开插件接口交互的插件为独立作品。
 
 ## 文档地图（docs/）
 
-- 架构：`docs/architecture/overview.md`、`module-dependencies.md`
-- 主题与 UI 组件：`docs/utils/uikit-theme.md`（UIKit 主题系统）、`docs/ui/`
+- 架构：`docs/architecture/overview.md`、`module-dependencies.md`；SLO 与性能证据：`foundation-slo.md`、`foundation-performance.md`；故障/兼容/长稳：`foundation-validation.md`；可选进程隔离与 watchdog：`plugin-isolation.md`；部署灰度与最终证据：`foundation-deployment-guide.md`、`foundation-verification-report.md`
+- 主题与 UI 组件：`docs/utils/uikit-theme.md`（UIKit 主题系统）、`docs/ui/`；UIKit alpha-v1.0.4 迁移与插件适配：`docs/ui/uikit-migration-alpha-v104.md`
+- 运行时稳定性：`docs/utils/gc-main-thread.md`（主线程 GC 守卫与 paint 闪退排查）
 - 插件系统：`docs/core/plugin-system/`（含 `plugin-development.md`）
 - 数据层：`docs/core/data-provider/`
 - 后台任务：`docs/core/background-task/`
@@ -467,9 +530,10 @@ config/ data/ logs/         # 运行时生成：配置、数据、日志
 - 多语言（i18n）：`docs/core/i18n/overview.md`
 - LLM：`docs/core/llm-provider/`、`docs/plugins/llm-integration-guide.md`
 - MCP：`docs/core/mcp/overview.md`
+- 可观测性与框架事件：`docs/core/observability/overview.md`
 - 依赖安全：`docs/security/dependency-management.md`
 - API 参考：`docs/api/full-reference.md`
-- 安装与环境管理：`docs/tui-setup.md`（**原生**安装向导 `setup.ps1` / `setup.sh`：两平台界面规范、安装/升级/体检/清理策略、uv 命令口径、目录与日志约定）
+- 安装与环境管理：`docs/tui-setup.md`（Rust 原生 Setup：三平台 TUI、四语言、安装/修复/升级、环境包与插件管理、预检回滚、原生资产发布与 dry-run 约定）
 - 插件开发快速入门：根目录 `插件开发流程.md`（环境初始化 / 插件仓库配置 / AI 辅助提示词模板，面向插件开发者）
 
 **根目录历史设计报告**（已落地为正式文档，仅作决策溯源参考）：

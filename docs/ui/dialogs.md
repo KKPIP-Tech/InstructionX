@@ -1,6 +1,6 @@
 # 对话框组件
 
-> InstructionX 应用程序中使用的十个对话框组件的完整说明
+> InstructionX 应用程序中使用的十二个对话框组件的完整说明
 
 ---
 
@@ -25,7 +25,7 @@
 
 - 项目 Logo（居中显示）
 - 项目名称: "InstructionX - CE"（加粗，字号取 UIKit 令牌 `font.title.lg` = 20px）
-- 版本号: "版本 Alpha 1.1.2"（次要样式）
+- 版本号: "版本 Alpha 1.1.3"（次要样式）
 - 版权声明: "© 2025-2026 dakuang 版权所有，保留所有权利。"
 - 专有软件声明（中文摘要 + 英文法律声明，代码中以 `\n` 换行，实际显示为三行）:
   ```
@@ -163,6 +163,7 @@ dialog.deleteLater()
 
 - **插件管理页**: 官方/第三方两个插件列表 + 右侧详情面板（名称/版本/来源/语言状态行）；工具栏提供「从 GitHub 安装插件…」（内嵌 `GitHubPluginInstallDialog`）、「安装本地插件包…」（打开 `LocalPackageInstallDialog`，自动识别单插件/插件集，**新插件装进当前 Tab 对应的目录**，见 §11）、「刷新」；详情面板提供「检查更新 / 升级 / 降级…」（列出 GitHub Release 版本供选择，降级二次确认并警告数据不兼容风险）、「卸载…」（确认弹窗，可选「同时删除插件数据」）、「语言…」（打开 `PluginLanguageDialog` 设置每插件语言覆盖，插件无语言包时置灰并显示 tooltip，见 §10）与**「移至官方插件 / 移至第三方插件」**（文案随当前 Tab 变化：在官方 Tab 显示「移至第三方插件」，反之显示「移至官方插件」；确认后调用 `PluginManager.move_plugin_to_scope()` 移动插件目录，UUID 与插件数据随目录保留，完成后自动刷新两个列表，见 [plugin-manager.md](../core/plugin-system/plugin-manager.md)）
 - **分组与排序页**: 官方/第三方各一个 `GroupEditorWidget`——左侧「面板顺序」为分组与未分组插件的统一混排列表（新建/重命名/设置图标/删除分组、上移/下移），右侧穿梭框编辑选中分组的组内成员与组内顺序；「保存分组与排序」统一提交两个 scope，「重置」放弃工作副本重新加载
+- **框架兼容性确认**: GitHub Release 的确认页附带该 Tag 的 `compatible_framework_versions` 评估结果；缺字段、当前版本未列入或声明非法时明确提示兼容性未经验证，用户可取消或选择「仍然安装」。既有降级数据风险警告保留
 - **后台执行**: 下载/安装等耗时操作经 `_Worker`（QThread）后台执行，期间禁用对话框防止并发操作
 - **确认与提示**: 统一使用 UIKit Dialog / Message（模块级 `_confirm` / `_notice` / `_prompt_text` / `_prompt_item` 辅助函数），替代 QMessageBox / QInputDialog
 
@@ -301,6 +302,7 @@ if dialog.exec() == QDialog.DialogCode.Accepted:
 - **仓库检查**: 输入 URL 后点击「检查」分析仓库类型
 - **单/多插件识别**: 自动识别单插件仓库（IXPlugin.json）或多插件仓库（IXRepo.json）
 - **选择性安装**: 多插件时显示复选框列表
+- **框架兼容性声明**: 单插件详情与多插件条目显示作者声明的验证版本；安装前只对勾选项评估当前框架，未验证时可取消或明确选择「仍然安装」
 - **自动目录判定**: 根据 GitHub 组织自动判定安装目录（KKPIP-Tech → plugin/，其他 → custom_plugin/）
 - **后台下载**: 使用 QThread 后台下载，不阻塞 UI
 - **多 Key 选择**: 第一项为「不使用 Key」，仅匿名访问；需要私有访问时由用户显式选择命名 Key
@@ -635,6 +637,7 @@ dialog.exec()
 | 无任何插件 | 诊断页显示已扫描目录数/层数/跳过噪声目录数与「应包含 IXPlugin.json」指引 |
 | 部分插件不可安装 | 该行置灰并显示原因（缺字段/版本号非法/ID 重复/索引目录不存在），其余可正常安装 |
 | 勾选含**降级** | 安装前弹二次确认：列出将降级的插件与版本变化，并提示「降级可能导致数据不兼容或配置丢失」；取消则中止安装（升级 / 重装不弹） |
+| 框架兼容性 | 每行显示作者声明的框架版本及当前匹配状态；缺字段、未列入或声明非法时提示兼容性未经验证，允许取消或「仍然安装」；插件集只检查实际勾选项 |
 | 安装中 | 进度条可见、选择与安装按钮禁用；运行中关闭会先请求线程中断并等待结束 |
 
 ### 11.5 信号与使用方式
@@ -657,7 +660,33 @@ dialog.start_inspect("/path/to/package.zip")
 
 ---
 
-## 12. 相关文档
+## 12. UpdateDialog 检查更新对话框
+
+**文件位置**: `ui/dialog/update_dialog.py`
+
+### 12.1 概述
+
+`UpdateDialog` 仅由主窗口「帮助 → 检查更新...」手动打开。构造弹窗时通过 `BackgroundTaskManager` 注册一次性 GitHub Release 检查；框架启动、菜单创建和定时调度均不会自动检查。
+
+### 12.2 Release 时间线
+
+- 读取官方 `KKPIP-Tech/InstructionX` 仓库的全部已发布 Release，包含 Pre-release、排除 Draft；分页失败时不展示不完整结果。
+- 按 `published_at` 倒序排列（缺失时使用 `created_at`），最新发布位于第一行，不按版本号排序。
+- 每行显示 Release 名称、Tag、发布时间以及「最新发布 / 当前版本 / Pre-release / 无法识别版本号」标识。
+- 当前版本按 `APP_VERSION` 匹配并加粗，可点击「定位当前版本」滚动到对应行；当前版本未发布时明确提示，不伪造列表位置。
+- 选择任意行可查看纯文本发布说明并打开对应 HTTPS Release 页面。
+
+### 12.3 更新操作
+
+默认选中最新发布行。只有所选 Release 的 Tag 可解析且版本高于当前版本时，「更新到所选版本」才可用；旧版本仅用于浏览，不提供降级。
+
+点击更新后，`FrameworkUpdateLauncher` 再次校验版本和 Git 已跟踪文件修改，成功启动原生 Setup（`instructionx-setup --action upgrade --yes --release-tag <tag>`）后发出 `update_started(tag)`。主窗口随后静默退出，由原生 Setup 下载指定 Tag、覆盖程序文件、同步依赖并自检；应用不自动重启。取消、关闭或启动失败均不会触发更新或退出。
+
+后台回调经 `run_in_ui_thread` 封送到 UI 线程；弹窗关闭后忽略迟到结果。文案位于四个框架语言文件的 `dialog_update` 分组。
+
+---
+
+## 13. 相关文档
 
 - [主窗口](main-window.md)
 - [系统托盘与关闭行为](system-tray.md)

@@ -29,6 +29,7 @@ GITHUB_USER_AGENT = "InstructionX"
 DEFAULT_REQUEST_TIMEOUT = 30
 DEFAULT_DOWNLOAD_TIMEOUT = 60
 RELEASES_PER_PAGE = 30
+ALL_RELEASES_PER_PAGE = 100
 MAX_RELEASE_PAGES = 10
 FINE_GRAINED_TOKEN_PREFIX = "github_pat_"
 CLASSIC_TOKEN_PREFIXES = ("ghp_", "gho_", "ghu_", "ghs_", "ghr_")
@@ -176,6 +177,41 @@ class GitHubApiClient:
             if len(page_items) < RELEASES_PER_PAGE:
                 break
         return releases
+
+    def list_all_releases(
+        self,
+        owner: str,
+        repo: str,
+        credential: Optional[GitHubCredential] = None,
+    ) -> list[Dict[str, Any]]:
+        """逐页读取全部 Release，直到 GitHub 返回不足一页的末页。
+
+        Args:
+            owner: 仓库所属账号或组织。
+            repo: 仓库名称。
+            credential: 可选凭据；None 表示匿名访问公共仓库。
+
+        Returns:
+            Release API 条目列表，不设置固定页数上限。
+
+        Raises:
+            GitHubNetworkError: 响应不是 Release 数组或请求失败时抛出。
+        """
+        path = f"/repos/{self._segment(owner)}/{self._segment(repo)}/releases"
+        releases: list[Dict[str, Any]] = []
+        page = 1
+        while True:
+            response = self._request(
+                "GET", path, credential,
+                params={"per_page": ALL_RELEASES_PER_PAGE, "page": page},
+                timeout=DEFAULT_REQUEST_TIMEOUT)
+            page_items = self._parse_json(response)
+            if not isinstance(page_items, list):
+                raise GitHubNetworkError("GitHub Release 响应结构无效")
+            releases.extend(item for item in page_items if isinstance(item, dict))
+            if len(page_items) < ALL_RELEASES_PER_PAGE:
+                return releases
+            page += 1
 
     def stream_zipball(
         self,

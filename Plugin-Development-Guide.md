@@ -4,7 +4,7 @@ InstructionX is a plugin-integration framework of no small versatility. By the j
 
 ## Part 1: The Preparation of the Environment
 
-The InstructionX framework has been composed in Python 3.14.x upon PySide6, and depends upon `uv` for the governance of its Python environment. It is therefore incumbent upon you, before all else, to install `uv` upon your machine.
+The InstructionX framework has been composed in Python 3.14.x upon PySide6 6.11.1 or a later compatible release, and depends upon `uv` for the governance of its Python environment. It is therefore incumbent upon you, before all else, to install `uv` upon your machine.
 
 Upon an IBM-compatible computer — that is to say, upon the Windows platform — be so good as to issue the following command from PowerShell:
 
@@ -59,6 +59,8 @@ Should you maintain a remote repository, you may, once initialisation is complet
 
 > **A word upon the internal disposition of the repository**: an `IXRepo.json` index is seated at its root, and every plugin occupies a first-level sub-directory of its own (containing `IXPlugin.json`, `entrance.py`, `information.py`, `service.py`, `config/`, `text/` and so forth). For the full disposition of the repository, for the field-by-field conventions governing the descriptor files, and for the complete process of development, you are to defer to **`AGENTS-for-PLUGIN-DEV.md`** at the repository root, which stands as the authoritative reference.
 
+> **A mandatory framework-compatibility declaration**: every plugin newly developed, updated or published must provide `compatible_framework_versions` in its `IXPlugin.json`, for example `["alpha.1.1.3", "alpha.1.2.0"]`. List only exact framework versions against which that plugin version has actually been verified. The framework continues to tolerate an absent field or a version mismatch in existing plugins by reporting compatibility as unverified and permitting the user to proceed explicitly; it does not disable the plugin automatically. This backwards-compatible handling does not make the field optional for new development. See `AGENTS-for-PLUGIN-DEV.md` and `docs/core/plugin-system/plugin-development.md` for the complete contract.
+
 ## Part 3: The Assistance of AI
 
 For the better accommodation of AI-assisted development, the repository is accompanied by two AGENTS files. Both are, at present, known to serve well with `Kimi Code (CLI)`, `Claude Code (CLI)`, `OpenCode` and `Codex`.
@@ -85,3 +87,5 @@ Kindly enter plan mode, and set before me a detailed and workable plan of action
 ## Part 4: The Framework's Documentation
 
 The framework is attended by a complete and carefully tended body of documentation, to be found under the `docs/` path. That you may orient yourself with all due expedition, you would do well to begin with `docs/README.md`.
+
+The current UIKit baseline is **alpha-v1.0.4**. Chart and Blueprint views use direct `QCanvasPainterWidget + QRhi` by default, with an explicit RHI snapshot fallback and a raster path reserved for software verification. The former OpenGL probes, prewarming helpers and `UIKIT_*_GL` switches have been removed. Icons must use their original Iconoir names. If you maintain an existing plugin, read `docs/ui/uikit-migration-alpha-v104.md` before changing its UI code; it records the breaking changes, the required PySide6 6.11.1 baseline, backend-selection environment variables, and the validation expected of custom chart series.

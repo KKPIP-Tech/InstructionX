@@ -66,6 +66,30 @@
   Commercial use requires authorization if thresholds are exceeded.]]></text>
   </group>
 
+  <group name="dialog_update">
+    <text key="title">Проверить обновления</text>
+    <text key="current_version">Текущая версия: {version}</text>
+    <text key="current_missing">Текущая версия: {version} (отсутствует в списке GitHub Release)</text>
+    <text key="checking">Проверка GitHub Release...</text>
+    <text key="no_releases">Доступные GitHub Release не найдены.</text>
+    <text key="latest_unparseable">Версия последнего Release не распознана; доступен только просмотр.</text>
+    <text key="update_available">Доступна новая версия: {version}</text>
+    <text key="no_newer">У вас уже установлена последняя версия.</text>
+    <text key="check_failed">Не удалось проверить обновления: {error}</text>
+    <text key="launch_failed">Не удалось запустить обновление: {error}</text>
+    <text key="task_unavailable">Менеджер фоновых задач недоступен. Повторите попытку позже.</text>
+    <text key="unknown_error">Неизвестная ошибка</text>
+    <text key="latest_badge">Последний выпуск</text>
+    <text key="current_badge">Текущая версия</text>
+    <text key="prerelease_badge">Pre-release</text>
+    <text key="unparseable_badge">Версия не распознана</text>
+    <text key="no_notes">У этого Release нет примечаний к выпуску.</text>
+    <text key="retry">Проверить снова</text>
+    <text key="locate_current">Найти текущую версию</text>
+    <text key="update_selected">Обновить до выбранной версии</text>
+    <text key="view_release">Открыть страницу Release</text>
+  </group>
+
   <group name="dialog_close_confirm">
     <text key="title">Подтверждение закрытия</text>
     <text key="message"><![CDATA[Завершить работу программы или свернуть её в системный трей?
@@ -538,6 +562,7 @@
     <text key="menu.ai.llm_settings">Настройки LLM…</text>
     <text key="menu.ai.usage">Статистика использования</text>
     <text key="menu.help">Справка</text>
+    <text key="menu.help.check_updates">Проверить обновления…</text>
     <text key="menu.help.about">О программе</text>
     <text key="menu.help.licenses">Лицензии компонентов</text>
     <text key="dialog.usage.title">Статистика использования</text>
@@ -736,6 +761,25 @@ InstructionX попытался автоматически установить 
       <text key="reason.import_failed">Не удалось импортировать точку входа плагина</text>
       <text key="reason.unexpected_error">При загрузке плагина возникло исключение</text>
       <text key="reason.detail">Подробности: {detail}</text>
+      <text key="health.item"><![CDATA[• {name}
+Затронутые возможности: {capabilities}
+Состояние: {status}
+Подробности: {detail}
+Рекомендуемое действие: {suggestion}
+ID корреляции: {correlation_id}]]></text>
       <text key="button.acknowledge">Понятно</text>
+  </group>
+  <group name="dialog_plugin_compatibility">
+      <text key="summary.current">Текущая версия InstructionX: {version}</text>
+      <text key="summary.declared">Версии фреймворка, заявленные автором как проверенные: {versions}</text>
+      <text key="summary.no_declared">Автор не указал проверенные версии фреймворка</text>
+      <text key="summary.invalid_entries">Нераспознанные элементы декларации: {entries}</text>
+      <text key="status.verified">Текущая версия фреймворка входит в заявленный автором список совместимости.</text>
+      <text key="status.missing">Поле compatible_framework_versions отсутствует; совместимость не проверена.</text>
+      <text key="status.not_listed">Текущей версии фреймворка нет в списке автора; совместимость не проверена.</text>
+      <text key="status.invalid">Декларация совместимости недействительна или пуста; совместимость не проверена.</text>
+      <text key="confirm.title">Совместимость плагина не проверена</text>
+      <text key="confirm.risk">Продолжение установки не гарантирует совместимость. Всё равно установить?</text>
+      <text key="confirm.install_anyway">Всё равно установить</text>
   </group>
 </texts>

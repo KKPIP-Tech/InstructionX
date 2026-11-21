@@ -33,6 +33,10 @@ from InstructionX_UIKit.components import (
 )
 from ui.dialog.github_key_manager_dialog import GitHubKeyManagerDialog
 from ui.dialog.github_private_repo_notice import PrivateRepositoryNotice
+from ui.dialog.plugin_compatibility import (
+    confirm_unverified_compatibility,
+    format_compatibility_summary,
+)
 
 # 模块级日志器（LoggerManager 为单例）
 _logger = LoggerManager()
@@ -58,6 +62,15 @@ def _resolve_field(value) -> str:
     语言切换后重新打开对话框即生效，不做实时刷新。
     """
     return resolve_i18n_field(value, get_language_manager().current_language())
+
+
+def _compatibility_label(plugin_info: PluginInfo) -> QLabel:
+    """构造插件框架兼容性摘要标签。"""
+    label = QLabel(format_compatibility_summary(
+        plugin_info.framework_compatibility))
+    set_property(label, "role", "secondary")
+    label.setWordWrap(True)
+    return label
 
 
 class GitHubFetchWorker(QThread):
@@ -174,6 +187,7 @@ class PluginInfoWidget(QWidget):
             deps_label.setWordWrap(True)
             layout.addWidget(deps_label)
 
+        layout.addWidget(_compatibility_label(self.plugin_info))
         layout.addStretch()
 
 
@@ -510,6 +524,7 @@ class GitHubPluginInstallDialog(QDialog):
             checkbox_layout = QVBoxLayout()
             checkbox_layout.addWidget(checkbox)
             checkbox_layout.addWidget(details)
+            checkbox_layout.addWidget(_compatibility_label(plugin_info))
 
             container = QFrame()
             container.setFrameShape(QFrame.Shape.Box)
@@ -561,6 +576,8 @@ class GitHubPluginInstallDialog(QDialog):
 
         if not self._confirm_private_install():
             return
+        if not self._confirm_framework_compatibility():
+            return
 
         # 禁用按钮，开始安装
         self.install_btn.setEnabled(False)
@@ -577,6 +594,24 @@ class GitHubPluginInstallDialog(QDialog):
         self.install_worker.error.connect(self._on_install_error)
         self.install_worker.progress.connect(self._on_install_progress)
         self.install_worker.start()
+
+    def _confirm_framework_compatibility(self) -> bool:
+        """只对本次实际选择的插件确认框架兼容性。"""
+        items = [
+            (_resolve_field(info.name), info.framework_compatibility)
+            for info in self._selected_plugin_infos()
+        ]
+        return confirm_unverified_compatibility(self, items)
+
+    def _selected_plugin_infos(self) -> List[PluginInfo]:
+        """返回与当前勾选路径对应的插件信息。"""
+        if not self.repo_result:
+            return []
+        if self.repo_result.repo_type != "multi":
+            return list(self.repo_result.plugins)
+        _, selected = self._selected_install_paths()
+        wanted = set(selected or [])
+        return [info for info in self.repo_result.plugins if info.path in wanted]
 
     def _selected_install_paths(self):
         """返回多插件选择校验结果和路径列表。"""

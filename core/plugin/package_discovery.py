@@ -30,6 +30,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Deque, Dict, List, Optional, Tuple, Union
 
+from .framework_compatibility import FrameworkCompatibility, evaluate_framework_compatibility
+
 __all__ = [
     "PLUGIN_DESCRIPTOR_FILE",
     "REPO_INDEX_FILE",
@@ -98,6 +100,7 @@ class PluginCandidate:
         valid: 是否可安装（描述文件缺失/字段非法/重复 ID 时为 False）
         error: ``valid`` 为 False 时的中文原因
         declared_in_index: 是否由 ``IXRepo.json`` 索引声明
+        framework_compatibility: 当前框架与插件声明版本的匹配结果
     """
 
     descriptor_id: str = ""
@@ -113,6 +116,7 @@ class PluginCandidate:
     valid: bool = True
     error: str = ""
     declared_in_index: bool = False
+    framework_compatibility: Optional[FrameworkCompatibility] = None
 
 
 @dataclass(frozen=True)
@@ -337,6 +341,7 @@ def _candidate_from_dir(plugin_dir: Path, root: Path,
         valid=is_valid,
         error=error_msg,
         declared_in_index=declared_in_index,
+        framework_compatibility=evaluate_framework_compatibility(descriptor),
     )
 
 

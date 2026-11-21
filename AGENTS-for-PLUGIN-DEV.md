@@ -143,6 +143,7 @@ content  = data_provider.load_asset(relative)
   "name": "<插件显示名称>",
   "version": "<类型>.<大>.<小>.<补丁>",
   "main": "entrance.py",
+  "compatible_framework_versions": ["alpha.1.1.3"],
   "description": "<简短描述，1-2句话>",
   "author": "<开发者名称>",
   "homepage": "<插件主页URL>",
@@ -159,6 +160,7 @@ content  = data_provider.load_asset(relative)
 | `name` | 是 | 插件显示名称，展示在技能面板与插件管理对话框中，可使用中文 |
 | `version` | 是 | 格式 `<类型>.<大>.<小>.<补丁>`，正则 `^(release|pre-release|beta|alpha|internal)\.\d+\.\d+\.\d+$`。五种类型与优先级（高→低）：`release`（正式发布）> `pre-release`（预发布）> `beta`（公开测试）> `alpha`（内部测试）> `internal`（内部构建）。**选用场景**：对外发布的稳定版本用 `release`；发布候选用 `pre-release`；邀请用户试用的未完成版本用 `beta`；开发期自测用 `alpha`；纯内部调试用 `internal` |
 | `main` | 是 | 入口文件路径，当前固定为 `entrance.py` |
+| `compatible_framework_versions` | **是（新开发、更新和发布）** | 精确 `PluginVersion` 字符串数组，声明该插件版本实际验证过的 InstructionX 框架版本，如 `["alpha.1.1.3"]`。只填写真实测试过的版本；缺字段、未包含当前框架或声明非法时，安装界面提示兼容性未经验证，用户仍可明确选择仍然安装。不支持范围或通配符。框架保留缺字段容错仅用于兼容既有旧插件，不免除开发者的填写义务 |
 | `description` | 否 | 插件功能简述，1–2 句话 |
 | `author` | 否 | 作者/组织名称 |
 | `homepage` | 否 | 插件主页或仓库 URL |
@@ -206,6 +208,7 @@ content  = data_provider.load_asset(relative)
 - `IXRepo.json` 中的 `id` 与子目录内 `IXPlugin.json` 的 `id` 不一致；
 - 在仓库根目录同时放置 `IXPlugin.json` 与 `IXRepo.json`（规范形态下根目录只有 `IXRepo.json`，`IXPlugin.json` 位于各插件子目录内）；
 - `dependencies` 声明了未实际使用的包，或把 Python 标准库写进依赖；
+- 新开发、更新或发布的插件遗漏 `compatible_framework_versions`，或填写未实际验证的版本、范围表达式或通配符；
 - 发布后修改 `id`，导致老用户无法升级；
 - 描述文件名大小写错误（如 `ixplugin.json`）。
 
@@ -316,6 +319,15 @@ get_language_manager().plugin_language_changed.connect(self._on_plugin_language_
 
 在任何开发工作开始之前，必须完整阅读 InstructionX 框架 `docs/` 下的开发文档，以便了解插件的接口及框架工作原理；在需要深入了解 InstructionX 框架时，必须阅读框架源码。
 
+#### UIKit alpha-v1.0.4 基线与迁移
+
+- 当前 UI 基线为 `InstructionX_UIKit alpha-v1.0.4`、`PySide6>=6.11.1`。真实窗口的 Chart 与 Blueprint 默认使用 `QCanvasPainterWidget + QRhi`，Qt 自动选择图形 API；显式 `rhi` 是完整快照回退，`raster` 仅用于软件参考。
+- 禁止继续使用已删除的 `gl_available()`、`gl_series.py`、`QOpenGLWidget`、`UIKIT_CHART_GL`、`UIKIT_BLUEPRINT_GL`，不得恢复 GL 预热或通过 `QQuickWindow.setGraphicsApi()` 强制 OpenGL。
+- 图标统一使用 Iconoir 原名，经 `icon_names()` / `search_icons()` 查询；旧手绘图标名不再保留兼容映射。
+- 涉及图表或蓝图的插件优先使用内置系列和组件。自定义系列受 Canvas 精确类型检查限制，必须分别验证 Canvas 与 RHI，不得静默接受性能回退；需要日期 Tooltip 时可参考框架趋势图的内置 `heatmap` 接入方式。
+- `UIKIT_CHART_BACKEND` 与 `UIKIT_BLUEPRINT_BACKEND` 可取 `canvas` / `rhi` / `raster`；不得用软件或离屏耗时冒充真实性能。
+- alpha-v1.0.4 是经开发者批准的 UIKit 破坏性升级，不提供旧 UIKit 兼容 shim。既有插件必须按 `docs/ui/uikit-migration-alpha-v104.md` 完成适配；这不等于允许随意破坏插件自己的 `service_api`、发布订阅 key 或配置语义，这些公开业务契约仍按本文件兼容规则维护。
+
 #### 框架文档阅读清单
 
 按优先级分为三组。「必读」分组在开工前完整阅读，不阅读不得开始开发；「按需」与「参考」分组在开发涉及对应主题时阅读。
@@ -330,6 +342,7 @@ get_language_manager().plugin_language_changed.connect(self._on_plugin_language_
 6. `docs/core/data-provider/overview.md` — **DataProvider 概览**，数据持久化和发布/订阅
 7. `docs/architecture/overview.md` — **架构概览**，理解整体架构
 8. `docs/utils/uikit-theme.md` — **UIKit 主题系统**，插件 UI 主题与组件体系
+9. `docs/ui/uikit-migration-alpha-v104.md` — **UIKit alpha-v1.0.4 迁移指南**，涉及 UI 的既有插件升级必读
 
 **按需（用到再读）**：
 
@@ -512,7 +525,7 @@ get_language_manager().plugin_language_changed.connect(self._on_plugin_language_
 #### 插件结构合规
 
 - 必需文件齐全：`entrance.py`、`information.py`、`service.py`、`config/`；服务类名以 `Service` 结尾；
-- `IXPlugin.json` / `IXRepo.json` 字段填写符合逐字段规范（`id` 正则、`version` 类型前缀、`dependencies` 只声明真实依赖、`path`/`id` 一致性）；
+- `IXPlugin.json` / `IXRepo.json` 字段填写符合逐字段规范（`id` 正则、`version` 类型前缀、`dependencies` 只声明真实依赖、`path`/`id` 一致性）；新开发、更新和发布的插件必须提供 `compatible_framework_versions`，且只列实际验证过的精确框架版本，不编造未来版本；
 - `information.py` 的 `service_api` 与 `function/` 子模块实际方法保持同步。
 
 #### 代码设计硬性原则落实

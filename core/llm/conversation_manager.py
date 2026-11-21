@@ -32,6 +32,7 @@ from .types import (
 )
 from .provider_interface import UsageInfo, Message
 from .llm_provider import get_llm_provider
+from .conversation_sqlite_store import ConversationStore, ConversationStorageError
 
 logger = logging.getLogger(__name__)
 
@@ -131,7 +132,16 @@ class ConversationManager:
             else DEFAULT_MAX_CONTEXT_TOKENS
         )
         self._storage_path = Path(storage_path) if storage_path else None
+        self._conversation_locks: Dict[str, threading.RLock] = {}
+        self._persisted_message_counts: Dict[str, int] = {}
+        self._store = None
+        self._should_migrate_json = False
         if self._storage_path:
+            db_file = self._storage_path.with_suffix(".db")
+            self._should_migrate_json = (
+                not db_file.exists() and self._storage_path.exists()
+            )
+            self._store = ConversationStore(db_file)
             self._load_conversations()
 
     # ==================== 对话 CRUD ====================
@@ -203,13 +213,33 @@ class ConversationManager:
             if conversation_id not in self._conversations:
                 return False
             del self._conversations[conversation_id]
-        self._save_conversations()
+            self._persisted_message_counts.pop(conversation_id, None)
+        if self._store is not None:
+            self._store.delete_conversation(conversation_id)
         self._logger.info(f"Conversation deleted: {conversation_id}")
         return True
 
     # ==================== 发送消息 ====================
 
     def send_message(
+        self,
+        conversation_id: str,
+        content: str,
+        images: Optional[List[str]] = None,
+        temperature: Optional[float] = None,
+        max_tokens: Optional[int] = None,
+        tools: Optional[List[Dict]] = None,
+        model: Optional[str] = None,
+        provider: Optional[str] = None,
+    ) -> tuple[str, Optional[UsageInfo]]:
+        """按会话串行发送消息，保证完整用户/助手轮次顺序。"""
+        with self._get_conversation_lock(conversation_id):
+            return self._send_message_serialized(
+                conversation_id, content, images, temperature,
+                max_tokens, tools, model, provider,
+            )
+
+    def _send_message_serialized(
         self,
         conversation_id: str,
         content: str,
@@ -301,6 +331,25 @@ class ConversationManager:
         return call_provider, call_model
 
     def stream_send_message(
+        self,
+        conversation_id: str,
+        content: str,
+        images: Optional[List[str]] = None,
+        callback: Optional[Callable[[StreamChunk], None]] = None,
+        temperature: Optional[float] = None,
+        max_tokens: Optional[int] = None,
+        tools: Optional[List[Dict]] = None,
+        model: Optional[str] = None,
+        provider: Optional[str] = None,
+    ) -> tuple[str, Optional[UsageInfo]]:
+        """按会话串行执行流式发送，避免不同轮次流式回调交叉。"""
+        with self._get_conversation_lock(conversation_id):
+            return self._stream_send_message_serialized(
+                conversation_id, content, images, callback, temperature,
+                max_tokens, tools, model, provider,
+            )
+
+    def _stream_send_message_serialized(
         self,
         conversation_id: str,
         content: str,
@@ -525,6 +574,13 @@ class ConversationManager:
         return (input_tokens / 1000 * input_price
                 + output_tokens / 1000 * output_price)
 
+    def _get_conversation_lock(self, conversation_id: str) -> threading.RLock:
+        """按会话返回可重入锁，不同会话仍可并行调用 Provider。"""
+        with self._lock:
+            return self._conversation_locks.setdefault(
+                conversation_id, threading.RLock()
+            )
+
     def _get_or_raise(self, conversation_id: str) -> Conversation:
         """获取对话，不存在则抛出 ValueError
 
@@ -546,52 +602,90 @@ class ConversationManager:
     # ==================== 会话持久化 ====================
 
     def _load_conversations(self) -> None:
-        """从持久化文件加载会话（初始化时自动调用）
+        """从 SQLite 恢复会话；仅在数据库不存在时迁移旧 JSON。"""
+        if self._should_migrate_json:
+            self._migrate_json_conversations()
+            return
+        self._restore_sqlite_conversations()
 
-        文件不存在或损坏时按空会话处理，不抛出异常。
-        """
-        if not self._storage_path or not self._storage_path.exists():
-            return
-        try:
-            with open(self._storage_path, "r", encoding="utf-8") as f:
-                data = json.load(f)
-        except (json.JSONDecodeError, IOError) as e:
-            self._logger.warning(f"会话持久化文件读取失败，按空会话处理: {e}")
-            return
-        loaded = 0
+    def _restore_sqlite_conversations(self) -> None:
+        """恢复数据库记录并建立增量消息计数。"""
         with self._lock:
-            for d in data.get("conversations", []):
-                try:
-                    conv = Conversation.from_dict(d)
-                    self._conversations[conv.id] = conv
-                    loaded += 1
-                except Exception as e:
-                    self._logger.warning(f"跳过损坏的会话记录: {e}")
-        if loaded:
-            self._logger.info(
-                f"Loaded {loaded} conversations from {self._storage_path}")
+            self._conversations = self._store.load_conversations()
+            self._persisted_message_counts = {
+                identifier: len(conversation.messages)
+                for identifier, conversation in self._conversations.items()
+            }
+
+    def _migrate_json_conversations(self) -> None:
+        """校验并迁移旧 JSON，失败保留原文件且禁止按空会话继续。"""
+        try:
+            with open(self._storage_path, "r", encoding="utf-8") as file:
+                data = json.load(file)
+            conversations = [
+                Conversation.from_dict(item)
+                for item in data.get("conversations", [])
+            ]
+            self._store.import_conversations(conversations)
+        except (json.JSONDecodeError, OSError, ConversationStorageError) as exc:
+            self._store.close()
+            self._discard_new_conversation_db()
+            self._quarantine_corrupt_conversations()
+            raise ConversationStorageError(f"旧会话文件迁移失败: {exc}") from exc
+        backup = self._storage_path.with_name(
+            f"conversations.migrated-{uuid.uuid4().hex}.bak"
+        )
+        os.replace(self._storage_path, backup)
+        self._restore_sqlite_conversations()
+
+    def _quarantine_corrupt_conversations(self) -> None:
+        """保留损坏会话原文件并写入隔离副本。"""
+        if not self._storage_path.exists():
+            return
+        quarantine = self._storage_path.with_name(
+            f"conversations.corrupt-{uuid.uuid4().hex}.bak"
+        )
+        quarantine.write_bytes(self._storage_path.read_bytes())
+
+    def _discard_new_conversation_db(self) -> None:
+        """迁移失败时仅清理本次新建数据库及伴生文件，保留原 JSON。"""
+        db_file = self._storage_path.with_suffix(".db")
+        for path in (db_file, db_file.with_name(db_file.name + "-wal"), db_file.with_name(db_file.name + "-shm")):
+            if path.exists():
+                path.unlink()
 
     def _save_conversations(self) -> None:
-        """把全部会话原子写入持久化文件（临时文件 + os.replace）
-
-        每次对话变更后全量写（会话数量少，简单可靠）。
-        未配置 storage_path 时为空操作。
-        """
-        if not self._storage_path:
+        """仅提交每个会话尚未持久化的增量消息，写失败显式抛出。"""
+        if self._store is None:
             return
         with self._lock:
-            data = {
-                "version": 1,
-                "conversations": [c.to_dict() for c in self._conversations.values()],
-            }
-            try:
-                self._storage_path.parent.mkdir(parents=True, exist_ok=True)
-                temp_file = self._storage_path.with_suffix(".json.tmp")
-                with open(temp_file, "w", encoding="utf-8") as f:
-                    json.dump(data, f, ensure_ascii=False, indent=2)
-                os.replace(temp_file, self._storage_path)
-            except IOError as e:
-                self._logger.error(f"会话持久化写入失败: {e}")
+            conversations = list(self._conversations.values())
+        for conversation in conversations:
+            identifier = conversation.id
+            if identifier not in self._persisted_message_counts:
+                self._store.create_conversation(conversation)
+                self._persisted_message_counts[identifier] = 0
+            persisted = self._persisted_message_counts[identifier]
+            new_messages = conversation.messages[persisted:]
+            if not new_messages:
+                continue
+            self._store.append_turn(identifier, {
+                "conversation": conversation.to_dict(),
+                "messages": new_messages,
+            })
+            self._persisted_message_counts[identifier] = len(conversation.messages)
+
+    def close(self) -> None:
+        """幂等关闭会话数据库，释放 Windows 文件句柄。"""
+        if self._store is not None:
+            self._store.close()
+
+    def __del__(self):
+        """析构时尽力关闭连接，显式关闭仍优先于依赖垃圾回收。"""
+        try:
+            self.close()
+        except Exception as exc:
+            self._logger.warning(f"会话数据库关闭失败: {exc}")
 
     # ==================== 用量统计 ====================
 

@@ -33,7 +33,9 @@ import threading
 import time
 from datetime import datetime, timezone
 from typing import Dict, Any, Optional, List, Tuple, Union, Callable, AsyncIterator, TYPE_CHECKING
+from uuid import uuid4
 
+from core.interfaces.health import HealthStatus
 from .config import LLMConfig, ProviderConfig
 from .provider_interface import (
     ILLM, Message, ChatResponse, EmbeddingResponse, ModelInfo, UsageInfo,
@@ -45,6 +47,7 @@ from .exceptions import ConfigurationError
 from .model_schema import CAPABILITY_EMBEDDING
 from .usage_record_store import get_usage_record_store
 from .types import UsageRecord, DEFAULT_PROVIDER
+from .provider_supervisor import ProviderSupervisor, ProviderCheckResult
 # 说明：LLMProvider 是 core 层统一入口，面向插件的契约由
 # LLMPluginService（实现 core.interfaces.ILLMService）承担，
 # 插件不应直接依赖本类。
@@ -59,6 +62,8 @@ from utils.logging_tools import LoggerManager, get_name
 
 # check_model 的默认探测超时（秒）
 MODEL_CHECK_DEFAULT_TIMEOUT: float = 15.0
+# 同步刷新全部 Provider 的总截止期（秒）
+MODEL_REFRESH_ALL_TIMEOUT: float = 15.0
 # 连通性探测使用的最小化请求文本
 MODEL_PROBE_TEXT = "hi"
 # 聊天探测的最大生成 token 数（尽量压低探测成本）
@@ -144,9 +149,10 @@ class LLMProvider:
         self._stream_local = threading.local()
         # 已加载配置的版本号占位（_init_providers 后同步，供惰性刷新比对）
         self._loaded_config_version = 0
+        self._supervisor = ProviderSupervisor(self)
         self._init_providers()
         self._sync_config_version()
-        self._fetch_all_models()  # 启动时自动拉取模型列表
+        self._fetch_all_models()
 
     @property
     def last_stream_response(self) -> Optional[ChatResponse]:
@@ -169,6 +175,15 @@ class LLMProvider:
         """
         self._stream_local.last_stream_response = value
 
+    @property
+    def last_stream_metrics(self) -> Dict[str, Any]:
+        """返回首 token、总耗时和中断原因，按线程隔离。"""
+        return getattr(self._stream_local, "metrics", {
+            "first_token_ms": None,
+            "duration_ms": None,
+            "interruption": None,
+        })
+
     def _init_providers(self) -> None:
         """初始化所有已配置的 LLM 提供商
 
@@ -184,36 +199,10 @@ class LLMProvider:
                 self._logger.error(get_name(), f'Failed to initialize provider {name}: {e}')
 
     def _fetch_all_models(self) -> None:
-        """启动时加载所有提供商的模型列表
-
-        流程：
-        1. 先从本地缓存文件加载，确保插件立即可用
-        2. 再尝试从远程 API 刷新（静默失败，不覆盖已有缓存）
-        3. 刷新成功时同步更新本地缓存文件
-
-        这样插件在启动后即可获取本地缓存的模型列表，无需等待网络请求。
-        """
-        for name, provider in self._providers.items():
-            # 1. 加载本地缓存（兼容 providers/base.py 写入的 TTL 时间戳信封）
+        """按原设计逐个读取磁盘缓存并完成远程刷新，顺序写入缓存。"""
+        for name in self._providers:
             self._load_models_from_disk_cache(name)
-
-            # 2. 尝试从远程刷新（静默，不覆盖已有缓存）
-            try:
-                models = provider.refresh_models(force=True)
-                self._models_cache[name] = models
-                # 同步写回本地缓存文件
-                self._config.save_models_cache(
-                    name,
-                    [m.to_dict() for m in models]
-                )
-                self._logger.info(get_name(), f'Refreshed {len(models)} models for {name}')
-            except Exception as e:
-                # 刷新失败但已有本地缓存，不覆盖
-                if name not in self._models_cache or not self._models_cache[name]:
-                    self._models_cache[name] = []
-                    self._logger.warning(get_name(), f'No cache for {name}, network unavailable')
-                else:
-                    self._logger.info(get_name(), f'Using cached models for {name}, remote fetch failed: {e}')
+            self.refresh_provider_models(name, force=True)
 
     def _load_models_from_disk_cache(self, name: str) -> None:
         """从本地缓存文件回填单个提供商的模型列表（不联网）
@@ -284,30 +273,20 @@ class LLMProvider:
             return []
 
         try:
-            models = provider.refresh_models(force=force)
-            self._models_cache[provider_name] = models
-            # 同步保存到本地缓存文件
-            self._config.save_models_cache(
-                provider_name,
-                [m.to_dict() for m in models]
-            )
-            return models
+            return self._supervisor.refresh_models_async(provider_name, force).result()
         except Exception as e:
             self._logger.error(get_name(), f'Failed to refresh models for {provider_name}: {e}')
             return []
 
-    def refresh_all_models(self, force: bool = False) -> Dict[str, List[ModelInfo]]:
-        """刷新所有提供商的模型列表
+    def refresh_all_models(
+        self, force: bool = False, timeout: float = MODEL_REFRESH_ALL_TIMEOUT
+    ) -> Dict[str, List[ModelInfo]]:
+        """按注册顺序逐个刷新 Provider，并顺序写入缓存。
 
-        遍历调用所有提供商的模型刷新方法。
-
-        Args:
-            force: 是否强制从 API 刷新
-
-        Returns:
-            Dict[str, List[ModelInfo]]: 提供商名称到模型列表的映射字典
+        ``timeout`` 仅为既有调用兼容保留；顺序模型不提供并行总截止期，
+        运行中的 Provider 刷新必须实际返回后才处理下一个。
         """
-        for name in self._providers.keys():
+        for name in self._providers:
             self.refresh_provider_models(name, force=force)
         return self._models_cache
 
@@ -615,35 +594,26 @@ class LLMProvider:
         return True, None
 
     def check_provider(self, name: str) -> Tuple[bool, Optional[str], int]:
-        """连通性检查：强制刷新指定实例的模型列表
+        """保持旧返回签名，委托详细连通性检查。"""
+        result = self.check_provider_detailed(name)
+        return result.ok, result.error, result.model_count
 
-        成功时同步更新模型缓存与本地缓存文件，并记录健康状态。
-
-        Args:
-            name: 提供商实例 id
-
-        Returns:
-            Tuple[bool, Optional[str], int]:
-                (是否成功, 错误信息, 模型数)；实例不存在时返回
-                (False, 中文错误信息, 0)
-        """
+    def check_provider_detailed(self, provider_id: str) -> ProviderCheckResult:
+        """返回真实健康、模型数和错误，失败不伪装为空模型成功。"""
         self._refresh_config_if_needed()
-        provider = self._providers.get(name)
-        if provider is None:
-            message = f"提供商实例不存在: {name}"
-            self._logger.warning(get_name(), f"连通性检查跳过：{message}")
-            return False, message, 0
-
+        if provider_id not in self._providers:
+            return ProviderCheckResult(
+                False, 0, f"提供商实例不存在: {provider_id}", HealthStatus.UNAVAILABLE
+            )
         try:
-            models = provider.refresh_models(force=True)
-        except Exception as e:
-            self._health[name] = (False, str(e))
-            return False, str(e), 0
-
-        self._models_cache[name] = models
-        self._config.save_models_cache(name, [m.to_dict() for m in models])
-        self._health[name] = (True, None)
-        return True, None, len(models)
+            models = self._supervisor.refresh_models_async(provider_id).result()
+        except Exception as exc:
+            return ProviderCheckResult(
+                False, 0, str(exc), HealthStatus.UNAVAILABLE
+            )
+        return ProviderCheckResult(
+            True, len(models), None, HealthStatus.HEALTHY, tuple(models)
+        )
 
     def check_model(
         self,
@@ -655,7 +625,7 @@ class LLMProvider:
 
         探测方式按模型能力选择：声明了嵌入能力的模型走 embed 探测，
         其余走 chat 探测（"hi" + max_tokens=1 + temperature=0）。
-        timeout 通过临时覆盖实例的读取超时生效（探测结束后恢复）。
+        timeout 仅作为本次 request_timeout 生效，不修改共享 Provider 配置。
 
         Args:
             provider_name: 提供商实例 id
@@ -675,14 +645,13 @@ class LLMProvider:
             )
 
         use_embedding = self._model_prefers_embedding(provider_name, model_id)
-        previous_timeout = getattr(provider, "timeout", None)
-        if previous_timeout is not None:
-            provider.timeout = timeout
-
         started = time.perf_counter()
         try:
             if use_embedding:
-                self.embed([MODEL_PROBE_TEXT], provider=provider_name, model=model_id)
+                self.embed(
+                    [MODEL_PROBE_TEXT], provider=provider_name, model=model_id,
+                    request_timeout=timeout,
+                )
             else:
                 self.chat(
                     [Message(role="user", content=MODEL_PROBE_TEXT)],
@@ -690,14 +659,11 @@ class LLMProvider:
                     model=model_id,
                     max_tokens=MODEL_PROBE_MAX_TOKENS,
                     temperature=MODEL_PROBE_TEMPERATURE,
+                    request_timeout=timeout,
                 )
         except Exception as e:
             return ModelCheckResult(
                 ok=False, latency_ms=self._elapsed_ms(started), error=str(e))
-        finally:
-            if previous_timeout is not None:
-                provider.timeout = previous_timeout
-
         return ModelCheckResult(ok=True, latency_ms=self._elapsed_ms(started), error=None)
 
     def _model_prefers_embedding(self, provider_name: str, model_id: str) -> bool:
@@ -892,10 +858,12 @@ class LLMProvider:
             raise ConfigurationError(f"Provider not found: {provider}")
 
         # 双保险：None 值不写入 payload（provider 层也会过滤）
+        request_id = kwargs.pop("request_id", None) or uuid4().hex
         call_kwargs = self._filter_none_kwargs({
             "model": model,
             "temperature": temperature,
             "max_tokens": max_tokens,
+            "request_id": request_id,
             **kwargs,
         })
 
@@ -971,10 +939,12 @@ class LLMProvider:
         if not provider_instance:
             raise ConfigurationError(f"Provider not found: {provider}")
 
+        request_id = kwargs.pop("request_id", None) or uuid4().hex
         call_kwargs = self._filter_none_kwargs({
             "model": model,
             "temperature": temperature,
             "max_tokens": max_tokens,
+            "request_id": request_id,
             **kwargs,
         })
 
@@ -995,12 +965,15 @@ class LLMProvider:
         last_usage: Optional[UsageInfo] = None
         agg_model = ""
         finished = False
+        first_token_ms: Optional[float] = None
 
         try:
             for chunk in response_gen:
                 text = getattr(chunk, "content", "") or ""
                 if not isinstance(text, str):
                     text = str(text)
+                if text and first_token_ms is None:
+                    first_token_ms = (time.perf_counter() - t0) * 1000
                 content_parts.append(text)
 
                 # 思考过程增量聚合（末块回填到聚合响应）
@@ -1032,6 +1005,11 @@ class LLMProvider:
                     finished = True
         except Exception as e:
             self._health[provider] = (False, str(e))
+            self._stream_local.metrics = {
+                "first_token_ms": first_token_ms,
+                "duration_ms": (time.perf_counter() - t0) * 1000,
+                "interruption": str(e),
+            }
             raise
 
         duration_ms = (time.perf_counter() - t0) * 1000
@@ -1066,6 +1044,11 @@ class LLMProvider:
                 duration_ms=duration_ms,
                 conversation_id=conversation_id,
             )
+        self._stream_local.metrics = {
+            "first_token_ms": first_token_ms,
+            "duration_ms": duration_ms,
+            "interruption": None,
+        }
         self._health[provider] = (True, None)
         return full_text
 
@@ -1176,6 +1159,7 @@ class LLMProvider:
         if not provider_instance:
             raise ConfigurationError(f"Provider not found: {provider}")
 
+        request_id = kwargs.pop("request_id", None) or uuid4().hex
         t0 = time.perf_counter()
         try:
             response = await provider_instance.async_chat(
@@ -1183,6 +1167,7 @@ class LLMProvider:
                 model=model,
                 temperature=temperature,
                 max_tokens=max_tokens,
+                request_id=request_id,
                 **kwargs
             )
         except Exception as e:
@@ -1374,6 +1359,7 @@ class LLMProvider:
         遍历关闭所有提供商的 HTTP 会话，清理实例缓存。
         通常在应用程序退出时调用。
         """
+        self._supervisor.close()
         for provider in self._providers.values():
             provider.close()
         self._providers.clear()

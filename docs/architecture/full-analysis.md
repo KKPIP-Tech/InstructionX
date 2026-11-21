@@ -734,9 +734,11 @@ classDiagram
 ```python
 self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
 self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+prepare_native_window_frame(self)
+prepare_rhi_surface(self)
 ```
 
-配合 `CustomTitleBar` 实现自定义窗口控制按钮（最小化/最大化/关闭）。
+配合 `CustomTitleBar` 实现自定义窗口控制按钮（最小化/最大化/关闭）。Windows 由 `prepare_native_window_frame()` 关闭逐像素透明分层属性并提供 DWM 外层圆角/阴影，避免直接 Canvas/RHI 缩放后的点击穿透；macOS 保留透明宿主。
 
 ### 8.2 SkillsPanel 信号链
 
@@ -1093,7 +1095,7 @@ class Service:
 
 | 文件 | 核心职责 |
 |------|---------|
-| `InstructionX_UIKit/` | UIKit 组件库（alpha-v1.0.3 同步副本：设计令牌 + ThemeManager + 组件/布局/动画/图表引擎/代码编辑器，主项目不修改库内文件） |
+| `InstructionX_UIKit/` | UIKit 组件库（alpha-v1.0.4 同步副本：设计令牌 + ThemeManager + 59 组件/布局/动画/Canvas-RHI 图表引擎/蓝图/代码编辑器/完整 Iconoir，主项目不修改库内文件） |
 | `uikit_bootstrap.py` | sys.path 引导（使 UIKit 以顶层包可导入） |
 | `uikit_theme.py` | 全局主题入口（apply_uikit_theme + 排除区兼容附录） |
 | `main_window.py` | InstructionXMainWindow 主窗口 |

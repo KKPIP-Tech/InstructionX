@@ -279,6 +279,60 @@ provider.set_plugin_data(
 
 ---
 
+### set_plugin_data_batch()
+
+```python
+def set_plugin_data_batch(
+    self,
+    instance_id: str,
+    values: Dict[str, Any],
+    namespace: DataNamespace = DataNamespace.PRIVATE,
+    notify: bool = True,
+) -> None
+```
+
+在单个 SQLite `IMMEDIATE` 事务中批量插入或更新数据，不执行逐键查询。所有值先完成序列化，任一值不可序列化时整批不写入。空字典为无操作。
+
+`PUBLIC` 且 `notify=True` 时，按 `values` 的字典顺序逐个通知，旧值通过一次命名空间查询取得。单键 `set_plugin_data()` 保持不变。
+
+```python
+provider.set_plugin_data_batch(
+    "plugin-id",
+    {"status": "ready", "progress": 50},
+    DataNamespace.PUBLIC,
+)
+```
+
+### get_plugin_data_page()
+
+```python
+def get_plugin_data_page(
+    self,
+    instance_id: str,
+    namespace: DataNamespace = DataNamespace.PRIVATE,
+    limit: int = 256,
+    offset: int = 0,
+) -> Dict[str, Any]
+```
+
+按写入顺序分页读取，SQLite 使用 `LIMIT/OFFSET`，避免先复制全部记录再由 Python 过滤。`limit` 必须为大于 0 的整数，`offset` 必须为非负整数；参数错误或插件不存在时抛出 `DataProviderError`。
+
+### count_plugin_data()
+
+```python
+def count_plugin_data(
+    self,
+    instance_id: str,
+    namespace: DataNamespace = DataNamespace.PRIVATE,
+) -> int
+```
+
+使用 SQLite `COUNT(*)` 聚合返回指定命名空间的记录数，不加载 `value_json`。
+
+以上三个方法是 `DataProvider` 的具体扩展，不会给 `IDataProvider` 增加抽象方法；JSON 应急后端提供相同批量、分页和计数语义，但不宣称 SQLite 事务保证。
+
+---
+
 ### get_all_plugin_data()
 
 ```python
@@ -410,6 +464,29 @@ def publish(
 ```python
 provider.publish("video-editor", "video_duration", 180)
 ```
+
+### publish_async()
+
+```python
+receipt = provider.publish_async(
+    "video-editor", "video_duration", 180,
+    policy=BackpressurePolicy.COALESCE,
+)
+```
+
+先持久化公开数据，再异步分发到每订阅者的独立有界邮箱。`policy` 支持 `REJECT`、
+`COALESCE` 和 `DROP_OLDEST`。`PublishReceipt.accepted=False` 时表示至少一个邮箱
+拒绝接收，`reason` 为 `queue_full`；返回成功不代表回调已执行或业务已确认。
+
+### get_event_delivery_stats()
+
+```python
+stats = provider.get_event_delivery_stats("exporter-plugin")
+```
+
+返回 `EventDeliveryStats(queued, delivered, coalesced, dropped, failed, lag_ms)`，
+用于观测队列深度、送达、合并、丢弃、回调失败和分发延迟。关键业务不得用该内存
+事件总线替代持久化确认、幂等和恢复机制。
 
 ---
 

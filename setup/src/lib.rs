@@ -1,0 +1,12 @@
+pub mod actions;
+pub mod app;
+pub mod cli;
+pub mod github;
+pub mod i18n;
+pub mod operations;
+pub mod plugins;
+pub mod shortcuts;
+pub mod system;
+pub mod uv;
+pub mod version;
+pub mod workspace;

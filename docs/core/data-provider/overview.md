@@ -20,8 +20,8 @@
 |------|------|
 | **单例模式** | 全局唯一实例，确保数据一致性 |
 | **线程安全** | 使用 `_file_lock`（RLock）保护数据库访问 + `_subscription_lock`（Lock）保护订阅表 |
-| **原子写入** | SQLite WAL + 语句级/显式事务，保证数据一致性 |
-| **内存缓存** | 全量字典缓存 + 按 key 的 LRU 反序列化缓存，减少 I/O 与重复解析 |
+| **原子写入** | SQLite WAL + 语句级/显式事务；批量写入复用单个 IMMEDIATE 事务，保证数据一致性 |
+| **内存缓存** | 全量字典仅用于 `load_data()/save_data()` 兼容；正常点写不强制全库加载，按 key 的 LRU 减少重复解析 |
 | **命名空间隔离** | 严格区分私有数据和公共数据 |
 | **发布/订阅** | 支持插件间的实时数据通信 |
 | **资源管理** | 统一的插件资源文件存储 |
@@ -173,6 +173,22 @@ class PublisherService:
         )
 ```
 
+### 5.4 异步事件分发与背压
+
+`publish_async()` 先持久化公开数据，再把事件交给 `core/data/event_dispatcher.py`。
+每个订阅者都有独立有界邮箱和分发 worker，慢订阅者不会阻塞发布者或其他订阅者。
+事件包含单调递增 ID 和发布时间，`get_event_delivery_stats()` 提供排队、送达、合并、
+丢弃、失败和延迟指标。邮箱满时必须显式选择：
+
+- `BackpressurePolicy.REJECT`：拒绝新事件并返回 `queue_full`；
+- `BackpressurePolicy.COALESCE`：合并待处理事件，保留最新值并计数；
+- `BackpressurePolicy.DROP_OLDEST`：丢弃最旧事件并计数，允许新事件入队。
+
+`PublishReceipt` 只表示邮箱是否接收，不代表回调已执行，更不代表持久化确认。可视化
+和一般状态通知可以使用合并/丢弃策略；关键业务必须由插件实现持久化队列、确认、
+幂等和恢复机制，不得把内存事件总线当作可靠消息队列。插件卸载和 `close()` 会取消
+匹配邮箱并停止 worker。旧 `publish()` 的同步回调语义保持不变。
+
 ---
 
 ## 6. 资源管理
@@ -244,11 +260,28 @@ flowchart TD
 - 数据库文件：`data/data.db`
 - WAL 模式：`PRAGMA journal_mode = WAL;`
 - 外键约束：`PRAGMA foreign_keys = ON;`
-- 同步级别：`PRAGMA synchronous = NORMAL;`
+- 同步级别：固定 `PRAGMA synchronous = NORMAL;`（balanced），当前没有 DataProvider durable 开关
 
 `set_plugin_data` 等单条写入使用 SQLite 语句级原子性（UPSERT）保证，不依赖显式事务。`save_data` / `reset_all_data` / `set_active_instance` 使用 `BEGIN IMMEDIATE` 显式事务，异常时自动回滚。
 
 全量写回的等效逻辑位于 `SQLiteBackend.save_data()`（`core/data/sqlite_backend.py`）：在 `transaction()` 上下文（`BEGIN IMMEDIATE` ... `COMMIT` / `ROLLBACK`）中先清空子表（`plugin_data`、`active_instances`）再清空父表（`plugins`），随后重新插入 `plugins`、`plugin_data`、`active_instances` 三张表，提交后清空 LRU 缓存（`_value_cache.clear()`）。所有 SQL 语句统一取自 `sql_map.SQLMap`（`core/data/sql_map.py`），不在方法内散落字面 SQL。
+
+#### 7.2.1 启动备份、损坏隔离与失败恢复
+
+`SQLiteBackend.ensure_database()` 在打开可写连接前区分不存在、空库、完整、损坏、锁定和 I/O 故障。原库分类使用只读 `immutable=1` 连接执行 `PRAGMA integrity_check`，避免检查过程改写原 SHM；初始化结束后还会再次执行完整性检查。
+
+- **启动备份**：合法非空既有库在首次写连接前生成同目录 `数据文件名.backup-<UTC时间戳>/`，复制主库及现存 WAL/SHM，记录逐文件 SHA-256 并验证副本完整性。备份创建或校验失败会停止启动，不继续修改原库。
+- **损坏隔离**：损坏库生成同目录 `数据文件名.quarantine-<UTC时间戳>/`，主库/WAL/SHM 原文件保持不动，随后停止启动并提示人工恢复；隔离失败同样停止，不以空库替代用户数据。锁定、权限或 I/O 故障不会被误判为新库。
+- **迁移失败恢复**：既有库发生 schema 迁移、最终完整性检查等初始化异常时，使用启动备份恢复原库版本和用户值。只有启动前三文件均不存在、且从未提交用户数据的新库，才允许在失败后清理。
+- **分阶段恢复**：恢复前先校验恢复点，在本次新建的暂存目录中复制并校验新文件、备份当前主库和伴生状态，再以同文件系统暂存文件逐文件 `os.replace`；恢复点中不存在的伴生文件按状态删除。任一暂存复制、目标替换或删除异常都会使用旧文件副本回滚全部主库/WAL/SHM，恢复点本身保留。暂存目录碰撞或清理都只针对本次成功创建的目录，不删除既有恢复点或用户目录。
+
+多文件替换**不是一次物理原子操作**。上述保证覆盖可捕获的复制、替换和删除异常，并在这些异常后回滚到一致旧状态；进程异常退出、断电等发生在两次替换之间时仍可能留下混合版本，需要利用保留的启动备份或隔离副本人工恢复。回滚本身失败时保留暂存旧文件并报告人工指引。
+
+这些快照是启动前文件级恢复点，**不是跨进程在线备份协议**。备份期间不应有外部进程写库；本机制不协调外部写入者，也不替代独立备份方案。当前未提供启动备份保留数量或自动清理策略，长期运行会积累目录，需由运维另行管理存储空间，不能为释放空间而删除唯一恢复点。
+
+#### 7.2.2 balanced 与 durable 的存储边界
+
+DataProvider 只有上述 balanced 模式。进程异常退出后的已提交事务保留不等于物理断电 RPO=0，真实断电未在本项目中验收。LLM 用量和会话是独立存储：`UsageRecordStore` / `ConversationStore` 默认 `durable=True` 并使用 FULL 同步，显式传 `False` 才使用 NORMAL balanced；详细配置与回执见 [部署指南](../../architecture/foundation-deployment-guide.md)。
 
 ### 7.3 JSON 应急回退
 
@@ -256,7 +289,7 @@ flowchart TD
 
 ### 7.4 从 JSON 自动迁移
 
-首次启动时，如果检测到旧的 `data/data.json` 且 `data/data.db` 尚未初始化，`SQLiteBackend` 会自动将 JSON 数据导入 `data/data.db`。迁移成功后，原 `data.json` 会被重命名为 `data.migrated-<timestamp>.bak`；若迁移失败，不完整的数据库文件会被删除，下次启动仍可重试。
+首次启动时，如果检测到旧的 `data/data.json` 且 `data/data.db` 尚未初始化，`SQLiteBackend` 会自动将 JSON 数据导入 `data/data.db`。迁移成功后，原 `data.json` 会被重命名为 `data.migrated-<timestamp>.bak`。只有主库/WAL/SHM 在启动前均不存在且事务尚未提交用户数据时，失败才允许清理本次不完整的新库；既有数据库或已提交用户数据的新库均保留，原始 JSON 在成功重命名前不会移除。
 
 ### 7.5 Schema 版本与链式升级
 

@@ -62,6 +62,9 @@ core/mcp/
 ├── manager.py                # MCPManager 单例（协调器）
 ├── server.py                # MCPHostServer（FastMCP 封装）
 ├── client.py                # MCPClientManager（外部 Server 连接管理）
+├── connection_actor.py      # 单连接 coroutine owner（开启/调用/超时/关闭）
+├── client_support.py        # MCP Client 可选依赖导入与检查
+├── async_cleanup.py         # 自有事件循环遗留 Task 统一清理
 ├── bridge.py                # MCPBridge（插件 API ↔ MCP Server 桥接）
 ├── config.py               # MCPServerConfig / MCPRemoteServerConfig
 └── plugin_interface.py     # IMCPTool / IMCPClient 接口
@@ -72,6 +75,8 @@ core/mcp/
 | `manager.py` | `MCPManager` | 单例协调器，管理 Server 和 Client 生命周期 |
 | `server.py` | `MCPHostServer` | 基于 FastMCP，暴露插件 API 为 MCP 工具 |
 | `client.py` | `MCPClientManager` | 管理外部 MCP Server 连接，将工具注入 ToolRegistry |
+| `connection_actor.py` | `ConnectionActor` | 每连接由唯一 coroutine owner 在同一个 Task 中进入退出栈、串行调用、超时取消并关闭 |
+| `async_cleanup.py` | `cancel_pending_tasks()` | Server/Client 自有事件循环关闭前取消并等待遗留 Task |
 | `bridge.py` | `MCPBridge` | 监听插件 API 注册变化，同步到 MCP Server |
 | `config.py` | `MCPServerConfig` / `MCPRemoteServerConfig` | 配置数据类 |
 | `plugin_interface.py` | `IMCPTool` / `IMCPClient` | 插件开发者接口 |
@@ -252,7 +257,10 @@ mcp.start_server(transport="streamable-http")
         "session_idle_timeout": 1800,
         "max_sessions": 10000,
         "exposed_plugins": null,
-        "allowed_hosts": null
+        "allowed_hosts": null,
+        "max_requests_per_minute": 60,
+        "tls_certfile": null,
+        "tls_keyfile": null
     },
     "remote_servers": []
 }
@@ -262,14 +270,16 @@ mcp.start_server(transport="streamable-http")
 
 | 字段 | 说明 |
 |------|------|
-| `auth_token` | HTTP 模式下的 Bearer 认证令牌；`null` 表示不启用认证（仅建议在本机回环地址下使用）。配置文件中以 `b64:` 前缀的 Base64 混淆格式存储（防瞥视，非加密），兼容旧版明文值 |
+| `auth_token` | HTTP 模式下的 Bearer 认证令牌；`null` 表示不启用认证（仅允许本机回环地址）。保存时使用当前 Windows 用户的 DPAPI 密文（`dpapi:v1:`）；旧 `b64:` 与明文值仅在读取时兼容，下次保存自动升级为 DPAPI |
 | `session_idle_timeout` | Streamable HTTP 无活动请求会话的空闲超时秒数；默认 1800，`null` 表示禁用回收 |
 | `max_sessions` | Streamable HTTP 同时保留的最大会话数；默认 10000，`null` 表示不限制 |
 | `exposed_plugins` | 允许暴露为 MCP 工具的插件 ID 白名单；`null` 表示暴露全部插件（默认，向后兼容）。**fail-closed 语义**：`MCPBridge` 读取白名单时若抛出异常（如配置损坏），返回 `[]` 而非回退到「全部暴露」——任何读取异常都不会意外暴露未授权插件 |
 | `MCPRemoteServerConfig.enabled` | bool | 是否启用该外部 Server 连接；`enabled=False` 时 `MCPClientManager` 在 `connect_all()` 阶段直接跳过该配置项（不发起连接） |
-| `allowed_hosts` | 允许的 HTTP Host 头白名单（保留项，暂未强制校验） |
+| `allowed_hosts` | 允许的 HTTP/WebSocket Host 头白名单；`null` 表示不限制。不匹配的 HTTP 请求返回 403，WebSocket 以 4403 关闭 |
+| `max_requests_per_minute` | 每客户端每分钟请求上限，默认 60；`null` 表示显式禁用限流。限流状态定期清理且最多跟踪 10000 个客户端 |
+| `tls_certfile` / `tls_keyfile` | uvicorn TLS 证书与私钥路径，必须成对配置；配置后 `get_server_url()` 返回 `https://` 地址 |
 
-**HTTP 模式 Bearer Token 鉴权**：`transport` 为 `streamable-http` 且配置了 `auth_token` 时，`MCPHostServer` 会通过内置的 `_BearerAuthMiddleware`（见 `core/mcp/server.py`）校验每个 HTTP/WebSocket 请求的 `Authorization: Bearer <token>` 头，校验失败返回 401（WebSocket 以 4401 关闭）；比较使用 `hmac.compare_digest` 防止时序侧信道。`auth_token` 仅允许 ASCII 可见字符。若需将 MCP Server 暴露到本机回环以外的地址，务必配置 `auth_token` 启用鉴权。
+**HTTP 模式 Bearer Token 鉴权**：`transport` 为 `streamable-http` 且配置了 `auth_token` 时，`MCPHostServer` 会通过内置的 `_BearerAuthMiddleware`（见 `core/mcp/server.py`）校验每个 HTTP/WebSocket 请求的 `Authorization: Bearer <token>` 头，校验失败返回 401（WebSocket 以 4401 关闭）；比较使用 `hmac.compare_digest` 防止时序侧信道。`auth_token` 仅允许 ASCII 可见字符。非回环 HTTP 监听未配置令牌时，`ServerSecurityPolicy` 在绑定端口前直接抛出 `ValueError`，不再仅记录警告后启动。
 
 ### 5.4 与现有 Function Calling 的关系
 
@@ -340,6 +350,8 @@ mcp.connect(config_http)
 ```python
 mcp.disconnect("filesystem")
 ```
+
+每个连接由独立 `ConnectionActor` 持有：`AsyncExitStack` 的进入、工具调用与关闭均固定在同一个 coroutine Task。调用超时会取消远端等待并关闭该会话；断开时先注销命名空间工具，再关闭会话并移除连接记录。清理异常不会被伪装成成功，`MCPClientManager.shutdown()` 返回错误元组，`MCPManager.shutdown()` 将其汇总到 `MCPShutdownReport.errors`。
 
 ### 6.4 查看已连接 Server 和工具
 
@@ -485,9 +497,12 @@ config = MCPServerConfig(
     port=8765,
     transport="stdio",        # "stdio" 或 "streamable-http"
     enabled=True,
-    auth_token=None,          # HTTP 模式 Bearer 认证令牌，None 不启用认证
+    auth_token=None,          # Bearer 令牌；非回环 HTTP 必须配置
     exposed_plugins=None,     # 插件 ID 白名单，None 暴露全部插件
-    allowed_hosts=None,       # HTTP Host 头白名单（保留项，暂未强制校验）
+    allowed_hosts=None,       # HTTP/WebSocket Host 白名单，None 不限制
+    max_requests_per_minute=60,  # 每客户端限流；None 显式禁用
+    tls_certfile=None,        # TLS 证书；与 tls_keyfile 成对配置
+    tls_keyfile=None,
 )
 ```
 
@@ -562,8 +577,12 @@ mcp.start_server(transport="stdio")
 ```python
 # main.py shutdown 时
 mcp = get_mcp_manager()
-mcp.shutdown()  # 停止 Server + 断开所有 Client 连接
+report = mcp.shutdown()  # 停止 Server + 断开 Client + 清理事件循环任务
+if not report.success:
+    print(report.errors)  # 所有清理异常；success=False 时不得视为关闭完成
 ```
+
+实际应用不在 `main.py` 中堆叠零散关闭调用，而由 `ApplicationLifecycle` 先停止外部调用和新任务，再执行 MCP 关闭、插件卸载、任务/LLM/存储清理。`MCPShutdownReport` 汇入全局 `ShutdownReport.steps`；任一步失败或全局截止期耗尽都必须视为关闭未完全成功，不能只检查窗口已经退出。
 
 ---
 
@@ -589,7 +608,7 @@ mcp.shutdown()  # 停止 Server + 断开所有 Client 连接
 | `start_server(transport?)` | 启动 MCP Server（"stdio" 或 "streamable-http"，默认使用配置值） |
 | `stop_server()` | 停止 MCP Server |
 | `is_server_running()` | 返回 Server 是否运行中 |
-| `get_server_url()` | 返回 Server 的 HTTP 地址 `http://{host}:{port}`（只要 Server 已初始化即返回，不看传输模式；Server 未初始化时返回空串） |
+| `get_server_url()` | 返回 Server 地址 `http(s)://{host}:{port}`；配置 TLS 时使用 HTTPS，未初始化时返回空串 |
 | `get_server()` | 返回 MCPHostServer 实例（可能为 None） |
 | `get_server_config()` | 返回当前 Server 配置 |
 | `update_server_config(config)` | 更新 Server 配置并持久化 |
@@ -604,7 +623,7 @@ mcp.shutdown()  # 停止 Server + 断开所有 Client 连接
 | `add_remote_server(config)` | 添加外部 MCP Server 配置并持久化 |
 | `remove_remote_server(server_id)` | 移除外部 MCP Server 配置，返回是否成功 |
 | `get_config()` | 返回当前 MCPConfig 对象 |
-| `shutdown()` | 关闭所有资源（停止 Server + 断开 Client 连接） |
+| `shutdown()` | 关闭所有资源并返回 `MCPShutdownReport(success, errors)`；任一步失败仍继续后续清理 |
 
 ### 10.2 MCPClientManager
 
@@ -615,7 +634,7 @@ mcp.shutdown()  # 停止 Server + 断开所有 Client 连接
 | `list_connected_servers()` | 列出已连接 server_id |
 | `list_tools(server_id)` | 列出指定 Server 的工具（带命名空间） |
 | `get_connection(server_id)` | 获取连接信息 |
-| `shutdown()` | 关闭所有连接 |
+| `shutdown()` | 关闭所有连接和事件循环，返回清理错误元组；无错误时为空元组 |
 
 ### 10.3 MCPBridge
 

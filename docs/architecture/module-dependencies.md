@@ -20,6 +20,7 @@ graph TB
         SP[ui/skills_panel/panel.py<br/>SkillsPanel]
         WA[ui/work_area/work_area.py<br/>WorkArea]
         GPI[ui/dialog/github_plugin_install_dialog.py<br/>GitHubPluginInstallDialog]
+        UPD[ui/dialog/update_dialog.py<br/>UpdateDialog]
     end
 
     subgraph Core ["核心层"]
@@ -28,6 +29,7 @@ graph TB
         BTM[core/task/background_task.py<br/>BackgroundTaskManager 单例]
         IPlugin[core/interfaces/i_plugin.py<br/>IPlugin]
         GInst[core/plugin/github_plugin_installer.py<br/>GitHubPluginInstaller]
+        FUC[core/framework_update/<br/>Release 检查与更新启动]
     end
 
     subgraph MCP ["MCP 层"]
@@ -62,6 +64,9 @@ graph TB
     MW --> DP
     MW --> UKTH
     MW --> GPI
+    MW --> UPD
+    UPD --> FUC
+    UPD --> BTM
     GPI --> GInst
     GInst --> PM
     SP --> PM
@@ -91,6 +96,8 @@ graph TB
 | 跨插件调用 | `call_plugin_method()` 方法路由 |
 | 顺序管理 | 支持自定义插件显示顺序 |
 | MCP 工具同步 | `_notify_mcp_new_tools()` / `_notify_mcp_remove_tools()` 自动同步插件 API 到 MCP 层 |
+
+**关联兼容性模块**：`framework_compatibility.py` 负责把 `compatible_framework_versions` 与当前 `APP_VERSION` 比较；`package_discovery.py` 和 `github_plugin_installer.py` 将结果附加到本地候选、仓库详情及逐 Tag Release；`ui/dialog/plugin_compatibility.py` 统一展示声明和未验证确认。依赖方向为 UI → 安装器/包识别 → 兼容性评估器 → `PluginVersion` / `core/version.py`，不反向影响插件启动加载。
 
 **关键属性**:
 ```python
@@ -158,6 +165,50 @@ update_long_running_task_status()  # 更新长期任务状态
 shutdown()                         # 安全关闭任务管理器
 ```
 
+### 2.4 框架更新子系统
+
+**文件**: `core/framework_update/`、`ui/dialog/update_dialog.py`
+
+| 功能 | 说明 |
+|------|------|
+| Release 检查 | `FrameworkUpdateChecker` 经 `GitHubApiClient.list_all_releases()` 完整读取 Release，包含 Pre-release、排除 Draft |
+| 时间线展示 | `UpdateDialog` 按发布时间倒序展示全部 Release，标记最新发布与当前版本 |
+| 后台任务 | 用户点击菜单后由 `BackgroundTaskManager` 执行一次检查，回调封送到 UI 线程 |
+| 更新启动 | `FrameworkUpdateLauncher` 校验更高版本和 Git 本地修改，调用外部安装向导升级指定 Tag |
+
+依赖方向：主窗口 → UpdateDialog → FrameworkUpdateChecker / FrameworkUpdateLauncher → GitHubApiClient / 原生 Setup；该子系统不向插件暴露公共接口。
+
+### 2.5 原生 Setup 子系统
+
+**文件**: `setup/`、`core/plugin/setup_dependency_cli.py`
+
+| 功能 | 说明 |
+|------|------|
+| 原生界面 | Rust `app.rs` / `workspace.rs` 实现六类页面、四语言偏好、二次确认、Activity 区域与后台结果轮询 |
+| 操作执行 | `operations.rs` 统一交互与 CLI 的操作请求、后台工作线程、步骤/结果事件及 `logs/tui_setup.log` 持久日志 |
+| 系统信息 | `system/` 在 Windows 使用 WMI，macOS 使用原生工具，Linux 使用 proc/sys 与系统命令 |
+| 安装与升级 | `github.rs` 读取 Release；`actions.rs` 负责版本校验、暂存、备份、覆盖与回滚 |
+| 环境管理 | `uv.rs` 处理包列表、更新/移除、uv 安装与环境重建 |
+| 插件管理 | `plugins.rs` 读取清单；框架 CLI 逐插件安装依赖并复用安装器检查更新 |
+| 桌面入口 | `shortcuts.rs` 创建 Windows `.lnk`、macOS `.app`、Linux `.desktop` 无窗口入口 |
+| 发布 | 开发者本机构建 Windows x64/ARM64，验证 PE 架构与 CLI；`tools/setup/` 随包保存二进制与 SHA256，启动器只负责本地选择，GitHub Actions 不构建 Setup |
+
+依赖方向：薄启动器 → 原生 Setup → GitHub / uv / 框架插件 CLI。GUI 更新弹窗仅通过 `FrameworkUpdateLauncher` 调用原生 Setup CLI，不再依赖 PowerShell。
+
+### 2.6 可选插件宿主与外部 Watchdog
+
+**文件**: `core/plugin_host/`、`core/external_watchdog.py`、`core/process_control.py`
+
+| 模块 | 依赖方向与职责 |
+|---|---|
+| `protocol.py` | 仅依赖标准库，定义版本化长度帧和严格 JSON-RPC 契约 |
+| `runtime.py` | 在子进程中复用 PluginManager 与 ApplicationLifecycle，不复制插件注入/注册规则 |
+| `supervisor.py` | 主进程持有子进程、 writer/monitor/reader，实施有界调用、代际防重放、有限重启和熔断 |
+| `proxy.py` | 将无 UI Service/API 方法转换为结构化 RPC，不代理 Qt 或对象引用 |
+| `external_watchdog.py` | 独立读取显式心跳，通过 ProcessControl 仅操作配置 PID；无设备控制依赖 |
+
+`PluginHost` 不被 `PluginManager` 默认创建，因此通用桌面依赖图不变。子进程拥有独立单例和 DataProvider 连接，跨进程缓存与发布订阅不自动共享。
+
 ---
 
 ## 3. 单例模式使用
@@ -173,7 +224,7 @@ shutdown()                         # 安全关闭任务管理器
 | **BackgroundTaskManager** | `core/task/background_task.py` | 任务调度 |
 | **LLMProvider** | `core/llm/llm_provider.py` | 大语言模型核心层（底层） |
 | **LLMConfig** | `core/llm/config.py` | LLM Provider 实例配置（schema v2 + 变更订阅） |
-| **UsageRecordStore** | `core/llm/usage_record_store.py` | LLM 用量记录持久化（data/llm_usage.json） |
+| **UsageRecordStore** | `core/llm/usage_record_store.py` | LLM 用量记录持久化（默认 data/llm_usage.db；旧 JSON 仅迁移/兼容） |
 | **LLMPluginService** | `core/llm/plugin_service.py` | LLM 插件服务层（插件开发者入口） |
 | **MCPManager** | `core/mcp/manager.py` | MCP 协议协调器（Server + Client 管理） |
 | **FontManager** | `core/font/manager.py` | 字体子系统（安装/卸载/系统回退解析） |
@@ -274,6 +325,7 @@ class PluginServices:
     mcp_client: "MCPClientManager" = field(default=None)  # MCP Client 管理器
     font_manager: "FontManager" = field(default=None)     # 字体管理器（core/font，无降级保护、始终注入）
     localization: "ILocalizationFacade" = field(default=None)  # 多语言取词门面（绑定插件 UUID，无降级保护、始终注入；实现 PluginI18nFacade）
+    observability: "PluginObservability" = field(default=None)  # 插件健康、指标与关联上下文门面
 ```
 
 新版插件通过 `self._services` 访问服务，旧版插件可通过直接导入单例兼容访问。

@@ -7,9 +7,9 @@
 
 [![CI](https://github.com/KKPIP-Tech/InstructionX/actions/workflows/test.yml/badge.svg)](https://github.com/KKPIP-Tech/InstructionX/actions/workflows/test.yml)
 [![Python](https://img.shields.io/badge/Python-3.14+-blue.svg)](https://www.python.org/)
-[![PySide6](https://img.shields.io/badge/PySide6-6.10+-green.svg)](https://doc.qt.io/qtforpython/)
-[![Platform](https://img.shields.io/badge/Platform-Windows%2010%2F11-lightgrey.svg)](#)
-[![Version](https://img.shields.io/badge/Alpha-1.1.2%20CE-red.svg)](#)
+[![PySide6](https://img.shields.io/badge/PySide6-6.11.1+-green.svg)](https://doc.qt.io/qtforpython/)
+[![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS-lightgrey.svg)](#)
+[![Version](https://img.shields.io/badge/Alpha-1.1.3%20CE-red.svg)](#)
 [![License](https://img.shields.io/badge/License-AGPL--3.0%2B%20%2B%20%C2%A77%20Terms-blue.svg)](LICENSE)
 
 [中文版](README.md) | [English Version](README_EN.md) | Version française | [Русская версия](README_RU.md)
@@ -77,7 +77,7 @@ Le framework n'intègre aucune fonctionnalité métier : toutes les capacités s
 
 ### Interface utilisateur
 
-- **Bibliothèque de composants InstructionX_UIKit** : 58 composants + 13 dispositions + 52 animations, dont un moteur de graphiques natif (double viewport GL / logiciel), un graphe de nœuds blueprint, un éditeur de code façon VS Code et le rendu Mermaid ; trois modes de thème globaux (clair / sombre / auto) avec des design tokens qui réappliquent les styles en temps réel
+- **Bibliothèque de composants InstructionX_UIKit** : 59 composants + 13 dispositions + 52 animations, dont un moteur de graphiques natif (Canvas direct + QRhi par défaut avec repli RHI explicite), un graphe de nœuds blueprint, un éditeur de code façon VS Code, la collection complète d'icônes Iconoir et le rendu Mermaid ; trois modes de thème globaux (clair / sombre / auto) avec des design tokens qui réappliquent les styles en temps réel
 - **Gestionnaire de polices** : installation / désinstallation / aperçu de polices au niveau de l'application (effectif dans le processus, sans écriture dans le répertoire des polices système), avec repli automatique sur les polices système en cas d'absence
 - **Zone de notification** : le menu de la zone de notification présente en temps réel les plugins et les tâches d'arrière-plan en cours ; la fermeture de la fenêtre principale affiche une boîte de dialogue de confirmation permettant de quitter le programme ou de réduire l'application dans la zone de notification
 
@@ -313,15 +313,15 @@ python -m pytest test/ -q --tb=short -p no:cacheprovider
 | Technologie | Rôle | Version |
 |-------------|------|---------|
 | Python | Langage de programmation | >= 3.14 |
-| PySide6 | Framework Qt GUI | >= 6.10 |
+| PySide6 | Framework Qt GUI | >= 6.11.1 |
 | mcp | Protocole MCP (FastMCP) | >= 1.28.1, < 2 |
 | requests / aiohttp | HTTP / HTTP asynchrone | >= 2.32 / >= 3.11 |
 | orjson | Sérialisation JSON haute performance | >= 3.11.0, < 4 |
-| matplotlib | Statistiques d'utilisation et rendu de formules LaTeX du MarkdownView d'UIKit | >= 3.10 |
+| matplotlib | Statistiques d'utilisation et rendu de formules LaTeX du MarkdownView d'UIKit | >= 3.11.1 |
 | packaging | Vérification des versions de dépendances des plugins | >= 23.0 |
 | qrcode[pil] | Composant QRCodeView d'UIKit | >= 7.4 |
 | numpy | Moteur de graphiques UIKit (pipeline grandes données / sous-échantillonnage) | >= 2.0 |
-| InstructionX_UIKit | Thème d'interface et bibliothèque de composants | Intégrée (alpha-v1.0.3) |
+| InstructionX_UIKit | Thème d'interface et bibliothèque de composants | Intégrée (alpha-v1.0.4) |
 
 ## Licence
 

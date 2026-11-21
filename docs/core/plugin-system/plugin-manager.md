@@ -88,6 +88,28 @@ def get_plugin_load_failures(self) -> List[PluginLoadFailure]:
 异常和缺少 Python 模块都会形成 `PluginLoadFailure`；主窗口首次显示后读取
 该列表并弹出用户可见提示框，不再只写日志。
 
+#### 核心服务健康状态
+
+`get_service_health(plugin_id)` 返回插件最严重核心服务的 `HealthSnapshot`；
+`get_unavailable_capabilities(plugin_id)` 返回完全不可用的能力名称；
+`get_service_health_issues()` 返回全部降级或不可用插件。健康状态分为
+`UNKNOWN / HEALTHY / DEGRADED / UNAVAILABLE`，错误码分为配置、资源、网络、
+权限、持久化、插件代码和内部错误。
+
+DataProvider、TaskManager 和 LLM 初始化失败属于必需服务不可用；MCP 初始化失败
+属于可选能力降级。为兼容既有插件，`PluginServices` 字段仍可注入 `None`，但
+失败会同时写入健康注册表和带关联 ID 的脱敏日志。生产代码不再使用 `MagicMock`
+代替核心服务，自动 API 注册异常归类为插件代码错误。主窗口启动提示包含受影响
+能力、恢复建议和关联 ID，不会展示 Token、API Key 或密码。
+
+#### 插件资源回收
+
+`cancel_all_plugin_tasks()` 取消全部已加载插件拥有的异步、定时和长期任务并汇总
+未结束数量。`release_plugin_resources(plugin_id)` 进一步清理发布/订阅、跨插件 API、
+MCP 工具、语言包和缓存 Widget，返回 `ResourceReleaseReport`，其中包含处理数量与
+错误列表。`shutdown_plugins()` 对全部插件执行上述回收并清空运行时注册表；应用
+退出由 `ApplicationLifecycle` 统一调用，插件不得再依赖退出后的服务或 UI 对象。
+
 #### load_official_plugins()
 
 ```python

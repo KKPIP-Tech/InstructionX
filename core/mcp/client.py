@@ -6,37 +6,20 @@ MCP Client 管理器
 """
 
 import asyncio
+import logging
 import threading
-from contextlib import AsyncExitStack
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional
-import logging
 
 # 向后兼容：MCPRemoteServerConfig 实际定义在 core.mcp.config，
 # 历史上插件代码从 core.mcp.client 导入，这里保留 re-export。
+from core.mcp.async_cleanup import cancel_pending_tasks
+from core.mcp.client_support import ensure_mcp_sdk
 from core.mcp.config import MCPRemoteServerConfig  # noqa: F401
+from core.mcp.connection_actor import ConnectionActor
+from core.observability.metrics import get_metrics_registry
+from core.observability.names import MCP_SESSIONS
 from core.plugin.tool_name import sanitize_tool_name
-
-# ===== 可选依赖：MCP SDK / httpx（缺失时置 None，运行时检查）=====
-try:
-    from mcp.client.session import ClientSession
-    from mcp.client.stdio import (
-        stdio_client,
-        StdioServerParameters,
-        get_default_environment,
-    )
-    from mcp.client.streamable_http import streamable_http_client
-except ImportError:
-    ClientSession = None
-    stdio_client = None
-    StdioServerParameters = None
-    get_default_environment = None
-    streamable_http_client = None
-
-try:
-    import httpx
-except ImportError:
-    httpx = None
 
 logger = logging.getLogger(__name__)
 
@@ -47,15 +30,8 @@ LOOP_THREAD_JOIN_TIMEOUT = 5.0
 
 
 def _ensure_mcp_sdk() -> None:
-    """检查 MCP SDK 是否可用
-
-    Raises:
-        RuntimeError: MCP SDK 未安装时抛出（中文提示）
-    """
-    if ClientSession is None:
-        raise RuntimeError(
-            "缺少 MCP SDK 依赖（请执行 pip install mcp），无法连接外部 MCP Server。"
-        )
+    """保留历史内部入口，统一执行 MCP SDK 依赖检查。"""
+    ensure_mcp_sdk()
 
 
 @dataclass
@@ -70,6 +46,7 @@ class MCPServerConnection:
     tool_name_map: Dict[str, str] = field(default_factory=dict)
     # 持有传输与 session 上下文管理器的退出栈（disconnect 时关闭）
     exit_stack: Any = None
+    actor: Optional[ConnectionActor] = None
 
 
 class MCPClientManager:
@@ -91,6 +68,7 @@ class MCPClientManager:
         self._async_loop: Optional[asyncio.AbstractEventLoop] = None
         self._loop_thread: Optional[threading.Thread] = None
         self._timeout = timeout
+        self._lifecycle_errors: List[str] = []
 
     def _ensure_loop(self) -> asyncio.AbstractEventLoop:
         """确保有一个在专用 daemon 线程中运行的事件循环
@@ -119,15 +97,18 @@ class MCPClientManager:
         server_id: str,
         session: Any,
         original_tool_name: str,
+        actor: Optional[ConnectionActor] = None,
     ) -> Callable:
         """创建调用外部 MCP 工具的 handler"""
         def handler(**kwargs: Any) -> Any:
             loop = self._ensure_loop()
+            future = None
             try:
-                future = asyncio.run_coroutine_threadsafe(
-                    session.call_tool(original_tool_name, kwargs or {}),
-                    loop,
-                )
+                if actor is not None:
+                    coroutine = actor.call_tool(original_tool_name, kwargs or {})
+                else:
+                    coroutine = session.call_tool(original_tool_name, kwargs or {})
+                future = asyncio.run_coroutine_threadsafe(coroutine, loop)
                 result = future.result(timeout=self._timeout)
                 # 解析 CallToolResult
                 if hasattr(result, "content"):
@@ -138,6 +119,8 @@ class MCPClientManager:
                     return "\n".join(texts) if texts else str(result)
                 return str(result)
             except Exception as e:
+                if future is not None:
+                    future.cancel()
                 logger.error(
                     f"MCP external tool call failed: "
                     f"{server_id}/{original_tool_name}: {e}"
@@ -151,85 +134,15 @@ class MCPClientManager:
         server_id: str,
         config: Any,
     ) -> MCPServerConnection:
-        """异步连接到外部 MCP Server
-
-        使用 AsyncExitStack 持有传输与 session 的上下文管理器，
-        避免 "async with 内 return 导致会话即建即关"；
-        exit stack 存入连接对象，disconnect 时统一关闭。
-        """
-        _ensure_mcp_sdk()
-
-        stack = AsyncExitStack()
+        """通过单一 coroutine owner 异步连接，禁止跨 Task 关闭退出栈。"""
+        actor = ConnectionActor(config, timeout=self._timeout)
         try:
-            if config.transport == "stdio":
-                # env=None 时子进程继承默认环境（含 PATH）；
-                # 配置了 env 时与默认环境合并而非替换
-                env = None
-                if config.env:
-                    env = get_default_environment()
-                    env.update(config.env)
-                params = StdioServerParameters(
-                    command=config.command,
-                    args=config.args,
-                    env=env,
-                )
-                read, write = await stack.enter_async_context(
-                    stdio_client(params)
-                )
-                session = await stack.enter_async_context(
-                    ClientSession(read, write)
-                )
-                await session.initialize()
-                tools_result = await session.list_tools()
-                return self._create_connection(
-                    server_id, config, session, tools_result, stack
-                )
-
-            elif config.transport == "streamable-http":
-                # mcp 1.30.0（约束 mcp>=1.30.0,<2） 的 streamable_http_client 没有 headers 参数，
-                # 认证头通过自带 httpx.AsyncClient 传入；
-                # 它 yield (read, write, get_session_id) 三元组
-                http_client = None
-                if config.auth_token:
-                    if httpx is None:
-                        raise RuntimeError(
-                            "缺少 httpx 依赖（请执行 pip install httpx），"
-                            "无法使用带认证令牌的 MCP HTTP 连接。"
-                        )
-                    http_client = await stack.enter_async_context(
-                        httpx.AsyncClient(
-                            headers={
-                                "Authorization": f"Bearer {config.auth_token}"
-                            },
-                            follow_redirects=True,
-                        )
-                    )
-                read, write, _get_session_id = await stack.enter_async_context(
-                    streamable_http_client(config.url, http_client=http_client)
-                )
-                session = await stack.enter_async_context(
-                    ClientSession(read, write)
-                )
-                await session.initialize()
-                tools_result = await session.list_tools()
-                return self._create_connection(
-                    server_id, config, session, tools_result, stack
-                )
-
-            else:
-                raise ValueError(f"Unsupported transport: {config.transport}")
-
-        except Exception as e:
-            logger.error(
-                f"Failed to connect to MCP server {server_id}: {e}"
+            session, tools_result = await actor.start()
+            return self._create_connection(
+                server_id, config, session, tools_result, actor=actor
             )
-            try:
-                await stack.aclose()
-            except Exception as cleanup_err:
-                logger.debug(
-                    f"连接失败后清理 exit stack 时出现异常（可忽略）: "
-                    f"{cleanup_err}"
-                )
+        except Exception:
+            await actor.stop()
             raise
 
     def _create_connection(
@@ -239,6 +152,7 @@ class MCPClientManager:
         session: Any,
         tools_result: Any,
         exit_stack: Any = None,
+        actor: Optional[ConnectionActor] = None,
     ) -> MCPServerConnection:
         """创建连接对象并注册工具
 
@@ -254,6 +168,7 @@ class MCPClientManager:
             session=session,
             tools=tools,
             exit_stack=exit_stack,
+            actor=actor,
         )
 
         for tool in tools:
@@ -262,7 +177,7 @@ class MCPClientManager:
             )
             description = f"[MCP/{config.name}] {tool.description or ''}"
             parameters = tool.inputSchema or {}
-            handler = self._make_handler(server_id, session, tool.name)
+            handler = self._make_handler(server_id, session, tool.name, actor)
 
             try:
                 self._tool_registry.register(
@@ -300,34 +215,45 @@ class MCPClientManager:
 
         with self._conn_lock:
             self._connections[server_id] = conn
+            session_count = len(self._connections)
+        get_metrics_registry().gauge(MCP_SESSIONS, {"direction": "remote"}).set(session_count)
         return conn
 
     async def _async_disconnect(self, server_id: str) -> None:
-        """异步断开连接"""
+        """注销工具并关闭连接，异常在清理连接表后统一上报。"""
         with self._conn_lock:
             conn = self._connections.get(server_id)
         if conn is None:
             return
+        errors = self._unregister_connection_tools(conn)
+        try:
+            if conn.actor is not None:
+                await conn.actor.stop()
+            elif conn.exit_stack is not None:
+                await conn.exit_stack.aclose()
+        except Exception as exc:
+            errors.append(f"关闭会话失败: {exc}")
+        finally:
+            with self._conn_lock:
+                self._connections.pop(server_id, None)
+                session_count = len(self._connections)
+        get_metrics_registry().gauge(MCP_SESSIONS, {"direction": "remote"}).set(session_count)
+        if errors:
+            raise RuntimeError(f"MCP 连接 {server_id} 清理不完整: {'; '.join(errors)}")
+        logger.info(f"Disconnected from MCP server: {server_id}")
 
+    def _unregister_connection_tools(self, conn: MCPServerConnection) -> List[str]:
+        """注销连接的全部工具并返回失败列表。"""
+        errors = []
         for namespaced_name in list(conn.tool_name_map.keys()):
             try:
                 self._tool_registry.unregister(namespaced_name)
-            except Exception as e:
+            except Exception as exc:
                 logger.warning(
-                    f"Failed to unregister MCP tool {namespaced_name}: {e}"
+                    f"Failed to unregister MCP tool {namespaced_name}: {exc}"
                 )
-
-        # mcp 1.30.0（约束 mcp>=1.30.0,<2） 的 ClientSession 没有 close()，
-        # 连接生命周期由 AsyncExitStack 统一关闭
-        try:
-            if conn.exit_stack is not None:
-                await conn.exit_stack.aclose()
-        except Exception as e:
-            logger.warning(f"Error closing MCP session {server_id}: {e}")
-
-        with self._conn_lock:
-            self._connections.pop(server_id, None)
-        logger.info(f"Disconnected from MCP server: {server_id}")
+                errors.append(f"注销工具 {namespaced_name} 失败: {exc}")
+        return errors
 
     def connect(self, config: Any) -> str:
         """同步连接到外部 MCP Server
@@ -347,18 +273,31 @@ class MCPClientManager:
             )
             self.disconnect(config.server_id)
 
+        actor = ConnectionActor(config, timeout=self._timeout)
         loop = self._ensure_loop()
+        future = None
         try:
-            future = asyncio.run_coroutine_threadsafe(
-                self._async_connect(config.server_id, config),
-                loop,
+            future = asyncio.run_coroutine_threadsafe(actor.start(), loop)
+            session, tools_result = future.result(timeout=self._timeout)
+            self._create_connection(
+                config.server_id, config, session, tools_result, actor=actor
             )
-            future.result(timeout=self._timeout)
         except Exception as e:
+            if future is not None:
+                future.cancel()
+            self._cleanup_failed_connect(actor, loop)
             logger.error(f"MCP connect failed for {config.server_id}: {e}")
             raise
 
         return config.server_id
+
+    def _cleanup_failed_connect(self, actor: ConnectionActor, loop: asyncio.AbstractEventLoop) -> None:
+        """连接或注册失败时关闭已打开的 actor，保留原始异常继续抛出。"""
+        try:
+            cleanup = asyncio.run_coroutine_threadsafe(actor.stop(), loop)
+            cleanup.result(timeout=self._timeout)
+        except Exception as cleanup_error:
+            logger.error(f"MCP 连接失败后的 actor 清理失败: {cleanup_error}")
 
     def disconnect(self, server_id: str) -> None:
         """同步断开连接"""
@@ -374,6 +313,7 @@ class MCPClientManager:
             )
             future.result(timeout=self._timeout)
         except Exception as e:
+            self._lifecycle_errors.append(f"{server_id}: {e}")
             logger.error(f"MCP disconnect failed for {server_id}: {e}")
 
     def list_connected_servers(self) -> List[str]:
@@ -394,39 +334,42 @@ class MCPClientManager:
         with self._conn_lock:
             return self._connections.get(server_id)
 
-    def shutdown(self) -> None:
-        """关闭所有连接并清理
-
-        先串行断开全部连接（每个连接等待时间受 _timeout 约束），
-        再停止事件循环线程并关闭 loop。
-        """
-        # 锁内取快照，锁外逐个断开（disconnect 内部会再取锁，避免持锁回调死锁）
+    def shutdown(self) -> tuple[str, ...]:
+        """关闭全部连接和事件循环，返回未忽略的清理错误列表。"""
+        self._lifecycle_errors = []
         with self._conn_lock:
             server_ids = list(self._connections.keys())
         for server_id in server_ids:
             try:
                 self.disconnect(server_id)
-            except Exception as e:
-                logger.warning(f"Error during shutdown for {server_id}: {e}")
-
-        loop = self._async_loop
-        if loop is not None and not loop.is_closed():
-            try:
-                loop.call_soon_threadsafe(loop.stop)
-            except Exception as stop_err:
-                logger.debug(
-                    f"停止 MCP client 事件循环时出现异常（可忽略）: {stop_err}"
-                )
-            if self._loop_thread is not None:
-                self._loop_thread.join(timeout=LOOP_THREAD_JOIN_TIMEOUT)
-                if self._loop_thread.is_alive():
-                    logger.warning(
-                        f"MCP client loop thread did not exit in "
-                        f"{LOOP_THREAD_JOIN_TIMEOUT}s"
-                    )
-            try:
-                loop.close()
-            except Exception as e:
-                logger.warning(f"Error closing MCP client loop: {e}")
+            except Exception as exc:
+                self._lifecycle_errors.append(f"{server_id}: {exc}")
+                logger.warning(f"Error during shutdown for {server_id}: {exc}")
+        self._close_loop()
         self._async_loop = None
         self._loop_thread = None
+        return tuple(self._lifecycle_errors)
+
+    def _close_loop(self) -> None:
+        """停止事件循环；线程未退出时不得关闭仍在运行的 loop。"""
+        loop = self._async_loop
+        if loop is None or loop.is_closed():
+            return
+        try:
+            cleanup = asyncio.run_coroutine_threadsafe(cancel_pending_tasks(), loop)
+            cleanup.result(timeout=LOOP_THREAD_JOIN_TIMEOUT)
+        except Exception as exc:
+            self._lifecycle_errors.append(f"清理事件循环任务失败: {exc}")
+        try:
+            loop.call_soon_threadsafe(loop.stop)
+        except Exception as exc:
+            self._lifecycle_errors.append(f"停止事件循环失败: {exc}")
+        if self._loop_thread is not None:
+            self._loop_thread.join(timeout=LOOP_THREAD_JOIN_TIMEOUT)
+            if self._loop_thread.is_alive():
+                self._lifecycle_errors.append("MCP client 事件循环线程未在截止期内退出")
+                return
+        try:
+            loop.close()
+        except Exception as exc:
+            self._lifecycle_errors.append(f"关闭事件循环失败: {exc}")

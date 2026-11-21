@@ -7,9 +7,9 @@
 
 [![CI](https://github.com/KKPIP-Tech/InstructionX/actions/workflows/test.yml/badge.svg)](https://github.com/KKPIP-Tech/InstructionX/actions/workflows/test.yml)
 [![Python](https://img.shields.io/badge/Python-3.14+-blue.svg)](https://www.python.org/)
-[![PySide6](https://img.shields.io/badge/PySide6-6.10+-green.svg)](https://doc.qt.io/qtforpython/)
-[![Platform](https://img.shields.io/badge/Platform-Windows%2010%2F11-lightgrey.svg)](#)
-[![Version](https://img.shields.io/badge/Alpha-1.1.2%20CE-red.svg)](#)
+[![PySide6](https://img.shields.io/badge/PySide6-6.11.1+-green.svg)](https://doc.qt.io/qtforpython/)
+[![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS-lightgrey.svg)](#)
+[![Version](https://img.shields.io/badge/Alpha-1.1.3%20CE-red.svg)](#)
 [![License](https://img.shields.io/badge/License-AGPL--3.0%2B%20%2B%20%C2%A77%20Terms-blue.svg)](LICENSE)
 
 [中文版](README.md) | [English Version](README_EN.md) | [Version française](README_FR.md) | Русская версия
@@ -77,7 +77,7 @@ InstructionX — это **плагинно-ориентированный фре
 
 ### Пользовательский интерфейс
 
-- **Библиотека компонентов InstructionX_UIKit**: 58 компонентов + 13 макетов + 52 анимации, включая собственный движок диаграмм (двойной вьюпорт GL / программный), граф узлов blueprint, редактор кода в стиле VS Code и рендеринг Mermaid; три глобальных режима темы (светлая / тёмная / авто) с дизайн-токенами, мгновенно применяющими оформление
+- **Библиотека компонентов InstructionX_UIKit**: 59 компонентов + 13 макетов + 52 анимации, включая собственный движок диаграмм (прямой Canvas + QRhi по умолчанию с явным откатом RHI), граф узлов blueprint, редактор кода в стиле VS Code, полный набор иконок Iconoir и рендеринг Mermaid; три глобальных режима темы (светлая / тёмная / авто) с дизайн-токенами, мгновенно применяющими оформление
 - **Менеджер шрифтов**: установка / удаление / предпросмотр шрифтов на уровне приложения (действует в рамках процесса, без записи в системный каталог шрифтов), с автоматическим переходом на системные шрифты при их отсутствии
 - **Системный трей**: меню трея в реальном времени показывает запущенные плагины и фоновые задачи; при закрытии главного окна отображается диалог подтверждения с выбором — выйти из программы или свернуть в трей
 
@@ -313,15 +313,15 @@ python -m pytest test/ -q --tb=short -p no:cacheprovider
 | Технология | Назначение | Версия |
 |------------|------------|--------|
 | Python | Язык программирования | >= 3.14 |
-| PySide6 | Qt GUI-фреймворк | >= 6.10 |
+| PySide6 | Qt GUI-фреймворк | >= 6.11.1 |
 | mcp | Протокол MCP (FastMCP) | >= 1.28.1, < 2 |
 | requests / aiohttp | HTTP / асинхронный HTTP | >= 2.32 / >= 3.11 |
 | orjson | Высокопроизводительная сериализация JSON | >= 3.11.0, < 4 |
-| matplotlib | Статистика использования и рендеринг формул LaTeX в MarkdownView UIKit | >= 3.10 |
+| matplotlib | Статистика использования и рендеринг формул LaTeX в MarkdownView UIKit | >= 3.11.1 |
 | packaging | Проверка версий зависимостей плагинов | >= 23.0 |
 | qrcode[pil] | Компонент QRCodeView UIKit | >= 7.4 |
 | numpy | Движок диаграмм UIKit (конвейер больших данных / даунсемплинг) | >= 2.0 |
-| InstructionX_UIKit | Темы интерфейса и библиотека компонентов | Встроена (alpha-v1.0.3) |
+| InstructionX_UIKit | Темы интерфейса и библиотека компонентов | Встроена (alpha-v1.0.4) |
 
 ## Лицензия
 

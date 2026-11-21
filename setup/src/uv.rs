@@ -1,0 +1,445 @@
+use std::error::Error;
+use std::fs;
+use std::io::{self, BufRead, BufReader};
+use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
+use std::sync::mpsc::Sender;
+use std::thread;
+
+use crate::actions::tool_available;
+
+const UV_DOWNLOAD_BASE_URL: &str = "https://github.com/astral-sh/uv/releases/latest/download";
+
+#[derive(Debug, Clone)]
+pub struct CommandOutput {
+    pub code: i32,
+    pub stdout: String,
+    pub stderr: String,
+}
+
+pub trait CommandRunner {
+    fn run(&self, program: &str, args: &[String], root: &Path) -> io::Result<CommandOutput>;
+}
+
+struct ProcessRunner;
+
+impl CommandRunner for ProcessRunner {
+    fn run(&self, program: &str, args: &[String], root: &Path) -> io::Result<CommandOutput> {
+        let output = Command::new(program)
+            .args(args)
+            .current_dir(root)
+            .output()?;
+        Ok(CommandOutput {
+            code: output.status.code().unwrap_or(-1),
+            stdout: String::from_utf8_lossy(&output.stdout).to_string(),
+            stderr: String::from_utf8_lossy(&output.stderr).to_string(),
+        })
+    }
+}
+
+pub fn stream_process<F>(
+    program: &str,
+    arguments: &[String],
+    root: &Path,
+    mut on_output: F,
+) -> io::Result<CommandOutput>
+where
+    F: FnMut(&str),
+{
+    let mut child = Command::new(program)
+        .args(arguments)
+        .current_dir(root)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()?;
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| io::Error::other("缺少标准输出管道"))?;
+    let stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| io::Error::other("缺少错误输出管道"))?;
+    let (sender, receiver) = std::sync::mpsc::channel();
+    let stdout_reader = spawn_output_reader(stdout, sender.clone());
+    let stderr_reader = spawn_output_reader(stderr, sender);
+    for chunk in receiver {
+        on_output(&chunk);
+    }
+    let status = child.wait()?;
+    let stdout = join_output(stdout_reader)?;
+    let stderr = join_output(stderr_reader)?;
+    Ok(CommandOutput {
+        code: status.code().unwrap_or(-1),
+        stdout,
+        stderr,
+    })
+}
+
+fn spawn_output_reader<R>(
+    reader: R,
+    sender: Sender<String>,
+) -> thread::JoinHandle<io::Result<String>>
+where
+    R: io::Read + Send + 'static,
+{
+    thread::spawn(move || {
+        let mut reader = BufReader::new(reader);
+        let mut collected = String::new();
+        loop {
+            let mut bytes = Vec::new();
+            if reader.read_until(b'\n', &mut bytes)? == 0 {
+                break;
+            }
+            let text = String::from_utf8_lossy(&bytes).to_string();
+            collected.push_str(&text);
+            sender
+                .send(text)
+                .map_err(|_| io::Error::new(io::ErrorKind::BrokenPipe, "输出接收端已关闭"))?;
+        }
+        Ok(collected)
+    })
+}
+
+fn join_output(handle: thread::JoinHandle<io::Result<String>>) -> io::Result<String> {
+    handle
+        .join()
+        .map_err(|_| io::Error::other("输出读取线程异常终止"))?
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Deserialize)]
+pub struct PackageInfo {
+    pub name: String,
+    pub version: String,
+    pub latest_version: Option<String>,
+}
+
+pub struct UvClient {
+    program: PathBuf,
+    root: PathBuf,
+    runner: Box<dyn CommandRunner>,
+}
+
+pub fn uv_program(root: &Path) -> PathBuf {
+    let name = if cfg!(windows) { "uv.exe" } else { "uv" };
+    let local = root.join(".tui/tools").join(name);
+    if local.is_file() {
+        local
+    } else {
+        PathBuf::from("uv")
+    }
+}
+
+impl UvClient {
+    pub fn new(root: &Path) -> Self {
+        Self::with_runner(
+            uv_program(root),
+            Box::new(ProcessRunner),
+            root.to_path_buf(),
+        )
+    }
+
+    pub fn program(&self) -> &Path {
+        &self.program
+    }
+
+    pub fn with_runner(program: PathBuf, runner: Box<dyn CommandRunner>, root: PathBuf) -> Self {
+        Self {
+            program,
+            root,
+            runner,
+        }
+    }
+
+    pub fn list_packages(&self) -> Result<Vec<PackageInfo>, Box<dyn Error>> {
+        let installed = self.run_json(&["pip", "list", "--format", "json"])?;
+        let outdated = self.run_json(&["pip", "list", "--outdated", "--format", "json"])?;
+        let mut packages = installed;
+        for package in &mut packages {
+            package.latest_version = outdated
+                .iter()
+                .find(|candidate| candidate.name == package.name)
+                .and_then(|candidate| candidate.latest_version.clone());
+        }
+        Ok(packages)
+    }
+
+    pub fn update_packages(&mut self, packages: &[String]) -> Result<(), Box<dyn Error>> {
+        for package in packages {
+            self.run_checked(&["pip", "install", "--upgrade-package", package])?;
+        }
+        Ok(())
+    }
+
+    pub fn remove_packages(&mut self, packages: &[String]) -> Result<(), Box<dyn Error>> {
+        for package in packages {
+            self.run_checked(&["pip", "uninstall", package])?;
+        }
+        Ok(())
+    }
+
+    pub fn sync_environment(&mut self) -> Result<(), Box<dyn Error>> {
+        let locked = self.run(&["sync", "--locked", "--no-dev", "--no-install-project"])?;
+        if locked.code == 0 {
+            return Ok(());
+        }
+        self.install_requirements()
+    }
+
+    pub fn install_requirements(&mut self) -> Result<(), Box<dyn Error>> {
+        self.run_checked(&["pip", "install", "-r", "requirements.txt"])?;
+        Ok(())
+    }
+
+    pub fn rebuild_environment(&mut self) -> Result<(), Box<dyn Error>> {
+        let environment = self.root.join(".venv");
+        if environment.exists() {
+            fs::remove_dir_all(environment)?;
+        }
+        self.sync_environment()
+    }
+
+    fn run_json(&self, arguments: &[&str]) -> Result<Vec<PackageInfo>, Box<dyn Error>> {
+        let output = self.run_checked(arguments)?;
+        Ok(serde_json::from_str(&output.stdout)?)
+    }
+
+    fn run_checked(&self, arguments: &[&str]) -> Result<CommandOutput, Box<dyn Error>> {
+        let output = self.run(arguments)?;
+        if output.code != 0 {
+            return Err(format!("uv {} failed: {}", arguments.join(" "), output.stderr).into());
+        }
+        Ok(output)
+    }
+
+    fn run(&self, arguments: &[&str]) -> Result<CommandOutput, Box<dyn Error>> {
+        let arguments: Vec<String> = arguments.iter().map(|value| value.to_string()).collect();
+        let program = self.program.to_string_lossy().to_string();
+        Ok(self.runner.run(&program, &arguments, &self.root)?)
+    }
+}
+
+pub fn uv_asset_name(os: &str, architecture: &str) -> Result<String, String> {
+    match (os, architecture) {
+        ("windows", "x86_64") => Ok("uv-x86_64-pc-windows-msvc.zip".to_string()),
+        ("macos", "x86_64") => Ok("uv-x86_64-apple-darwin.tar.gz".to_string()),
+        ("macos", "aarch64") => Ok("uv-aarch64-apple-darwin.tar.gz".to_string()),
+        ("linux", "x86_64") => Ok("uv-x86_64-unknown-linux-gnu.tar.gz".to_string()),
+        ("linux", "aarch64") => Ok("uv-aarch64-unknown-linux-gnu.tar.gz".to_string()),
+        _ => Err(format!("Unsupported uv platform: {os}/{architecture}")),
+    }
+}
+
+pub fn install_uv(root: &Path) -> Result<PathBuf, Box<dyn Error>> {
+    let asset = uv_asset_name(std::env::consts::OS, std::env::consts::ARCH)?;
+    let work = root.join(".tui/work/uv-install");
+    fs::create_dir_all(&work)?;
+    let archive = work.join(&asset);
+    let client = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(60))
+        .user_agent("InstructionX-Setup")
+        .build()?;
+    let response = client
+        .get(format!("{UV_DOWNLOAD_BASE_URL}/{asset}"))
+        .send()?
+        .error_for_status()?;
+    fs::write(&archive, response.bytes()?)?;
+    let extracted = work.join("extracted");
+    fs::create_dir_all(&extracted)?;
+    extract_uv_archive(&archive, &extracted)?;
+    let binary_name = if cfg!(windows) { "uv.exe" } else { "uv" };
+    let source = find_binary(&extracted, binary_name)?;
+    let target = root.join(".tui/tools").join(binary_name);
+    if let Some(parent) = target.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    fs::copy(source, &target)?;
+    set_executable(&target)?;
+    let output = Command::new(&target).arg("--version").output()?;
+    if !output.status.success() {
+        return Err("Downloaded uv failed verification".into());
+    }
+    Ok(target)
+}
+
+fn extract_uv_archive(archive: &Path, destination: &Path) -> Result<(), Box<dyn Error>> {
+    if archive.extension().and_then(|value| value.to_str()) == Some("zip") {
+        let mut zip = zip::ZipArchive::new(fs::File::open(archive)?)?;
+        return Ok(zip.extract(destination)?);
+    }
+    let file = fs::File::open(archive)?;
+    let decoder = flate2::read::GzDecoder::new(file);
+    let mut tar = tar::Archive::new(decoder);
+    Ok(tar.unpack(destination)?)
+}
+
+fn find_binary(root: &Path, name: &str) -> Result<PathBuf, Box<dyn Error>> {
+    for entry in fs::read_dir(root)? {
+        let entry = entry?;
+        if entry.file_type()?.is_dir() {
+            if let Ok(found) = find_binary(&entry.path(), name) {
+                return Ok(found);
+            }
+        } else if entry.file_name() == name {
+            return Ok(entry.path());
+        }
+    }
+    Err(format!("uv binary not found: {name}").into())
+}
+
+#[cfg(unix)]
+fn set_executable(path: &Path) -> Result<(), Box<dyn Error>> {
+    use std::os::unix::fs::PermissionsExt;
+    let mut permissions = fs::metadata(path)?.permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(path, permissions)?;
+    Ok(())
+}
+
+#[cfg(windows)]
+fn set_executable(_path: &Path) -> Result<(), Box<dyn Error>> {
+    Ok(())
+}
+
+pub fn install_git() -> Result<(), Box<dyn Error>> {
+    let root = std::env::current_dir()?;
+    install_git_with_output(&root, |_| {})
+}
+
+pub fn install_git_with_output<F>(root: &Path, on_output: F) -> Result<(), Box<dyn Error>>
+where
+    F: FnMut(&str),
+{
+    let (program, arguments) = git_install_command()?;
+    let output = stream_process(&program, &arguments, root, on_output)?;
+    if output.code != 0 {
+        return Err(format!("Git installation failed: {}", output.stderr.trim()).into());
+    }
+    if !tool_available("git") {
+        return Err("Git is still unavailable after installation".into());
+    }
+    Ok(())
+}
+
+fn git_install_command() -> Result<(String, Vec<String>), String> {
+    if cfg!(windows) {
+        return windows_git_command();
+    }
+    if cfg!(target_os = "macos") {
+        return macos_git_command();
+    }
+    linux_git_command()
+}
+
+fn windows_git_command() -> Result<(String, Vec<String>), String> {
+    if !tool_available("winget") {
+        return Err("winget is required to install Git automatically".to_string());
+    }
+    Ok(command_spec(
+        "winget",
+        &[
+            "install",
+            "--id",
+            "Git.Git",
+            "-e",
+            "--source",
+            "winget",
+            "--accept-package-agreements",
+            "--accept-source-agreements",
+            "--silent",
+        ],
+    ))
+}
+
+fn macos_git_command() -> Result<(String, Vec<String>), String> {
+    if !tool_available("brew") {
+        return Err("Homebrew is required to install Git automatically".to_string());
+    }
+    Ok(command_spec("brew", &["install", "git"]))
+}
+
+fn linux_git_command() -> Result<(String, Vec<String>), String> {
+    for (package_manager, arguments) in [
+        ("apt-get", vec!["install", "-y", "git"]),
+        ("dnf", vec!["install", "-y", "git"]),
+        ("pacman", vec!["-Sy", "--noconfirm", "git"]),
+    ] {
+        if tool_available(package_manager) {
+            let mut command = vec![package_manager];
+            command.extend(arguments);
+            return Ok(command_spec("sudo", &command));
+        }
+    }
+    Err("No supported Linux package manager was found".to_string())
+}
+
+fn command_spec(program: &str, arguments: &[&str]) -> (String, Vec<String>) {
+    (
+        program.to_string(),
+        arguments.iter().map(|value| value.to_string()).collect(),
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::{Arc, Mutex};
+
+    use super::*;
+
+    struct RecordingRunner {
+        arguments: Arc<Mutex<Vec<Vec<String>>>>,
+    }
+
+    impl CommandRunner for RecordingRunner {
+        fn run(&self, _program: &str, args: &[String], _root: &Path) -> io::Result<CommandOutput> {
+            self.arguments.lock().expect("记录锁").push(args.to_vec());
+            Ok(CommandOutput {
+                code: 0,
+                stdout: String::new(),
+                stderr: String::new(),
+            })
+        }
+    }
+
+    #[test]
+    fn incremental_requirements_install_never_uses_uv_sync() {
+        let arguments = Arc::new(Mutex::new(Vec::new()));
+        let runner = RecordingRunner {
+            arguments: Arc::clone(&arguments),
+        };
+        let mut client =
+            UvClient::with_runner(PathBuf::from("uv"), Box::new(runner), PathBuf::from("."));
+
+        client.install_requirements().expect("增量安装依赖");
+
+        let recorded = arguments.lock().expect("记录锁");
+        assert_eq!(recorded.len(), 1);
+        assert_eq!(recorded[0], ["pip", "install", "-r", "requirements.txt"]);
+    }
+
+    #[test]
+    fn streaming_process_captures_output_and_reports_each_chunk() {
+        let temporary = tempfile::tempdir().expect("创建临时目录");
+        let (program, arguments) = if cfg!(windows) {
+            (
+                "cmd",
+                vec!["/c".to_string(), "echo streaming-test".to_string()],
+            )
+        } else {
+            (
+                "sh",
+                vec!["-c".to_string(), "printf streaming-test".to_string()],
+            )
+        };
+        let mut reported = Vec::new();
+
+        let output = stream_process(program, &arguments, temporary.path(), |text| {
+            reported.push(text.to_string())
+        })
+        .expect("执行流式命令");
+
+        assert_eq!(output.code, 0);
+        assert!(output.stdout.contains("streaming-test"));
+        assert!(reported.join("").contains("streaming-test"));
+    }
+}

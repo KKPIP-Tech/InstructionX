@@ -350,7 +350,8 @@ flowchart TD
 - **`models_cache_stale` 属性**：暴露当前缓存是否过期，供 `LLMProvider._check_models_staleness()` 等上层调度判断是否需要后台静默刷新；
 - **缓存条目格式**：TTL 信封 `{"timestamp": <unix_ts>, "models": [ModelInfo, ...]}`；读取端兼容**纯 list 旧格式**（无 timestamp）——此时视为已过期（`models_cache_stale=True`），强制走 API 刷新或回退默认模型。
 - **预设模型列表**: 子类定义了 `CHAT_MODELS` / `EMBEDDING_MODELS` 类属性的 Provider 不走上述流程，直接返回预设模型列表（`get_models()` → `_get_fallback_models()`）
-- **每次初始化**: 都会尝试从 API 刷新模型列表
+- **启动与顺序刷新**: 初始化按注册顺序逐个读取磁盘缓存并完成严格刷新，`ProviderSupervisor` 单 worker 顺序写缓存，单 Provider 失败不阻止后续实例。严格刷新只有真实成功才返回空列表；网络失败会进入不健康状态和失败计数，连续失败触发熔断，恢复窗口后允许半开成功并重置状态。`check_provider_detailed()` 返回模型数、错误和 `HealthStatus`，旧 `check_provider()` 返回签名保持兼容。
+- **请求级并发控制**: `request_timeout` 仅作用于单次请求，不修改共享 `provider.timeout`；聊天、嵌入和流式调用使用 `X-Request-ID`，重试复用同一 ID 以便服务端去重。流式指标包含首 token、总耗时和中断原因，响应在异常和取消路径关闭。
 
 ```python
 # 获取模型列表
@@ -404,7 +405,24 @@ stats = svc.get_usage_stats(conv_id)
 print(f"Token: {stats.total_tokens}, 费用: {stats.total_cost}元")
 ```
 
-### 8.3 与旧 API 的区别
+### 8.3 持久化、并发与故障恢复
+
+用量默认写入 `data/llm_usage.db`，会话默认写入 `data/conversations.db`，均采用
+SQLite WAL 和逐条/逐轮显式事务，不再在每次变更后全量重写 JSON。`durable=True`
+使用 `synchronous=FULL`，确保已确认事务在约定进程崩溃/断电模型下持久；
+`durable=False` 为 balanced 模式，使用 `synchronous=NORMAL`，性能更高但掉电时
+可能损失最近事务，不应按 RPO=0 承诺。
+
+启动时若独立数据库不存在且存在合法旧 JSON，会在单事务中完成迁移并生成
+`.bak` 备份；迁移失败清理本次新建库，允许从原 JSON 重试。损坏 JSON 保留原文件
+并生成 `.corrupt-*.bak` 隔离副本，禁止按空数据覆盖。`UsageRecordStore` 的旧自定义
+JSON 路径仍保留异步 JSON 兼容行为，写失败保持 `_cache_dirty=True`，`flush()` 可重试，
+`flush_detailed()` 返回成功、未落盘数和错误信息。
+
+`ConversationManager` 仅提交尚未持久化的增量消息。同会话的同步和流式发送按完整
+用户/助手轮次串行执行，不同会话仍可并行；写库失败会显式抛出，不伪装保存成功。
+
+### 8.4 与旧 API 的区别
 
 | 方面 | 旧 API (LLMProvider.chat) | 新 API (LLMPluginService) |
 |---|---|---|
@@ -860,4 +878,4 @@ graph LR
 - [系统架构概述](../../architecture/overview.md)
 - [instructionx-architecture.md §3.2 LLM 层](../../architecture/instructionx-architecture.md#32-llm-层-corellm)（`LLMPluginService` / `LLMProvider` / `ConversationManager` / `ToolCallExecutor` 模块依赖图）
 - [MCP 协议模块概述](../mcp/overview.md)（`MCPClientManager` 将外部 MCP 工具注入 `ToolRegistry`）
-- [DataProvider 概述](../data-provider/overview.md)（用量持久化 `data/llm_usage.json`）
+- [DataProvider 概述](../data-provider/overview.md)（用量持久化 `data/llm_usage.db`）

@@ -20,10 +20,16 @@ from uuid import UUID
 
 import orjson
 
+from core.observability.instrumentation import measure_db_write
+
 from .schema_migrations import MIGRATIONS, TARGET_SCHEMA_VERSION
+from .recovery import DatabaseRecovery, DatabaseRecoveryError, DatabaseState, RecoveryReport
 from . import sql_map
 
 from utils.logging_tools import LoggerManager, get_name
+
+
+CORE_TABLE_COUNT = 3
 
 
 # ---------------------------------------------------------------------------
@@ -206,6 +212,7 @@ class SQLiteBackend:
         # 容量使用 _LRUCache 默认值（4096），不显式传字面量
         self._value_cache = _LRUCache()
         self._logger = LoggerManager()
+        self._recovery = DatabaseRecovery()
 
     # -----------------------------------------------------------------------
     # 连接与 PRAGMA
@@ -231,13 +238,14 @@ class SQLiteBackend:
         conn.execute(sql_map.SQLMap.v1.PRAGMA_SYNCHRONOUS_NORMAL)
 
     def close(self) -> None:
-        """关闭数据库连接。"""
-        if self._conn is not None:
-            try:
-                self._conn.close()
-            except Exception as e:
-                # 关闭连接失败不影响后续流程，仅记录调试日志
-                self._logger.debug(get_name(), f'关闭数据库连接时出错（已忽略）: {e}')
+        """幂等关闭数据库连接；关闭失败记录警告且仍释放连接引用。"""
+        if self._conn is None:
+            return
+        try:
+            self._conn.close()
+        except sqlite3.Error as error:
+            self._logger.warning(get_name(), f"关闭数据库连接失败: {error}")
+        finally:
             self._conn = None
 
     # -----------------------------------------------------------------------
@@ -334,66 +342,139 @@ class SQLiteBackend:
     # -----------------------------------------------------------------------
 
     def ensure_database(self) -> None:
-        """确保数据库已创建、schema 正确、版本最新，并完成 JSON 迁移。"""
+        """确保数据库完整且版本兼容；既有文件在任何失败路径都保留。"""
         self._remove_temp_json_file_if_exists()
-
-        db_exists = self.db_file.exists() and self.db_file.stat().st_size > 0
-        has_core_tables = db_exists and self._has_core_tables()
-
-        if not has_core_tables:
-            # 新建数据库：先解析 JSON（如果存在），再创建数据库
-            json_data = None
-            if self.json_file.exists():
-                json_data = self._parse_json_file()
-
-            try:
-                # DDL 会隐式提交 SQLite 事务，因此先单独执行 DDL
-                conn = self._connect()
-                self._create_tables(conn)
-
-                # 数据迁移与元数据写入在同一个显式事务中，失败可整体回滚
-                with self.transaction() as txn:
-                    if json_data is not None:
-                        self._migrate_json_to_sqlite(txn, json_data)
-                    now = dt.datetime.now(dt.timezone.utc).isoformat()
-                    self._set_metadata(
-                        txn,
-                        schema_version=str(TARGET_SCHEMA_VERSION),
-                        migrated_from=self.json_file.name if json_data is not None else "created",
-                        migrated_at=now,
-                    )
-
-                # SQLite 事务提交成功后，才重命名 JSON 备份
-                if json_data is not None:
-                    self.migrate_json_file_with_backup()
-            except Exception as e:
-                # 任何失败都关闭连接并删除不完整的数据库文件，
-                # 确保下次启动时仍可从原始 data.json 重试迁移
-                self.close()
+        can_cleanup = not any(path.exists() for path in self._database_files())
+        self._new_database_has_user_data = False
+        backup_report: Optional[RecoveryReport] = None
+        try:
+            state = self._recovery.classify_existing_database(self.db_file)
+            self._reject_unavailable_database(state)
+            self._reject_orphaned_sidecars(state)
+            if state is DatabaseState.CORRUPT:
+                self._quarantine_corrupt_database()
+            backup_report = self._create_startup_backup(state)
+            self._initialize_schema(state)
+            self._validate_integrity()
+        except Exception as error:
+            self.close()
+            if can_cleanup and not self._new_database_has_user_data:
                 self._delete_db_files()
-                if isinstance(e, SQLiteBackendError):
-                    raise
-                raise SQLiteBackendError(f"数据库初始化失败: {e}") from e
+            self._restore_backup_after_failure(backup_report, error)
+            self._raise_initialization_error(error)
+
+    def _reject_orphaned_sidecars(self, state: DatabaseState) -> None:
+        """主库缺失或为空时拒绝打开含既有伴生文件的路径，防止 SQLite 自动清理。"""
+        if state not in (DatabaseState.MISSING, DatabaseState.EMPTY):
+            return
+        if any(path.exists() for path in self._database_files()[1:]):
+            raise SQLiteBackendError("主库缺失或为空但 WAL/SHM 已存在，文件均未改动；请人工恢复")
+
+    def _restore_backup_after_failure(
+        self, report: Optional[RecoveryReport], original_error: Exception
+    ) -> None:
+        """初始化失败时还原 SQLite 可能自动改写或清理的启动前伴生文件。"""
+        if report is None:
+            return
+        try:
+            self._recovery.restore_recovery_point(report)
+        except DatabaseRecoveryError as error:
+            self._logger.error(get_name(), f"初始化失败后恢复启动备份失败: {error}")
+            raise SQLiteBackendError(
+                f"数据库初始化失败且启动前文件恢复失败：{error}；原始错误：{original_error}；请人工恢复"
+            ) from error
+
+    def _database_files(self) -> Tuple[Path, Path, Path]:
+        """返回主库、WAL 和 SHM 路径，用于启动前存在性判定。"""
+        return tuple(Path(f"{self.db_file}{suffix}") for suffix in ("", "-wal", "-shm"))
+
+    def _reject_unavailable_database(self, state: DatabaseState) -> None:
+        """锁定或不可读数据库必须停止，不得按新库继续初始化。"""
+        if state in (DatabaseState.LOCKED, DatabaseState.IO_ERROR):
+            raise SQLiteBackendError(
+                f"数据库当前不可用（{state.value}），原始文件未改动；请检查锁、权限和磁盘 I/O"
+            )
+
+    def _quarantine_corrupt_database(self) -> None:
+        """隔离损坏文件后停止启动，禁止用空库替代用户数据。"""
+        try:
+            report = self._recovery.quarantine(self.db_file, "启动前 integrity_check 失败")
+        except DatabaseRecoveryError as error:
+            self._logger.error(get_name(), f"损坏数据库隔离失败: {error}")
+            raise SQLiteBackendError(f"损坏数据库隔离失败：{error}；原始文件未改动，请人工恢复") from error
+        self._logger.info(get_name(), f"损坏数据库已隔离到 {report.recovery_path}，原文件保留")
+        raise SQLiteBackendError(
+            f"数据库损坏，原始文件已保留，隔离副本位于 {report.recovery_path}；请人工恢复"
+        )
+
+    def _create_startup_backup(self, state: DatabaseState) -> Optional[RecoveryReport]:
+        """在首次写连接前为合法非空既有库创建并验证恢复点。"""
+        if state is not DatabaseState.VALID:
+            return None
+        try:
+            report = self._recovery.create_backup(self.db_file, "数据库启动前备份")
+        except DatabaseRecoveryError as error:
+            self._logger.error(get_name(), f"数据库启动备份失败: {error}")
+            raise SQLiteBackendError(f"启动前备份失败，数据库未修改：{error}") from error
+        self._logger.info(get_name(), f"数据库启动备份已创建: {report.recovery_path}")
+        return report
+
+    def _initialize_schema(self, state: DatabaseState) -> None:
+        """按核心表是否存在选择既有库升级或首次建库流程。"""
+        has_core_tables = state is DatabaseState.VALID and self._has_core_tables()
+        if has_core_tables:
+            self._initialize_existing_schema()
         else:
-            conn = self._connect()
-            self._create_tables(conn)
-            current = self._get_schema_version(conn)
-            if current == 0:
-                # 早期无版本数据库，补齐到版本 1
-                now = dt.datetime.now(dt.timezone.utc).isoformat()
-                self._set_metadata(
-                    conn,
-                    schema_version=str(TARGET_SCHEMA_VERSION),
-                    migrated_from="legacy",
-                    migrated_at=now,
-                )
-            elif current < TARGET_SCHEMA_VERSION:
-                self._upgrade_schema(conn)
-            elif current > TARGET_SCHEMA_VERSION:
-                raise SQLiteBackendError(
-                    f"数据库版本 {current} 高于代码目标版本 {TARGET_SCHEMA_VERSION}"
-                )
-            self._validate_table_schema(conn)
+            self._initialize_new_schema()
+
+    def _initialize_new_schema(self) -> None:
+        """创建核心表并在单事务中导入 JSON；失败清理由调用方判定。"""
+        json_data = self._parse_json_file() if self.json_file.exists() else None
+        conn = self._connect()
+        self._create_tables(conn)
+        with self.transaction() as txn:
+            if json_data is not None:
+                self._migrate_json_to_sqlite(txn, json_data)
+            self._set_metadata(
+                txn,
+                schema_version=str(TARGET_SCHEMA_VERSION),
+                migrated_from=self.json_file.name if json_data is not None else "created",
+                migrated_at=dt.datetime.now(dt.timezone.utc).isoformat(),
+            )
+        if json_data is not None:
+            # 提交后再失败也不能按“无数据临时库”清理，因此必须在重命名前标记。
+            self._new_database_has_user_data = True
+            self.migrate_json_file_with_backup()
+
+    def _initialize_existing_schema(self) -> None:
+        """补齐旧库表结构，执行版本升级并验证最终列定义。"""
+        conn = self._connect()
+        self._create_tables(conn)
+        current = self._get_schema_version(conn)
+        if current == 0:
+            self._set_metadata(
+                conn,
+                schema_version=str(TARGET_SCHEMA_VERSION),
+                migrated_from="legacy",
+                migrated_at=dt.datetime.now(dt.timezone.utc).isoformat(),
+            )
+        elif current < TARGET_SCHEMA_VERSION:
+            self._upgrade_schema(conn)
+        elif current > TARGET_SCHEMA_VERSION:
+            raise SQLiteBackendError(f"数据库版本 {current} 高于代码目标版本 {TARGET_SCHEMA_VERSION}")
+        self._validate_table_schema(conn)
+
+    def _validate_integrity(self) -> None:
+        """初始化结束后再次执行 integrity_check，异常结果不得视为成功。"""
+        rows = self._connect().execute("PRAGMA integrity_check").fetchall()
+        if [row[0] for row in rows] != ["ok"]:
+            raise SQLiteBackendError(f"数据库 integrity_check 未通过: {rows}")
+
+    def _raise_initialization_error(self, error: Exception) -> None:
+        """统一将恢复和原生驱动异常包装为后端公开异常。"""
+        if isinstance(error, SQLiteBackendError):
+            raise error
+        raise SQLiteBackendError(f"数据库初始化失败: {error}") from error
 
     # -----------------------------------------------------------------------
     # 辅助方法
@@ -407,12 +488,9 @@ class SQLiteBackend:
         """
         if not self.db_file.exists():
             return False
-        try:
-            conn = self._connect()
-            cur = conn.execute(sql_map.SQLMap.v1.SELECT_CORE_TABLES)
-            return len(cur.fetchall()) == 3
-        except Exception:
-            return False
+        conn = self._connect()
+        cur = conn.execute(sql_map.SQLMap.v1.SELECT_CORE_TABLES)
+        return len(cur.fetchall()) == CORE_TABLE_COUNT
 
     def _remove_temp_json_file_if_exists(self) -> None:
         try:
@@ -423,16 +501,13 @@ class SQLiteBackend:
             self._logger.debug(get_name(), f'清理临时 JSON 文件失败（已忽略）: {e}')
 
     def _delete_db_files(self) -> None:
-        """删除数据库文件及其 WAL/SHM 附属文件。"""
-        base_name = self.db_file.name
-        for suffix in ("", "-wal", "-shm"):
-            path = self.db_file.parent / (base_name + suffix)
+        """仅由启动前三文件均不存在的失败路径调用，清理本次临时库。"""
+        for path in self._database_files():
             try:
                 if path.exists():
                     path.unlink()
-            except Exception as e:
-                # 删除残留数据库文件失败不影响错误恢复主流程
-                self._logger.debug(get_name(), f'删除数据库文件 {path.name} 失败（已忽略）: {e}')
+            except OSError as error:
+                self._logger.warning(get_name(), f"清理本次新建数据库文件 {path.name} 失败: {error}")
 
     def _parse_json_file(self) -> Dict[str, Any]:
         try:
@@ -617,11 +692,54 @@ class SQLiteBackend:
     ) -> None:
         value_json = _serialize(value)
         conn = self._connect()
-        conn.execute(
-            sql_map.SQLMap.v1.UPSERT_PLUGIN_DATA,
-            (instance_id, namespace, key, value_json),
-        )
+        with measure_db_write("set_plugin_data", instance_id):
+            conn.execute(
+                sql_map.SQLMap.v1.UPSERT_PLUGIN_DATA,
+                (instance_id, namespace, key, value_json),
+            )
         self._value_cache.invalidate((instance_id, namespace, key))
+
+    def set_plugin_data_batch(
+        self, instance_id: str, namespace: str, values: Dict[str, Any]
+    ) -> None:
+        """在一个 IMMEDIATE 事务中批量写入，序列化失败时不开启事务。"""
+        if not values:
+            return
+        rows = [
+            (instance_id, namespace, key, _serialize(value))
+            for key, value in values.items()
+        ]
+        with measure_db_write("set_plugin_data_batch", instance_id), self.transaction() as txn:
+            txn.executemany(sql_map.SQLMap.v1.UPSERT_PLUGIN_DATA, rows)
+        self._value_cache.invalidate_plugin(instance_id)
+
+    def get_plugin_data_page(
+        self, instance_id: str, namespace: str, limit: int, offset: int
+    ) -> Dict[str, Any]:
+        """通过 SQL LIMIT/OFFSET 读取一页，不加载整表或填充全量缓存。"""
+        self._validate_page(limit, offset)
+        conn = self._connect()
+        cursor = conn.execute(
+            sql_map.SQLMap.v1.SELECT_PLUGIN_DATA_PAGE,
+            (instance_id, namespace, limit, offset),
+        )
+        return {key: _deserialize(value_json) for key, value_json in cursor.fetchall()}
+
+    def count_plugin_data(self, instance_id: str, namespace: str) -> int:
+        """使用数据库 COUNT 聚合返回记录数。"""
+        conn = self._connect()
+        cursor = conn.execute(
+            sql_map.SQLMap.v1.SELECT_PLUGIN_DATA_COUNT, (instance_id, namespace)
+        )
+        return int(cursor.fetchone()[0])
+
+    @staticmethod
+    def _validate_page(limit: int, offset: int) -> None:
+        """分页参数必须为正 limit 和非负 offset，且不能是布尔值。"""
+        if isinstance(limit, bool) or not isinstance(limit, int) or limit <= 0:
+            raise SQLiteBackendError("limit 必须是大于 0 的整数")
+        if isinstance(offset, bool) or not isinstance(offset, int) or offset < 0:
+            raise SQLiteBackendError("offset 必须是非负整数")
 
     def get_all_plugin_data(self, instance_id: str, namespace: str) -> Dict[str, Any]:
         conn = self._connect()
@@ -675,7 +793,7 @@ class SQLiteBackend:
     def save_data(self, data: Dict[str, Any]) -> None:
         """将完整字典结构写回 SQLite。"""
         conn = self._connect()
-        with self.transaction() as txn:
+        with measure_db_write("save_data"), self.transaction() as txn:
             # 先清空子表，再清空父表
             txn.execute(sql_map.SQLMap.v1.DELETE_ALL_PLUGIN_DATA)
             txn.execute(sql_map.SQLMap.v1.DELETE_ALL_ACTIVE_INSTANCES)

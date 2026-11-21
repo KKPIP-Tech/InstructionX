@@ -8,24 +8,51 @@ MCP Server 封装
 import asyncio
 import functools
 import hmac
+import importlib
 import inspect
 import threading
+import time
 from typing import Any, Dict, List, Optional, Callable
 import logging
 
 from core.plugin.manager import PluginManager
+from core.mcp.async_cleanup import cancel_pending_tasks
 from core.mcp.config import (
+    DEFAULT_MCP_MAX_REQUESTS_PER_MINUTE,
     DEFAULT_MCP_MAX_SESSIONS,
     DEFAULT_MCP_SESSION_IDLE_TIMEOUT,
+    MCPServerConfig,
 )
+from core.observability.events import FrameworkEventType, get_framework_event_journal
+from core.observability.metrics import get_metrics_registry
+from core.observability.names import MCP_SESSIONS
 
 # ===== 可选依赖：MCP SDK / uvicorn / anyio（缺失时置 None，运行时检查）=====
+_MCP_IMPORT_ERROR = None
 try:
     from mcp.server.fastmcp import FastMCP
     from mcp.server.fastmcp.tools import Tool
-except ImportError:
+except ImportError as exc:
+    _MCP_IMPORT_ERROR = exc
     FastMCP = None
     Tool = None
+
+
+def _refresh_mcp_types() -> None:
+    """启动时重试暂时失败的 SDK 导入，避免缓存缺失状态污染后续服务。"""
+    global FastMCP, Tool, _MCP_IMPORT_ERROR
+    if FastMCP is not None and Tool is not None:
+        return
+    try:
+        fastmcp_module = importlib.import_module("mcp.server.fastmcp")
+        tools_module = importlib.import_module("mcp.server.fastmcp.tools")
+    except ImportError as exc:
+        _MCP_IMPORT_ERROR = exc
+        return
+    FastMCP = fastmcp_module.FastMCP
+    Tool = tools_module.Tool
+    _MCP_IMPORT_ERROR = None
+
 
 try:
     import uvicorn
@@ -45,6 +72,114 @@ SERVER_START_WAIT_TIMEOUT = 5.0
 STARTUP_WATCH_POLL_INTERVAL = 0.05
 # 停止 Server 时等待工作线程退出的超时（秒）
 SERVER_STOP_JOIN_TIMEOUT = 5.0
+
+
+class ServerSecurityPolicy:
+    """MCP HTTP 暴露安全策略，非法配置在启动前失败关闭。"""
+
+    LOOPBACK_HOSTS = frozenset(("127.0.0.1", "localhost", "::1"))
+
+    @classmethod
+    def validate(cls, config) -> None:
+        """校验监听地址、认证和 TLS 配置，非法时抛出 ValueError。"""
+        if config.transport != "streamable-http":
+            return
+        if config.host not in cls.LOOPBACK_HOSTS and not config.auth_token:
+            raise ValueError("非回环 HTTP 监听必须配置 auth_token，拒绝无认证暴露")
+        if bool(config.tls_certfile) != bool(config.tls_keyfile):
+            raise ValueError("tls_certfile 与 tls_keyfile 必须成对配置")
+
+
+class _HostValidationMiddleware:
+    """按 allowed_hosts 精确校验 HTTP/WebSocket Host 头。"""
+
+    def __init__(self, app, allowed_hosts):
+        self._app = app
+        self._allowed = {self._normalize_host(host) for host in allowed_hosts}
+
+    async def __call__(self, scope, receive, send):
+        scope_type = scope.get("type")
+        if scope_type not in ("http", "websocket") or not self._allowed:
+            await self._app(scope, receive, send)
+            return
+        headers = dict(scope.get("headers") or [])
+        raw_host = headers.get(b"host", b"").decode("latin-1")
+        host = self._normalize_host(raw_host)
+        if host in self._allowed:
+            await self._app(scope, receive, send)
+            return
+        if scope_type == "websocket":
+            await send({"type": "websocket.close", "code": 4403})
+            return
+        await send({
+            "type": "http.response.start", "status": 403,
+            "headers": [(b"content-type", b"application/json")],
+        })
+        await send({
+            "type": "http.response.body", "body": b'{"error":"invalid_host"}',
+        })
+
+    @staticmethod
+    def _normalize_host(value: str) -> str:
+        """去除大小写、末尾点和可选端口，保留 IPv6 地址冒号。"""
+        host = value.strip().lower().rstrip(".")
+        if host.startswith("["):
+            return host[1:].split("]", 1)[0]
+        if host.count(":") == 1:
+            return host.rsplit(":", 1)[0]
+        return host
+
+
+class _RateLimitMiddleware:
+    """按客户端 IP 的滑动窗口限流，并限制跟踪状态的最大基数。"""
+
+    WINDOW_SECONDS = 60.0
+    MAX_TRACKED_CLIENTS = 10000
+
+    def __init__(self, app, max_requests_per_minute: int):
+        self._app = app
+        self._limit = max_requests_per_minute
+        self._requests: Dict[str, list] = {}
+        self._next_prune = time.monotonic() + self.WINDOW_SECONDS
+
+    async def __call__(self, scope, receive, send):
+        if scope.get("type") == "http" and not self._allow(scope):
+            await send({
+                "type": "http.response.start", "status": 429,
+                "headers": [(b"content-type", b"application/json")],
+            })
+            await send({
+                "type": "http.response.body", "body": b'{"error":"rate_limited"}',
+            })
+            return
+        await self._app(scope, receive, send)
+
+    def _allow(self, scope) -> bool:
+        client = (scope.get("client") or ("unknown", 0))[0]
+        now = time.monotonic()
+        self._prune(now)
+        recent = [
+            stamp for stamp in self._requests.get(client, [])
+            if now - stamp < self.WINDOW_SECONDS
+        ]
+        if len(recent) >= self._limit:
+            self._requests[client] = recent
+            return False
+        if client not in self._requests and len(self._requests) >= self.MAX_TRACKED_CLIENTS:
+            return False
+        recent.append(now)
+        self._requests[client] = recent
+        return True
+
+    def _prune(self, now: float) -> None:
+        """定期清理空闲客户端，避免限流状态无限增长。"""
+        if now < self._next_prune:
+            return
+        self._requests = {
+            client: stamps for client, stamps in self._requests.items()
+            if stamps and now - stamps[-1] < self.WINDOW_SECONDS
+        }
+        self._next_prune = now + self.WINDOW_SECONDS
 
 
 def _validate_auth_token(token: str) -> None:
@@ -136,6 +271,10 @@ class MCPHostServer:
         session_idle_timeout: Optional[float] = (
             DEFAULT_MCP_SESSION_IDLE_TIMEOUT),
         max_sessions: Optional[int] = DEFAULT_MCP_MAX_SESSIONS,
+        allowed_hosts: Optional[List[str]] = None,
+        max_requests_per_minute: Optional[int] = DEFAULT_MCP_MAX_REQUESTS_PER_MINUTE,
+        tls_certfile: Optional[str] = None,
+        tls_keyfile: Optional[str] = None,
     ):
         if auth_token is not None:
             # 启动前校验令牌可编码性，非法时以中文文案 fail-fast
@@ -147,6 +286,11 @@ class MCPHostServer:
         self._session_idle_timeout = self._validate_session_idle_timeout(
             session_idle_timeout)
         self._max_sessions = self._validate_max_sessions(max_sessions)
+        self._allowed_hosts = allowed_hosts
+        self._max_requests_per_minute = self._validate_max_requests_per_minute(
+            max_requests_per_minute)
+        self._tls_certfile = tls_certfile
+        self._tls_keyfile = tls_keyfile
         self._running = False
         self._thread: Optional[threading.Thread] = None
         # uvicorn Server 实例（HTTP 模式），用于真正的关停
@@ -182,6 +326,16 @@ class MCPHostServer:
                 "max_sessions 必须是大于 0 的整数，或设置为 None 禁用限制")
         return value
 
+    @staticmethod
+    def _validate_max_requests_per_minute(value):
+        """校验每分钟请求上限为正整数，None 表示显式禁用限流。"""
+        if value is None:
+            return None
+        if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+            raise ValueError(
+                "max_requests_per_minute 必须是大于 0 的整数，或设置为 None 禁用限制")
+        return value
+
     def _init_fastmcp(self) -> Any:
         """延迟初始化 FastMCP（避免在主线程事件循环外创建）
 
@@ -191,9 +345,11 @@ class MCPHostServer:
         Raises:
             RuntimeError: MCP SDK 未安装时抛出（中文提示）
         """
+        _refresh_mcp_types()
         if FastMCP is None:
             raise RuntimeError(
                 "缺少 MCP SDK 依赖（请执行 pip install mcp），无法启动 MCP Server。"
+                f"导入异常: {_MCP_IMPORT_ERROR}"
             )
         return FastMCP(
             self._name,
@@ -202,15 +358,6 @@ class MCPHostServer:
             session_idle_timeout=self._session_idle_timeout,
             max_sessions=self._max_sessions,
         )
-
-    def _warn_if_insecure(self) -> None:
-        """非回环地址且未配置认证令牌时给出强烈警告"""
-        if self._host not in ("127.0.0.1", "localhost", "::1") and not self._auth_token:
-            logger.warning(
-                f"MCP HTTP Server 将监听非回环地址 {self._host} 且未配置 "
-                f"auth_token，任何可访问该地址的客户端都能调用全部已暴露工具，"
-                f"强烈建议在配置中设置 auth_token。"
-            )
 
     # ─── 工具注册 ────────────────────────────────────────────────
 
@@ -286,7 +433,8 @@ class MCPHostServer:
                 logger.error(f"MCP tool {name} call failed: {e}")
                 raise
 
-        # 根据 JSON Schema 伪造函数签名
+        # 根据 JSON Schema 伪造函数签名；空 schema 也必须移除 **kwargs 签名。
+        handler.__signature__ = inspect.Signature([])  # type: ignore[attr-defined]
         properties = (parameters or {}).get("properties", {})
         if properties:
             required = set((parameters or {}).get("required", []))
@@ -454,12 +602,18 @@ class MCPHostServer:
         if self._running:
             logger.warning("MCP Server is already running")
             return
+        ServerSecurityPolicy.validate(MCPServerConfig(
+            host=self._host,
+            transport="streamable-http",
+            auth_token=self._auth_token,
+            tls_certfile=self._tls_certfile,
+            tls_keyfile=self._tls_keyfile,
+        ))
 
         if self._fastmcp is None:
             self._fastmcp = self._init_fastmcp()
 
         self._register_all_deferred_tools()
-        self._warn_if_insecure()
 
         started = threading.Event()
         error_holder: Dict[str, Any] = {}
@@ -474,6 +628,10 @@ class MCPHostServer:
                         "无法以 HTTP 模式启动 MCP Server。"
                     )
                 app = self._fastmcp.streamable_http_app()
+                if self._allowed_hosts:
+                    app = _HostValidationMiddleware(app, self._allowed_hosts)
+                if self._max_requests_per_minute is not None:
+                    app = _RateLimitMiddleware(app, self._max_requests_per_minute)
                 if self._auth_token:
                     app = _BearerAuthMiddleware(app, self._auth_token)
 
@@ -482,6 +640,8 @@ class MCPHostServer:
                     host=self._host,
                     port=self._port,
                     log_level="info",
+                    ssl_certfile=self._tls_certfile,
+                    ssl_keyfile=self._tls_keyfile,
                 )
                 server = uvicorn.Server(config)
                 self._uvicorn_server = server
@@ -497,6 +657,7 @@ class MCPHostServer:
                         await server.serve()
                     finally:
                         watcher.cancel()
+                        await cancel_pending_tasks()
 
                 loop.run_until_complete(_serve())
             except Exception as e:
@@ -529,6 +690,18 @@ class MCPHostServer:
             logger.info(
                 f"MCP HTTP Server started on {self._host}:{self._port}"
             )
+            get_metrics_registry().gauge(MCP_SESSIONS, {"direction": "host"}).set(1)
+            get_framework_event_journal().record(
+                FrameworkEventType.MCP_EXPOSED,
+                f"{self._host}:{self._port}",
+                details={
+                    "transport": "streamable-http",
+                    "auth_enabled": bool(self._auth_token),
+                    "tls_enabled": bool(self._tls_certfile),
+                    "host": self._host,
+                    "port": self._port,
+                },
+            )
 
     def stop(self) -> None:
         """停止 MCP Server
@@ -542,13 +715,15 @@ class MCPHostServer:
         if self._thread is not None and self._thread.is_alive():
             self._thread.join(timeout=SERVER_STOP_JOIN_TIMEOUT)
             if self._thread.is_alive():
-                logger.warning(
-                    f"MCP Server thread did not exit within "
-                    f"{SERVER_STOP_JOIN_TIMEOUT}s"
+                self._running = True
+                raise RuntimeError(
+                    f"MCP Server 线程未在 {SERVER_STOP_JOIN_TIMEOUT}s 内退出，"
+                    "不能报告停止成功"
                 )
         self._uvicorn_server = None
         self._thread = None
         self._running = False
+        get_metrics_registry().gauge(MCP_SESSIONS, {"direction": "host"}).set(0)
         logger.info("MCP Server stopped")
 
     @property

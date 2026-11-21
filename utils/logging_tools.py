@@ -3,27 +3,83 @@ import logging
 import inspect
 import types
 import typing
-# from datetime import datetime
+from collections import deque
 from logging.handlers import RotatingFileHandler
 import threading
 
+from core.observability.context import current_log_fields
+from core.observability.sanitize import sanitize_text
 from utils.i_logger import ILogger
 
+LOG_FORMAT = (
+    '[%(asctime)s][%(module_name)s][%(levelname)s]'
+    '[trace=%(correlation_id)s][plugin=%(plugin_id)s][task=%(task_id)s]'
+    '[request=%(request_id)s][conversation=%(conversation_id)s]'
+    '[duration_ms=%(duration_ms)s][Message-->][%(message)s]'
+)
+LOG_DATE_FORMAT = '%Y-%m-%d][%H-%M-%S'
+LOG_FILE_MAX_BYTES = 10 * 1024 * 1024
+LOG_FILE_BACKUP_COUNT = 5
+DEGRADED_MEMORY_CAPACITY = 1000
+CONTEXT_FIELD_NAMES = (
+    'correlation_id', 'plugin_id', 'task_id', 'request_id', 'conversation_id', 'duration_ms'
+)
 
-class _ModuleNameFilter(logging.Filter):
-    """
-    为日志记录注入默认 module_name 属性的过滤器
 
-    Formatter 依赖自定义属性 %(module_name)s，只有经 LoggerManager.log()
-    写入的记录才带该属性；直接向 'ApplicationLogger' 写日志的代码会缺少
-    module_name 而抛 KeyError。此过滤器在记录缺少该属性时回退为标准
-    module 属性（再退化为 'unknown'），保持日志格式外观不变。
-    """
+class _ObservabilityFilter(logging.Filter):
+    """注入默认模块名和当前调用链，字段缺失时使用有限占位符。"""
 
     def filter(self, record: logging.LogRecord) -> bool:
-        if not hasattr(record, 'module_name'):
-            record.module_name = getattr(record, 'module', None) or 'unknown'
+        try:
+            if not hasattr(record, 'module_name'):
+                record.module_name = getattr(record, 'module', None) or 'unknown'
+            for name, value in current_log_fields().items():
+                if not hasattr(record, name):
+                    setattr(record, name, value)
+        except Exception:
+            record.module_name = getattr(record, 'module_name', 'unknown')
+            for name in CONTEXT_FIELD_NAMES:
+                if not hasattr(record, name):
+                    setattr(record, name, '-')
         return True
+
+
+class _ObservabilityFormatter(logging.Formatter):
+    """在完整格式化后统一脱敏，覆盖位置参数与直接 stdlib 日志。"""
+
+    def format(self, record: logging.LogRecord) -> str:
+        try:
+            return sanitize_text(super().format(record))
+        except Exception:
+            return sanitize_text(getattr(record, 'msg', '[日志格式化失败]'))
+
+
+class _SafeRotatingFileHandler(RotatingFileHandler):
+    """轮转或写盘失败只累计诊断错误，不向业务线程抛出。"""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.write_failures = 0
+
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            super().emit(record)
+        except Exception:
+            self.write_failures += 1
+
+
+class _BoundedMemoryHandler(logging.Handler):
+    """文件不可用时的固定容量内存降级，不无限保存日志。"""
+
+    def __init__(self):
+        super().__init__()
+        self.records = deque(maxlen=DEGRADED_MEMORY_CAPACITY)
+
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            self.records.append(self.format(record))
+        except Exception:
+            return
 
 
 class LoggerManager(ILogger):
@@ -46,78 +102,61 @@ class LoggerManager(ILogger):
     def __init__(self):
         if self._initialized:
             return
-        
-        # 创建logs目录（如果不存在）
-        # 默认 "./logs"（历史行为，被测试基线锁定）；
-        # 可通过环境变量 INSTRUCTIONX_LOG_DIR 覆盖为其他路径（如项目根推导路径）
-        log_dir = os.environ.get('INSTRUCTIONX_LOG_DIR', './logs')
-        if not os.path.exists(log_dir):
-            os.makedirs(log_dir)
-        
-        # 配置日志文件路径
-        log_file = os.path.join(log_dir, "application.log")
-        
-        # 创建logger实例
-        # 全局日志等级可通过环境变量 INSTRUCTIONX_LOG_LEVEL 调节（默认 DEBUG，保持兼容）；
-        # 非法等级值回退 DEBUG
+        self._write_failures = 0
         self._logger = logging.getLogger('ApplicationLogger')
-        level_name = os.environ.get('INSTRUCTIONX_LOG_LEVEL', 'DEBUG').upper()
-        log_level = getattr(logging, level_name, None)
-        if not isinstance(log_level, int):
-            log_level = logging.DEBUG
-        self._logger.setLevel(log_level)
-        
-        # 防止重复添加handler
+        self._configure_level()
         if not self._logger.handlers:
-            # 创建文件处理器（支持日志轮转，每个文件最大10MB，保留5个备份）
-            file_handler = RotatingFileHandler(
-                log_file, 
-                maxBytes=10*1024*1024, 
-                backupCount=5,
-                encoding='utf-8'
-            )
-            file_handler.setLevel(logging.DEBUG)
-            
-            # 创建格式化器
-            formatter = logging.Formatter(
-                fmt='[%(asctime)s][%(module_name)s][%(levelname)s][Message-->][%(message)s]',
-                datefmt='%Y-%m-%d][%H-%M-%S'
-            )
-            file_handler.setFormatter(formatter)
-            
-            # 添加处理器到logger
-            self._logger.addHandler(file_handler)
-            
-            # 添加过滤器：为未经 log() 写入的记录注入默认 module_name
-            self._logger.addFilter(_ModuleNameFilter())
-            
-            # 如果是开发环境（有控制台），添加控制台处理器
-            if os.environ.get('DEVELOPMENT_MODE', 'false').lower() == 'true':
-                console_handler = logging.StreamHandler()
-                console_handler.setLevel(logging.DEBUG)
-                console_handler.setFormatter(formatter)
-                self._logger.addHandler(console_handler)
-        
+            log_dir = os.environ.get('INSTRUCTIONX_LOG_DIR', './logs')
+            self._configure_handlers(log_dir)
+        if not any(isinstance(item, _ObservabilityFilter) for item in self._logger.filters):
+            self._logger.addFilter(_ObservabilityFilter())
         self._initialized = True
 
-    def log(self, level: str, module_name: str, message: str) -> None:
-        """
-        记录日志
-        
-        参数:
-            level: 日志级别 (DEBUG, INFO, WARNING, ERROR, CRITICAL)
-            module_name: 模块名称
-            message: 日志消息
-        """
-        # 使用extra参数传递module_name
-        # 注意：非法 level 会抛 AttributeError（历史行为，被测试基线锁定）
-        logger = self._logger
-        if logger is not None:
-            logger.log(
-                getattr(logging, level.upper()),
-                message,
-                extra={'module_name': module_name}
+    def _configure_level(self) -> None:
+        """配置日志等级，非法环境变量保持历史 DEBUG 回退。"""
+        level_name = os.environ.get('INSTRUCTIONX_LOG_LEVEL', 'DEBUG').upper()
+        log_level = getattr(logging, level_name, None)
+        self._logger.setLevel(log_level if isinstance(log_level, int) else logging.DEBUG)
+
+    def _configure_handlers(self, log_dir: str) -> None:
+        """配置文件和有界降级处理器，所有处理器共用脱敏格式。"""
+        formatter = _ObservabilityFormatter(fmt=LOG_FORMAT, datefmt=LOG_DATE_FORMAT)
+        handler = self._create_file_handler(log_dir)
+        handler.setLevel(logging.DEBUG)
+        handler.setFormatter(formatter)
+        self._logger.addHandler(handler)
+        if os.environ.get('DEVELOPMENT_MODE', 'false').lower() == 'true':
+            console_handler = logging.StreamHandler()
+            console_handler.setLevel(logging.DEBUG)
+            console_handler.setFormatter(formatter)
+            self._logger.addHandler(console_handler)
+
+    @staticmethod
+    def _create_file_handler(log_dir: str) -> logging.Handler:
+        """创建轮转文件处理器，失败时返回固定容量内存处理器。"""
+        try:
+            if not os.path.exists(log_dir):
+                os.makedirs(log_dir)
+            log_file = os.path.join(log_dir, "application.log")
+            return _SafeRotatingFileHandler(
+                log_file,
+                maxBytes=LOG_FILE_MAX_BYTES,
+                backupCount=LOG_FILE_BACKUP_COUNT,
+                encoding='utf-8',
             )
+        except Exception:
+            return _BoundedMemoryHandler()
+
+    def log(self, level: str, module_name: str, message: str) -> None:
+        """记录日志；非法级别保持原异常，写入失败只累计诊断错误。"""
+        log_level = getattr(logging, level.upper())
+        logger = self._logger
+        if logger is None:
+            return
+        try:
+            logger.log(log_level, message, extra={'module_name': module_name})
+        except Exception:
+            self._write_failures += 1
 
     def debug(self, module_name, message):
         """记录DEBUG级别日志"""

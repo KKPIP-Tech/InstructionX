@@ -6,6 +6,7 @@
 import copy
 import os
 import json
+import sqlite3
 import threading
 from pathlib import Path, PurePath
 from typing import Dict, Any, Optional, Callable, List
@@ -15,12 +16,10 @@ from typing import Dict, Any, Optional, Callable, List
 from core.interfaces.i_data_provider import IDataProvider, DataNamespace
 from utils.logging_tools import LoggerManager, get_name
 
+from .errors import DataProviderError
+from .plugin_data_operations import PluginDataOperations
 from .sqlite_backend import SQLiteBackend, SQLiteBackendError
-
-
-class DataProviderError(Exception):
-    """DataProvider 自定义异常类"""
-    pass
+from .event_dispatcher import BackpressurePolicy, EventDispatcher, PublishReceipt
 
 
 class DataProvider(IDataProvider):
@@ -89,6 +88,7 @@ class DataProvider(IDataProvider):
 
         # 订阅管理器: {(subscriber_id, target_plugin_id, target_key): callback}
         self._subscriptions: Dict[tuple, Callable] = {}
+        self._event_dispatcher = EventDispatcher()
 
         # 日志管理器
         self._logger = LoggerManager()
@@ -97,8 +97,10 @@ class DataProvider(IDataProvider):
             self._backend = SQLiteBackend(data_dir, data_filename)
             try:
                 self._backend.ensure_database()
-            except SQLiteBackendError as e:
+            except (SQLiteBackendError, sqlite3.Error) as e:
                 raise DataProviderError(str(e)) from e
+
+        self._data_operations = PluginDataOperations(self)
 
         # 标记初始化完成
         self._initialized = True
@@ -173,7 +175,7 @@ class DataProvider(IDataProvider):
             if self._cache is None or force_reload or self._cache_dirty:
                 try:
                     self._cache = self._backend.load_data()
-                except SQLiteBackendError as e:
+                except (SQLiteBackendError, sqlite3.Error) as e:
                     raise DataProviderError(str(e)) from e
                 self._cache_dirty = False
             return copy.deepcopy(self._cache) if self._cache else {}
@@ -193,7 +195,7 @@ class DataProvider(IDataProvider):
         with self._file_lock:
             try:
                 self._backend.save_data(self._cache)
-            except SQLiteBackendError as e:
+            except (SQLiteBackendError, sqlite3.Error) as e:
                 raise DataProviderError(str(e)) from e
             self._cache_dirty = False
 
@@ -205,15 +207,17 @@ class DataProvider(IDataProvider):
             if not self._use_json_backend:
                 self._backend.clear_caches()
 
+    def close(self) -> None:
+        """关闭事件分发器和持久化连接；JSON 后端调用同样安全。"""
+        self._event_dispatcher.close()
+        with self._file_lock:
+            if not self._use_json_backend:
+                self._backend.close()
+
 
     # -------------------------------------------------------------------------
     # 公共方法：插件管理
     # -------------------------------------------------------------------------
-
-    def _ensure_cache_loaded(self) -> None:
-        """确保 _cache 已加载（用于保持与旧实现一致的行为）。"""
-        if self._cache is None:
-            self.load_data()
 
     def register_plugin(self, instance_id: str, plugin_type: str) -> None:
         """注册插件实例并初始化其数据结构
@@ -242,10 +246,9 @@ class DataProvider(IDataProvider):
         with self._file_lock:
             try:
                 self._backend.register_plugin(instance_id, plugin_type)
-            except SQLiteBackendError as e:
+            except (SQLiteBackendError, sqlite3.Error) as e:
                 raise DataProviderError(str(e)) from e
-            self._ensure_cache_loaded()
-            if instance_id not in self._cache["plugins"]:
+            if self._cache is not None and instance_id not in self._cache["plugins"]:
                 self._cache["plugins"][instance_id] = {
                     "type": plugin_type,
                     "active": False,
@@ -278,13 +281,13 @@ class DataProvider(IDataProvider):
         with self._file_lock:
             try:
                 self._backend.unregister_plugin(instance_id)
-            except SQLiteBackendError as e:
+            except (SQLiteBackendError, sqlite3.Error) as e:
                 raise DataProviderError(str(e)) from e
-            self._ensure_cache_loaded()
-            self._cache["plugins"].pop(instance_id, None)
-            for ptype, pid in list(self._cache["active_instances"].items()):
-                if pid == instance_id:
-                    del self._cache["active_instances"][ptype]
+            if self._cache is not None:
+                self._cache["plugins"].pop(instance_id, None)
+                for ptype, pid in list(self._cache["active_instances"].items()):
+                    if pid == instance_id:
+                        del self._cache["active_instances"][ptype]
         # 释放 _file_lock 后再清理订阅
         self._remove_subscriptions_for_plugin(instance_id)
 
@@ -307,7 +310,7 @@ class DataProvider(IDataProvider):
         with self._file_lock:
             try:
                 return self._backend.get_active_instance(plugin_type)
-            except SQLiteBackendError as e:
+            except (SQLiteBackendError, sqlite3.Error) as e:
                 raise DataProviderError(str(e)) from e
 
     def set_active_instance(self, instance_id: str) -> None:
@@ -336,17 +339,17 @@ class DataProvider(IDataProvider):
         with self._file_lock:
             try:
                 self._backend.set_active_instance(instance_id)
-            except SQLiteBackendError as e:
+            except (SQLiteBackendError, sqlite3.Error) as e:
                 raise DataProviderError(str(e)) from e
-            self._ensure_cache_loaded()
             plugin_type = self._backend.get_plugin_type(instance_id)
             if plugin_type is None:
                 raise DataProviderError(f"插件 {instance_id} 不存在")
-            self._cache["plugins"][instance_id]["active"] = True
-            self._cache["active_instances"][plugin_type] = instance_id
-            for pid, plugin_data in self._cache["plugins"].items():
-                if plugin_data["type"] == plugin_type and pid != instance_id:
-                    plugin_data["active"] = False
+            if self._cache is not None and instance_id in self._cache["plugins"]:
+                self._cache["plugins"][instance_id]["active"] = True
+                self._cache["active_instances"][plugin_type] = instance_id
+                for pid, plugin_data in self._cache["plugins"].items():
+                    if plugin_data["type"] == plugin_type and pid != instance_id:
+                        plugin_data["active"] = False
 
     # -------------------------------------------------------------------------
     # 公共方法：数据访问
@@ -380,11 +383,11 @@ class DataProvider(IDataProvider):
             return data["plugins"][instance_id][namespace_str].get(key, default)
 
         with self._file_lock:
-            if not self._backend.plugin_exists(instance_id):
-                raise DataProviderError(f"插件 {instance_id} 不存在")
             try:
+                if not self._backend.plugin_exists(instance_id):
+                    raise DataProviderError(f"插件 {instance_id} 不存在")
                 return self._backend.get_plugin_data(instance_id, namespace_str, key, default)
-            except SQLiteBackendError as e:
+            except (SQLiteBackendError, sqlite3.Error) as e:
                 raise DataProviderError(str(e)) from e
 
     def set_plugin_data(self,
@@ -424,26 +427,49 @@ class DataProvider(IDataProvider):
             return
 
         with self._file_lock:
-            if not self._backend.plugin_exists(instance_id):
-                raise DataProviderError(f"插件 {instance_id} 不存在")
-            # 获取旧值（用于回调）
             try:
+                if not self._backend.plugin_exists(instance_id):
+                    raise DataProviderError(f"插件 {instance_id} 不存在")
                 old_value = self._backend.get_plugin_data(instance_id, namespace_str, key)
-            except SQLiteBackendError as e:
-                raise DataProviderError(str(e)) from e
-            # 写入新值
-            try:
                 self._backend.set_plugin_data(instance_id, namespace_str, key, value)
-            except SQLiteBackendError as e:
+            except (SQLiteBackendError, sqlite3.Error) as e:
                 raise DataProviderError(str(e)) from e
-            # 同步 _cache
-            self._ensure_cache_loaded()
-            self._cache["plugins"][instance_id][namespace_str][key] = copy.deepcopy(value)
+            # 仅同步已存在的兼容全量缓存，正常点写不得触发全库加载
+            if self._cache is not None:
+                self._cache["plugins"][instance_id][namespace_str][key] = copy.deepcopy(value)
             new_value = copy.deepcopy(value)
 
         # 释放 _file_lock 后再通知订阅者
         if namespace_str == DataNamespace.PUBLIC.value and notify:
             self._notify_subscribers(instance_id, key, old_value, new_value)
+
+    def set_plugin_data_batch(
+        self,
+        instance_id: str,
+        values: Dict[str, Any],
+        namespace: DataNamespace = DataNamespace.PRIVATE,
+        notify: bool = True,
+    ) -> None:
+        """单事务批量写入；公开数据按 values 顺序通知，空字典为无操作。"""
+        self._data_operations.set_batch(instance_id, values, namespace, notify)
+
+    def get_plugin_data_page(
+        self,
+        instance_id: str,
+        namespace: DataNamespace = DataNamespace.PRIVATE,
+        limit: int = 256,
+        offset: int = 0,
+    ) -> Dict[str, Any]:
+        """分页读取插件数据，SQLite 使用 SQL LIMIT/OFFSET。"""
+        return self._data_operations.get_page(instance_id, namespace, limit, offset)
+
+    def count_plugin_data(
+        self,
+        instance_id: str,
+        namespace: DataNamespace = DataNamespace.PRIVATE,
+    ) -> int:
+        """使用数据库 COUNT 聚合返回记录数。"""
+        return self._data_operations.count(instance_id, namespace)
 
     def get_all_plugin_data(self,
                            instance_id: str,
@@ -473,7 +499,7 @@ class DataProvider(IDataProvider):
                 raise DataProviderError(f"插件 {instance_id} 不存在")
             try:
                 return self._backend.get_all_plugin_data(instance_id, namespace_str)
-            except SQLiteBackendError as e:
+            except (SQLiteBackendError, sqlite3.Error) as e:
                 raise DataProviderError(str(e)) from e
 
 
@@ -504,6 +530,7 @@ class DataProvider(IDataProvider):
             with self._subscription_lock:
                 subscription_key = (subscriber_id, target_plugin_id, target_key)
                 self._subscriptions[subscription_key] = callback
+            self._event_dispatcher.subscribe(subscriber_id, target_plugin_id, target_key, callback)
             return
 
         # 在 _file_lock 保护下仅验证目标插件存在，然后释放锁再注册订阅
@@ -511,12 +538,13 @@ class DataProvider(IDataProvider):
             try:
                 if not self._backend.plugin_exists(target_plugin_id):
                     raise DataProviderError(f"目标插件 {target_plugin_id} 不存在")
-            except SQLiteBackendError as e:
+            except (SQLiteBackendError, sqlite3.Error) as e:
                 raise DataProviderError(str(e)) from e
 
         with self._subscription_lock:
             subscription_key = (subscriber_id, target_plugin_id, target_key)
             self._subscriptions[subscription_key] = callback
+        self._event_dispatcher.subscribe(subscriber_id, target_plugin_id, target_key, callback)
 
     def unsubscribe(self, subscriber_id: str, target_plugin_id: Optional[str] = None) -> None:
         """取消订阅
@@ -535,6 +563,7 @@ class DataProvider(IDataProvider):
                                  if k[0] == subscriber_id and k[1] == target_plugin_id]
                 for key in keys_to_remove:
                     del self._subscriptions[key]
+        self._event_dispatcher.unsubscribe_matching(subscriber_id, target_plugin_id)
 
     def publish(self,
                 publisher_id: str,
@@ -553,6 +582,21 @@ class DataProvider(IDataProvider):
             DataProviderError: 插件不存在、值不可序列化或底层写入失败时抛出
         """
         self.set_plugin_data(publisher_id, key, value, namespace, notify=True)
+
+    def publish_async(
+        self, publisher_id: str, key: str, value: Any,
+        policy: str = BackpressurePolicy.REJECT,
+    ) -> PublishReceipt:
+        """持久化公开数据后异步分发，返回接收回执而非送达保证。"""
+        old_value = self.get_plugin_data(publisher_id, key, DataNamespace.PUBLIC)
+        self.set_plugin_data(
+            publisher_id, key, value, DataNamespace.PUBLIC, notify=False
+        )
+        return self._event_dispatcher.publish(publisher_id, key, old_value, value, policy)
+
+    def get_event_delivery_stats(self, subscriber_id: str):
+        """返回订阅方异步分发统计。"""
+        return self._event_dispatcher.get_stats(subscriber_id)
 
     def _notify_subscribers(self,
                           publisher_id: str,
@@ -579,6 +623,8 @@ class DataProvider(IDataProvider):
             keys_to_remove = [k for k in self._subscriptions.keys() if k[0] == instance_id or k[1] == instance_id]
             for key in keys_to_remove:
                 del self._subscriptions[key]
+        self._event_dispatcher.unsubscribe_subscriber(instance_id)
+        self._event_dispatcher.unsubscribe_target(instance_id)
 
     # -------------------------------------------------------------------------
     # 公共方法：资源文件管理
@@ -717,7 +763,7 @@ class DataProvider(IDataProvider):
         with self._file_lock:
             try:
                 return self._backend.get_all_plugins()
-            except SQLiteBackendError as e:
+            except (SQLiteBackendError, sqlite3.Error) as e:
                 raise DataProviderError(str(e)) from e
 
     def get_plugin_info(self, instance_id: str) -> Optional[Dict[str, Any]]:
@@ -739,7 +785,7 @@ class DataProvider(IDataProvider):
         with self._file_lock:
             try:
                 return self._backend.get_plugin_info(instance_id)
-            except SQLiteBackendError as e:
+            except (SQLiteBackendError, sqlite3.Error) as e:
                 raise DataProviderError(str(e)) from e
 
     def reset_all_data(self) -> None:
@@ -758,6 +804,6 @@ class DataProvider(IDataProvider):
         with self._file_lock:
             try:
                 self._backend.reset_all_data()
-            except SQLiteBackendError as e:
+            except (SQLiteBackendError, sqlite3.Error) as e:
                 raise DataProviderError(str(e)) from e
         self.clear_cache()

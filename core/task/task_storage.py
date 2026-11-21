@@ -129,12 +129,14 @@ class TaskStorage:
         """
         原子写入数据到磁盘
 
-        失败语义：写入失败时记录 error 日志、设置 _cache_dirty=True 以便后续
-        save 重试，但不抛出异常（避免影响任务主流程）。调用方不应把本方法的
-        正常返回视为“数据已落盘”的强保证。
+        失败语义：写入失败时记录 error 日志、设置 _cache_dirty=True 并返回
+        False，调用方不得忽略该失败回执；写入成功返回 True。
 
         Args:
             data: 要写入的数据字典
+
+        Returns:
+            bool: 是否完成原子替换并持久化成功
         """
         with self._file_lock:
             temp_file = self.tasks_file.with_suffix('.json.tmp')
@@ -148,14 +150,18 @@ class TaskStorage:
 
                 # 写盘成功后文件内容与本缓存一致，解除读损防护标志
                 self._read_ok = True
+                return True
 
             except Exception as e:
                 self._logger.error(get_name(), f'写入任务数据失败: {e}')
                 # 标记缓存为脏，后续 save 操作会基于磁盘状态重试
                 self._cache_dirty = True
-                # 尝试删除临时文件
-                if temp_file.exists():
-                    temp_file.unlink()
+                try:
+                    if temp_file.exists():
+                        temp_file.unlink()
+                except OSError as cleanup_error:
+                    self._logger.warning(get_name(), f'清理任务临时文件失败: {cleanup_error}')
+                return False
 
     def load_data(self, force_reload: bool = False) -> Dict[str, Any]:
         """
@@ -177,12 +183,14 @@ class TaskStorage:
                 return copy.deepcopy(self._cache)
             return {"tasks": {}, "scheduled_tasks": {}, "long_running_tasks": {}}
 
-    def save_data(self) -> None:
-        """
-        将当前缓存数据保存到磁盘
+    def save_data(self) -> bool:
+        """保存缓存并返回持久化回执，失败时保留脏标记。
 
         防护：若磁盘文件存在但从未成功解析（_read_ok=False，如启动时读损），
         先尝试重读一次并与内存缓存合并，避免直接用空数据覆盖有效数据。
+
+        Returns:
+            bool: 原子替换成功为 True；写入失败为 False，且不抛出新异常。
         """
         if self._cache is None:
             self._cache = {"tasks": {}, "scheduled_tasks": {}, "long_running_tasks": {}}
@@ -196,8 +204,9 @@ class TaskStorage:
                     merged.update(self._cache.get(section, {}))
                     self._cache[section] = merged
 
-        self._write_to_disk(self._cache)
-        self._cache_dirty = False
+        succeeded = self._write_to_disk(self._cache)
+        self._cache_dirty = not succeeded
+        return succeeded
 
     # ==================== 任务操作 ====================
 
