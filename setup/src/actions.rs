@@ -51,6 +51,20 @@ impl ToolPreflight {
         }
     }
 
+    pub fn detect_for_root(root: &Path) -> Self {
+        Self::detect_for_root_with(root, tool_available)
+    }
+
+    pub fn detect_for_root_with<F>(root: &Path, available: F) -> Self
+    where
+        F: Fn(&str) -> bool,
+    {
+        Self {
+            git_present: available("git"),
+            uv_present: crate::uv::uv_program(root).is_file() || available("uv"),
+        }
+    }
+
     pub fn missing_tools(&self) -> Vec<&'static str> {
         let mut missing = Vec::new();
         if !self.git_present {
@@ -97,9 +111,18 @@ where
     validate_versions(root, &source, action)?;
     let backup_dir = root.join(".tui/backups").join(unique_backup_name());
     let mut copied = Vec::new();
-    let result = copy_and_verify(&source, root, &backup_dir, &mut copied, after_copy);
+    let result = copy_and_verify(
+        &source,
+        root,
+        &backup_dir,
+        &mut copied,
+        action != ArchiveAction::Install,
+        after_copy,
+    );
     if let Err(error) = result {
-        rollback(&backup_dir, copied)?;
+        if let Err(rollback_error) = rollback(&backup_dir, copied) {
+            return Err(format!("{error}; rollback also failed: {rollback_error}").into());
+        }
         return Err(error);
     }
     remove_if_exists(&staging)?;
@@ -183,12 +206,13 @@ fn copy_and_verify<F>(
     root: &Path,
     backup_dir: &Path,
     copied: &mut Vec<CopiedFile>,
+    preserve_plugins: bool,
     after_copy: F,
 ) -> Result<(), Box<dyn Error>>
 where
     F: FnOnce() -> Result<(), Box<dyn Error>>,
 {
-    copy_directory(source, root, root, backup_dir, copied)?;
+    copy_directory(source, root, root, backup_dir, copied, preserve_plugins)?;
     after_copy()
 }
 
@@ -198,23 +222,40 @@ fn copy_directory(
     root: &Path,
     backup_dir: &Path,
     copied: &mut Vec<CopiedFile>,
+    preserve_plugins: bool,
 ) -> Result<(), Box<dyn Error>> {
     for entry in fs::read_dir(source)? {
         let entry = entry?;
         let name = entry.file_name();
         let name_text = name.to_string_lossy();
-        if PRESERVED_DIRECTORIES.contains(&name_text.as_ref()) || name_text == "__pycache__" {
+        let preserved =
+            destination == root && should_preserve_directory(&name_text, preserve_plugins);
+        if preserved || name_text == "__pycache__" {
             continue;
         }
         let target = destination.join(&name);
         if entry.file_type()?.is_dir() {
             fs::create_dir_all(&target)?;
-            copy_directory(&entry.path(), &target, root, backup_dir, copied)?;
+            copy_directory(
+                &entry.path(),
+                &target,
+                root,
+                backup_dir,
+                copied,
+                preserve_plugins,
+            )?;
         } else {
             copy_file(&entry.path(), &target, root, backup_dir, copied)?;
         }
     }
     Ok(())
+}
+
+fn should_preserve_directory(name: &str, preserve_plugins: bool) -> bool {
+    if !PRESERVED_DIRECTORIES.contains(&name) {
+        return false;
+    }
+    preserve_plugins || !matches!(name, "plugin" | "custom_plugin")
 }
 
 fn copy_file(
@@ -229,20 +270,67 @@ fn copy_file(
     }
     let relative = destination.strip_prefix(root)?.to_path_buf();
     let existed_before = destination.exists();
+    let backup = backup_dir.join(&relative);
+    let move_to_backup = existed_before && is_running_executable(destination);
     if existed_before {
-        let backup = backup_dir.join(&relative);
         if let Some(parent) = backup.parent() {
             fs::create_dir_all(parent)?;
         }
-        fs::copy(destination, backup)?;
+        if move_to_backup {
+            fs::rename(destination, &backup).map_err(|error| {
+                format!(
+                    "Failed to move the running Setup from {} to {}: {error}",
+                    destination.display(),
+                    backup.display()
+                )
+            })?;
+        } else {
+            fs::copy(destination, &backup).map_err(|error| {
+                format!(
+                    "Failed to back up {} to {}: {error}",
+                    destination.display(),
+                    backup.display()
+                )
+            })?;
+        }
     }
-    fs::copy(source, destination)?;
+    copy_new_file(source, destination, &backup, move_to_backup)?;
     copied.push(CopiedFile {
         destination: destination.to_path_buf(),
         relative,
         existed_before,
     });
     Ok(())
+}
+
+fn copy_new_file(
+    source: &Path,
+    destination: &Path,
+    backup: &Path,
+    restore_on_failure: bool,
+) -> Result<(), Box<dyn Error>> {
+    if let Err(error) = fs::copy(source, destination) {
+        let copy_error = format!(
+            "Failed to copy {} to {}: {error}",
+            source.display(),
+            destination.display()
+        );
+        if restore_on_failure && let Err(restore_error) = fs::rename(backup, destination) {
+            return Err(format!("{copy_error}; immediate restore failed: {restore_error}").into());
+        }
+        return Err(copy_error.into());
+    }
+    Ok(())
+}
+
+fn is_running_executable(path: &Path) -> bool {
+    let Ok(executable) = std::env::current_exe() else {
+        return false;
+    };
+    match (fs::canonicalize(path), fs::canonicalize(&executable)) {
+        (Ok(path), Ok(executable)) => path == executable,
+        _ => path == executable,
+    }
 }
 
 fn rollback(backup_dir: &Path, copied: Vec<CopiedFile>) -> Result<(), Box<dyn Error>> {
@@ -321,4 +409,91 @@ pub fn archive_root_component(path: &Path) -> Option<&str> {
         Component::Normal(value) => value.to_str(),
         _ => None,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io::Write;
+
+    use super::*;
+
+    #[test]
+    fn install_copies_official_and_third_party_plugin_directories() {
+        let temporary = tempfile::tempdir().expect("创建临时目录");
+        let archive = temporary.path().join("release.zip");
+        write_test_archive(&archive);
+        let target = temporary.path().join("target");
+        fs::create_dir(&target).expect("创建安装目录");
+
+        install_archive(&archive, &target, ArchiveAction::Install, || {
+            Ok::<(), Box<dyn Error>>(())
+        })
+        .expect("安装测试归档");
+
+        assert!(target.join("plugin/example/IXPlugin.json").is_file());
+        assert!(target.join("custom_plugin/__init__.py").is_file());
+    }
+
+    #[test]
+    fn local_uv_satisfies_interactive_preflight_without_path_uv() {
+        let temporary = tempfile::tempdir().expect("创建临时目录");
+        let binary_name = if cfg!(windows) { "uv.exe" } else { "uv" };
+        let local_uv = temporary.path().join(".tui/tools").join(binary_name);
+        fs::create_dir_all(local_uv.parent().expect("uv 父目录")).expect("创建工具目录");
+        fs::write(&local_uv, b"test").expect("写入本地 uv 占位文件");
+
+        let preflight = ToolPreflight::detect_for_root_with(temporary.path(), |_| false);
+
+        assert!(preflight.uv_present);
+        assert!(!preflight.git_present);
+        assert_eq!(crate::uv::uv_program(temporary.path()), local_uv);
+    }
+
+    #[test]
+    fn failed_copy_restores_executable_moved_to_backup() {
+        let temporary = tempfile::tempdir().expect("创建临时目录");
+        let destination = temporary.path().join("setup.exe");
+        let backup = temporary.path().join("backup.exe");
+        fs::write(&backup, b"old setup").expect("写入旧 Setup 备份");
+
+        let result = copy_new_file(
+            &temporary.path().join("missing.exe"),
+            &destination,
+            &backup,
+            true,
+        );
+
+        assert!(result.is_err());
+        assert_eq!(
+            fs::read(destination).expect("读取恢复的 Setup"),
+            b"old setup"
+        );
+        assert!(!backup.exists());
+    }
+
+    fn write_test_archive(archive: &Path) {
+        let file = fs::File::create(archive).expect("创建测试归档");
+        let mut zip = zip::ZipWriter::new(file);
+        let options = zip::write::SimpleFileOptions::default();
+        for (name, content) in test_archive_files() {
+            zip.start_file(format!("InstructionX-test/{name}"), options)
+                .expect("写入归档条目");
+            zip.write_all(content.as_bytes()).expect("写入归档内容");
+        }
+        zip.finish().expect("完成测试归档");
+    }
+
+    fn test_archive_files() -> [(&'static str, &'static str); 6] {
+        [
+            ("main.py", "print('ok')\n"),
+            ("core/version.py", "VERSION = '1.0.0'\n"),
+            (
+                "pyproject.toml",
+                "[project]\nname='test'\nversion='1.0.0'\n",
+            ),
+            ("requirements.txt", ""),
+            ("plugin/example/IXPlugin.json", "{\"id\":\"example\"}"),
+            ("custom_plugin/__init__.py", ""),
+        ]
+    }
 }

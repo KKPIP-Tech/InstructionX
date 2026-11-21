@@ -34,7 +34,7 @@ graph TB
     Content --> WA
 ```
 
-> **注意**：菜单栏（编辑、AI、帮助）实际嵌入在 `CustomTitleBar` 内部（通过 `set_menu_bar()` 放置在标题和窗口控制按钮之间）。无框架窗口额外设置了 `WA_TranslucentBackground` 属性。
+> **注意**：菜单栏（编辑、AI、帮助）实际嵌入在 `CustomTitleBar` 内部（通过 `set_menu_bar()` 放置在标题和窗口控制按钮之间）。macOS 主窗口保留 `WA_TranslucentBackground`；Windows 在创建原生句柄前关闭该属性，改由 DWM 提供外层圆角与阴影，避免直接 Canvas/RHI 下缩放后的点击穿透。
 
 ---
 
@@ -255,7 +255,8 @@ flowchart TD
     N --> P[设置回调]
     O --> P
     P --> Q[连接 skill_clicked 信号]
-    Q --> PW[匹配顶层 RHI Surface prepare_rhi_surface]
+    Q --> NW[配置原生窗口边框 prepare_native_window_frame]
+    NW --> PW[匹配顶层 RHI Surface prepare_rhi_surface]
     PW --> R[应用容器样式 _update_container_style]
     R --> R2[阴影位图惰性缓存置位 _shadow_pixmap=None]
     R2 --> R3[setMouseTracking 开启鼠标追踪]
@@ -267,9 +268,10 @@ flowchart TD
 def __init__(self):
     super().__init__()
 
-    # 设置窗口属性：无边框 + 透明背景；窗口标志确定后立即匹配 RHI Surface
+    # 无边框窗口先配置原生边框，再匹配 RHI Surface；Windows 使用非分层宿主
     self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
     self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+    prepare_native_window_frame(self)
     prepare_rhi_surface(self)
     # 窗口尺寸常量为 ui/main_window.py 模块级常量：
     # WINDOW_MIN_WIDTH/HEIGHT = 800/600，WINDOW_DEFAULT_WIDTH/HEIGHT = 1024/768
@@ -308,11 +310,9 @@ def __init__(self):
     # 应用容器样式
     self._update_container_style()
 
-    # 窗口阴影：预渲染位图 + 9 宫格绘制（paintEvent 中），此处只做惰性缓存置位。
-    # 不用 QGraphicsDropShadowEffect：它会把容器子树重定向到离屏缓存，
-    # 硬件加速视口的帧更新无法触发效果源缓存失效，
-    # 窗口化模式下画布会长期呈现旧帧（拖拽卡死）；
-    # 也不用 DWM 原生阴影（WM_NCCALCSIZE 方案曾导致 Qt 与 Windows 坐标系错位）。
+    # 容器内阴影仍用预渲染位图 + 9 宫格；Windows 外层圆角与阴影由 DWM 提供。
+    # 不使用 QGraphicsDropShadowEffect，避免硬件视口更新时效果源缓存失效；
+    # 不通过 WM_NCCALCSIZE 修改客户区，避免 Qt 与 Windows 坐标系错位。
     self._shadow_pixmap = None  # 惰性渲染，首次 paintEvent 时生成
 
     # 边缘 resize 相关变量
@@ -367,6 +367,8 @@ def _create_main_layout(self) -> None:
 ```
 
 > **RHI Surface 初始化**（`prepare_rhi_surface`）：主窗口在窗口标志确定后、首次 `show()` 前，根据 `QQuickWindow.graphicsApi()` 的自动选择结果设置顶层 `QSurface` 类型，避免首个 Canvas/RHI 子控件加入时销毁并重建可见窗口。offscreen/minimal 平台为空操作；macOS Cocoa 顶层交给 Qt 自管理，避免 QRhiWidget 与 WebEngine 离屏帧崩溃；旧 `_prewarm_blueprint_viewport`、`QOpenGLWidget` 和 GL 探测已删除。
+>
+> **Windows 原生宿主**（`prepare_native_window_frame`）：在 `prepare_rhi_surface()` 前关闭顶层 `WA_TranslucentBackground`，并通过 DWM 设置外层阴影与 Windows 11 圆角。直接 Canvas/RHI 与逐像素分层窗口组合曾使原生命中区域停留在初始尺寸，造成放大或最大化后的点击穿透；不得重新改回该分层路径。
 >
 > **图形 API 选择**：`main.py` 不再调用 `QQuickWindow.setGraphicsApi()` 强制 OpenGL。Chart 与 Blueprint 默认直接 Canvas，显式 RHI 使用完整快照；真实桌面验收通过 Win32 客户区抓图覆盖原生 QQuickView，避免 `QWidget.grab()` 只得到父窗口空白区域。
 
@@ -612,7 +614,7 @@ def _on_github_plugin_installed(self, results):
 
 - **最大化/还原按钮图标**: 最大化按钮为 `IconButton`（`ui/title_bar.py`），图标由 QPainter 自绘而非文字符号；`set_maximized()` 内部调用 `set_icon_type("restore" / "maximize")` 切换图标
 - **容器圆角与阴影**: 最大化/全屏时移除圆角（`border-radius: 0px`）且不绘制阴影，还原时恢复 8px 圆角并恢复阴影；圆角由 `_update_container_style()` 处理，阴影的启停由 `paintEvent` 按窗口状态控制
-- **阴影实现（重要）**: 窗口阴影使用**预渲染位图 + 9 宫格拉伸绘制**（`_render_shadow_pixmap()` 首次 `paintEvent` 时生成一次，`_draw_shadow_tiles()` 常数时间绘制），**不使用 `QGraphicsDropShadowEffect`**——它会把整个容器子树的绘制重定向到离屏缓存，而硬件加速视口的帧更新无法触发效果源缓存失效，导致窗口化模式下画布长期呈现旧帧（拖拽时画面卡死；最大化时因阴影被禁用而不复发）
+- **阴影实现（重要）**: Windows 外层阴影与系统圆角由 `ui/native_window_frame.py` 通过 DWM 提供；容器内仍保留**预渲染位图 + 9 宫格拉伸绘制**（`_render_shadow_pixmap()` 首次 `paintEvent` 时生成一次，`_draw_shadow_tiles()` 常数时间绘制），macOS 继续使用原透明宿主。**不使用 `QGraphicsDropShadowEffect`**，避免硬件加速视口的帧更新无法触发效果源缓存失效
 - **主题自适应**: 使用 UIKit 设计令牌 `T()` 获取当前主题颜色动态设置背景色和边框色
 
 ```python
@@ -632,7 +634,7 @@ def changeEvent(self, event):
 
 | 属性 | 值 |
 |------|------|
-| 窗口类型 | FramelessWindowHint + WA_TranslucentBackground（无边框透明背景） |
+| 窗口类型 | 全平台 FramelessWindowHint；Windows 使用非分层宿主 + DWM 外层装饰，macOS 保留 WA_TranslucentBackground |
 | 最小尺寸 | 800 x 600 |
 | 默认尺寸 | 1024 x 768 |
 | 容器边距 | 左右 8px，顶部 0px，底部 8px |

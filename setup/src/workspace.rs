@@ -6,17 +6,15 @@ use std::path::{Path, PathBuf};
 
 use crossterm::event::{KeyCode, KeyEvent};
 
-use crate::actions::{ArchiveAction, ToolPreflight, current_framework_version, install_archive};
+use crate::actions::{ArchiveAction, ToolPreflight};
 use crate::app::Page;
-use crate::github::{FrameworkVersion, Release, ReleaseCatalog, ReleaseClient};
-use crate::plugins::{
-    DependencyResult, PluginInventory, PluginUpdateStatus, apply_update_results,
-    check_plugin_updates, install_plugin_dependencies,
+use crate::github::{Release, ReleaseCatalog};
+use crate::operations::{
+    OperationData, OperationEvent, OperationRequest, OperationSuccess, OperationUpdate,
+    RunningOperation,
 };
-use crate::shortcuts::ShortcutManager;
-use crate::uv::{PackageInfo, UvClient, uv_program};
-
-const GITHUB_API_URL: &str = "https://api.github.com";
+use crate::plugins::{DependencyResult, PluginInventory, PluginUpdateStatus, apply_update_results};
+use crate::uv::PackageInfo;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum PendingAction {
@@ -33,6 +31,8 @@ enum PendingAction {
     InstallPluginDependencies,
     CreateShortcut,
     ChangeLanguage,
+    InstallGit,
+    InstallUv,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -118,6 +118,37 @@ const MISC_ACTIONS: &[ActionItem] = &[
     },
 ];
 
+#[derive(Clone)]
+struct ActivityEntry {
+    text: String,
+    key: Option<&'static str>,
+    args: Vec<(String, String)>,
+}
+
+impl ActivityEntry {
+    fn plain(text: String) -> Self {
+        Self {
+            text,
+            key: None,
+            args: Vec::new(),
+        }
+    }
+
+    fn keyed(key: &'static str, args: Vec<(String, String)>, text: String) -> Self {
+        Self {
+            text,
+            key: Some(key),
+            args,
+        }
+    }
+
+    fn render(&self, i18n: &crate::i18n::I18n) -> String {
+        self.key
+            .map(|key| i18n.format(key, &self.args))
+            .unwrap_or_else(|| self.text.clone())
+    }
+}
+
 pub struct Workspace {
     root: PathBuf,
     pub release_catalog: Option<ReleaseCatalog>,
@@ -133,9 +164,16 @@ pub struct Workspace {
     pending: Option<PendingAction>,
     language_requested: bool,
     status: String,
+    status_key: Option<&'static str>,
+    status_args: Vec<(String, String)>,
+    operation: Option<RunningOperation>,
+    operation_update: Option<OperationUpdate>,
+    activity: Vec<ActivityEntry>,
 }
 
 impl Workspace {
+    const ACTIVITY_LIMIT: usize = 200;
+
     pub fn new(root: &Path) -> Self {
         let plugins = PluginInventory::load(root).unwrap_or_default();
         Self {
@@ -153,7 +191,225 @@ impl Workspace {
             pending: None,
             language_requested: false,
             status: "Ready".to_string(),
+            status_key: Some("status.ready"),
+            status_args: Vec::new(),
+            operation: None,
+            operation_update: None,
+            activity: Vec::new(),
         }
+    }
+
+    pub fn start_operation(&mut self, request: OperationRequest) -> Result<(), Box<dyn Error>> {
+        if self.is_running() {
+            return Err("Another operation is still running".into());
+        }
+        self.pending = None;
+        self.activity.clear();
+        self.operation_update = None;
+        self.status = format!("Running: {}", request.name());
+        self.status_key = None;
+        self.status_args.clear();
+        self.operation = Some(RunningOperation::start(request));
+        Ok(())
+    }
+
+    pub fn is_running(&self) -> bool {
+        self.operation.is_some()
+    }
+
+    pub fn poll_operation(&mut self) -> bool {
+        let events = self.drain_operation_events();
+        let finished = events
+            .iter()
+            .any(|event| matches!(event, OperationEvent::Finished(_)));
+        for event in events {
+            self.apply_operation_event(event);
+        }
+        finished
+    }
+
+    fn drain_operation_events(&mut self) -> Vec<OperationEvent> {
+        let mut events = Vec::new();
+        let Some(operation) = &self.operation else {
+            return events;
+        };
+        loop {
+            match operation.try_recv() {
+                Ok(event) => {
+                    let finished = matches!(event, OperationEvent::Finished(_));
+                    events.push(event);
+                    if finished {
+                        break;
+                    }
+                }
+                Err(std::sync::mpsc::TryRecvError::Empty) => break,
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                    events.push(OperationEvent::Finished(Err(
+                        "Operation worker stopped without a result".to_string(),
+                    )));
+                    break;
+                }
+            }
+        }
+        events
+    }
+
+    fn apply_operation_event(&mut self, event: OperationEvent) {
+        match event {
+            OperationEvent::Update(update) => {
+                if update.total > 0 {
+                    self.operation_update = Some(update);
+                } else {
+                    let entry = ActivityEntry::keyed(update.key, update.args, update.message);
+                    self.push_activity_entry(entry);
+                }
+            }
+            OperationEvent::Finished(result) => {
+                self.operation = None;
+                match result {
+                    Ok(success) => self.apply_success(success),
+                    Err(error) => {
+                        let fallback = format!("Operation failed: {error}");
+                        self.show_localized_message(
+                            "status.failed",
+                            &[("error", &error)],
+                            &fallback,
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    fn apply_success(&mut self, success: OperationSuccess) {
+        let OperationSuccess {
+            summary,
+            summary_key,
+            summary_args,
+            details,
+            data,
+        } = success;
+        self.status_key = summary_key;
+        self.status_args = summary_args.clone();
+        self.status = summary.clone();
+        let entry = if let Some(key) = summary_key {
+            ActivityEntry::keyed(key, summary_args, summary)
+        } else {
+            ActivityEntry::plain(summary)
+        };
+        self.push_activity_entry(entry);
+        for detail in details {
+            let entry = if let Some(key) = detail.key {
+                ActivityEntry::keyed(key, detail.args, detail.text)
+            } else {
+                ActivityEntry::plain(detail.text)
+            };
+            self.push_activity_entry(entry);
+        }
+        self.apply_operation_data(data);
+    }
+
+    fn apply_operation_data(&mut self, data: OperationData) {
+        match data {
+            OperationData::None => {}
+            OperationData::Releases(catalog) => self.set_release_catalog(catalog),
+            OperationData::Packages(packages) => {
+                self.packages = packages;
+                self.package_index = 0;
+            }
+            OperationData::Plugins(inventory) => {
+                self.plugins = inventory;
+                self.plugin_index = 0;
+            }
+            OperationData::PluginUpdates(results) => {
+                apply_update_results(&mut self.plugins, results)
+            }
+            OperationData::Dependencies(results) => self.dependency_results = results,
+        }
+    }
+
+    fn push_activity(&mut self, message: String) {
+        self.push_activity_entry(ActivityEntry::plain(message));
+    }
+
+    fn push_activity_entry(&mut self, entry: ActivityEntry) {
+        self.activity.push(entry);
+        if self.activity.len() > Self::ACTIVITY_LIMIT {
+            let excess = self.activity.len() - Self::ACTIVITY_LIMIT;
+            self.activity.drain(0..excess);
+        }
+    }
+
+    pub fn activity_text(&self) -> String {
+        self.activity_text_with_i18n(&crate::i18n::I18n::new(crate::i18n::Language::English))
+    }
+
+    pub fn activity_text_with_i18n(&self, i18n: &crate::i18n::I18n) -> String {
+        const VISIBLE_MESSAGES: usize = 4;
+        let status = self.status_text(i18n);
+        let mut lines = vec![i18n.format("activity.status", &[("value".to_string(), status)])];
+        if self.is_running()
+            && let Some(update) = &self.operation_update
+        {
+            let message = i18n.format(update.key, &update.args);
+            let value = format!("[{}/{}] {message}", update.current, update.total);
+            lines.push(i18n.format("activity.progress", &[("value".to_string(), value)]));
+        }
+        let start = self.activity.len().saturating_sub(VISIBLE_MESSAGES);
+        lines.extend(
+            self.activity[start..]
+                .iter()
+                .map(|entry| entry.render(i18n)),
+        );
+        lines.push(i18n.t("activity.log").to_string());
+        lines.join("\n")
+    }
+
+    fn status_text(&self, i18n: &crate::i18n::I18n) -> String {
+        if let Some(operation) = &self.operation {
+            let operation_name = i18n.t(operation.name_key).to_string();
+            return i18n.format(
+                "status.running",
+                &[("operation".to_string(), operation_name)],
+            );
+        }
+        if let Some(action) = self.pending {
+            let operation = i18n.t(pending_action_key(action)).to_string();
+            return i18n.format("activity.confirm", &[("operation".to_string(), operation)]);
+        }
+        self.status_key
+            .map(|key| i18n.format(key, &self.status_args))
+            .unwrap_or_else(|| self.status.clone())
+    }
+
+    pub fn show_message(&mut self, message: &str) {
+        self.status_key = None;
+        self.status_args.clear();
+        self.status = message.to_string();
+        self.push_activity(message.to_string());
+    }
+
+    pub fn show_localized_message(
+        &mut self,
+        key: &'static str,
+        arguments: &[(&str, &str)],
+        fallback: &str,
+    ) {
+        self.status_key = Some(key);
+        self.status_args = arguments
+            .iter()
+            .map(|(name, value)| (name.to_string(), value.to_string()))
+            .collect();
+        self.status = fallback.to_string();
+        self.push_activity_entry(ActivityEntry::keyed(
+            key,
+            self.status_args.clone(),
+            fallback.to_string(),
+        ));
+    }
+
+    pub fn record_output(&mut self, message: &str) {
+        self.push_activity(message.to_string());
     }
 
     fn action_items(page: Page) -> &'static [ActionItem] {
@@ -192,6 +448,8 @@ impl Workspace {
             PendingAction::InstallPluginDependencies => "InstallPluginDependencies",
             PendingAction::CreateShortcut => "CreateShortcut",
             PendingAction::ChangeLanguage => "ChangeLanguage",
+            PendingAction::InstallGit => "InstallGit",
+            PendingAction::InstallUv => "InstallUv",
         })
     }
 
@@ -229,21 +487,44 @@ impl Workspace {
     }
 
     pub fn handle_key_event(&mut self, page: Page, key: KeyEvent) -> Result<(), Box<dyn Error>> {
+        if self.is_running() {
+            return Ok(());
+        }
         match key.code {
+            KeyCode::Esc => self.cancel_pending(),
             KeyCode::Up | KeyCode::Down => {
                 self.move_selection(page, if key.code == KeyCode::Up { -1 } else { 1 })
             }
             KeyCode::Char(' ') => self.toggle_package(page),
             KeyCode::Enter => self.confirm(page)?,
             KeyCode::Char('c') => self.refresh(page)?,
-            KeyCode::Char('u') => self.pending = Some(PendingAction::UpdatePackages),
-            KeyCode::Char('d') => self.pending = Some(PendingAction::RemovePackages),
-            KeyCode::Char('r') => self.pending = Some(PendingAction::RebuildEnvironment),
-            KeyCode::Char('g') => self.install_git(),
-            KeyCode::Char('v') => self.install_uv(),
+            KeyCode::Char('u') => self.set_pending(PendingAction::UpdatePackages),
+            KeyCode::Char('d') => self.set_pending(PendingAction::RemovePackages),
+            KeyCode::Char('r') => self.set_pending(PendingAction::RebuildEnvironment),
+            KeyCode::Char('g') => self.set_pending(PendingAction::InstallGit),
+            KeyCode::Char('v') => self.set_pending(PendingAction::InstallUv),
             _ => {}
         }
         Ok(())
+    }
+
+    fn set_pending(&mut self, action: PendingAction) {
+        self.pending = Some(action);
+        self.activity.clear();
+        self.operation_update = None;
+        self.status_key = None;
+        self.status_args.clear();
+        self.status = format!("Confirm {} with Enter; Esc cancels", action_name(action));
+    }
+
+    fn cancel_pending(&mut self) {
+        if self.pending.take().is_some() {
+            self.show_localized_message(
+                "status.cancelled",
+                &[],
+                "Operation cancelled before execution",
+            );
+        }
     }
 
     fn move_selection(&mut self, page: Page, delta: i32) {
@@ -255,7 +536,7 @@ impl Workspace {
         match page {
             Page::Install | Page::Upgrade => {
                 let count = self.release_count();
-                Self::move_index(&mut self.release_index, count, delta)
+                Self::move_index(&mut self.release_index, count, delta);
             }
             Page::Environment => {
                 Self::move_index(&mut self.package_index, self.packages.len(), delta)
@@ -268,10 +549,9 @@ impl Workspace {
     }
 
     fn move_index(index: &mut usize, count: usize, delta: i32) {
-        if count == 0 {
-            return;
+        if count > 0 {
+            *index = (*index as i32 + delta).rem_euclid(count as i32) as usize;
         }
-        *index = (*index as i32 + delta).rem_euclid(count as i32) as usize;
     }
 
     fn toggle_package(&mut self, page: Page) {
@@ -288,140 +568,89 @@ impl Workspace {
 
     fn confirm(&mut self, page: Page) -> Result<(), Box<dyn Error>> {
         if let Some(action) = self.pending.take() {
-            return self.execute(action);
+            return self.start_pending(action);
         }
         if self.region == WorkspaceRegion::Data {
             return Ok(());
         }
         if let Some(action) = self.selected_action(page) {
-            self.pending = Some(action);
+            self.set_pending(action);
         }
         Ok(())
     }
 
     fn refresh(&mut self, page: Page) -> Result<(), Box<dyn Error>> {
-        match page {
-            Page::Install | Page::Upgrade => self.load_releases()?,
-            Page::Environment => self.load_packages()?,
-            Page::Plugins => self.check_plugin_updates()?,
-            Page::Misc => self.pending = Some(PendingAction::CreateShortcut),
-            Page::Overview => {}
-        }
-        Ok(())
-    }
-
-    fn load_releases(&mut self) -> Result<(), Box<dyn Error>> {
-        self.status = "Checking GitHub Releases...".to_string();
-        let current = current_framework_version(&self.root)
-            .unwrap_or(FrameworkVersion::parse("alpha-v0.0.0")?);
-        let client = ReleaseClient::new(GITHUB_API_URL)?;
-        match client.list_all_releases(current) {
-            Ok(catalog) => {
-                self.set_release_catalog(catalog);
-                self.status = "Releases updated".to_string();
+        let request = match page {
+            Page::Install | Page::Upgrade => OperationRequest::LoadReleases {
+                root: self.root.clone(),
+            },
+            Page::Environment => OperationRequest::LoadPackages {
+                root: self.root.clone(),
+            },
+            Page::Plugins => OperationRequest::CheckPluginUpdates {
+                root: self.root.clone(),
+            },
+            Page::Misc => {
+                self.set_pending(PendingAction::CreateShortcut);
+                return Ok(());
             }
-            Err(error) => self.status = format!("Release check failed: {error}"),
-        }
-        Ok(())
-    }
-
-    fn load_packages(&mut self) -> Result<(), Box<dyn Error>> {
-        self.status = "Reading package versions...".to_string();
-        let client = UvClient::new(&self.root);
-        match client.list_packages() {
-            Ok(packages) => {
-                self.packages = packages;
-                self.package_index = 0;
-                self.status = "Package list updated".to_string();
-            }
-            Err(error) => self.status = format!("Package query failed: {error}"),
-        }
-        Ok(())
-    }
-
-    fn check_plugin_updates(&mut self) -> Result<(), Box<dyn Error>> {
-        self.status = "Checking plugin updates...".to_string();
-        match check_plugin_updates(&self.root) {
-            Ok(results) => {
-                apply_update_results(&mut self.plugins, results);
-                self.status = "Plugin updates checked".to_string();
-            }
-            Err(error) => self.status = format!("Plugin update check failed: {error}"),
-        }
-        Ok(())
-    }
-
-    fn refresh_plugins(&mut self) -> Result<(), Box<dyn Error>> {
-        self.plugins = PluginInventory::load(&self.root)?;
-        self.plugin_index = 0;
-        self.status = "Plugin list refreshed".to_string();
-        Ok(())
-    }
-
-    fn install_dependencies(&mut self) -> Result<(), Box<dyn Error>> {
-        self.dependency_results = install_plugin_dependencies(&self.root)?;
-        let failed = self
-            .dependency_results
-            .iter()
-            .filter(|result| !result.success)
-            .count();
-        self.status = format!("Plugin dependency installation finished; {failed} failed");
-        Ok(())
-    }
-
-    fn execute(&mut self, action: PendingAction) -> Result<(), Box<dyn Error>> {
-        let result = match action {
-            PendingAction::Install => self.execute_archive(ArchiveAction::Install),
-            PendingAction::Repair => self.execute_archive(ArchiveAction::Repair),
-            PendingAction::Upgrade => self.execute_archive(ArchiveAction::Upgrade),
-            PendingAction::CheckUpdates => self.load_releases(),
-            PendingAction::UpdatePackages => self.update_packages(),
-            PendingAction::RemovePackages => self.remove_packages(),
-            PendingAction::RebuildEnvironment => self.rebuild_environment(),
-            PendingAction::QueryPackages => self.load_packages(),
-            PendingAction::RefreshPlugins => self.refresh_plugins(),
-            PendingAction::CheckPluginUpdates => self.check_plugin_updates(),
-            PendingAction::InstallPluginDependencies => self.install_dependencies(),
-            PendingAction::CreateShortcut => self.create_shortcut(),
-            PendingAction::ChangeLanguage => {
-                self.language_requested = true;
-                Ok(())
-            }
+            Page::Overview => return Ok(()),
         };
-        if let Err(error) = result {
-            self.status = format!("Operation failed: {error}");
-        }
-        Ok(())
+        self.start_operation(request)
     }
 
-    fn execute_archive(&mut self, action: ArchiveAction) -> Result<(), Box<dyn Error>> {
-        let preflight = ToolPreflight::detect();
-        if !preflight.uv_present {
-            self.status = "uv is required. Press v to install it, then retry.".to_string();
+    fn start_pending(&mut self, action: PendingAction) -> Result<(), Box<dyn Error>> {
+        if action == PendingAction::ChangeLanguage {
+            self.language_requested = true;
+            self.show_localized_message(
+                "status.select_language",
+                &[],
+                "Select the interface language",
+            );
             return Ok(());
         }
-        let Some(release) = self.selected_release().cloned() else {
-            self.status = "Press c to check Releases before continuing".to_string();
-            return Ok(());
-        };
-        if !preflight.git_present {
-            self.status =
-                "Git is missing; archive installation will be used. Press g to install it."
-                    .to_string();
+        let request = self.operation_request(action);
+        self.start_operation(request)
+    }
+
+    fn operation_request(&self, action: PendingAction) -> OperationRequest {
+        let root = self.root.clone();
+        match action {
+            PendingAction::Install | PendingAction::Repair | PendingAction::Upgrade => {
+                OperationRequest::Archive {
+                    root,
+                    action: archive_action(action),
+                    selected_release: if action == PendingAction::Repair {
+                        None
+                    } else {
+                        self.selected_release().cloned()
+                    },
+                    archive: None,
+                    release_tag: None,
+                    auto_install: true,
+                }
+            }
+            PendingAction::CheckUpdates => OperationRequest::LoadReleases { root },
+            PendingAction::UpdatePackages => OperationRequest::UpdatePackages {
+                root,
+                packages: self.selected_packages.iter().cloned().collect(),
+            },
+            PendingAction::RemovePackages => OperationRequest::RemovePackages {
+                root,
+                packages: self.removable_packages(),
+            },
+            PendingAction::RebuildEnvironment => OperationRequest::RebuildEnvironment { root },
+            PendingAction::QueryPackages => OperationRequest::LoadPackages { root },
+            PendingAction::RefreshPlugins => OperationRequest::RefreshPlugins { root },
+            PendingAction::CheckPluginUpdates => OperationRequest::CheckPluginUpdates { root },
+            PendingAction::InstallPluginDependencies => {
+                OperationRequest::InstallPluginDependencies { root }
+            }
+            PendingAction::CreateShortcut => OperationRequest::CreateShortcut { root },
+            PendingAction::InstallGit => OperationRequest::InstallGit { root },
+            PendingAction::InstallUv => OperationRequest::InstallUv { root },
+            PendingAction::ChangeLanguage => unreachable!("语言切换不启动后台操作"),
         }
-        let client = ReleaseClient::new(GITHUB_API_URL)?;
-        let archive = self
-            .root
-            .join(".tui/work")
-            .join(format!("{}.zip", release.tag_name));
-        client.download_archive(&release.tag_name, &archive)?;
-        let mut uv = UvClient::new(&self.root);
-        let report = install_archive(&archive, &self.root, action, || uv.sync_environment())?;
-        self.status = format!(
-            "Completed {}: {} files copied",
-            release.tag_name, report.copied_files
-        );
-        Ok(())
     }
 
     fn selected_release(&self) -> Option<&Release> {
@@ -437,27 +666,13 @@ impl Workspace {
             .map_or(0, |catalog| catalog.releases.len())
     }
 
-    fn update_packages(&mut self) -> Result<(), Box<dyn Error>> {
-        let packages: Vec<_> = self.selected_packages.iter().cloned().collect();
-        UvClient::new(&self.root).update_packages(&packages)?;
-        self.status = format!("Updated {} packages", packages.len());
-        self.load_packages()
-    }
-
-    fn remove_packages(&mut self) -> Result<(), Box<dyn Error>> {
+    fn removable_packages(&self) -> Vec<String> {
         let protected = self.protected_packages();
-        let packages: Vec<_> = self
-            .selected_packages
+        self.selected_packages
             .iter()
             .filter(|name| !protected.contains(*name))
             .cloned()
-            .collect();
-        UvClient::new(&self.root).remove_packages(&packages)?;
-        self.status = format!(
-            "Removed {} packages; protected dependencies were kept",
-            packages.len()
-        );
-        self.load_packages()
+            .collect()
     }
 
     fn protected_packages(&self) -> BTreeSet<String> {
@@ -475,191 +690,6 @@ impl Workspace {
             .collect()
     }
 
-    fn rebuild_environment(&mut self) -> Result<(), Box<dyn Error>> {
-        UvClient::new(&self.root).rebuild_environment()?;
-        self.dependency_results = install_plugin_dependencies(&self.root)?;
-        let failed = self
-            .dependency_results
-            .iter()
-            .filter(|result| !result.success)
-            .count();
-        self.status = format!("Environment rebuilt; {failed} plugin dependency tasks failed");
-        Ok(())
-    }
-
-    fn create_shortcut(&mut self) -> Result<(), Box<dyn Error>> {
-        let manager = ShortcutManager::new(self.root.clone(), uv_program(&self.root));
-        let path = manager.create(false)?;
-        self.status = format!("Shortcut created: {}", path.display());
-        Ok(())
-    }
-
-    fn install_git(&mut self) {
-        self.status = match crate::uv::install_git() {
-            Ok(()) => "Git installed successfully".to_string(),
-            Err(error) => format!("Git installation failed: {error}"),
-        };
-    }
-
-    fn install_uv(&mut self) {
-        self.status = match crate::uv::install_uv(&self.root) {
-            Ok(path) => format!("uv installed: {}", path.display()),
-            Err(error) => format!("uv installation failed: {error}"),
-        };
-    }
-
-    pub fn run_action(
-        &mut self,
-        action: &str,
-        archive: Option<&Path>,
-        release_tag: Option<&str>,
-        dry_run: bool,
-        auto_install: bool,
-    ) -> Result<String, Box<dyn Error>> {
-        if dry_run {
-            return Ok(format!(
-                "Dry run: action={action}, archive={archive:?}, release_tag={release_tag:?}"
-            ));
-        }
-        match action {
-            "install" => {
-                self.run_archive_action(ArchiveAction::Install, archive, release_tag, auto_install)
-            }
-            "repair" => {
-                self.run_archive_action(ArchiveAction::Repair, archive, release_tag, auto_install)
-            }
-            "upgrade" => {
-                self.run_archive_action(ArchiveAction::Upgrade, archive, release_tag, auto_install)
-            }
-            _ => self.run_simple_action(action, auto_install),
-        }
-    }
-
-    fn run_simple_action(
-        &mut self,
-        action: &str,
-        auto_install: bool,
-    ) -> Result<String, Box<dyn Error>> {
-        match action {
-            "environment-repair" => {
-                self.rebuild_environment()?;
-                Ok(self.status.clone())
-            }
-            "check-updates" => {
-                self.load_releases()?;
-                Ok(self.render_releases())
-            }
-            "create-shortcut" => {
-                self.create_shortcut()?;
-                Ok(self.status.clone())
-            }
-            "doctor" => {
-                let overview = crate::system::SystemOverview::collect(&self.root);
-                Ok(format!(
-                    "Framework installed: {}",
-                    overview.framework.installed
-                ))
-            }
-            "clean-temp" => {
-                let work = self.root.join(".tui/work");
-                if work.exists() {
-                    fs::remove_dir_all(work)?;
-                }
-                Ok("Temporary files cleaned".to_string())
-            }
-            "uninstall" => self.uninstall(auto_install),
-            _ => Err(format!("Unknown action: {action}").into()),
-        }
-    }
-
-    fn run_archive_action(
-        &mut self,
-        action: ArchiveAction,
-        archive: Option<&Path>,
-        release_tag: Option<&str>,
-        auto_install: bool,
-    ) -> Result<String, Box<dyn Error>> {
-        self.ensure_uv(auto_install)?;
-        let archive = self.resolve_archive(action, archive, release_tag)?;
-        let mut uv = UvClient::new(&self.root);
-        let report = install_archive(&archive, &self.root, action, || uv.sync_environment())?;
-        Ok(format!(
-            "{} files copied; backup: {}",
-            report.copied_files,
-            report.backup_dir.display()
-        ))
-    }
-
-    fn ensure_uv(&mut self, auto_install: bool) -> Result<(), Box<dyn Error>> {
-        if ToolPreflight::detect().uv_present {
-            return Ok(());
-        }
-        if !auto_install {
-            return Err("uv is missing; use --yes to allow automatic installation".into());
-        }
-        crate::uv::install_uv(&self.root)?;
-        Ok(())
-    }
-
-    fn resolve_archive(
-        &mut self,
-        action: ArchiveAction,
-        archive: Option<&Path>,
-        release_tag: Option<&str>,
-    ) -> Result<PathBuf, Box<dyn Error>> {
-        if let Some(path) = archive {
-            return Ok(path.to_path_buf());
-        }
-        if let Some(tag) = release_tag {
-            let client = ReleaseClient::new(GITHUB_API_URL)?;
-            let destination = self.root.join(".tui/work").join(format!("{tag}.zip"));
-            client.download_archive(tag, &destination)?;
-            return Ok(destination);
-        }
-        self.load_releases()?;
-        let current = current_framework_version(&self.root).ok();
-        let release = match action {
-            ArchiveAction::Repair => self.release_catalog.as_ref().and_then(|catalog| {
-                catalog
-                    .releases
-                    .iter()
-                    .find(|release| release.version == current)
-            }),
-            _ => self
-                .release_catalog
-                .as_ref()
-                .and_then(|catalog| catalog.releases.first()),
-        }
-        .cloned()
-        .ok_or("No matching Release was found")?;
-        let client = ReleaseClient::new(GITHUB_API_URL)?;
-        let destination = self
-            .root
-            .join(".tui/work")
-            .join(format!("{}.zip", release.tag_name));
-        client.download_archive(&release.tag_name, &destination)?;
-        Ok(destination)
-    }
-
-    fn uninstall(&self, confirmed: bool) -> Result<String, Box<dyn Error>> {
-        if !confirmed {
-            return Err("Uninstall requires --yes".into());
-        }
-        for name in [".venv", "config", "data", "logs", ".tui"] {
-            let path = self.root.join(name);
-            if path.exists() {
-                fs::remove_dir_all(path)?;
-            }
-        }
-        let shortcut = ShortcutManager::new(self.root.clone(), PathBuf::from("uv")).shortcut_path();
-        if shortcut.is_dir() {
-            fs::remove_dir_all(shortcut)?;
-        } else if shortcut.is_file() {
-            fs::remove_file(shortcut)?;
-        }
-        Ok("Environment and shortcuts removed; program files and plugins were kept".to_string())
-    }
-
     pub fn render(&self, page: Page) -> String {
         self.render_with_i18n(
             page,
@@ -671,12 +701,14 @@ impl Workspace {
         let mut text = match page {
             Page::Install => self.render_install(i18n),
             Page::Environment => self.render_environment(i18n),
-            Page::Upgrade => self.render_releases(),
+            Page::Upgrade => self.render_releases(i18n),
             Page::Plugins => self.render_plugins(i18n),
             Page::Misc => self.render_action_menu(Page::Misc, i18n),
             Page::Overview => String::new(),
         };
-        let _ = writeln!(text, "\nStatus: {}", self.status);
+        let status = self.status_text(i18n);
+        let status_line = i18n.format("activity.status", &[("value".to_string(), status)]);
+        let _ = writeln!(text, "\n{status_line}");
         text
     }
 
@@ -698,19 +730,19 @@ impl Workspace {
     }
 
     fn render_install(&self, i18n: &crate::i18n::I18n) -> String {
-        let preflight = ToolPreflight::detect();
-        let mut text = format!(
-            "Tools: git={} uv={} (g install Git, v install uv)\n\n",
-            preflight.git_present, preflight.uv_present
-        );
+        let preflight = ToolPreflight::detect_for_root(&self.root);
+        let git = preflight.git_present.to_string();
+        let uv = preflight.uv_present.to_string();
+        let tools = i18n.format_values("install.tools", &[("git", &git), ("uv", &uv)]);
+        let mut text = format!("{tools}\n\n");
         text.push_str(&self.render_action_menu(Page::Install, i18n));
-        text.push_str(&self.render_releases());
+        text.push_str(&self.render_releases(i18n));
         text
     }
 
-    fn render_releases(&self) -> String {
+    fn render_releases(&self, i18n: &crate::i18n::I18n) -> String {
         let Some(catalog) = &self.release_catalog else {
-            return "No Releases loaded. Select Check for updates to load them.\n".to_string();
+            return i18n.t("release.empty").to_string();
         };
         let mut text = String::new();
         for (index, release) in catalog.releases.iter().enumerate() {
@@ -719,19 +751,23 @@ impl Workspace {
             } else {
                 " "
             };
-            let latest = if index == 0 { "latest" } else { "" };
+            let latest = if index == 0 {
+                i18n.t("release.latest")
+            } else {
+                ""
+            };
             let current = if Some(release.id) == catalog.current_release_id {
-                "current"
+                i18n.t("release.current")
             } else {
                 ""
             };
             let pre = if release.prerelease {
-                "Pre-release"
+                i18n.t("release.prerelease")
             } else {
                 ""
             };
             let invalid = if release.version.is_none() {
-                "unrecognized"
+                i18n.t("release.unrecognized")
             } else {
                 ""
             };
@@ -749,11 +785,12 @@ impl Workspace {
     fn render_environment(&self, i18n: &crate::i18n::I18n) -> String {
         let mut text = self.render_action_menu(Page::Environment, i18n);
         if self.packages.is_empty() {
-            text.push_str("No package information. Select Query package list to load it.\n");
+            text.push_str(i18n.t("environment.empty"));
             return text;
         }
         let protected = self.protected_packages();
-        text.push_str("Space: select package\n");
+        text.push_str(i18n.t("environment.select_hint"));
+        text.push('\n');
         for (index, package) in self.packages.iter().enumerate() {
             let selected = if self.selected_packages.contains(&package.name) {
                 "[x]"
@@ -765,9 +802,12 @@ impl Workspace {
             } else {
                 " "
             };
-            let latest = package.latest_version.as_deref().unwrap_or("unknown");
+            let latest = package
+                .latest_version
+                .as_deref()
+                .unwrap_or_else(|| i18n.t("common.unknown"));
             let protected = if protected.contains(&package.name) {
-                "protected"
+                i18n.t("environment.protected")
             } else {
                 ""
             };
@@ -783,7 +823,7 @@ impl Workspace {
     fn render_plugins(&self, i18n: &crate::i18n::I18n) -> String {
         let mut text = self.render_action_menu(Page::Plugins, i18n);
         if self.plugins.plugins.is_empty() {
-            text.push_str("No plugins found. Select Refresh plugin list to reload.\n");
+            text.push_str(i18n.t("plugin.empty"));
             return text;
         }
         for (index, plugin) in self.plugins.plugins.iter().enumerate() {
@@ -793,16 +833,10 @@ impl Workspace {
                 " "
             };
             let scope = match plugin.scope {
-                crate::plugins::PluginScope::Official => "official",
-                crate::plugins::PluginScope::ThirdParty => "thirdparty",
+                crate::plugins::PluginScope::Official => i18n.t("plugin.official"),
+                crate::plugins::PluginScope::ThirdParty => i18n.t("plugin.thirdparty"),
             };
-            let update = match &plugin.update {
-                PluginUpdateStatus::Unchecked => "unchecked".to_string(),
-                PluginUpdateStatus::Checking => "checking".to_string(),
-                PluginUpdateStatus::UpToDate => "latest".to_string(),
-                PluginUpdateStatus::UpdateAvailable(version) => format!("update: {version}"),
-                PluginUpdateStatus::Failed(error) => format!("error: {error}"),
-            };
+            let update = plugin_update_text(&plugin.update, i18n);
             let _ = writeln!(
                 text,
                 "{selected} [{scope}] {} | {} | {update}\n  {}\n  {}",
@@ -810,14 +844,232 @@ impl Workspace {
             );
         }
         for result in &self.dependency_results {
-            let _ = writeln!(
-                text,
-                "Dependency {}: {} {}",
-                result.plugin_name,
-                if result.success { "OK" } else { "FAILED" },
-                result.detail
+            let status = if result.success {
+                "OK"
+            } else {
+                i18n.t("common.failed")
+            };
+            let line = i18n.format_values(
+                "plugin.dependency",
+                &[
+                    ("plugin", &result.plugin_name),
+                    ("status", status),
+                    ("detail", &result.detail),
+                ],
             );
+            let _ = writeln!(text, "{line}");
         }
         text
+    }
+}
+
+fn plugin_update_text(status: &PluginUpdateStatus, i18n: &crate::i18n::I18n) -> String {
+    match status {
+        PluginUpdateStatus::Unchecked => i18n.t("plugin.unchecked").to_string(),
+        PluginUpdateStatus::Checking => i18n.t("plugin.checking").to_string(),
+        PluginUpdateStatus::UpToDate => i18n.t("plugin.latest").to_string(),
+        PluginUpdateStatus::UpdateAvailable(version) => {
+            i18n.format_values("plugin.update_available", &[("version", version)])
+        }
+        PluginUpdateStatus::Failed(error) => {
+            i18n.format_values("plugin.failed", &[("error", error)])
+        }
+    }
+}
+
+fn pending_action_key(action: PendingAction) -> &'static str {
+    match action {
+        PendingAction::Install => "action.install",
+        PendingAction::Repair => "action.repair",
+        PendingAction::Upgrade => "action.upgrade_selected",
+        PendingAction::CheckUpdates => "action.check_updates",
+        PendingAction::UpdatePackages => "action.update_selected",
+        PendingAction::RemovePackages => "action.remove_selected",
+        PendingAction::RebuildEnvironment => "action.rebuild_environment",
+        PendingAction::QueryPackages => "action.query_packages",
+        PendingAction::RefreshPlugins => "action.refresh_plugins",
+        PendingAction::CheckPluginUpdates => "action.check_plugin_updates",
+        PendingAction::InstallPluginDependencies => "action.install_plugin_dependencies",
+        PendingAction::CreateShortcut => "action.create_shortcut",
+        PendingAction::ChangeLanguage => "action.language",
+        PendingAction::InstallGit => "action.install_git",
+        PendingAction::InstallUv => "action.install_uv",
+    }
+}
+
+fn archive_action(action: PendingAction) -> ArchiveAction {
+    match action {
+        PendingAction::Install => ArchiveAction::Install,
+        PendingAction::Repair => ArchiveAction::Repair,
+        PendingAction::Upgrade => ArchiveAction::Upgrade,
+        _ => unreachable!("仅归档操作需要 ArchiveAction"),
+    }
+}
+
+fn action_name(action: PendingAction) -> &'static str {
+    match action {
+        PendingAction::Install => "Install",
+        PendingAction::Repair => "Repair",
+        PendingAction::Upgrade => "Upgrade",
+        PendingAction::CheckUpdates => "Check updates",
+        PendingAction::UpdatePackages => "Update packages",
+        PendingAction::RemovePackages => "Remove packages",
+        PendingAction::RebuildEnvironment => "Rebuild environment",
+        PendingAction::QueryPackages => "Query packages",
+        PendingAction::RefreshPlugins => "Refresh plugins",
+        PendingAction::CheckPluginUpdates => "Check plugin updates",
+        PendingAction::InstallPluginDependencies => "Install plugin dependencies",
+        PendingAction::CreateShortcut => "Create shortcut",
+        PendingAction::ChangeLanguage => "Change language",
+        PendingAction::InstallGit => "Install Git",
+        PendingAction::InstallUv => "Install uv",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use super::*;
+
+    #[test]
+    fn background_operation_reports_activity_and_writes_persistent_log() {
+        let temporary = tempfile::tempdir().expect("创建临时目录");
+        let work = temporary.path().join(".tui/work");
+        fs::create_dir_all(&work).expect("创建待清理目录");
+        fs::write(work.join("temporary.txt"), b"temporary").expect("写入临时文件");
+        let mut workspace = Workspace::new(temporary.path());
+
+        workspace
+            .start_operation(OperationRequest::CleanTemp {
+                root: temporary.path().to_path_buf(),
+            })
+            .expect("启动后台操作");
+        assert!(workspace.is_running());
+        wait_until_finished(&mut workspace);
+
+        assert!(!work.exists());
+        assert!(workspace.status.contains("Temporary files cleaned"));
+        assert!(
+            workspace
+                .activity_text()
+                .contains("Temporary files cleaned")
+        );
+        let log =
+            fs::read_to_string(temporary.path().join("logs/tui_setup.log")).expect("读取操作日志");
+        assert!(log.contains("Operation started: Clean temporary files"));
+        assert!(log.contains("Operation completed: Temporary files cleaned"));
+    }
+
+    #[test]
+    fn step_event_updates_progress_without_duplicating_activity_history() {
+        let temporary = tempfile::tempdir().expect("创建临时目录");
+        let mut workspace = Workspace::new(temporary.path());
+
+        workspace.apply_operation_event(OperationEvent::Update(OperationUpdate {
+            current: 1,
+            total: 1,
+            key: "progress.clean_temp",
+            args: Vec::new(),
+            message: "Clean temporary files".to_string(),
+        }));
+
+        assert!(workspace.activity.is_empty());
+        assert_eq!(workspace.operation_update.expect("进度").current, 1);
+    }
+
+    #[test]
+    fn localized_result_details_follow_current_language() {
+        let temporary = tempfile::tempdir().expect("创建临时目录");
+        let mut workspace = Workspace::new(temporary.path());
+        let detail = crate::operations::OperationDetail::localized(
+            "detail.backup",
+            &[("path", "C:\\backup")],
+            "Backup: C:\\backup",
+        );
+
+        workspace.apply_success(OperationSuccess::with_localized_details(
+            "Done".to_string(),
+            vec![detail],
+        ));
+        let text = workspace
+            .activity_text_with_i18n(&crate::i18n::I18n::new(crate::i18n::Language::Chinese));
+
+        assert!(text.contains("备份：C:\\backup"), "{text}");
+    }
+
+    #[test]
+    fn new_action_confirmation_clears_previous_activity_and_follows_language() {
+        let temporary = tempfile::tempdir().expect("创建临时目录");
+        let mut workspace = Workspace::new(temporary.path());
+        workspace.show_message("uv 安装成功");
+
+        workspace
+            .handle_key(Page::Misc, KeyCode::Enter)
+            .expect("选择新操作");
+        let text = workspace
+            .activity_text_with_i18n(&crate::i18n::I18n::new(crate::i18n::Language::Chinese));
+
+        assert!(!text.contains("uv 安装成功"));
+        assert!(text.contains("确认创建桌面快捷方式"), "{text}");
+        assert!(!text.contains("Confirm"));
+    }
+
+    #[test]
+    fn selected_action_requires_explicit_second_enter() {
+        let temporary = tempfile::tempdir().expect("创建临时目录");
+        let mut workspace = Workspace::new(temporary.path());
+
+        workspace
+            .handle_key(Page::Misc, KeyCode::Enter)
+            .expect("选择操作");
+
+        assert!(workspace.has_pending_action());
+        assert!(!workspace.is_running());
+        assert!(workspace.activity_text().contains("press Enter again"));
+    }
+
+    #[test]
+    fn repair_resolves_matching_version_instead_of_selected_latest_release() {
+        let temporary = tempfile::tempdir().expect("创建临时目录");
+        let mut workspace = Workspace::new(temporary.path());
+        let latest = Release {
+            id: 1,
+            name: "Latest".to_string(),
+            tag_name: "alpha-v9.9.9".to_string(),
+            version: crate::github::FrameworkVersion::parse("alpha-v9.9.9").ok(),
+            prerelease: false,
+            published_at: chrono::Utc::now(),
+            body: String::new(),
+            html_url: String::new(),
+        };
+        workspace.release_catalog = Some(ReleaseCatalog {
+            releases: vec![latest],
+            current_release_id: None,
+            current_version: crate::github::FrameworkVersion::parse("alpha-v1.0.0")
+                .expect("当前版本"),
+        });
+
+        let request = workspace.operation_request(PendingAction::Repair);
+
+        match request {
+            OperationRequest::Archive {
+                selected_release, ..
+            } => {
+                assert!(selected_release.is_none());
+            }
+            _ => panic!("修复应生成归档操作"),
+        }
+    }
+
+    fn wait_until_finished(workspace: &mut Workspace) {
+        for _ in 0..100 {
+            workspace.poll_operation();
+            if !workspace.is_running() {
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        panic!("后台操作未及时完成");
     }
 }

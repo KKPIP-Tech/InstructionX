@@ -3,6 +3,7 @@
 
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -100,12 +101,44 @@ def check_native_cli() -> None:
     result = run_command([str(NATIVE), "--preview", "environment", "--lang", "en"])
     check("环境页显示独立操作项", result.returncode == 0
           and "Query package list" in result.stdout and "Rebuild environment" in result.stdout)
-    result = run_command([
-        str(NATIVE), "--action", "upgrade", "--yes", "--dry-run",
-        "--release-tag", "alpha-v9.9.9",
-    ])
-    check("dry-run 接受 Release Tag", result.returncode == 0 and "alpha-v9.9.9" in result.stdout)
-    check("dry-run 未创建下载目录", not (ROOT / ".tui" / "work").exists())
+    with tempfile.TemporaryDirectory(prefix="setup-dry-run-", dir=ROOT / "temp") as work:
+        result = run_command([
+            str(NATIVE), "--action", "upgrade", "--yes", "--dry-run",
+            "--release-tag", "alpha-v9.9.9", "--project-root", work,
+        ])
+        check("dry-run 接受 Release Tag", result.returncode == 0 and "alpha-v9.9.9" in result.stdout)
+        check("dry-run 未创建下载目录", not (Path(work) / ".tui" / "work").exists())
+    check_operation_feedback()
+
+
+def check_operation_feedback() -> None:
+    """真实操作必须显示步骤、结果并留下持久日志。"""
+    print("== 进度与结果反馈 ==")
+    preview = run_command([str(NATIVE), "--preview", "misc", "--lang", "en"])
+    check("界面包含 Activity 区域", preview.returncode == 0 and "Activity" in preview.stdout)
+    check("界面显示日志位置", "logs/tui_setup.log" in preview.stdout)
+    with tempfile.TemporaryDirectory(prefix="setup-feedback-", dir=ROOT / "temp") as work:
+        result = run_command([str(NATIVE), "--action", "clean-temp", "--project-root", work])
+        check("CLI 显示执行步骤", result.returncode == 0 and "[1/1] Clean temporary files" in result.stdout,
+              result.stdout + result.stderr)
+        check("CLI 显示完成结果", "Temporary files cleaned" in result.stdout)
+        log = Path(work) / "logs/tui_setup.log"
+        check("操作写入持久日志", log.is_file() and "Operation completed" in log.read_text(encoding="utf-8"))
+        localized_action = run_command([
+            str(NATIVE), "--action", "clean-temp", "--project-root", work, "--lang", "zh",
+        ])
+        check("CLI 步骤与结果跟随中文", localized_action.returncode == 0
+              and "清理临时文件" in localized_action.stdout
+              and "临时文件已清理" in localized_action.stdout)
+    localized = run_command([str(NATIVE), "--preview", "misc", "--lang", "zh"])
+    compact = "".join(localized.stdout.split())
+    check("Activity 状态与日志标签跟随中文", localized.returncode == 0
+          and "状态：已就绪" in compact and "日志：" in compact)
+    install_preview = run_command([str(NATIVE), "--preview", "install", "--lang", "zh"])
+    install_compact = "".join(install_preview.stdout.split())
+    check("安装页工具与空 Release 提示跟随中文", install_preview.returncode == 0
+          and "工具：" in install_compact and "尚未加载Release" in install_compact
+          and "Tools:" not in install_preview.stdout and "No Releases loaded" not in install_preview.stdout)
 
 
 def check_wrapper_cli() -> None:
@@ -131,12 +164,36 @@ def check_wrapper_cli() -> None:
         check("setup.sh 语法正确", syntax.returncode == 0)
 
 
+def check_external_working_directory() -> None:
+    """从项目外启动时仍必须操作启动器所在的框架根目录。"""
+    print("== 项目外启动 ==")
+    with tempfile.TemporaryDirectory(prefix="setup-launcher-", dir=ROOT / "temp") as work:
+        commands = []
+        if POWERSHELL.is_file():
+            commands.append(("PowerShell", [
+                str(POWERSHELL), "-NoProfile", "-ExecutionPolicy", "Bypass",
+                "-File", str(ROOT / "setup.ps1"), "-State",
+            ]))
+        if GIT_BASH.is_file():
+            commands.append(("Unix", [str(GIT_BASH), str(ROOT / "setup.sh"), "--state"]))
+        for name, argv in commands:
+            result = subprocess.run(
+                argv, cwd=work, capture_output=True, text=True,
+                encoding="utf-8", errors="replace", timeout=120,
+            )
+            expected = (f"project_root={ROOT}\n", f"project_root={ROOT.as_posix()}\n")
+            root_correct = any(line in result.stdout for line in expected)
+            check(f"{name} 启动器固定项目根目录", result.returncode == 0 and root_correct,
+                  result.stdout + result.stderr)
+
+
 def main() -> int:
     """执行全部检查并返回退出码。"""
     print(f"项目根: {ROOT}\n")
     check_launchers()
     check_native_cli()
     check_wrapper_cli()
+    check_external_working_directory()
     print(f"\n结果: {_passed} 通过, {_failed} 失败")
     return 1 if _failed else 0
 

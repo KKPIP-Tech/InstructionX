@@ -9,7 +9,7 @@
 **InstructionX** 是一个基于 **PySide6** 的**插件式桌面应用框架**（应用型项目，不作为库分发），支持：
 
 - 插件热加载 / 热卸载，GitHub 插件一键安装
-- 原生 Setup（Rust + Ratatui，Windows/macOS/Linux）：四语言偏好、系统总览、安装/修复/升级、环境与插件管理、无窗口快捷方式
+- 原生 Setup（Rust + Ratatui，Windows/macOS/Linux）：四语言偏好、系统总览、安装/修复/升级、环境与插件管理、无窗口快捷方式；后台操作、Activity 步骤/结果反馈与 `logs/tui_setup.log` 持久日志
 - 手动检查框架更新（帮助菜单触发，完整 GitHub Release 时间线含 Pre-release、当前版本定位、用户确认后按 Tag 升级；不自动检查）
 - 多厂商 LLM 集成（MiniMax、SiliconFlow、智谱 GLM、Ollama、OpenAI 兼容接口等），多会话管理、工具调用自动化（ToolCallExecutor）、多模态、用量统计
 - MCP 协议双向支持（内置 MCP Server 暴露插件 API；MCP Client 连接外部 MCP Server）
@@ -79,7 +79,7 @@ python -m pytest test/ -q --tb=short -p no:cacheprovider
 - **注意**：`test/` 下当前仅保留 `test/core/data/test_data_provider.py` 一个有效测试文件（其余旧测试已在重构中删除，残留的 `__pycache__` 是过期产物，不要参考）。现有测试约定：中文 docstring、`tmp_path` fixture、测试单例类时需重置 `XxxManager._instance = None`。
 - UI 测试不配置 offscreen 平台，CI 跑在 `windows-latest` 上使用真实 GUI。
 - 项目还有一类**独立验证脚本**（非 pytest，放在 `scripts/`，用 `.venv\Scripts\python.exe scripts\<name>.py` 直接运行）：
-  - `smoke_*.py`：核心链路无网冒烟测试（LLM、task、utils、i18n、字体管理、插件管理：安装/升级/降级/卸载/分组、本地插件包自动识别与插件集一次安装、包外文件兜底备份）；`smoke_setup_wizard.py` 针对原生 Setup（随包二进制、薄启动器、独立操作项、原生 CLI、兼容参数与 dry-run 安全）；`smoke_framework_update.py` 针对框架 Release 时间线、当前版本定位与指定 Tag 更新命令；`smoke_uikit_sync.py` 校验 UIKit 版本/模块/图标，`smoke_uikit_canvas.py` 以真实窗口和 Win32 客户区抓图验证 Canvas/RHI/raster 后端、趋势图 Tooltip 与最终帧
+  - `smoke_*.py`：核心链路无网冒烟测试（LLM、task、utils、i18n、字体管理、插件管理：安装/升级/降级/卸载/分组、本地插件包自动识别与插件集一次安装、包外文件兜底备份）；`smoke_setup_wizard.py` 针对原生 Setup（随包二进制、薄启动器与项目外工作目录、独立操作项、Activity/CLI 进度与持久日志、原生 CLI、兼容参数与 dry-run 安全）；`smoke_framework_update.py` 针对框架 Release 时间线、当前版本定位与指定 Tag 更新命令；`smoke_uikit_sync.py` 校验 UIKit 版本/模块/图标，`smoke_uikit_canvas.py` 以真实窗口和 Win32 客户区抓图验证 Canvas/RHI/raster 后端、趋势图 Tooltip 与最终帧
   - `smoke_github_private.py`：GitHub 多 Key、私有识别与重新绑定无网冒烟；`smoke_github_private_live.py` 读取本机测试 PAT/私有仓库环境变量，执行真实安装与 Release 下载，临时数据只写入 `temp/`
   - `check_i18n_completeness.py`：语言文件完整性校验（默认语言必须覆盖源码全部 `tr()` 调用，缺键 exit 1；其他语言缺键/孤立键 WARNING；支持 `--text-dir`/`--src-dir`/`--plugin-root`）
   - `screenshot_*.py`：对话框截图对比脚本（输出到 `scripts/screenshots/`）
@@ -229,14 +229,17 @@ python -m pytest test/ -q --tb=short -p no:cacheprovider
 ```
 main.py                     # 应用入口
 setup/                      # 原生 Setup · Rust crate（Ratatui + Crossterm，Windows/macOS/Linux）：
-                            #   app/workspace 页面状态机与操作编排、version.rs 日期版本、四语言偏好、系统总览、
-                            #   Release 安装/同版本修复/升级、uv 包管理、逐插件依赖安装、
-                            #   插件列表与更新检查、无窗口快捷方式、兼容 CLI 与 dry-run；
+                            #   app/workspace 页面状态机、二次确认与 Activity 自动底部跟随；operations.rs 统一
+                            #   交互/CLI 操作请求、后台执行、四语言结构化消息、子进程流式捕获与
+                            #   logs/tui_setup.log 持久日志；
+                            #   version.rs 日期版本、四语言偏好、系统总览、Release 安装/同版本修复/升级、
+                            #   uv 包管理、逐插件依赖安装、插件列表与更新检查、无窗口快捷方式、兼容 CLI 与 dry-run；
                             #   Rust 集成测试仅放 test 分支；build_windows.ps1 在本机构建/交叉编译
                             #   Windows x64/ARM64、准备并校验 LLVM-MinGW、检查 PE 架构并更新 SHA256
 tools/setup/                # 随源码包分发的 Windows x64/ARM64 原生 Setup 与 SHA256SUMS；
                             #   macOS 预编译资产为未来选项，本次不包含 macOS/Linux 二进制
-setup.ps1 / setup.sh        # Windows / macOS / Linux 薄启动器：按系统与架构选择随包二进制，不含 TUI
+setup.ps1 / setup.sh        # Windows / macOS / Linux 薄启动器：按系统与架构选择随包二进制，
+                            #   通过 INSTRUCTIONX_PROJECT_ROOT 固定启动器所在项目根，不含 TUI
 setup.bat / setup.command   # Windows / macOS 双击入口（只转发参数到薄启动器）
 setup_text/                 # 旧版脚本向导的中英双语文案（保留作历史兼容；原生 TUI 使用内置四语言资源）
 core/
@@ -371,6 +374,8 @@ ui/                         # 界面层
                             #   current_theme_mode() + 排除区（标题栏/技能面板/工作区）兼容 QSS 附录
   rhi_surface.py            # 顶层 RHI Surface 匹配（窗口标志确定后、show 前调用，
                             #   Qt 自动选择图形 API；不再强制 OpenGL 或预热 GL）
+  native_window_frame.py    # Windows 非分层主窗口宿主 + DWM 圆角/阴影；
+                            #   避免直接 Canvas/RHI 缩放后的点击穿透，其他平台保持原路径
   InstructionX_UIKit/       # PySide6 组件库（独立仓库 KKPIP-Tech/InstructionX_UIKit 的同步副本，
                             #   alpha-v1.0.4：tokens/theme 主题系统 + 59 组件（含 BudgetSliderGroup、
                             #   MarkdownView 与 math_render）+ 13 布局 + 52 动画 + 完整 Iconoir 图标库 +
@@ -438,8 +443,8 @@ config/ data/ logs/         # 运行时生成：配置、数据、日志
 - **接口与实现分离**：共享类型统一定义在 `core/interfaces/`，其他模块从这里 re-export，避免循环导入。
 - **关闭行为约定**：`main.py` 已 `setQuitOnLastWindowClosed(False)`，「关窗即退出」的隐式链路被切断，退出时机完全由代码显式控制（`QApplication.quit()`）；主窗口 `closeEvent` 统一拦截全部关闭路径（自绘叉子 / 标题栏右键 / Alt+F4 / 任务栏右键关闭），每次弹出 `CloseConfirmDialog` 询问「退出程序 / 最小化到托盘 / 取消」（无记忆选项）；托盘菜单「退出」与 Windows 注销/关机（`commitDataRequest` 回调置 `_force_quit`）走静默直退，不弹窗、不阻塞系统关机。`application.exec()` 返回后由 `core/application_lifecycle.py` 统一关闭外部调用、任务、MCP、插件、LLM 和存储，最后释放 UI，并输出全局截止期与逐步骤结果。
 - 后台任务回调在**工作线程**执行，更新 UI 必须通过 `utils/thread_utils.py` 封送到 UI 线程。
-- **RHI Surface 初始化**：主窗口在窗口标志确定后、首次 `show()` 前调用 `ui/rhi_surface.py` 的 `prepare_rhi_surface()`，让顶层 Surface 与 Qt 自动选择的 RHI API 一致，避免首个 Canvas/RHI 子控件重建可见窗口。macOS Cocoa 顶层交给 Qt 自管理，避免 QRhiWidget 与 WebEngine 离屏帧崩溃。不得强制 OpenGL，也不保留旧 GL 预热。
-- **Canvas / RHI 视口**：Chart 与 Blueprint 真实窗口默认 `QCanvasPainterWidget + QRhi`；`UIKIT_CHART_BACKEND` / `UIKIT_BLUEPRINT_BACKEND` 可显式选择 `rhi` 完整快照回退，`raster` 仅供软件参考。框架内趋势图使用内置 `heatmap`，全量构建后清除渲染器显示名，让 Tooltip 回退到日期，同时保持直接 Canvas 所需的精确类型。真实验收使用 Win32 客户区抓图，不能用 `QWidget.grab()` 捕获原生 QQuickView 内容。
+- **原生宿主与 RHI Surface 初始化**：主窗口在窗口标志确定后、首次 `show()` 前依次调用 `ui/native_window_frame.py` 的 `prepare_native_window_frame()` 和 `ui/rhi_surface.py` 的 `prepare_rhi_surface()`。Windows 使用非分层宿主与 DWM 外层圆角/阴影，避免直接 Canvas/RHI 下原生命中区域停留在初始尺寸；不得恢复逐像素透明分层路径。macOS Cocoa 保留透明宿主并交给 Qt 自管理，避免 QRhiWidget 与 WebEngine 离屏帧崩溃。顶层 Surface 必须与 Qt 自动选择的 RHI API 一致，不得强制 OpenGL，也不保留旧 GL 预热。
+- **Canvas / RHI 视口**：Chart 与 Blueprint 真实窗口默认 `QCanvasPainterWidget + QRhi`；`UIKIT_CHART_BACKEND` / `UIKIT_BLUEPRINT_BACKEND` 可显式选择 `rhi` 完整快照回退，`raster` 仅供软件参考。Cocoa 多视口持续更新时，Canvas 同步调度保留已经激活的单次零延迟定时器，避免 `update()` 与 `frameSubmitted` 反复 `start(0)` 造成内容同步饥饿；Windows 维持原有调度行为。框架内趋势图使用内置 `heatmap`，全量构建后清除渲染器显示名，让 Tooltip 回退到日期，同时保持直接 Canvas 所需的精确类型。真实验收使用 Win32 客户区抓图，不能用 `QWidget.grab()` 捕获原生 QQuickView 内容。
 
 ### 插件开发约定（重要）
 

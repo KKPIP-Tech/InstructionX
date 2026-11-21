@@ -4,10 +4,10 @@ use std::path::{Path, PathBuf};
 use clap::Parser;
 
 use crate::app::{App, Page};
-use crate::i18n::{Language, Preferences};
+use crate::i18n::{I18n, Language, Preferences};
+use crate::operations::{OperationUpdate, execute_operation, request_for_action};
 use crate::system::SystemOverview;
 use crate::version::setup_build_version;
-use crate::workspace::Workspace;
 
 #[derive(Debug, Parser)]
 #[command(
@@ -89,16 +89,66 @@ pub fn execute(cli: Cli) -> Result<(), Box<dyn Error>> {
 }
 
 fn execute_action(root: PathBuf, cli: &Cli) -> Result<(), Box<dyn Error>> {
-    let mut workspace = Workspace::new(&root);
-    let output = workspace.run_action(
-        cli.action.as_deref().unwrap_or_default(),
+    let action = cli.action.as_deref().unwrap_or_default();
+    if action == "doctor" {
+        let overview = SystemOverview::collect(&root);
+        println!("Framework installed: {}", overview.framework.installed);
+        return Ok(());
+    }
+    if cli.dry_run {
+        print_dry_run(&root, cli, action);
+        return Ok(());
+    }
+    let request = request_for_action(
+        &root,
+        action,
         cli.archive.as_deref(),
         cli.release_tag.as_deref(),
-        cli.dry_run,
         cli.yes,
     )?;
-    println!("{output}");
+    let i18n = action_i18n(&root, cli)?;
+    let success = execute_operation(request, |update| print_update(update, &i18n))?;
+    let summary = success.summary_key.map_or_else(
+        || success.summary.clone(),
+        |key| i18n.format(key, &success.summary_args),
+    );
+    println!("{summary}");
+    for detail in success.details {
+        let text = detail
+            .key
+            .map(|key| i18n.format(key, &detail.args))
+            .unwrap_or(detail.text);
+        println!("{text}");
+    }
     Ok(())
+}
+
+fn action_i18n(root: &Path, cli: &Cli) -> Result<I18n, Box<dyn Error>> {
+    let preferences_path = root.join(".tui/preferences.toml");
+    let preferences = Preferences::load(&preferences_path)?;
+    let language = cli
+        .lang
+        .as_deref()
+        .map_or(preferences.language, Language::from_code);
+    Ok(I18n::new(language))
+}
+
+fn print_dry_run(root: &Path, cli: &Cli, action: &str) {
+    println!("Dry run: no files, directories, configuration or environments will be changed");
+    println!("Project root: {}", root.display());
+    println!("Action: {action}");
+    println!("Archive: {:?}", cli.archive);
+    println!("Release Tag: {:?}", cli.release_tag);
+    println!("Automatic tool installation and confirmations: {}", cli.yes);
+}
+
+fn print_update(update: OperationUpdate, i18n: &I18n) {
+    let message = i18n.format(update.key, &update.args);
+    if update.total > 0 {
+        println!("[{}/{}] {message}", update.current, update.total);
+    } else {
+        println!("  {message}");
+    }
 }
 
 fn execute_interactive(root: PathBuf, cli: &Cli) -> Result<(), Box<dyn Error>> {

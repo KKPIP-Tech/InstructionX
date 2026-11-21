@@ -194,7 +194,7 @@ fn run_backend(root: &Path, command: &str) -> Result<String, Box<dyn Error>> {
     Ok(String::from_utf8_lossy(&output.stdout).to_string())
 }
 
-fn framework_python(root: &Path) -> PathBuf {
+pub fn framework_python(root: &Path) -> PathBuf {
     if cfg!(windows) {
         root.join(".venv/Scripts/python.exe")
     } else {

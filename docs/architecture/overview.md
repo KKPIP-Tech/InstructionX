@@ -338,10 +338,11 @@ from core.interfaces import (
 - 以 Ratatui + Crossterm 提供 Windows/macOS/Linux 共用的原生 TUI，不使用脚本语言实现界面。
 - 首次提供中/英（默认）/法/俄语言选择并持久化偏好，支持 0–5 六类页面和兼容非交互 CLI。
 - 采集系统硬件与框架状态；执行安装、同版本修复、Release 升级、环境包管理和环境重建。
+- 通过后台工作线程执行耗时操作，以 Activity 区域持续显示步骤与结果；交互和 CLI 共用操作执行器，过程写入 `logs/tui_setup.log`。
 - 复用框架插件依赖安装与更新检查后端，逐插件报告结果；创建三平台无窗口桌面入口。
 - 开发者本机构建并校验 Windows x64/ARM64 预编译二进制与 SHA256，随源码包分发；不使用 GitHub Actions 构建 Setup，Windows 用户不需要安装 Rust。macOS 预编译版本为未来选项。
 
-**模块划分**: `app.rs`（页面与终端事件）、`workspace.rs`（操作编排）、`system/`（平台信息）、`github.rs`（Release）、`actions.rs`（备份回滚）、`uv.rs`（环境）、`plugins.rs`（插件）、`shortcuts.rs`（桌面入口）、`cli.rs`（兼容接口）。
+**模块划分**: `app.rs`（页面与终端事件）、`workspace.rs`（操作确认与结果应用）、`operations.rs`（后台执行、进度事件与日志）、`system/`（平台信息）、`github.rs`（Release）、`actions.rs`（备份回滚）、`uv.rs`（环境）、`plugins.rs`（插件）、`shortcuts.rs`（桌面入口）、`cli.rs`（兼容接口）。
 
 ### 3.15 可靠性与可选进程隔离
 
@@ -498,6 +499,7 @@ InstructionX/
 │   ├── uikit_bootstrap.py   # sys.path 引导（使 UIKit 以顶层包可导入，main.py 第一个业务 import）
 │   ├── uikit_theme.py       # 全局主题入口（apply_uikit_theme 三模式 + 排除区兼容附录）
 │   ├── rhi_surface.py       # 顶层 RHI Surface 匹配（窗口标志确定后、show 前调用）
+│   ├── native_window_frame.py # Windows 非分层宿主与 DWM 圆角/阴影，其他平台保持原路径
 │   ├── main_window.py       # 主窗口
 │   ├── title_bar.py        # 自定义标题栏
 │   ├── usage_panel/         # 用量查询面板（包：panel/kpi_card/trend_chart/history_table/formatting）

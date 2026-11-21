@@ -20,6 +20,7 @@
 - `main.py` 不再调用 `QQuickWindow.setGraphicsApi()` 强制 OpenGL。
 - 新增 `ui/rhi_surface.py` 的 `prepare_rhi_surface(window)`：主窗口在窗口标志确定后、首次 `show()` 前匹配顶层 Surface，避免 Canvas/RHI 子控件触发可见窗口重建；macOS Cocoa 顶层则交给 Qt 自管理，防止 Qt 6.11 的 QRhiWidget 与 WebEngine 离屏帧在 `beginOffscreenFrame` 崩溃。
 - 删除 `_prewarm_blueprint_viewport()` 及全部旧 GL 导入；预渲染九宫格窗口阴影保留。
+- 后续 Windows 修复新增 `ui/native_window_frame.py`：顶层改用非分层宿主，并由 DWM 提供外层阴影与 Windows 11 圆角，解决直接 Canvas/RHI 下放大或最大化后的原生命中区域停留在初始尺寸的问题；macOS 路径不变。
 - `scripts/smoke_uikit_canvas.py` 使用 Win32 客户区原生抓图。`QWidget.grab()` 不能覆盖原生 QQuickView 子窗口，不能作为 RHI 整窗验收依据；最终帧在 resize 预览和入场动画结束后捕获。
 
 ### 2.2 用量趋势图
@@ -83,7 +84,13 @@ renderer.opt["name"] = ""
 
 本次完成的是**最新默认直接 Canvas 路径的完整迁移与功能适配**，不是正式 4K 性能验收通过。
 
-## 6. 提交边界
+## 6. 后续 Cocoa 多视口同步修复（2026-11-18）
+
+多 Canvas 视口持续更新时，option 和帧提交次数可能仍增长，但实际内容 `paint()` 停在早期画面。根因是 Canvas 视口在每次 `update()` 和 `frameSubmitted` 中都重新 `start(0)`，不断重置同一个单次同步定时器；多视口事件密集时，`_sync_now()` 被持续推迟。
+
+`canvas_item_viewport.py` 新增 `_schedule_sync()`：仅 Cocoa 在已有待执行同步时保留原定时器，其他平台仍按原行为重新 `start(0)`。公开接口、默认后端、数据与 Windows 调度均不变。多视口验收必须同时核对实际内容绘制与最终帧，不能只依据 option 版本或帧提交次数；该修复解决内容同步饥饿，不构成高负载 60fps 承诺。
+
+## 7. 提交边界
 
 - `dev`：UIKit/依赖、RHI 初始化、趋势图、框架文档分别提交，不含测试代码。
 - `test`：`test/ui_tests/` 与 `test/uikit/` 的适配测试单独提交。
