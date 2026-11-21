@@ -737,7 +737,11 @@ impl Workspace {
         let mut text = match page {
             Page::Install => self.render_install(i18n),
             Page::Environment => self.render_environment(i18n),
-            Page::Upgrade => self.render_releases(i18n),
+            Page::Upgrade => {
+                let mut text = self.render_action_menu(Page::Upgrade, i18n);
+                text.push_str(&self.render_releases(i18n));
+                text
+            }
             Page::Plugins => self.render_plugins(i18n),
             Page::Misc => self.render_action_menu(Page::Misc, i18n),
             Page::Overview => String::new(),
