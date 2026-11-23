@@ -78,6 +78,7 @@ class SkillsScrollNavigator(QWidget):
         if scroll_area in self._watched_scroll_areas:
             return
         self._watched_scroll_areas.add(scroll_area)
+        scroll_area.destroyed.connect(self._on_scroll_area_destroyed)
         bar = scroll_area.horizontalScrollBar()
         bar.rangeChanged.connect(self._on_scroll_changed)
         bar.valueChanged.connect(self._on_scroll_changed)
@@ -114,23 +115,49 @@ class SkillsScrollNavigator(QWidget):
             row_height - 2 * NAV_ICON_VERTICAL_PADDING,
         )
 
+    def _current_scroll_bar(self):
+        """安全读取当前滚动条，处理 Qt 销毁与延迟回调竞态。"""
+        if self._current_scroll_area is None:
+            self._hide_safely()
+            return None
+        try:
+            return self._current_scroll_area.horizontalScrollBar()
+        except RuntimeError:
+            self._current_scroll_area = None
+            self._hide_safely()
+            return None
+
+    def _hide_safely(self) -> None:
+        """导航自身已销毁时忽略后续隐藏请求。"""
+        try:
+            self.hide()
+        except RuntimeError:
+            return
+
     def refresh(self) -> None:
         """根据当前页溢出和滚动位置同步可见性与边界状态。"""
-        if self._current_scroll_area is None:
-            self.hide()
+        bar = self._current_scroll_bar()
+        if bar is None:
             return
-        bar = self._current_scroll_area.horizontalScrollBar()
-        overflow = self._active and bar.maximum() > bar.minimum()
-        self.setVisible(overflow)
-        self.left_btn.setEnabled(overflow and bar.value() > bar.minimum())
-        self.right_btn.setEnabled(overflow and bar.value() < bar.maximum())
+        try:
+            overflow = self._active and bar.maximum() > bar.minimum()
+            self.setVisible(overflow)
+            self.left_btn.setEnabled(overflow and bar.value() > bar.minimum())
+            self.right_btn.setEnabled(overflow and bar.value() < bar.maximum())
+        except RuntimeError:
+            self._current_scroll_area = None
 
     def _scroll_page(self, direction: int) -> None:
         """按当前可视页滚动，QScrollBar 自动钳制到合法范围。"""
-        if self._current_scroll_area is None:
+        bar = self._current_scroll_bar()
+        if bar is None:
             return
-        bar = self._current_scroll_area.horizontalScrollBar()
         bar.setValue(bar.value() + direction * bar.pageStep())
+
+    def _on_scroll_area_destroyed(self, _obj=None) -> None:
+        """页面销毁后清空引用，阻止延迟回调访问失效对象。"""
+        self._current_scroll_area = None
+        self._hide_safely()
 
     def _on_scroll_changed(self, *_args) -> None:
         """滚动范围或位置变化后同步按钮状态。"""
