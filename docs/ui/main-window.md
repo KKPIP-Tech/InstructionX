@@ -192,7 +192,7 @@ apply_uikit_theme(QApplication.instance(), theme)
 - **紧凑模式**: Pill 切换按钮右侧直接嵌入仅图标的插件滚动行，不显示计数器、滚动指示条、面板或分组展开区外轮廓（保留 `color.bg.subtle` 底色，边框为 `border: none` 且 ScrollArea 为 `QFrame.Shape.NoFrame`）；普通插件、分组及导航按钮均与 Pill 切换按钮实际等高，开启插件使用主色背景，面板高度另含既有容器边距。
 - **溢出导航**: 仅当前页溢出时显示左右箭头，使用 UIKit Iconoir，按可视页滚动并在边界禁用。
 - **页面**: `QStackedWidget` + 自定义 Pill 按钮，包含官方（`plugin/`）和第三方（`custom_plugin/`）两个标签页；每个标签页内部为 `QScrollArea` + 横向 `QHBoxLayout`。
-- **模式入口**: 「编辑 → 切换主题」正下方；PRIVATE 键 `skills_panel_mode` 保存 `relaxed` / `compact`，重启恢复，非法值或读取失败回退宽松。
+- **模式入口**: 「编辑 → 切换主题」正下方；新安装或无保存配置时默认紧凑。PRIVATE 键 `skills_panel_mode` 保存 `relaxed` / `compact`，重启恢复，非法值或读取失败回退紧凑。
 - **通信**: 通过 `skill_clicked` 信号与主窗口通信；模式切换保留当前 Tab、激活插件、分组展开状态和各页滚动位置。
 
 ```mermaid

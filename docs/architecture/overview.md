@@ -507,7 +507,7 @@ InstructionX/
 │   ├── usage_panel/         # 用量查询面板（包：panel/kpi_card/trend_chart/history_table/formatting）
 │   ├── tray/                # 系统托盘子系统（TrayIconManager 门面 + TrayBackend 后端注册表）
 │   ├── skills_panel/        # 技能面板
-│   │   ├── panel.py        # SkillsPanel 宽松/紧凑双模式面板
+│   │   ├── panel.py        # SkillsPanel 默认紧凑的宽松/紧凑双模式面板
 │   │   ├── plugin_group_widget.py  # 分组折叠控件
 │   │   ├── scroll_navigation.py # 紧凑模式溢出导航与 UIKit 箭头
 │   │   └── skill_button.py  # SkillButton 宽松/紧凑按钮组件

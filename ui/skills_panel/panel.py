@@ -18,6 +18,7 @@ from .scroll_navigation import SkillsScrollNavigator
 SKILLS_PANEL_RELAXED = "relaxed"
 SKILLS_PANEL_COMPACT = "compact"
 SKILLS_PANEL_MODES = frozenset((SKILLS_PANEL_RELAXED, SKILLS_PANEL_COMPACT))
+SKILLS_PANEL_DEFAULT_MODE = SKILLS_PANEL_COMPACT
 SKILLS_HEADER_VERTICAL_MARGIN = 6
 SKILLS_PILL_VERTICAL_MARGIN = 2
 RELAXED_PANEL_MIN_HEIGHT = 125
@@ -50,6 +51,7 @@ class SkillsPanel(QWidget):
         self.setProperty("compact", "false")
         self._logger = LoggerManager()
         self._init_ui()
+        self.set_display_mode(SKILLS_PANEL_DEFAULT_MODE)
 
         # 首次填充文案，并跟随语言切换重设（Qt 对象销毁时自动断开连接）
         self._retranslate_ui()

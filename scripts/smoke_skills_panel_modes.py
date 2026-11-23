@@ -261,6 +261,20 @@ def _check_scroll_preservation(panel) -> None:
     assert thirdparty_bar.value() == thirdparty_value
 
 
+def check_default_compact() -> None:
+    """验证无保存配置时面板和主窗口均默认紧凑。"""
+    panel, _manager = _create_loaded_panel()
+    assert panel.display_mode == "compact", "SkillsPanel 未默认紧凑"
+    assert panel.count_label.isHidden() is True
+    assert panel._header_layout.indexOf(panel.stacked_widget) >= 0
+    assert panel.height() < RELAXED_PANEL_MIN_HEIGHT
+    panel.close()
+    window = _create_menu_window()
+    assert window._skills_panel_mode == "compact", "主窗口未默认紧凑"
+    assert window._action_skills_mode.isChecked() is True
+    window.deleteLater()
+
+
 def check_panel() -> None:
     """验证面板双模式布局、状态保持和非法模式。"""
     panel, manager = _create_loaded_panel()
@@ -337,7 +351,7 @@ def _check_mode_persistence() -> None:
         assert restored._skills_panel_mode == "compact"
         storage["skills_panel_mode"] = "invalid"
         InstructionXMainWindow._load_saved_skills_panel_mode(restored)
-        assert restored._skills_panel_mode == "relaxed"
+        assert restored._skills_panel_mode == "compact"
         provider.set_plugin_data.side_effect = RuntimeError("disk full")
         InstructionXMainWindow._save_skills_panel_mode(owner)
         owner._logger.warning.assert_called_once()
@@ -353,15 +367,18 @@ def check_menu() -> None:
     assert actions[mode_index - 1] is window._menu_theme_action
     assert actions[mode_index + 1] is window._action_language
     assert action not in window.menuBar().actions()
+    assert window._skills_panel_mode == "compact"
+    assert action.isChecked() is True
     with patch.object(window, "_save_skills_panel_mode") as save:
         action.trigger()
-        window.skills_panel.set_display_mode.assert_called_once_with("compact")
-        save.assert_called_once_with()
-        assert window._skills_panel_mode == "compact"
-        assert action.isChecked() is True
-        action.trigger()
+        window.skills_panel.set_display_mode.assert_called_once_with("relaxed")
         assert window._skills_panel_mode == "relaxed"
         assert action.isChecked() is False
+        action.trigger()
+        window.skills_panel.set_display_mode.assert_called_with("compact")
+        assert window._skills_panel_mode == "compact"
+        assert action.isChecked() is True
+        assert save.call_count == 2
     window.deleteLater()
     _check_mode_persistence()
 
@@ -433,6 +450,10 @@ def _exercise_integrated_window(window, plugins) -> None:
     window.show()
     QApplication.processEvents()
     panel = window.skills_panel
+    assert panel.display_mode == "compact"
+    window._action_skills_mode.trigger()
+    QApplication.processEvents()
+    assert panel.display_mode == "relaxed"
     relaxed_height = panel.height()
     relaxed_work_height = window.work_area.get_widget().height()
     window._action_skills_mode.trigger()
@@ -489,6 +510,7 @@ CASES = {
     "group": check_group,
     "navigation": check_navigation,
     "navigation_lifecycle": check_navigation_lifecycle,
+    "default_compact": check_default_compact,
     "panel": check_panel,
     "panel_metrics": check_panel_metrics,
     "menu": check_menu,

@@ -389,7 +389,7 @@ ui/                         # 界面层
                             #   code_editor/ 仿 VS Code 代码编辑器（含语言补全与并排/内联 DiffEditor）+
                             #   mermaid/ 子包（官方 mermaid.js WebEngine 渲染 + 自绘降级 +
                             #   交互查看器）；主项目不修改库内文件）
-  skills_panel/             # 插件技能面板（宽松/紧凑双模式；紧凑为切换行内仅图标插件列表，
+  skills_panel/             # 插件技能面板（默认紧凑，宽松/紧凑双模式；紧凑为切换行内仅图标插件列表，
                             #   保留主题底色且无黑框（border: none，ScrollArea 为 QFrame.Shape.NoFrame）、
                             #   分组展开区无外轮廓、统一行高、
                             #   开启插件主色背景、隐藏滚动条、
