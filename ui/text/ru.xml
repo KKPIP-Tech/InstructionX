@@ -554,6 +554,8 @@
     <text key="menu.edit.toggle_theme">Сменить тему</text>
     <text key="menu.edit.toggle_theme.tooltip">Светлая → тёмная → как в системе</text>
     <text key="menu.edit.toggle_theme.current">Сменить тему ({label})</text>
+    <text key="menu.edit.skills_mode.current">Область навыков: {mode}</text>
+    <text key="menu.edit.skills_mode.tooltip">Переключаться между свободным и компактным режимами (выбор сохраняется)</text>
     <text key="menu.edit.language">Язык</text>
     <text key="menu.edit.github_keys">Управление ключами GitHub…</text>
     <text key="menu.edit.install_from_github">Установить плагин с GitHub…</text>
@@ -578,7 +580,11 @@
     <text key="tab.official">Официальные функции</text>
     <text key="tab.thirdparty">Сторонние функции</text>
     <text key="header.plugin_count">Плагинов: {count}</text>
+    <text key="mode.relaxed">Свободный</text>
+    <text key="mode.compact">Компактный</text>
     <text key="group.tooltip">Группа: {name} (нажмите, чтобы развернуть или свернуть)</text>
+    <text key="navigation.previous">Прокрутить влево</text>
+    <text key="navigation.next">Прокрутить вправо</text>
   </group>
 
   <group name="title_bar">

@@ -523,6 +523,8 @@
       <text key="menu.edit.toggle_theme">切换主题</text>
       <text key="menu.edit.toggle_theme.tooltip">浅色 → 深色 → 跟随系统</text>
       <text key="menu.edit.toggle_theme.current">切换主题 ({label})</text>
+      <text key="menu.edit.skills_mode.current">技能区：{mode}</text>
+      <text key="menu.edit.skills_mode.tooltip">在宽松与紧凑模式之间切换（重启后保留选择）</text>
       <text key="menu.edit.language">语言</text>
       <text key="menu.edit.github_keys">GitHub Key 管理...</text>
       <text key="menu.edit.install_from_github">从 GitHub 安装插件...</text>
@@ -547,7 +549,11 @@
       <text key="tab.official">官方功能</text>
       <text key="tab.thirdparty">第三方功能</text>
       <text key="header.plugin_count">{count} Plugins</text>
+      <text key="mode.relaxed">宽松</text>
+      <text key="mode.compact">紧凑</text>
       <text key="group.tooltip">分组：{name}（点击展开/收起）</text>
+      <text key="navigation.previous">向左滚动</text>
+      <text key="navigation.next">向右滚动</text>
   </group>
 
   <group name="title_bar">

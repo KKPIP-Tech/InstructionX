@@ -385,8 +385,14 @@ ui/                         # 界面层
                             #   code_editor/ 仿 VS Code 代码编辑器（含语言补全与并排/内联 DiffEditor）+
                             #   mermaid/ 子包（官方 mermaid.js WebEngine 渲染 + 自绘降级 +
                             #   交互查看器）；主项目不修改库内文件）
-  skills_panel/             # 插件技能面板（含 plugin_group_widget.py 分组折叠控件：
-                            #   文件夹形式收起、点击行内向右展开、展开区区分背景）
+  skills_panel/             # 插件技能面板（宽松/紧凑双模式；紧凑为切换行内仅图标插件列表，
+                            #   保留主题底色且无黑框（border: none，ScrollArea 为 QFrame.Shape.NoFrame）、
+                            #   分组展开区无外轮廓、统一行高、
+                            #   开启插件主色背景、隐藏滚动条、
+                            #   溢出时 UIKit 左右箭头；编辑菜单在主题切换下
+                            #   切换并通过 skills_panel_mode 持久化；plugin_group_widget.py 分组折叠控件：
+                            #   文件夹形式收起、点击行内向右展开、展开区区分背景；
+                            #   scroll_navigation.py 负责溢出检测、分页滚动与边界禁用）
   work_area/                # 插件 Widget 宿主区（切换插件时缓存 UI 状态）
   text/                     # 框架语言文件目录（<语言代码>.xml：zh.xml 默认语言必须完整，
                             #   文件内 <group> 分组 + <text key> 条目，占位符仅命名式 {name}）

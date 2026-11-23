@@ -25,7 +25,7 @@
 graph TB
     subgraph MainWindow ["应用主窗口 InstructionXMainWindow"]
         direction TB
-        Menu[菜单栏] --> SP[SkillsPanel<br/>技能面板 高度最小125px / 最大135px]
+        Menu[菜单栏] --> SP[SkillsPanel<br/>宽松125–135px / 紧凑按统一行高]
         SP --> Divider[分割线]
         Divider --> WA[WorkArea<br/>工作区]
     end
@@ -505,9 +505,10 @@ InstructionX/
 │   ├── usage_panel/         # 用量查询面板（包：panel/kpi_card/trend_chart/history_table/formatting）
 │   ├── tray/                # 系统托盘子系统（TrayIconManager 门面 + TrayBackend 后端注册表）
 │   ├── skills_panel/        # 技能面板
-│   │   ├── panel.py        # SkillsPanel 面板
+│   │   ├── panel.py        # SkillsPanel 宽松/紧凑双模式面板
 │   │   ├── plugin_group_widget.py  # 分组折叠控件
-│   │   └── skill_button.py  # SkillButton 按钮组件
+│   │   ├── scroll_navigation.py # 紧凑模式溢出导航与 UIKit 箭头
+│   │   └── skill_button.py  # SkillButton 宽松/紧凑按钮组件
 │   ├── work_area/           # 工作区
 │   │   └── work_area.py
 │   ├── text/                # 框架语言文件目录（<语言代码>.xml）
