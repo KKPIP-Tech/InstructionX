@@ -432,7 +432,9 @@ InstructionX/
 │   ├── github/               # GitHub 私有仓库访问子系统
 │   │   ├── api_client.py     # GitHub REST API 与状态码映射
 │   │   ├── key_manager.py    # 多 PAT 管理和验证
-│   │   ├── key_store.py      # DPAPI 密文配置持久化
+│   │   ├── secret_vault.py   # 平台凭据后端工厂：Windows DPAPI / macOS Keychain
+│   │   ├── macos_keychain.py # macOS Security.framework 读写、写后校验与 GUI 主线程编组
+│   │   ├── key_store.py      # DPAPI 密文或 Keychain 引用配置持久化
 │   │   └── source_binding.py # 插件来源 Key 绑定/重新绑定
 │   ├── data/                 # 数据层实现
 │   │   ├── data_provider.py # DataProvider（核心）

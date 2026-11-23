@@ -200,12 +200,24 @@ class GitHubKeyStore:
     def remove_key(self, key_id: str) -> None:
         """删除指定 Key；默认 Key 被删除时同步清空默认值。"""
         self.load()
-        self._get_record(key_id)
+        record = self._get_record(key_id)
         previous = self._snapshot()
         del self._records[key_id]
         if self._default_key_id == key_id:
             self._default_key_id = ""
         self._commit(previous)
+        self._delete_backend_secret(record.encrypted_token)
+
+    def _delete_backend_secret(self, encrypted_token: str) -> None:
+        """在支持删除的后端清理系统凭据，Windows DPAPI 不改变原行为。"""
+        delete = getattr(self._vault, "delete", None)
+        if not callable(delete):
+            return
+        try:
+            delete(encrypted_token)
+        except GitHubCredentialVaultError as exc:
+            self._logger.warning(
+                get_name(), f"删除系统凭据后端中的 GitHub Key 失败: {exc}")
 
     def get_secret(self, key_id: str) -> str:
         """解密并返回指定 Key；仅供凭据解析层调用。"""
