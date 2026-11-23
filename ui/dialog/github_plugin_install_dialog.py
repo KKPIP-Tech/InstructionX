@@ -29,8 +29,9 @@ from core.i18n import get_language_manager, resolve_i18n_field, tr
 from utils.logging_tools import LoggerManager, get_name
 from InstructionX_UIKit import T, set_property
 from InstructionX_UIKit.components import (
-    Button, CheckBox, ComboBox, Dialog, LineEdit, Message,
+    Button, CheckBox, Dialog, LineEdit, Message,
 )
+from ui.dialog.github_key_combo_box import GitHubKeyComboBox
 from ui.dialog.github_key_manager_dialog import GitHubKeyManagerDialog
 from ui.dialog.github_private_repo_notice import PrivateRepositoryNotice
 from ui.dialog.plugin_compatibility import (
@@ -264,7 +265,7 @@ class GitHubPluginInstallDialog(QDialog):
         key_layout = QHBoxLayout()
         key_label = QLabel(tr(_TR_GROUP, "key.label"))
         key_label.setFixedWidth(80)
-        self.key_combo = ComboBox()
+        self.key_combo = GitHubKeyComboBox()
         self.key_combo.setMinimumWidth(300)
         self.manage_keys_btn = Button(
             tr(_TR_GROUP, "button.manage_keys"), variant="default")

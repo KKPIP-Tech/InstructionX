@@ -80,6 +80,7 @@ python -m pytest test/ -q --tb=short -p no:cacheprovider
 - UI 测试不配置 offscreen 平台，CI 跑在 `windows-latest` 上使用真实 GUI。
 - 项目还有一类**独立验证脚本**（非 pytest，放在 `scripts/`，用 `.venv\Scripts\python.exe scripts\<name>.py` 直接运行）：
   - `smoke_*.py`：核心链路无网冒烟测试（LLM、task、utils、i18n、字体管理、插件管理：安装/升级/降级/卸载/分组、本地插件包自动识别与插件集一次安装、包外文件兜底备份）；`smoke_setup_wizard.py` 针对原生 Setup（随包二进制、薄启动器与项目外工作目录、独立操作项、Activity/CLI 进度与持久日志、原生 CLI、兼容参数与 dry-run 安全）；`smoke_framework_update.py` 针对框架 Release 时间线、当前版本定位与指定 Tag 更新命令；`smoke_uikit_sync.py` 校验 UIKit 版本/模块/图标，`smoke_uikit_canvas.py` 以真实窗口和 Win32 客户区抓图验证 Canvas/RHI/raster 后端、趋势图 Tooltip 与最终帧
+  - `smoke_github_key_combo.py`：真实 GitHub 安装对话框弹层回归，验证选项 visualRect 不重叠、统一项高和显示后重排；
   - `smoke_github_keychain.py`：macOS Security.framework 与 GitHubKeyManager 真实保存链路（独立测试 service，覆盖 Unicode、纯十六进制 Token、原生类型桥接、读写替换删除、写后校验及 QApplication/QThread GUI 主线程编组；非 macOS 验证 DPAPI 工厂分支）；`smoke_github_private.py`：GitHub 多 Key、私有识别与重新绑定无网冒烟；`smoke_github_private_live.py` 读取本机测试 PAT/私有仓库环境变量，执行真实安装与 Release 下载，临时数据只写入 `temp/`
   - `check_i18n_completeness.py`：语言文件完整性校验（默认语言必须覆盖源码全部 `tr()` 调用，缺键 exit 1；其他语言缺键/孤立键 WARNING；支持 `--text-dir`/`--src-dir`/`--plugin-root`）
   - `screenshot_*.py`：对话框截图对比脚本（输出到 `scripts/screenshots/`）
