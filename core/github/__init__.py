@@ -4,6 +4,8 @@
 避免插件安装器直接处理明文 Token。
 """
 
+import sys
+
 from .credential import (
     GitHubAuthIdentity,
     GitHubCredential,
@@ -43,6 +45,8 @@ from .secret_vault import (
     SecretVault,
     create_default_secret_vault,
 )
+if sys.platform == "darwin":
+    from .macos_keychain import MacOSKeychainSecretVault
 from .source_binding import (
     GitHubKeyUnavailableReason,
     PluginSourceKeyBinder,
@@ -85,3 +89,6 @@ __all__ = [
     "get_github_key_manager",
     "parse_github_source_url",
 ]
+
+if sys.platform == "darwin":
+    __all__.append("MacOSKeychainSecretVault")

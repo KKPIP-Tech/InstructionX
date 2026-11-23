@@ -23,7 +23,7 @@ graph TB
         CL[_container_layout - 垂直布局 margins-8,0,8,8]
         TitleBar[CustomTitleBar - 固定40px - Logo+标题+菜单栏+窗口控制]
         Content[content_layout - 中间层VBox spacing-5]
-        SP[SkillsPanel - 技能面板 125-135px]
+        SP[SkillsPanel - 宽松125-135px / 紧凑按统一行高]
         WA[WorkArea - 工作区]
     end
 
@@ -65,6 +65,12 @@ def _create_menus(self) -> None:
     self._menu_theme_action = QAction(self)
     self._menu_theme_action.triggered.connect(self._cycle_theme)
     self._menu_edit.addAction(self._menu_theme_action)
+
+    # Skills Area 模式（位于主题切换正下方，选择持久化）
+    self._action_skills_mode = QAction(self)
+    self._action_skills_mode.setCheckable(True)
+    self._action_skills_mode.triggered.connect(self._toggle_skills_panel_mode)
+    self._menu_edit.addAction(self._action_skills_mode)
 
     # 界面语言（打开 LanguageDialog 实时切换）
     self._action_language = QAction(self)
@@ -181,13 +187,13 @@ apply_uikit_theme(QApplication.instance(), theme)
 
 ### 3.4 技能面板 (SkillsPanel)
 
-- **位置**: 窗口顶部（标题栏下方）
-- **高度**: 最小 125px，最大 135px
-- **结构**: `QStackedWidget` + 自定义 Pill 切换按钮（非 QTabWidget），包含两个标签页
-  - **官方功能**: 来自 `plugin/` 目录的插件
-  - **第三方功能**: 来自 `custom_plugin/` 目录的插件
-  - 每个标签页内部为 `QScrollArea` + 横向 `QHBoxLayout` 容器，容纳 `SkillButton`
-- **通信**: 通过 `skill_clicked` 信号与主窗口通信
+- **位置**: 窗口顶部（标题栏下方）。
+- **宽松模式**: 高度最小 125px、最大 135px；头部显示 Pill 切换按钮和插件计数，第二行显示图标上文下文的插件按钮及按需可见的滚动条。
+- **紧凑模式**: Pill 切换按钮右侧直接嵌入仅图标的插件滚动行，不显示计数器、滚动指示条、面板或分组展开区外轮廓（保留 `color.bg.subtle` 底色，边框为 `border: none` 且 ScrollArea 为 `QFrame.Shape.NoFrame`）；普通插件、分组及导航按钮均与 Pill 切换按钮实际等高，开启插件使用主色背景，面板高度另含既有容器边距。
+- **溢出导航**: 仅当前页溢出时显示左右箭头，使用 UIKit Iconoir，按可视页滚动并在边界禁用。
+- **页面**: `QStackedWidget` + 自定义 Pill 按钮，包含官方（`plugin/`）和第三方（`custom_plugin/`）两个标签页；每个标签页内部为 `QScrollArea` + 横向 `QHBoxLayout`。
+- **模式入口**: 「编辑 → 切换主题」正下方；新安装或无保存配置时默认紧凑。PRIVATE 键 `skills_panel_mode` 保存 `relaxed` / `compact`，重启恢复，非法值或读取失败回退紧凑。
+- **通信**: 通过 `skill_clicked` 信号与主窗口通信；模式切换保留当前 Tab、激活插件、分组展开状态和各页滚动位置。
 
 ```mermaid
 graph TB
@@ -345,12 +351,11 @@ def _create_main_layout(self) -> None:
     self.plugin_manager.load_plugins()
     self.plugin_manager.apply_custom_order()
 
-    # 创建技能面板
+    # 创建技能面板并恢复保存的模式；高度由 SkillsPanel 按模式管理
     self.skills_panel = SkillsPanel(self._container)
+    self.skills_panel.set_display_mode(self._skills_panel_mode)
     self.skills_panel.set_plugin_manager(self.plugin_manager)
     self.skills_panel.load_skills_from_manager()
-    self.skills_panel.setMaximumHeight(135)
-    self.skills_panel.setMinimumHeight(125)
     content_layout.addWidget(self.skills_panel)
 
     # 创建工作区（可伸缩）
@@ -490,7 +495,7 @@ cursor_map = {
 
 #### 关于对话框
 
-通过 **帮助 > 关于** 打开，显示应用 Logo、名称（InstructionX - CE）、版本号（Alpha 1.1.3）、版权声明和专有软件声明。
+通过 **帮助 > 关于** 打开，显示应用 Logo、名称（InstructionX - CE）、版本号（Alpha 1.1.4）、版权声明和专有软件声明。
 
 ```python
 # 文件顶部导入：from ui.dialog.about_dialog import AboutDialog
@@ -641,7 +646,7 @@ def changeEvent(self, event):
 | 标题栏高度 | 40px（固定） |
 | 容器圆角 | 8px（非最大化时） |
 | 内容布局间距 | 5px（SkillsPanel 与 WorkArea 之间） |
-| 技能面板高度 | 最小 125px，最大 135px |
+| 技能面板高度 | 宽松最小 125px、最大 135px；紧凑为切换按钮行高 + Header/Pill 垂直边距 |
 | 边缘检测范围 | 8px（用于拖拽缩放） |
 
 ---

@@ -17,7 +17,7 @@
 - InstructionX_UIKit 主题与组件体系（`ui/InstructionX_UIKit` 组件库：设计令牌 + light/dark/auto 全局主题，59 组件 + 原生 Canvas/RHI 图表引擎 + 蓝图节点图 + 仿 VS Code 代码编辑器 + 完整 Iconoir 图标库）、字体管理器（`core/font` 子系统：字体安装/卸载/预览/系统字体回退，框架不自带字体）
 - 多国语言（i18n）支持（`core/i18n` 子系统：XML 语言文件 + 回退链取词、界面语言实时切换、每插件语言覆盖；日志文案保持中文不国际化）
 
-- 应用标识：`InstructionX - CE`（组织名 `KKPIP-Tech`），当前版本 **Alpha 1.1.3**
+- 应用标识：`InstructionX - CE`（组织名 `KKPIP-Tech`），当前版本 **Alpha 1.1.4**
 - **框架版本号单一来源为 `core/version.py` 的 `VERSION` 常量**（pyproject 通过 AST 静态读取，修改版本只改这里）
 - **Setup 对外基础版本号单一来源为 `setup/src/version.rs` 的 `SETUP_VERSION`**：格式 `YYYYMMDD-NN`（当天打包序号从 `01` 起），当前为 `20261114-01`；完整构建版本自动追加平台和架构，如 `20261114-01.win.x86_64` / `20261114-01.win.aarch64`，界面标题、`--version` 和 `--state` 均显示完整版本，与框架版本独立
 - 平台：**Windows 10/11 与 macOS（Cocoa）**，Python **>= 3.14**
@@ -80,7 +80,8 @@ python -m pytest test/ -q --tb=short -p no:cacheprovider
 - UI 测试不配置 offscreen 平台，CI 跑在 `windows-latest` 上使用真实 GUI。
 - 项目还有一类**独立验证脚本**（非 pytest，放在 `scripts/`，用 `.venv\Scripts\python.exe scripts\<name>.py` 直接运行）：
   - `smoke_*.py`：核心链路无网冒烟测试（LLM、task、utils、i18n、字体管理、插件管理：安装/升级/降级/卸载/分组、本地插件包自动识别与插件集一次安装、包外文件兜底备份）；`smoke_setup_wizard.py` 针对原生 Setup（随包二进制、薄启动器与项目外工作目录、独立操作项、Activity/CLI 进度与持久日志、原生 CLI、兼容参数与 dry-run 安全）；`smoke_framework_update.py` 针对框架 Release 时间线、当前版本定位与指定 Tag 更新命令；`smoke_uikit_sync.py` 校验 UIKit 版本/模块/图标，`smoke_uikit_canvas.py` 以真实窗口和 Win32 客户区抓图验证 Canvas/RHI/raster 后端、趋势图 Tooltip 与最终帧
-  - `smoke_github_private.py`：GitHub 多 Key、私有识别与重新绑定无网冒烟；`smoke_github_private_live.py` 读取本机测试 PAT/私有仓库环境变量，执行真实安装与 Release 下载，临时数据只写入 `temp/`
+  - `smoke_github_key_combo.py`：真实 GitHub 安装对话框弹层回归，验证选项 visualRect 不重叠、统一项高和显示后重排；
+  - `smoke_github_keychain.py`：macOS Security.framework 与 GitHubKeyManager 真实保存链路（独立测试 service，覆盖 Unicode、纯十六进制 Token、原生类型桥接、读写替换删除、写后校验及 QApplication/QThread GUI 主线程编组；非 macOS 验证 DPAPI 工厂分支）；`smoke_github_private.py`：GitHub 多 Key、私有识别与重新绑定无网冒烟；`smoke_github_private_live.py` 读取本机测试 PAT/私有仓库环境变量，执行真实安装与 Release 下载，临时数据只写入 `temp/`
   - `check_i18n_completeness.py`：语言文件完整性校验（默认语言必须覆盖源码全部 `tr()` 调用，缺键 exit 1；其他语言缺键/孤立键 WARNING；支持 `--text-dir`/`--src-dir`/`--plugin-root`）
   - `screenshot_*.py`：对话框截图对比脚本（输出到 `scripts/screenshots/`）
   - `_mcp_smoke*.py`：真实 MCP SDK 冒烟测试（各 100 次 stdio/HTTP 重连及清理门禁）
@@ -281,7 +282,10 @@ core/
                             #   整目录快照到 data/plugin_backup/{插件ID}/（每插件留最近 3 份）
   github/                   # GitHub 私有仓库访问子系统（不暴露给插件）
     credential.py           # GitHub PAT、Key 展示/验证状态、仓库可见性数据模型
-    secret_vault.py         # Windows DPAPI 凭据加密（测试可注入内存后端）
+    secret_vault.py         # 平台凭据后端工厂：Windows DPAPI、macOS Keychain（测试可注入内存后端）
+    macos_keychain.py       # macOS Security.framework：SecItem* 原生读写/替换/删除，
+                            #   NSNumber/NSString 类型桥接与对象生命周期管理；GUI 工作线程经
+                            #   run_in_ui_thread_sync 编组主线程，配置保存 keychain:v1 引用并做写后校验
     key_store.py            # config/github_keys.json schema v1、原子写与损坏恢复
     key_manager.py          # 多 Key CRUD、默认 Key、身份验证、环境变量兼容
     api_client.py           # api.github.com 鉴权、仓库/Contents/Release/zipball
@@ -385,8 +389,14 @@ ui/                         # 界面层
                             #   code_editor/ 仿 VS Code 代码编辑器（含语言补全与并排/内联 DiffEditor）+
                             #   mermaid/ 子包（官方 mermaid.js WebEngine 渲染 + 自绘降级 +
                             #   交互查看器）；主项目不修改库内文件）
-  skills_panel/             # 插件技能面板（含 plugin_group_widget.py 分组折叠控件：
-                            #   文件夹形式收起、点击行内向右展开、展开区区分背景）
+  skills_panel/             # 插件技能面板（默认紧凑，宽松/紧凑双模式；紧凑为切换行内仅图标插件列表，
+                            #   保留主题底色且无黑框（border: none，ScrollArea 为 QFrame.Shape.NoFrame）、
+                            #   分组展开区无外轮廓、统一行高、
+                            #   开启插件主色背景、隐藏滚动条、
+                            #   溢出时 UIKit 左右箭头；编辑菜单在主题切换下
+                            #   切换并通过 skills_panel_mode 持久化；plugin_group_widget.py 分组折叠控件：
+                            #   文件夹形式收起、点击行内向右展开、展开区区分背景；
+                            #   scroll_navigation.py 负责溢出检测、分页滚动与边界禁用）
   work_area/                # 插件 Widget 宿主区（切换插件时缓存 UI 状态）
   text/                     # 框架语言文件目录（<语言代码>.xml：zh.xml 默认语言必须完整，
                             #   文件内 <group> 分组 + <text key> 条目，占位符仅命名式 {name}）
@@ -475,7 +485,7 @@ config/ data/ logs/         # 运行时生成：配置、数据、日志
 | `config/plugin_order.json` | 插件显示顺序（未分组插件之间的顺序） |
 | `config/plugin_groups.json` | 用户自定义分组（schema v2：official/thirdparty 各自含 groups 分组数组 + order 面板统一顺序（分组与未分组插件混排）；v1 自动迁移） |
 | `config/plugin_registry.json` | 已安装插件注册表（schema v2：版本/来源/安装时间/`source_visibility`/`source_key_id`；v1 自动迁移并保留 `.migrated-v1.bak`；启动时自动回填） |
-| `config/github_keys.json` | GitHub PAT 元数据与 DPAPI 密文（schema v1：命名 Key、默认 Key、账号/类型/验证状态/可选过期信息；不得保存 Token 明文） |
+| `config/github_keys.json` | GitHub PAT 元数据与 Windows DPAPI 密文或 macOS Keychain 引用（schema v1：命名 Key、默认 Key、账号/类型/验证状态/可选过期信息；不得保存 Token 明文） |
 | `data/plugin_backup/{插件ID}/{时间戳}_{版本}/` | 插件目录「包外文件」兜底快照（安装/升级/降级/重装前自动生成，每插件保留最近 3 份，仅人工取回、不自动恢复；见 `core/plugin/plugin_backup.py`） |
 | `data/assets/plugins/{插件ID}/` | 插件资产文件（`DataProvider.save_asset` 写入，插件存放运行时文件数据的规范位置） |
 | `config/i18n.json` | 框架语言设置（schema v1：`default_language` 开发者设定用户不可改 + `current_language` 用户选择；原子写，损坏备份 `.json.corrupt.bak` 重建） |

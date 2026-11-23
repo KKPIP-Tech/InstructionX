@@ -1,16 +1,20 @@
 """GitHub PAT 的安全加密存储后端。
 
-Windows 使用 DPAPI，将密文绑定到当前 Windows 用户。测试可注入
-``InMemorySecretVault``；任何平台都禁止在 DPAPI 失败时降级为 Base64。
+Windows 使用 DPAPI，macOS 使用系统 Keychain；测试可注入
+``InMemorySecretVault``。任何平台都禁止在安全后端失败时降级为 Base64。
 """
 
 import base64
 import ctypes
 import os
+import sys
 from ctypes import wintypes
 from typing import Protocol
 
 from .exceptions import GitHubCredentialVaultError
+
+if sys.platform == "darwin":
+    from .macos_keychain import MacOSKeychainSecretVault
 
 DPAPI_PREFIX = "dpapi:v1:"
 DPAPI_DESCRIPTION = "InstructionX GitHub PAT"
@@ -21,7 +25,7 @@ class SecretVault(Protocol):
     """凭据加密后端协议。"""
 
     def encrypt(self, plaintext: str) -> str:
-        """加密凭据并返回带版本前缀的密文。"""
+        """安全保存凭据并返回带版本前缀的密文或系统凭据引用。"""
 
     def decrypt(self, stored: str) -> str:
         """解密存储值并返回内存明文。"""
@@ -155,5 +159,7 @@ class InMemorySecretVault:
 
 
 def create_default_secret_vault() -> SecretVault:
-    """创建生产环境默认 SecretVault。"""
+    """创建当前平台的安全 SecretVault；其他平台保留 DPAPI 显式失败路径。"""
+    if sys.platform == "darwin":
+        return MacOSKeychainSecretVault()
     return DpapiSecretVault()

@@ -25,7 +25,7 @@
 graph TB
     subgraph MainWindow ["应用主窗口 InstructionXMainWindow"]
         direction TB
-        Menu[菜单栏] --> SP[SkillsPanel<br/>技能面板 高度最小125px / 最大135px]
+        Menu[菜单栏] --> SP[SkillsPanel<br/>宽松125–135px / 紧凑按统一行高]
         SP --> Divider[分割线]
         Divider --> WA[WorkArea<br/>工作区]
     end
@@ -432,7 +432,9 @@ InstructionX/
 │   ├── github/               # GitHub 私有仓库访问子系统
 │   │   ├── api_client.py     # GitHub REST API 与状态码映射
 │   │   ├── key_manager.py    # 多 PAT 管理和验证
-│   │   ├── key_store.py      # DPAPI 密文配置持久化
+│   │   ├── secret_vault.py   # 平台凭据后端工厂：Windows DPAPI / macOS Keychain
+│   │   ├── macos_keychain.py # macOS Security.framework 读写、写后校验与 GUI 主线程编组
+│   │   ├── key_store.py      # DPAPI 密文或 Keychain 引用配置持久化
 │   │   └── source_binding.py # 插件来源 Key 绑定/重新绑定
 │   ├── data/                 # 数据层实现
 │   │   ├── data_provider.py # DataProvider（核心）
@@ -505,9 +507,10 @@ InstructionX/
 │   ├── usage_panel/         # 用量查询面板（包：panel/kpi_card/trend_chart/history_table/formatting）
 │   ├── tray/                # 系统托盘子系统（TrayIconManager 门面 + TrayBackend 后端注册表）
 │   ├── skills_panel/        # 技能面板
-│   │   ├── panel.py        # SkillsPanel 面板
+│   │   ├── panel.py        # SkillsPanel 默认紧凑的宽松/紧凑双模式面板
 │   │   ├── plugin_group_widget.py  # 分组折叠控件
-│   │   └── skill_button.py  # SkillButton 按钮组件
+│   │   ├── scroll_navigation.py # 紧凑模式溢出导航与 UIKit 箭头
+│   │   └── skill_button.py  # SkillButton 宽松/紧凑按钮组件
 │   ├── work_area/           # 工作区
 │   │   └── work_area.py
 │   ├── text/                # 框架语言文件目录（<语言代码>.xml）
@@ -522,6 +525,7 @@ InstructionX/
 │       ├── llm_settings/        # LLM 设置对话框包（两栏：列表 + 详情，自动保存语义）
 │       ├── plugin_management_dialog.py  # 插件管理对话框（安装/升级/降级/卸载 + 分组与排序）
 │       ├── plugin_order_dialog.py  # 插件排序对话框（遗留，排序功能已迁入 plugin_management_dialog）
+│       ├── github_key_combo_box.py  # GitHub Key 弹层统一项高与显示后重排
 │       └── github_plugin_install_dialog.py  # GitHub 插件安装对话框
 │
 ├── workers/                  # 预留扩展目录（当前为空，框架后台线程统一由 BackgroundTaskManager 管理）

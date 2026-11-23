@@ -6,13 +6,13 @@
 
 ## 1. 概述
 
-`SkillsPanel` 是应用程序的技能面板组件，提供类似工具栏的插件快捷访问方式。
+`SkillsPanel` 是应用程序的技能面板组件，提供类似工具栏的插件快捷访问方式。默认使用将插件 Logo 并入切换行的紧凑模式，也可切换回原有宽松模式；两种模式复用同一批插件页面和按钮，用户保存的选择优先于默认值。
 
 **文件位置**: `ui/skills_panel/panel.py`
 
 ---
 
-## 2. 面板结构
+## 2. 宽松模式结构
 
 ```mermaid
 graph TB
@@ -64,6 +64,24 @@ graph TB
 - 每个标签页内，分组折叠控件（`PluginGroupWidget`，文件夹形式收起、点击展开组内插件按钮）与未分组插件的技能按钮按统一顺序混排（见 `load_skills_from_manager()`）
 - 头部区域包含 Pill 切换按钮、分隔符（`skillsSeparator`）与计数标签（`count_label`），计数按插件数量统计（分组不作为独立项计数），由 `_switch_tab()` 更新
 
+### 2.1 紧凑模式与模式切换
+
+紧凑模式复用上节的官方/第三方页面，但将同一个 `QStackedWidget` 移入 Header：
+
+```text
+[官方功能|第三方功能] | [插件 Logo 横向 ScrollArea] [左箭头][右箭头]
+```
+
+- 计数标签隐藏，水平滚动条固定为 `ScrollBarAlwaysOff`；滚动内容仍可通过箭头、滚轮和触控板移动。紧凑面板及其 Stack、ScrollArea、内容容器均设置为 `border: none`，ScrollArea 同时使用 `QFrame.Shape.NoFrame`，不显示最外层黑色边框或底部分隔线；面板底色继续使用 `color.bg.subtle`，不改为透明，宽松模式样式不变。
+- 普通插件、组内插件、分组文件夹和导航按钮的高度均等于两个 Pill 切换按钮的实际渲染高度；按钮宽度为 32px，导航按钮宽度为 28px。首次显示、语言切换和主题切换后重新同步行高。
+- 面板总高度为统一行高加 Header 与 Pill 容器既有垂直边距；WorkArea 自动获得释放的空间。
+- 紧凑按钮使用 `ToolButtonIconOnly`，Tooltip 只显示未截断的 `plugin_name`；宽松 Tooltip 保持 `plugin_name\nskill_description`。
+- 只有当前页溢出时显示左右箭头。箭头使用 UIKit Iconoir `arrow-left` / `arrow-right`，每次滚动一个 `pageStep()`，到边界禁用对应按钮。
+- 分组语义不变，文件夹和组内按钮同样紧凑；紧凑分组展开区不显示外边框，展开/收起后重新同步内容宽度，避免旧滚动范围残留。
+- 当前开启插件的紧凑按钮使用 `color.primary` 主色背景，悬停使用 `color.primary.hover`，不再沿用宽松模式的浅色 `color.primary.subtle` 渐变；宽松激活样式不变。
+- `set_display_mode()` 在布局迁移前保存两个页面的滚动值，迁移后恢复；当前 Tab、激活插件、分组展开状态和各页滚动位置均保持，不重载插件或重建工作区。
+- 「编辑 → 切换主题」下方的模式动作负责切换；PRIVATE 键 `skills_panel_mode` 保存 `relaxed` / `compact`，重启恢复。无保存配置时默认紧凑，非法值或读取失败回退紧凑，保存失败只记录 WARNING，不撤销本次切换。
+
 ---
 
 ## 3. 核心组件
@@ -74,7 +92,7 @@ graph TB
 - **图标**: 通过 `IPlugin.skill_icon` 属性动态加载（从插件的 `information.py` 读取，带文件 mtime 缓存）
 - **名称**: `IPlugin.plugin_name` 属性
 - **描述**: 通过 `IPlugin.skill_description` 属性动态加载（从 `information.py` 读取，失败时回退为插件名称）
-- **提示**: 鼠标悬停时显示的名称和描述（格式为 `plugin_name\nskill_description`）
+- **提示**: 宽松模式显示名称和描述（`plugin_name\nskill_description`）；紧凑模式仅显示完整 `plugin_name`，不使用截断后的按钮文案
 
 **文本自动处理**:
 - 允许插件设计者自行决定换行位置（使用 `\n`）
@@ -83,7 +101,19 @@ graph TB
 - 最多显示 2 行
 - 避免按钮因文本过长而破坏布局
 
-### 3.2 按钮状态
+### 3.2 SkillsScrollNavigator
+
+`ui/skills_panel/scroll_navigation.py` 是独立的横向导航控件，不拥有插件页面：
+
+- `watch(scroll_area)`：监听滚动范围、滚动值和 viewport Resize，重复调用不重复连接。
+- `set_current(scroll_area)`：绑定当前官方或第三方页面；`None` 时隐藏导航。
+- `set_active(active)`：仅在紧凑模式允许显示导航。
+- `set_row_height(row_height)`：同步导航按钮高度和 UIKit 图标尺寸。
+- `refresh()`：根据溢出和滚动位置更新可见性与左右按钮禁用状态。
+
+普通/禁用图标分别取 `color.text.secondary` / `color.text.disabled`，并通过 `ThemeManager.theme_changed` 重建；导航 Tooltip 接入框架四语言。
+
+### 3.3 按钮状态
 
 | 状态 | 说明 |
 |------|------|
@@ -124,7 +154,21 @@ def set_plugin_manager(self, plugin_manager):
     self.plugin_manager = plugin_manager
 ```
 
-### 5.2 加载技能
+### 5.2 显示模式
+
+```python
+SKILLS_PANEL_RELAXED = "relaxed"
+SKILLS_PANEL_COMPACT = "compact"
+SKILLS_PANEL_MODES = frozenset((SKILLS_PANEL_RELAXED, SKILLS_PANEL_COMPACT))
+
+panel.set_display_mode(SKILLS_PANEL_COMPACT)
+assert panel.display_mode == SKILLS_PANEL_COMPACT
+panel.set_display_mode(SKILLS_PANEL_RELAXED)
+```
+
+`set_display_mode(mode)` 对非法值抛出 `ValueError`，重复设置当前模式为空操作。按钮新外观由 `SkillButton.set_compact(compact, row_height)` 和 `PluginGroupWidget.set_compact(compact, row_height)` 实现；`row_height` 由面板统一提供，调用方不应另写固定高度。
+
+### 5.3 加载技能
 
 ```python
 def load_skills_from_manager(self):
@@ -160,7 +204,7 @@ def load_skills_from_manager(self):
 
 > **说明**: 按 scope 遍历 `plugin_manager.get_sorted_plugins(scope)` 的返回项：`"group"` 项渲染为分组折叠控件（`_add_group_widget()` 创建 `PluginGroupWidget`），其余项渲染为未分组插件的技能按钮，两者按统一顺序混排；末尾调用 `_switch_tab()` 刷新计数标签。
 
-### 5.3 添加技能
+### 5.4 添加技能
 
 ```python
 def add_skill_button(self, plugin, is_official: bool):
@@ -209,7 +253,7 @@ def _create_skill_button(self, plugin):
 
 > **说明**: `add_skill_button()` 只负责调用工厂并加入布局；`_add_group_widget()` 创建 `PluginGroupWidget` 时，将 `_create_skill_button` 作为 `button_factory` 参数传入（签名为 `callable(plugin) -> Optional[QWidget]`，见 `ui/skills_panel/plugin_group_widget.py`），组内插件按钮由该工厂创建。
 
-### 5.4 刷新技能
+### 5.5 刷新技能
 
 ```python
 def refresh_skills(self):
@@ -219,7 +263,7 @@ def refresh_skills(self):
         self.load_skills_from_manager()
 ```
 
-### 5.5 清除高亮
+### 5.6 清除高亮
 
 ```python
 def clear_active_state(self):
@@ -299,7 +343,7 @@ def _on_skill_clicked(self, plugin):
 
 ## 7. 技能按钮外观
 
-### 7.1 按钮结构
+### 7.1 宽松按钮结构
 
 ```
 ┌────────────────────┐
@@ -311,13 +355,25 @@ def _on_skill_clicked(self, plugin):
 └────────────────────┘
 ```
 
-### 7.2 悬停提示
+### 7.2 紧凑按钮结构
 
-鼠标悬停时显示：
+```text
+┌────────────────────┐
+│     插件 Logo      │  <- 最大 20x20，且不得超出统一行高
+└────────────────────┘
+```
+
+按钮宽度固定 32px，高度由两个 Pill 切换按钮的实际高度决定；左右导航按钮使用相同行高。按钮文本不删除，而是通过 `ToolButtonIconOnly` 隐藏，因此切回宽松后可直接恢复原有截断文案。
+
+### 7.3 悬停提示
+
+宽松模式鼠标悬停时显示：
 ```
 插件名称
 技能描述
 ```
+
+紧凑模式仅显示未截断的插件全名。
 
 ---
 

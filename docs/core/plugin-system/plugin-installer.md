@@ -593,13 +593,13 @@ SkillsPanel.load_skills_from_manager()   # 按分组+顺序重新渲染
   `DataProvider.set_plugin_data` 或 `save_asset`（见 `plugin-development.md` §5.2）。
 - **卸载**：插件管理对话框「卸载…」，官方与第三方插件均可卸载；可选同时删除插件数据（DataProvider）。卸载会清理插件目录、UUID 文件、排序/分组/注册表记录、API/MCP 注册与 `sys.modules` 缓存。
 - **pip 依赖**：安装/升级时自动安装缺失依赖（优先 uv，回退 pip）；卸载时**不自动卸载依赖**（可能被其他插件使用）。
-- **GitHub Key**：支持多个可命名 PAT、默认 Key、Windows DPAPI 加密存储、验证状态和环境变量兼容；私有插件在注册表绑定稳定的 Key UUID。
+- **GitHub Key**：支持多个可命名 PAT、默认 Key、Windows DPAPI 密文、macOS Keychain 引用、验证状态和环境变量兼容；私有插件在注册表绑定稳定的 Key UUID。
 
 ### 9.1 GitHub 私有仓库与 Key 生命周期
 
 - **PAT 类型**：推荐 Fine-grained PAT，仅授权目标仓库的 `Contents: Read-only` 权限；经典 PAT 通常需要 `repo` scope。组织仓库可能需要额外完成 SAML SSO 授权。
 - **身份验证**：新增或替换 Key 时调用 `GET /user`，保存 GitHub 登录名、Token 类型和可获得的过期信息。普通 PAT 的过期时间通常不由 GitHub REST API 返回，界面显示「GitHub 未提供」，不得猜测。
-- **安全存储**：Token 使用 Windows DPAPI 加密后写入 `config/github_keys.json`，密钥绑定当前 Windows 用户；跨用户或跨机器无法解密时要求重新录入。日志、插件 API 和工作线程信号均不得包含 Token。
+- **安全存储**：Windows 使用 DPAPI 密文写入 `config/github_keys.json`，绑定当前 Windows 用户；macOS 使用 Security.framework 原生 `SecItem*` API 写入当前用户 Keychain，配置文件仅保存 `keychain:v1:` 引用，不经过交互式 `security` 子进程或密码文本输入，GUI 工作线程经 `run_in_ui_thread_sync` 编组主线程，写入后读回校验，删除 Key 时清理 Keychain 项。跨用户或跨机器无法解密时要求重新录入。日志、插件 API 和工作线程信号均不得包含 Token。
 - **仓库判定**：先通过 `GET /repos/{owner}/{repo}` 获取 `private`、默认分支和权限。未认证 404 表示仓库可能私有或不存在；认证后 404 表示 Key 无权限或仓库不存在；401 表示 Key 无效或已过期。
 - **私有下载**：仓库和 Release 均使用 `GET /repos/{owner}/{repo}/zipball/{ref}` 流式下载，Authorization 只发送到 `api.github.com`，跨主机重定向不继续携带凭据。
 - **Key 选择语义**：安装页第一项为「不使用 Key」，只执行匿名请求；需要私有访问时必须由用户显式选择某个命名 Key。安装流程不会静默尝试默认 Key 或全部 Key。

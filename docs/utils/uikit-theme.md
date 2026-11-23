@@ -343,7 +343,7 @@ llm_settings 包内进一步封装为 `feedback.py`：`confirm` / `notice`（阻
 | 排除区 | 主要选择器 |
 |--------|-----------|
 | CustomTitleBar（`ui/title_bar.py`） | `CustomTitleBar`、`QLabel#titleText`、`QMenuBar#titleMenuBar`、`#btnMinimize` / `#btnMaximize` / `#btnClose`、`QWidget#windowControls` |
-| SkillsPanel / SkillButton（`ui/skills_panel/`） | `SkillsPanel`、`#skillsPillContainer`、`#skillsPillButton[active]`、`#skillsSeparator`、`#skillsCountLabel`、`SkillButton[active]`、`#skillGroupButton[expanded]` |
+| SkillsPanel / SkillButton（`ui/skills_panel/`） | `SkillsPanel`、`#skillsPillContainer`、`#skillsPillButton[active]`、`#skillsSeparator`、`#skillsCountLabel`、`SkillButton[active]`、`SkillButton[compact]`、`#skillGroupButton[expanded]`、`QToolButton#skillsScrollButton` |
 | WorkArea 占位 / 错误标签 | `QLabel[placeholder="true"]`、`QLabel[error="true"]` |
 
 附录选择器（objectName / 类名 / 动态属性）比 UIKit 的裸类选择器更具体，且拼接在全局 QSS 之后，同优先级下天然胜出。

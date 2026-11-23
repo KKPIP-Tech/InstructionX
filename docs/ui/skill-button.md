@@ -1,12 +1,12 @@
 # SkillButton 技能按钮
 
-> 图标在上、文本在下的技能切换按钮，支持激活状态高亮和自动文本换行
+> 支持宽松图标上文下文、紧凑仅图标、激活高亮和完整名称提示的技能按钮
 
 ---
 
 ## 1. 概述
 
-`SkillButton` 是 `QToolButton` 的子类，用于在技能面板中以图标+文字的方式展示插件入口。
+`SkillButton` 是 `QToolButton` 的子类，用于在技能面板中展示插件入口。宽松模式为图标上文下文，紧凑模式仅显示图标并提供完整名称 Tooltip；两种外观可往返切换且保留激活状态。
 
 **文件位置**: `ui/skills_panel/skill_button.py`
 
@@ -14,10 +14,11 @@
 
 ## 2. 核心特性
 
-- **图标在上**: 按钮上方显示插件图标，下方显示插件名称
-- **激活状态**: 当前选中的插件按钮显示渐变背景高亮（无边框）
-- **文本截断**: 单行文本超过 13 字符时截断并追加省略号；含 `\n` 时最多显示两行，每行超过 8 字符时截断并追加省略号
-- **固定尺寸**: 78 x 64 像素，适合工具栏布局
+- **宽松外观**: 图标在上、名称在下，固定 78×64，图标 28×28
+- **紧凑外观**: 仅显示图标，宽度 32；高度由 SkillsPanel 的两个切换按钮实际行高统一提供，图标最大 20×20且不超出行高
+- **激活状态**: 宽松模式使用浅色主色渐变，紧凑模式使用更深的 `color.primary` 主色背景（hover 为 `color.primary.hover`）；模式切换不改变激活状态
+- **文本截断**: 仅宽松模式使用；单行文本超过 13 个字符时截断并追加省略号，含 `\n` 时最多显示两行，每行超过 8 个字符时追加省略号
+- **完整提示**: 紧凑 Tooltip 保留未截断的 `skill_name`，宽松 Tooltip 为 `skill_name\nskill_description`
 
 ---
 
@@ -77,6 +78,23 @@ button.set_active(True)   # 激活
 button.set_active(False)  # 取消激活
 ```
 
+### set_compact()
+
+```python
+def set_compact(self, compact: bool, row_height: int) -> None
+def is_compact(self) -> bool
+```
+
+切换宽松/紧凑外观。`row_height` 由 `SkillsPanel` 根据两个切换按钮的实际高度统一传入；紧凑模式下必须大于上下图标边距，否则抛出 `ValueError`。宽松调用保留原接口行为，不需要调用方保存按钮文本或激活状态。
+
+```python
+button.set_compact(True, row_height)
+assert button.is_compact() is True
+assert button.toolTip() == button.skill_name
+button.set_compact(False, row_height)
+assert button.toolTip() == f"{button.skill_name}\n{button.skill_description}"
+```
+
 ### is_active()
 
 ```python
@@ -87,11 +105,11 @@ def is_active(self) -> bool
 
 ### tool_tip
 
-按钮的悬浮提示文本，在构造函数中由调用方传入的 `name` 和 `description` 拼接而成，格式为 `"名称\n描述"`。
+按钮的悬浮提示由 `_update_tooltip()` 按当前外观设置：宽松为 `"名称\n描述"`，紧凑为未截断的完整 `skill_name`。
 
 ```python
-# SkillButton 构造函数中设置 tooltip
-self.setToolTip(f"{name}\n{description}")
+tooltip = self.skill_name if self._compact else f"{self.skill_name}\n{self.skill_description}"
+self.setToolTip(tooltip)
 ```
 
 **注意**: `SkillButton` 本身不感知 `IPlugin` 接口，tooltip 所需的数据由 `SkillsPanel` 从 `IPlugin` 相关属性中提取后，以普通字符串形式传入。`SkillsPanel` 构造 `SkillButton` 时的 description 参数来源为 `plugin.skill_description`。
@@ -105,7 +123,7 @@ self.skill_name = name
 self.skill_description = description
 ```
 
-这些属性写入后当前框架侧没有读取点（`SkillsPanel._on_skill_clicked` 等方法均未消费它们），属于预留的实例属性，可供插件或调试场景按需读取。
+这两个属性由 `_update_tooltip()` 消费，用于在模式切换后恢复完整名称和描述；紧凑模式不会用截断后的按钮文本覆盖它们。
 
 ---
 
@@ -113,7 +131,7 @@ self.skill_description = description
 
 ### _process_display_text()
 
-自动处理按钮文本的换行和截断：
+自动处理宽松按钮文本的换行和截断；紧凑模式通过 `ToolButtonIconOnly` 隐藏文本，不删除这些处理结果：
 
 - 如果文本包含 `\n`，按换行符分割，最多取前 2 行；每行超过 8 个字符时截断为前 8 个字符并追加 `...`
 - 如果不含 `\n`（单行模式），长度超过 13 个字符时直接截断为前 13 个字符并追加 `...`，不自动换行
@@ -145,7 +163,7 @@ self.skill_description = description
 | 按下状态 | `T("color.border")` 背景，无边框 |
 | 激活状态 | 渐变背景 `qlineargradient`（左侧 4% 为 `T("color.primary")`，其余为 `T("color.primary.subtle")`），无边框，`T("color.primary")` 文字颜色 |
 
-样式定义位于 `ui/uikit_theme.py` 的排除区兼容附录（`_compat_skills_panel_qss()`，结构沿用旧 custom.qss，颜色实时取 UIKit 令牌，详见 [UIKit 主题系统](../utils/uikit-theme.md)）：
+样式定义位于 `ui/uikit_theme.py` 的排除区兼容附录（`_compat_skills_panel_qss()`，结构沿用旧 custom.qss，颜色实时取 UIKit 令牌，详见 [UIKit 主题系统](../utils/uikit-theme.md)）。紧凑模式追加 `SkillButton[compact="true"]` 的 padding/radius 规则，导航按钮使用 `QToolButton#skillsScrollButton`；激活与分组展开渐变保持不变：
 
 ```css
 /* 非激活状态 */

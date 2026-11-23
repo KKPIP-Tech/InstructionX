@@ -10,8 +10,9 @@ CPython 的循环 GC 会在任意分配线程触发；若被回收的是 PySide6
 多个版本、不同业务插件下反复出现，与具体业务功能无关。
 
 **做法**：启动完成后 ``gc.freeze()`` 把启动期对象移出扫描，``gc.disable()``
-禁止任意线程自动触发循环回收，随后由主线程 QTimer 定期 ``gc.collect()``。
-只影响循环垃圾；引用计数回收（绝大多数 Qt 对象）不受影响。
+禁止任意线程自动触发循环回收，随后由主线程 QTimer 分代执行 ``gc.collect()``。
+年轻代高频、中代低频、完整回收更低频，避免每 30 秒都扫描完整堆。所有回收
+仍在 GUI 线程，只影响循环垃圾；引用计数回收（绝大多数 Qt 对象）不受影响。
 
 **边界**：这是缓解措施，不是已证实的原生根因修复；若长时间运行仍闪退，
 需按 docs/utils/gc-main-thread.md 的排查步骤取得原生 dump。
@@ -26,16 +27,28 @@ from PySide6.QtCore import QObject, QTimer
 
 from utils.logging_tools import LoggerManager, get_name
 
-#: 主线程回收节拍：过短会增加 GUI 线程停顿，过长会让循环垃圾暂存过久
-COLLECT_INTERVAL_MS = 30_000
-#: 单次回收超过该耗时记 WARNING（用于评估是否需调长节拍）
+#: 主线程定时器与年轻代回收节拍：及时清理高频短生命周期引用环
+COLLECT_INTERVAL_MS = 2_000
+#: 中代回收节拍：处理熬过年轻代的对象，避免年轻代回收无法覆盖长期引用环
+MIDDLE_COLLECT_INTERVAL_MS = 30_000
+#: 完整回收节拍：完整堆扫描成本最高，仅低频兜底，不作为常规回收手段
+FULL_COLLECT_INTERVAL_MS = 300_000
+#: 单次回收超过该耗时记 WARNING（用于评估是否需调整分代节拍）
 SLOW_COLLECT_WARN_MS = 100.0
+
+_GENERATION_YOUNG = 0
+_GENERATION_MIDDLE = 1
+_GENERATION_FULL = 2
+_MS_PER_SEC = 1000.0
 
 _logger = LoggerManager()
 
 
 class MainThreadGcGuard(QObject):
-    """在主线程周期执行 ``gc.collect()``；安装/卸载幂等。
+    """在 GUI 线程分代执行循环 GC；安装/卸载幂等。
+
+    定时器默认每 2 秒回收年轻代、每 30 秒回收中代、每 5 分钟完整回收。
+    手动 :meth:`collect_now` 仍执行完整回收，并重置自动调度截止时间。
 
     典型用法（main.py，进入 ``QApplication.exec()`` 之前）::
 
@@ -46,12 +59,13 @@ class MainThreadGcGuard(QObject):
     """
 
     def __init__(self, parent=None) -> None:
-        """只创建计时器，不改变全局 GC 状态。"""
+        """只创建计时器与调度状态，不改变全局 GC 状态。"""
         super().__init__(parent)
         self._timer = QTimer(self)
         self._timer.setInterval(COLLECT_INTERVAL_MS)
-        self._timer.timeout.connect(self.collect_now)
+        self._timer.timeout.connect(self._collect_scheduled)
         self._installed = False
+        self._reset_schedule()
 
     @property
     def installed(self) -> bool:
@@ -59,30 +73,79 @@ class MainThreadGcGuard(QObject):
         return self._installed
 
     def install(self) -> None:
-        """冻结启动期对象、关闭自动循环 GC、启动主线程回收节拍（幂等）。"""
+        """冻结启动期对象、关闭自动循环 GC、启动主线程分代回收（幂等）。"""
         if self._installed:
             return
-        gc.collect()
+        gc.collect(_GENERATION_FULL)
         gc.freeze()
         gc.disable()
+        self._reset_schedule()
         self._installed = True
         self._timer.start()
         _logger.info(
             get_name(),
-            f"主线程GC守卫已启用：interval={COLLECT_INTERVAL_MS}ms；"
-            "后台线程不再自动触发循环回收")
+            f"主线程GC守卫已启用：young={COLLECT_INTERVAL_MS}ms，"
+            f"middle={MIDDLE_COLLECT_INTERVAL_MS}ms，"
+            f"full={FULL_COLLECT_INTERVAL_MS}ms；后台线程不再自动触发循环回收")
 
     def collect_now(self) -> int:
-        """在主线程执行一次完整循环回收；返回回收对象数。"""
-        started = time.perf_counter()
-        collected = gc.collect()
-        elapsed_ms = (time.perf_counter() - started) * 1000.0
-        if elapsed_ms >= SLOW_COLLECT_WARN_MS:
-            _logger.warning(
-                get_name(),
-                f"主线程GC回收耗时 {elapsed_ms:.1f}ms（回收 {collected} 个对象），"
-                f"超过 {SLOW_COLLECT_WARN_MS:.0f}ms 预警线")
+        """立即完整回收并重置自动调度；返回回收对象数。"""
+        collected = self._collect_generation(_GENERATION_FULL)
+        self._reset_schedule()
         return collected
+
+    def _reset_schedule(self) -> None:
+        """以当前单调时钟重建中代与完整回收的截止时间。"""
+        now = time.monotonic()
+        self._last_middle_at = now
+        self._last_full_at = now
+
+    def _collect_scheduled(self) -> None:
+        """执行一次到期的分代回收，完整回收同时覆盖较低代际。"""
+        now = time.monotonic()
+        generation = self._scheduled_generation(now)
+        self._collect_generation(generation)
+        self._mark_collected_at(now, generation)
+
+    def _scheduled_generation(self, now: float) -> int:
+        """按到期顺序选择完整、中代或年轻代回收。"""
+        full_elapsed_ms = (now - self._last_full_at) * _MS_PER_SEC
+        if full_elapsed_ms >= FULL_COLLECT_INTERVAL_MS:
+            return _GENERATION_FULL
+        middle_elapsed_ms = (now - self._last_middle_at) * _MS_PER_SEC
+        if middle_elapsed_ms >= MIDDLE_COLLECT_INTERVAL_MS:
+            return _GENERATION_MIDDLE
+        return _GENERATION_YOUNG
+
+    def _mark_collected_at(self, now: float, generation: int) -> None:
+        """回收完成后更新时间基准，避免同一拍重复触发多个代际。"""
+        if generation == _GENERATION_FULL:
+            self._last_full_at = now
+            self._last_middle_at = now
+        elif generation == _GENERATION_MIDDLE:
+            self._last_middle_at = now
+
+    def _collect_generation(self, generation: int) -> int:
+        """在调用方线程执行指定代际回收，并记录耗时与对象数。"""
+        started = time.perf_counter()
+        collected = gc.collect(generation)
+        elapsed_ms = (time.perf_counter() - started) * _MS_PER_SEC
+        self._log_collection(generation, collected, elapsed_ms)
+        return collected
+
+    def _log_collection(self, generation: int, collected: int,
+                        elapsed_ms: float) -> None:
+        """常规分代信息记 DEBUG，慢回收记 WARNING 供现场对账。"""
+        _logger.debug(
+            get_name(),
+            f"主线程GC分代回收：generation={generation}，耗时 {elapsed_ms:.1f}ms，"
+            f"回收 {collected} 个对象")
+        if elapsed_ms < SLOW_COLLECT_WARN_MS:
+            return
+        _logger.warning(
+            get_name(),
+            f"主线程GC回收耗时 {elapsed_ms:.1f}ms（generation={generation}，"
+            f"回收 {collected} 个对象），超过 {SLOW_COLLECT_WARN_MS:.0f}ms 预警线")
 
     def shutdown(self) -> None:
         """停止节拍并恢复自动循环 GC（幂等；进程退出前调用）。"""

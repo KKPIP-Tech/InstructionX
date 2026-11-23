@@ -194,6 +194,17 @@ SkillsPanel {{
     background-color: {panel_bg};
     border-bottom: 1px solid {T("color.border")};
 }}
+SkillsPanel[compact="true"] {{
+    border: none;
+    background-color: {panel_bg};
+}}
+SkillsPanel[compact="true"] QWidget#skillsPanelHeader,
+SkillsPanel[compact="true"] QStackedWidget,
+SkillsPanel[compact="true"] QScrollArea,
+SkillsPanel[compact="true"] QWidget#skillsContainer {{
+    border: none;
+    background-color: {panel_bg};
+}}
 SkillsPanel QWidget#skillsPanelHeader {{
     background-color: {panel_bg};
 }}
@@ -309,6 +320,34 @@ SkillButton#skillGroupButton[expanded="true"]:hover {{
     background: {expanded_gradient};
     border: none;
     padding: 2px;
+}}
+SkillButton[compact="true"],
+SkillButton[compact="true"][active="true"],
+SkillButton#skillGroupButton[compact="true"][expanded="true"] {{
+    border-radius: 6px;
+    padding: 1px;
+}}
+SkillButton[compact="true"][active="true"] {{
+    background: {accent};
+    color: {T("color.on.primary")};
+}}
+SkillButton[compact="true"][active="true"]:hover {{
+    background: {T("color.primary.hover")};
+}}
+SkillsPanel QToolButton#skillsScrollButton {{
+    border: none;
+    border-radius: 6px;
+    padding: 1px;
+    background-color: transparent;
+}}
+SkillsPanel QToolButton#skillsScrollButton:hover {{
+    background-color: {selected};
+}}
+SkillsPanel QToolButton#skillsScrollButton:pressed {{
+    background-color: {T("color.border")};
+}}
+SkillsPanel QToolButton#skillsScrollButton:disabled {{
+    background-color: transparent;
 }}
 """
 

@@ -23,7 +23,13 @@ from PySide6.QtCore import Qt, QRectF, QEvent, QTimer
 
 # ===================================================================
 # 自定义工具
-from ui.skills_panel.panel import SkillsPanel
+from ui.skills_panel.panel import (
+    SkillsPanel,
+    SKILLS_PANEL_COMPACT,
+    SKILLS_PANEL_DEFAULT_MODE,
+    SKILLS_PANEL_MODES,
+    SKILLS_PANEL_RELAXED,
+)
 from ui.dialog.plugin_management_dialog import PluginManagementDialog
 from ui.dialog.about_dialog import AboutDialog
 from ui.dialog.license_dialog import LicenseDialog
@@ -151,13 +157,10 @@ def _draw_shadow_tiles(painter: QPainter, pixmap: QPixmap,
                          xt[col + 1] - xt[col], yt[row + 1] - yt[row])
             painter.drawPixmap(dst, pixmap, src)
 
-# 技能面板高度限制
-SKILLS_PANEL_MAX_HEIGHT = 135
-SKILLS_PANEL_MIN_HEIGHT = 125
-
-# 应用配置在 DataProvider 中的插件标识与主题设置键
+# 应用配置在 DataProvider 中的插件标识与界面设置键
 APP_CONFIG_PLUGIN_ID = "__app_config__"
 THEME_SETTING_KEY = "theme"
+SKILLS_PANEL_MODE_SETTING_KEY = "skills_panel_mode"
 
 # 托盘图标路径（基于本文件位置推导，与 main.py 中窗口图标同一推导方式，
 # 避免相对 CWD 失效）
@@ -181,9 +184,9 @@ class InstructionXMainWindow(QMainWindow):
     应用程序主窗口
 
     采用单窗口多面板布局：
-    - 顶部：菜单栏
-    - 左侧：技能面板（插件选择器）
-    - 右侧：工作区（显示激活的插件界面）
+    - 顶部：自定义标题栏与菜单栏
+    - 中部：支持宽松/紧凑模式的技能面板（插件选择器）
+    - 下部：工作区（显示激活的插件界面）
 
     负责初始化插件系统、响应技能点击、管理工作区内容。
     """
@@ -218,8 +221,8 @@ class InstructionXMainWindow(QMainWindow):
         # 主题映射：浅色 → 深色 → 跟随系统
         self._theme_map = {'light': 'dark', 'dark': 'auto', 'auto': 'light'}
 
-        # 加载保存的主题设置
-        self._load_saved_theme()
+        # SkillsPanel 尚未创建，先加载模式供菜单和布局使用
+        self._load_interface_preferences()
 
         # 创建主容器（用于圆角效果）
         self._container = QWidget()
@@ -395,80 +398,59 @@ class InstructionXMainWindow(QMainWindow):
     # ===============================================================
     # GUI 界面
     def _create_menus(self) -> None:
-        """
-        创建菜单栏
-
-        包含编辑、AI、帮助等菜单项。
-        菜单栏将移动到自定义标题栏中。
-        """
-
-        # 获取原生菜单栏并移到自定义标题栏
+        """创建并挂载编辑、AI、帮助菜单。"""
         menu_bar = self.menuBar()
         menu_bar.setNativeMenuBar(False)
         self._title_bar.set_menu_bar(menu_bar)
+        self._create_edit_menu(menu_bar)
+        self._create_ai_menu(menu_bar)
+        self._create_help_menu(menu_bar)
+        self._retranslate_ui()
 
-        # -------------------------------------------------
-        # 编辑（文案统一由 _retranslate_ui 设置，此处只建结构）
+    def _create_edit_menu(self, menu_bar) -> None:
+        """创建编辑菜单；模式动作固定在主题与语言之间。"""
         self._menu_edit = menu_bar.addMenu("")
-
-        # 插件管理（安装/升级/卸载/分组/排序）
         self._action_plugin_manage = QAction(self)
         self._action_plugin_manage.setShortcut("Ctrl+P")
         self._action_plugin_manage.triggered.connect(self._open_plugin_management_dialog)
         self._menu_edit.addAction(self._action_plugin_manage)
-
-        # 字体管理（安装/卸载/预览）
         self._action_font_manage = QAction(self)
         self._action_font_manage.triggered.connect(self._open_font_manager_dialog)
         self._menu_edit.addAction(self._action_font_manage)
-
-        # 主题切换
         self._menu_theme_action = QAction(self)
         self._menu_theme_action.triggered.connect(self._cycle_theme)
         self._menu_edit.addAction(self._menu_theme_action)
-
-        # 界面语言
+        self._action_skills_mode = QAction(self)
+        self._action_skills_mode.setCheckable(True)
+        self._action_skills_mode.triggered.connect(self._toggle_skills_panel_mode)
+        self._menu_edit.addAction(self._action_skills_mode)
         self._action_language = QAction(self)
         self._action_language.triggered.connect(self._open_language_dialog)
         self._menu_edit.addAction(self._action_language)
+        self._add_github_actions()
 
+    def _add_github_actions(self) -> None:
+        """添加编辑菜单中的 GitHub Key 与安装动作。"""
         self._action_github_keys = QAction(self)
         self._action_github_keys.triggered.connect(self._open_github_key_manager)
         self._menu_edit.addAction(self._action_github_keys)
-
-        # 分隔线
         self._menu_edit.addSeparator()
-
-        # 从 GitHub 安装插件
         self._action_github_install = QAction(self)
         self._action_github_install.triggered.connect(self._open_github_plugin_install_dialog)
         self._menu_edit.addAction(self._action_github_install)
 
-        # -------------------------------------------------
-        # AI 菜单
-        self._create_ai_menu(menu_bar)
-
-        # -------------------------------------------------
-        # 帮助
+    def _create_help_menu(self, menu_bar) -> None:
+        """创建帮助菜单及其全部动作。"""
         self._menu_help = menu_bar.addMenu("")
-
-        # 检查更新（仅用户点击后触发，不做启动或定时自动检查）
         self._action_check_update = QAction(self)
         self._action_check_update.triggered.connect(self._open_update_dialog)
         self._menu_help.addAction(self._action_check_update)
-
-        # 关于软件
         self._action_about = QAction(self)
         self._action_about.triggered.connect(self._open_about_dialog)
         self._menu_help.addAction(self._action_about)
-
-        # 开源组件许可
         self._action_license = QAction(self)
         self._action_license.triggered.connect(self._open_license_dialog)
         self._menu_help.addAction(self._action_license)
-
-        # 首次填充全部菜单文案（语言切换时由 language_changed 触发重设）
-        self._retranslate_ui()
 
     def _retranslate_ui(self) -> None:
         """集中重设主窗口全部用户可见文案（初始化末尾与语言切换时调用）"""
@@ -494,6 +476,7 @@ class InstructionXMainWindow(QMainWindow):
         self._action_about.setText(tr("main_window", "menu.help.about"))
         self._action_license.setText(tr("main_window", "menu.help.licenses"))
         self._update_theme_action_text()
+        self._update_skills_mode_action()
 
 
     def _create_main_layout(self) -> None:
@@ -518,10 +501,9 @@ class InstructionXMainWindow(QMainWindow):
 
         # 创建并添加 SkillsPanel（固定高度）
         self.skills_panel = SkillsPanel(self._container)
+        self.skills_panel.set_display_mode(self._skills_panel_mode)
         self.skills_panel.set_plugin_manager(self.plugin_manager)
         self.skills_panel.load_skills_from_manager()
-        self.skills_panel.setMaximumHeight(SKILLS_PANEL_MAX_HEIGHT)  # 设置最大高度
-        self.skills_panel.setMinimumHeight(SKILLS_PANEL_MIN_HEIGHT)  # 设置最小高度
         content_layout.addWidget(self.skills_panel)
 
         # 创建工作区（可伸缩）
@@ -638,6 +620,12 @@ class InstructionXMainWindow(QMainWindow):
         # 注意：安装结果提示由 GitHubPluginInstallDialog 统一弹出，
         # 此处不再重复弹窗（避免安装成功时出现双弹窗）。
 
+    def _load_interface_preferences(self) -> None:
+        """加载主题与 Skills Area 模式，各配置失败独立回退。"""
+        self._skills_panel_mode = SKILLS_PANEL_DEFAULT_MODE
+        self._load_saved_theme()
+        self._load_saved_skills_panel_mode()
+
     def _load_saved_theme(self):
         """从 DataProvider 加载保存的主题设置"""
         try:
@@ -681,6 +669,70 @@ class InstructionXMainWindow(QMainWindow):
         except Exception as e:
             # 保存失败不阻断主题切换，但记录日志便于排查
             self._logger.warning(get_name(), f"保存主题设置失败: {e}")
+
+    def _load_saved_skills_panel_mode(self) -> None:
+        """读取 Skills Area 模式；读取失败或值非法时回退默认紧凑模式。"""
+        try:
+            saved_mode = DataProvider().get_plugin_data(
+                APP_CONFIG_PLUGIN_ID,
+                SKILLS_PANEL_MODE_SETTING_KEY,
+                DataNamespace.PRIVATE,
+                SKILLS_PANEL_DEFAULT_MODE,
+            )
+        except Exception as exc:
+            self._logger.warning(
+                get_name(), f"加载技能区模式失败，使用默认紧凑模式: {exc}"
+            )
+            saved_mode = SKILLS_PANEL_DEFAULT_MODE
+        if saved_mode not in SKILLS_PANEL_MODES:
+            self._logger.warning(
+                get_name(), f"技能区模式配置非法: {saved_mode}，使用默认紧凑模式"
+            )
+            saved_mode = SKILLS_PANEL_DEFAULT_MODE
+        self._skills_panel_mode = saved_mode
+
+    def _save_skills_panel_mode(self) -> None:
+        """保存当前 Skills Area 模式，失败不阻断本次界面切换。"""
+        try:
+            DataProvider().set_plugin_data(
+                APP_CONFIG_PLUGIN_ID,
+                SKILLS_PANEL_MODE_SETTING_KEY,
+                self._skills_panel_mode,
+                DataNamespace.PRIVATE,
+                notify=False,
+            )
+        except Exception as exc:
+            self._logger.warning(get_name(), f"保存技能区模式失败: {exc}")
+
+    def _toggle_skills_panel_mode(self, checked: bool) -> None:
+        """根据编辑菜单勾选状态切换 Skills Area 模式。"""
+        mode = SKILLS_PANEL_COMPACT if checked else SKILLS_PANEL_RELAXED
+        self._set_skills_panel_mode(mode)
+
+    def _set_skills_panel_mode(self, mode: str) -> None:
+        """应用并保存 Skills Area 模式。"""
+        if mode not in SKILLS_PANEL_MODES:
+            raise ValueError(f"未知技能面板模式: {mode}")
+        self._skills_panel_mode = mode
+        panel = getattr(self, "skills_panel", None)
+        if panel is not None:
+            panel.set_display_mode(mode)
+        self._update_skills_mode_action()
+        self._save_skills_panel_mode()
+
+    def _update_skills_mode_action(self) -> None:
+        """同步编辑菜单动作的模式文案、提示和勾选状态。"""
+        action = getattr(self, "_action_skills_mode", None)
+        if action is None:
+            return
+        mode_label = tr("skills_panel", f"mode.{self._skills_panel_mode}")
+        action.setText(
+            tr("main_window", "menu.edit.skills_mode.current", mode=mode_label)
+        )
+        tooltip = tr("main_window", "menu.edit.skills_mode.tooltip")
+        action.setToolTip(tooltip)
+        action.setStatusTip(tooltip)
+        action.setChecked(self._skills_panel_mode == SKILLS_PANEL_COMPACT)
 
     def _update_theme_action_text(self):
         """更新主题菜单项文字，显示当前主题"""
