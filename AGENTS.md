@@ -17,7 +17,7 @@
 - InstructionX_UIKit 主题与组件体系（`ui/InstructionX_UIKit` 组件库：设计令牌 + light/dark/auto 全局主题，59 组件 + 原生 Canvas/RHI 图表引擎 + 蓝图节点图 + 仿 VS Code 代码编辑器 + 完整 Iconoir 图标库）、字体管理器（`core/font` 子系统：字体安装/卸载/预览/系统字体回退，框架不自带字体）
 - 多国语言（i18n）支持（`core/i18n` 子系统：XML 语言文件 + 回退链取词、界面语言实时切换、每插件语言覆盖；日志文案保持中文不国际化）
 
-- 应用标识：`InstructionX - CE`（组织名 `KKPIP-Tech`），当前版本 **Alpha 1.1.3**
+- 应用标识：`InstructionX - CE`（组织名 `KKPIP-Tech`），当前版本 **Alpha 1.1.4**
 - **框架版本号单一来源为 `core/version.py` 的 `VERSION` 常量**（pyproject 通过 AST 静态读取，修改版本只改这里）
 - **Setup 对外基础版本号单一来源为 `setup/src/version.rs` 的 `SETUP_VERSION`**：格式 `YYYYMMDD-NN`（当天打包序号从 `01` 起），当前为 `20261114-01`；完整构建版本自动追加平台和架构，如 `20261114-01.win.x86_64` / `20261114-01.win.aarch64`，界面标题、`--version` 和 `--state` 均显示完整版本，与框架版本独立
 - 平台：**Windows 10/11 与 macOS（Cocoa）**，Python **>= 3.14**
