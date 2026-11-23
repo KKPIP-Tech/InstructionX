@@ -3,7 +3,7 @@
 from dataclasses import dataclass, field
 from typing import Optional, Dict, List, Literal
 
-from core.github.secret_vault import DPAPI_PREFIX, create_default_secret_vault
+from core.github.secret_vault import DPAPI_PREFIX, DpapiSecretVault
 from core.llm.secure_keys import decode_secret
 
 # MCP Server 默认监听地址（仅本机回环）
@@ -56,7 +56,7 @@ class MCPServerConfig:
             "transport": self.transport,
             "enabled": self.enabled,
             "auth_token": (
-                create_default_secret_vault().encrypt(self.auth_token)
+                DpapiSecretVault().encrypt(self.auth_token)
                 if self.auth_token is not None
                 else None
             ),
@@ -89,7 +89,7 @@ class MCPServerConfig:
             transport=data.get("transport", "stdio"),
             enabled=data.get("enabled", True),
             auth_token=(
-                create_default_secret_vault().decrypt(stored_token)
+                DpapiSecretVault().decrypt(stored_token)
                 if stored_token is not None and stored_token.startswith(DPAPI_PREFIX)
                 else decode_secret(stored_token)
             ),
@@ -138,7 +138,7 @@ class MCPRemoteServerConfig:
             "env": self.env,
             "url": self.url,
             "auth_token": (
-                create_default_secret_vault().encrypt(self.auth_token)
+                DpapiSecretVault().encrypt(self.auth_token)
                 if self.auth_token is not None
                 else None
             ),
@@ -168,7 +168,7 @@ class MCPRemoteServerConfig:
             env=data.get("env"),
             url=data.get("url"),
             auth_token=(
-                create_default_secret_vault().decrypt(stored_token)
+                DpapiSecretVault().decrypt(stored_token)
                 if stored_token is not None and stored_token.startswith(DPAPI_PREFIX)
                 else decode_secret(stored_token)
             ),
