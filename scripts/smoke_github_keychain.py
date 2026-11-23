@@ -171,7 +171,6 @@ def check_gui_save(vault: "MacOSKeychainSecretVault") -> None:
         worker.finished.connect(lambda view: result.update(view=view))
         worker.failed.connect(lambda error: result.update(error=error))
         thread.finished.connect(worker.deleteLater)
-        thread.finished.connect(thread.deleteLater)
         thread.start()
         _wait_for_gui_worker(app, thread)
         app.processEvents()

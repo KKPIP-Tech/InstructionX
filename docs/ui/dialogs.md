@@ -254,7 +254,7 @@ if dialog.exec() == QDialog.DialogCode.Accepted:
 ---
 ## 5. GitHubPluginInstallDialog GitHub 插件安装对话框
 
-**文件位置**: `ui/dialog/github_plugin_install_dialog.py`
+**文件位置**: `ui/dialog/github_plugin_install_dialog.py`；Key 下拉弹层辅助类：`ui/dialog/github_key_combo_box.py`
 
 ### 5.1 概述
 
@@ -310,6 +310,8 @@ if dialog.exec() == QDialog.DialogCode.Accepted:
 - **重新绑定恢复**: 私有插件绑定 Key 失效时，插件管理详情提供重新绑定入口
 
 ### 5.4a GitHub Key 相关对话框
+
+- `GitHubKeyComboBox`：安装页专用 ComboBox。`showPopup()` 后通过 `setUniformItemSizes(True)` 和 `doItemsLayout()` 统一选项高度，修复 UIKit 首次弹层行距小于 QSS 项高导致的相邻选项重叠；不修改 UIKit 库，Windows 与其他 ComboBox 行为不变。
 
 - `GitHubKeyManagerDialog`：列出 Key 名称、GitHub 账号、类型、状态、过期信息、最近验证和默认状态；支持添加、编辑、验证、设默认和删除。
 - `GitHubKeyEditorDialog`：Token 默认密码显示，可切换可见；编辑时留空表示保留原 Token；未验证通过的输入不保存。

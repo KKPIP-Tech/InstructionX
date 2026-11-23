@@ -525,6 +525,7 @@ InstructionX/
 │       ├── llm_settings/        # LLM 设置对话框包（两栏：列表 + 详情，自动保存语义）
 │       ├── plugin_management_dialog.py  # 插件管理对话框（安装/升级/降级/卸载 + 分组与排序）
 │       ├── plugin_order_dialog.py  # 插件排序对话框（遗留，排序功能已迁入 plugin_management_dialog）
+│       ├── github_key_combo_box.py  # GitHub Key 弹层统一项高与显示后重排
 │       └── github_plugin_install_dialog.py  # GitHub 插件安装对话框
 │
 ├── workers/                  # 预留扩展目录（当前为空，框架后台线程统一由 BackgroundTaskManager 管理）
