@@ -523,7 +523,7 @@
       <text key="menu.edit.toggle_theme">切换主题</text>
       <text key="menu.edit.toggle_theme.tooltip">浅色 → 深色 → 跟随系统</text>
       <text key="menu.edit.toggle_theme.current">切换主题 ({label})</text>
-      <text key="menu.edit.skills_mode.current">技能区：{mode}</text>
+      <text key="menu.edit.skills_mode.current">插件区：{mode}</text>
       <text key="menu.edit.skills_mode.tooltip">在宽松与紧凑模式之间切换（重启后保留选择）</text>
       <text key="menu.edit.language">语言</text>
       <text key="menu.edit.github_keys">GitHub Key 管理...</text>

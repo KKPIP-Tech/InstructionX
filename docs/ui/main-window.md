@@ -66,9 +66,8 @@ def _create_menus(self) -> None:
     self._menu_theme_action.triggered.connect(self._cycle_theme)
     self._menu_edit.addAction(self._menu_theme_action)
 
-    # Skills Area 模式（位于主题切换正下方，选择持久化）
+    # 插件区模式（位于主题切换正下方，选择持久化，不显示勾选状态）
     self._action_skills_mode = QAction(self)
-    self._action_skills_mode.setCheckable(True)
     self._action_skills_mode.triggered.connect(self._toggle_skills_panel_mode)
     self._menu_edit.addAction(self._action_skills_mode)
 
