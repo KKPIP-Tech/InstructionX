@@ -7,9 +7,9 @@
 
 [![CI](https://github.com/KKPIP-Tech/InstructionX/actions/workflows/test.yml/badge.svg)](https://github.com/KKPIP-Tech/InstructionX/actions/workflows/test.yml)
 [![Python](https://img.shields.io/badge/Python-3.14+-blue.svg)](https://www.python.org/)
-[![PySide6](https://img.shields.io/badge/PySide6-6.11.1+-green.svg)](https://doc.qt.io/qtforpython/)
+[![PySide6](https://img.shields.io/badge/PySide6-6.12.0+-green.svg)](https://doc.qt.io/qtforpython/)
 [![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS-lightgrey.svg)](#)
-[![Version](https://img.shields.io/badge/Alpha-1.1.3%20CE-red.svg)](#)
+[![Version](https://img.shields.io/badge/Alpha-1.1.4%20CE-red.svg)](#)
 [![License](https://img.shields.io/badge/License-AGPL--3.0%2B%20%2B%20%C2%A77%20Terms-blue.svg)](LICENSE)
 
 [中文版](README.md) | [English Version](README_EN.md) | [Version française](README_FR.md) | Русская версия
@@ -313,7 +313,7 @@ python -m pytest test/ -q --tb=short -p no:cacheprovider
 | Технология | Назначение | Версия |
 |------------|------------|--------|
 | Python | Язык программирования | >= 3.14 |
-| PySide6 | Qt GUI-фреймворк | >= 6.11.1 |
+| PySide6 | Qt GUI-фреймворк | >= 6.12.0 |
 | mcp | Протокол MCP (FastMCP) | >= 1.28.1, < 2 |
 | requests / aiohttp | HTTP / асинхронный HTTP | >= 2.32 / >= 3.11 |
 | orjson | Высокопроизводительная сериализация JSON | >= 3.11.0, < 4 |

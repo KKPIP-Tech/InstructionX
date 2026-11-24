@@ -6,9 +6,9 @@
 
 [![CI](https://github.com/KKPIP-Tech/InstructionX/actions/workflows/test.yml/badge.svg)](https://github.com/KKPIP-Tech/InstructionX/actions/workflows/test.yml)
 [![Python](https://img.shields.io/badge/Python-3.14+-blue.svg)](https://www.python.org/)
-[![PySide6](https://img.shields.io/badge/PySide6-6.11.1+-green.svg)](https://doc.qt.io/qtforpython/)
+[![PySide6](https://img.shields.io/badge/PySide6-6.12.0+-green.svg)](https://doc.qt.io/qtforpython/)
 [![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS-lightgrey.svg)](#)
-[![Version](https://img.shields.io/badge/Alpha-1.1.3%20CE-red.svg)](#)
+[![Version](https://img.shields.io/badge/Alpha-1.1.4%20CE-red.svg)](#)
 [![License](https://img.shields.io/badge/License-AGPL--3.0%2B%20%2B%20%C2%A77%20Terms-blue.svg)](LICENSE)
 
 中文版 | [English Version](README_EN.md) | [Version française](README_FR.md) | [Русская версия](README_RU.md)
@@ -19,7 +19,7 @@
 
 InstructionX 负责桌面应用中那些不太有趣、但每个工具都绕不开的部分：插件加载与卸载、配置和数据存储、后台任务、LLM、MCP，以及统一的界面组件。具体做什么工具，由插件决定。
 
-当前版本是 **Alpha 1.1.3**，可在 Windows 10/11 和 macOS 上运行。项目仍在开发中，接口可能调整。框架以源码方式运行，不作为库分发。
+当前版本是 **Alpha 1.1.4**，可在 Windows 10/11 和 macOS 上运行。项目仍在开发中，接口可能调整。框架以源码方式运行，不作为库分发。
 
 ## 主要功能
 
@@ -197,7 +197,7 @@ CI 使用 Windows + Python 3.14，在任意分支 push、所有 PR、手动触�
 | 项目 | 版本 |
 |---|---|
 | Python | >= 3.14 |
-| PySide6 | >= 6.11.1 |
+| PySide6 | >= 6.12.0 |
 | mcp | >= 1.30.0, < 2 |
 | requests / aiohttp | >= 2.32 / >= 3.14.5 |
 | orjson | >= 3.11.0, < 4 |

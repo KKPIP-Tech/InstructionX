@@ -26,6 +26,7 @@ from PySide6.QtCore import Qt, QRectF, QEvent, QTimer
 from ui.skills_panel.panel import (
     SkillsPanel,
     SKILLS_PANEL_COMPACT,
+    SKILLS_PANEL_DEFAULT_MODE,
     SKILLS_PANEL_MODES,
     SKILLS_PANEL_RELAXED,
 )
@@ -621,7 +622,7 @@ class InstructionXMainWindow(QMainWindow):
 
     def _load_interface_preferences(self) -> None:
         """加载主题与 Skills Area 模式，各配置失败独立回退。"""
-        self._skills_panel_mode = SKILLS_PANEL_RELAXED
+        self._skills_panel_mode = SKILLS_PANEL_DEFAULT_MODE
         self._load_saved_theme()
         self._load_saved_skills_panel_mode()
 
@@ -670,24 +671,24 @@ class InstructionXMainWindow(QMainWindow):
             self._logger.warning(get_name(), f"保存主题设置失败: {e}")
 
     def _load_saved_skills_panel_mode(self) -> None:
-        """读取 Skills Area 模式；读取失败或值非法时回退宽松模式。"""
+        """读取 Skills Area 模式；读取失败或值非法时回退默认紧凑模式。"""
         try:
             saved_mode = DataProvider().get_plugin_data(
                 APP_CONFIG_PLUGIN_ID,
                 SKILLS_PANEL_MODE_SETTING_KEY,
                 DataNamespace.PRIVATE,
-                SKILLS_PANEL_RELAXED,
+                SKILLS_PANEL_DEFAULT_MODE,
             )
         except Exception as exc:
             self._logger.warning(
-                get_name(), f"加载技能区模式失败，使用宽松模式: {exc}"
+                get_name(), f"加载技能区模式失败，使用默认紧凑模式: {exc}"
             )
-            saved_mode = SKILLS_PANEL_RELAXED
+            saved_mode = SKILLS_PANEL_DEFAULT_MODE
         if saved_mode not in SKILLS_PANEL_MODES:
             self._logger.warning(
-                get_name(), f"技能区模式配置非法: {saved_mode}，使用宽松模式"
+                get_name(), f"技能区模式配置非法: {saved_mode}，使用默认紧凑模式"
             )
-            saved_mode = SKILLS_PANEL_RELAXED
+            saved_mode = SKILLS_PANEL_DEFAULT_MODE
         self._skills_panel_mode = saved_mode
 
     def _save_skills_panel_mode(self) -> None:

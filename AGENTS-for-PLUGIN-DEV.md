@@ -321,7 +321,7 @@ get_language_manager().plugin_language_changed.connect(self._on_plugin_language_
 
 #### UIKit alpha-v1.0.4 基线与迁移
 
-- 当前 UI 基线为 `InstructionX_UIKit alpha-v1.0.4`、`PySide6>=6.11.1`。真实窗口的 Chart 与 Blueprint 默认使用 `QCanvasPainterWidget + QRhi`，Qt 自动选择图形 API；显式 `rhi` 是完整快照回退，`raster` 仅用于软件参考。
+- 当前 UI 基线为 `InstructionX_UIKit alpha-v1.0.4`、`PySide6>=6.12.0`。真实窗口的 Chart 与 Blueprint 默认使用 `QCanvasPainterWidget + QRhi`，Qt 自动选择图形 API；显式 `rhi` 是完整快照回退，`raster` 仅用于软件参考。
 - 禁止继续使用已删除的 `gl_available()`、`gl_series.py`、`QOpenGLWidget`、`UIKIT_CHART_GL`、`UIKIT_BLUEPRINT_GL`，不得恢复 GL 预热或通过 `QQuickWindow.setGraphicsApi()` 强制 OpenGL。
 - 图标统一使用 Iconoir 原名，经 `icon_names()` / `search_icons()` 查询；旧手绘图标名不再保留兼容映射。
 - 涉及图表或蓝图的插件优先使用内置系列和组件。自定义系列受 Canvas 精确类型检查限制，必须分别验证 Canvas 与 RHI，不得静默接受性能回退；需要日期 Tooltip 时可参考框架趋势图的内置 `heatmap` 接入方式。

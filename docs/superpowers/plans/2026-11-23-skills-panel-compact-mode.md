@@ -10,7 +10,7 @@
 
 ## Global Constraints
 
-- 默认模式为 `relaxed`，现有宽松模式的布局、尺寸、计数器、滚动条和点击行为保持不变。
+- 默认模式为 `compact`；宽松模式的布局、尺寸、计数器、滚动条和点击行为保持不变，用户保存的模式优先于默认值。
 - 紧凑模式为单行：`[官方|第三方] | [横向插件 Logo] [左箭头][右箭头]`；不显示计数器、横向滚动指示条、SkillsPanel 或分组展开区外轮廓（紧凑时外层容器、Stack、ScrollArea 和内容容器均为 `border: none`，ScrollArea 使用 `QFrame.Shape.NoFrame`，底色保留 `color.bg.subtle` 不透明，宽松保留原背景与分隔线）；开启插件使用 `color.primary` 主色背景。
 - 紧凑按钮宽度建议 32；**插件按钮、分组文件夹按钮和左右导航按钮的高度必须与【官方｜第三方】切换按钮的实际渲染高度一致**，不得另设 32×32 固定尺寸。图标尺寸根据统一行高计算，面板总高度由统一行高与命名边距计算，不硬编码 48。
 - 紧凑按钮只显示插件原有 `IPlugin.skill_icon`，悬停 Tooltip 必须显示未截断的 `plugin_name`；插件 Logo 不替换为 UIKit 图标。
@@ -32,7 +32,7 @@
 
 1. 在「编辑」菜单中新增 `QAction`，**紧跟「切换主题」下方、位于「语言」上方**；不得添加为 MenuBar 顶层独立按钮，也不得放入「AI」菜单。
 2. 动作显示当前状态，例如 `技能区：宽松` / `技能区：紧凑`，并提供切换提示；动作本身可勾选，勾选表示紧凑。
-3. **模式选择必须记住**：使用现有 `APP_CONFIG_PLUGIN_ID` 的 PRIVATE 数据保存 `skills_panel_mode`，值为 `relaxed` 或 `compact`，重启后恢复上次选择；非法值或读取失败回退 `relaxed`，保存失败不阻断切换并记录 WARNING。
+3. **模式选择必须记住**：使用现有 `APP_CONFIG_PLUGIN_ID` 的 PRIVATE 数据保存 `skills_panel_mode`，值为 `relaxed` 或 `compact`，重启后恢复上次选择；非法值或读取失败回退 `compact`，保存失败不阻断切换并记录 WARNING。
 4. 分组按钮在紧凑模式保留点击展开/收起功能，展开后组内插件仍以紧凑 Logo 按钮行内显示；分组展开状态变化必须刷新溢出箭头。
 5. 窗口变窄、插件安装/卸载、Tab 切换、分组展开/收起后均重新计算溢出；无插件或无溢出时不显示箭头。
 6. `SkillsPanel._compact_row_height()` 以两个切换按钮的实际渲染高度为唯一行高来源，并将该值传给全部紧凑插件按钮、分组按钮和导航按钮。首次显示、语言切换和主题切换后延迟重新同步，避免字体或 QSS 变化造成高度不一致。
@@ -355,7 +355,7 @@ Expected: FAIL，原因是 `set_display_mode()` 尚不存在。
 
 - [ ] **Step 3: 实现模式状态和布局迁移**
 
-`SkillsPanel.__init__()` 默认 `_display_mode=SKILLS_PANEL_RELAXED`。保存 `_main_layout`、`_header_layout`、两个 ScrollArea 和两个容器布局；`_create_skills_page()` 返回这些引用。初始宽松布局仍由原结构创建，紧凑切换使用：
+`SkillsPanel.__init__()` 先按原结构创建宽松布局，再调用 `set_display_mode(SKILLS_PANEL_DEFAULT_MODE)`，默认进入紧凑布局。保存 `_main_layout`、`_header_layout`、两个 ScrollArea 和两个容器布局；`_create_skills_page()` 返回这些引用。紧凑切换使用：
 
 ```python
 def set_display_mode(self, mode: str) -> None:
@@ -422,7 +422,7 @@ Expected: PASS；额外验证官方/第三方各自滚动值在两次模式切�
 
 新增测试覆盖：
 
-1. 默认宽松布局和计数器不变。
+1. 默认紧凑；切回宽松后布局和计数器保持不变。
 2. 紧凑后 Stack 位于 Header、计数隐藏、水平条隐藏、所有顶层和组内按钮均紧凑。
 3. 普通、组内、文件夹及导航按钮分别与两个切换按钮实际高度一致，面板高度等于统一行高加上下边距。
 4. 首次显示、语言切换和主题切换后重新同步行高，不能只在首次进入紧凑模式时设置一次。
@@ -518,7 +518,7 @@ def _set_skills_panel_mode(self, mode: str) -> None:
     self._save_skills_panel_mode()
 ```
 
-`_load_saved_skills_panel_mode()` 从 PRIVATE 键读取并校验 `SKILLS_PANEL_MODES`；`_save_skills_panel_mode()` 使用 `notify=False`。两者异常均记录包含操作上下文的 WARNING，默认/回退值为 `relaxed`。
+`_load_saved_skills_panel_mode()` 从 PRIVATE 键读取并校验 `SKILLS_PANEL_MODES`；`_save_skills_panel_mode()` 使用 `notify=False`。两者异常均记录包含操作上下文的 WARNING，默认/回退值为 `compact`。
 
 `_update_skills_mode_action()` 同步 checked、当前模式文字和 Tooltip；`_retranslate_ui()` 末尾调用它。新增四语言键：`main_window.menu.edit.skills_mode.current`、`main_window.menu.edit.skills_mode.tooltip`、`skills_panel.mode.relaxed`、`skills_panel.mode.compact`。
 
@@ -547,14 +547,14 @@ def test_mode_action_below_theme_and_toggles_panel(mocker, qtbot, window_with_me
     assert window._action_skills_mode.isChecked() is True
 
 
-def test_invalid_saved_mode_falls_back_to_relaxed(mocker):
-    """非法持久化值不得进入面板，启动回退宽松模式。"""
+def test_invalid_saved_mode_falls_back_to_compact(mocker):
+    """非法持久化值不得进入面板，启动回退默认紧凑模式。"""
     provider = MagicMock()
     provider.get_plugin_data.return_value = "unexpected-mode"
     mocker.patch("ui.main_window.DataProvider", return_value=provider)
     owner = SimpleNamespace(_logger=MagicMock(), _skills_panel_mode=SKILLS_PANEL_COMPACT)
     InstructionXMainWindow._load_saved_skills_panel_mode(owner)
-    assert owner._skills_panel_mode == SKILLS_PANEL_RELAXED
+    assert owner._skills_panel_mode == SKILLS_PANEL_COMPACT
 ```
 
 另增保存异常测试：mock `set_plugin_data()` 抛出 `RuntimeError("disk full")`，确认 `_save_skills_panel_mode()` 不向外抛出，且 `_logger.warning` 被调用一次；再验证 `_set_skills_panel_mode()` 已先更新面板和动作。
@@ -583,7 +583,7 @@ Expected: PASS。既有测试若需修改，先向用户说明并取得认可。
 
 - [ ] **Step 1: 更新文档与实际接口**
 
-文档明确两种布局、默认宽松、紧凑尺寸、完整名称 Tooltip、分组行为、溢出箭头、隐藏滚动条、菜单位置和持久化键。同步 `SkillsPanel` 公共方法、模式常量、`SkillsScrollNavigator` 职责以及 MainWindow 不再持有面板高度常量的事实。
+文档明确两种布局、默认紧凑、紧凑尺寸、完整名称 Tooltip、分组行为、溢出箭头、隐藏滚动条、菜单位置和持久化键。同步 `SkillsPanel` 公共方法、模式常量、`SkillsScrollNavigator` 职责以及 MainWindow 不再持有面板高度常量的事实。
 
 - [ ] **Step 2: 运行完整自动化验证**
 
