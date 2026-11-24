@@ -29,6 +29,7 @@ PANEL_HEIGHT = 400
 LABEL_BAND_ROWS = 22
 #: 抓图非空白的颜色数下限（低于该值说明画面未真正渲染，结论不可信）
 MIN_DISTINCT_COLORS = 6
+MONTH_LABELS = tuple(f"{month}月" for month in range(1, 13))
 #: 两个区间均为 365 天（53 周）→ 图表高度一致，才可能命中静态层缓存
 RANGE_A_START = date(2025, 1, 1)
 RANGE_B_START = date(2025, 2, 1)
@@ -65,6 +66,26 @@ def _diff_rows(image_a, image_b, rows: int = LABEL_BAND_ROWS) -> list:
     height = min(rows, image_a.height(), image_b.height())
     return [y for y in range(height)
             if _row_signature(image_a, y) != _row_signature(image_b, y)]
+
+
+def _month_labels(panel: TrendPanel) -> tuple[str, ...]:
+    """读取静态场景中的月份文字，直接验证缓存内容而非抗锯齿外观。"""
+    scene = getattr(panel._chart._viewport, "_static_scene", None)
+    if scene is None:
+        return ()
+    return tuple(
+        command[1] for command in scene.commands
+        if command[0] == "text" and command[1] in MONTH_LABELS
+    )
+
+
+def _calendar_range(panel: TrendPanel) -> tuple:
+    """读取日历坐标区间，避免额外同步改变抓图时序。"""
+    return tuple(
+        (coord.start, coord.end)
+        for coord in panel._chart._coords
+        if hasattr(coord, "start") and hasattr(coord, "end")
+    )
 
 
 def _distinct_colors(image, step: int = 7) -> int:
@@ -228,22 +249,28 @@ class TestCacheInvalidation:
 
         前提条件: 两个区间天数相同（图表高度一致），构成静态层缓存命中的条件
         操作步骤: 面板 A 依次渲染区间 A、区间 B；面板 B 全新渲染区间 B
-        预期结果: A 的标签带在切换后发生变化，且与「全新渲染区间 B」逐行一致
-            （未失效缓存时标签带会与区间 A 完全相同，即本用例失败）
+        预期结果: 月份文字随区间更新且与全新渲染完全一致；Qt 原生文字光栅化
+            和全局事件循环状态可能影响像素，因此不把逐像素一致作为通过条件。
         """
         panel = _make_panel(qtbot)
         panel._render_series(_points(RANGE_A_START), 0)
+        range_a = _calendar_range(panel)
         qtbot.wait(1)
         image_a = panel._chart.grab().toImage()
+        labels_a = _month_labels(panel)
 
         panel._render_series(_points(RANGE_B_START), 0)
+        range_b = _calendar_range(panel)
         qtbot.wait(1)
         image_b = panel._chart.grab().toImage()
+        labels_b = _month_labels(panel)
 
         fresh = _make_panel(qtbot)
         fresh._render_series(_points(RANGE_B_START), 0)
+        range_fresh_b = _calendar_range(fresh)
         qtbot.wait(1)
         image_fresh_b = fresh._chart.grab().toImage()
+        labels_fresh_b = _month_labels(fresh)
 
         # 先排除「抓图空白」导致的假通过/假失败
         colors = {name: _distinct_colors(image) for name, image in (
@@ -251,13 +278,14 @@ class TestCacheInvalidation:
         assert min(colors.values()) >= MIN_DISTINCT_COLORS, (
             f"抓图疑似空白，用例结论不可信：{colors}"
         )
+        assert range_a != range_b, "切换区间后日历坐标必须更新"
+        assert range_b == range_fresh_b, "切换后的日历坐标与全新渲染不一致"
+        assert labels_a != labels_b, "切换区间后月份文字必须更新"
+        assert labels_b == labels_fresh_b, "切换后的月份文字与全新渲染不一致"
         rows_ab = _diff_rows(image_a, image_b)
         assert rows_ab, (
             f"切换区间后月份标签带应随之变化（颜色数={colors}，"
             f"图高={image_a.height()}）"
-        )
-        assert not _diff_rows(image_b, image_fresh_b), (
-            "切换后的标签带与全新渲染不一致：静态层缓存未正确失效"
         )
 
 
