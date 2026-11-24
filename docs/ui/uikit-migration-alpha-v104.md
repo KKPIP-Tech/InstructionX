@@ -37,7 +37,7 @@ renderer.opt["name"] = ""
 
 ### 2.3 依赖与许可
 
-- `PySide6>=6.11.1`、`matplotlib>=3.11.1`，已同步 `pyproject.toml`、`requirements.txt` 与 `uv.lock`。
+- `PySide6>=6.12.0`、`matplotlib>=3.11.1`，已同步 `pyproject.toml`、`requirements.txt` 与 `uv.lock`。
 - Qt Canvas Painter 按上游选择 **GPL-3.0-only**，全文在 `licenses/QtCanvasPainter-GPL-3.0.txt`，不得误写为 LGPL。
 - Iconoir 为 MIT；完整声明见 `licenses/InstructionX_UIKit-THIRD-PARTY.md` 与 `licenses/manifest.json`。
 

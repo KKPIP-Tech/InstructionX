@@ -28,7 +28,7 @@
 
 | 依赖 | 用途 |
 |------|------|
-| PySide6 >= 6.11.1 | Qt GUI 框架与 Qt Canvas Painter（直接 Canvas / QRhi） |
+| PySide6 >= 6.12.0 | Qt GUI 框架与 Qt Canvas Painter（直接 Canvas / QRhi） |
 | requests >= 2.32 / aiohttp >= 3.14.5 | HTTP / 异步 HTTP（aiohttp 设安全最低版本） |
 | mcp >= 1.30.0, < 2 | MCP 协议（FastMCP） |
 | orjson | JSON 序列化（SQLite 后端） |
