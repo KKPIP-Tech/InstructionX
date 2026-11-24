@@ -9,7 +9,7 @@ from PySide6.QtWidgets import QDialog
 from core.plugin.framework_compatibility import evaluate_framework_compatibility
 
 
-CURRENT = "alpha.1.1.3"
+CURRENT = "alpha.1.1.4"
 
 
 def _result(versions, invalid_entries=()):
