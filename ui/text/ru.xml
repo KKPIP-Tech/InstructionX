@@ -554,7 +554,7 @@
     <text key="menu.edit.toggle_theme">Сменить тему</text>
     <text key="menu.edit.toggle_theme.tooltip">Светлая → тёмная → как в системе</text>
     <text key="menu.edit.toggle_theme.current">Сменить тему ({label})</text>
-    <text key="menu.edit.skills_mode.current">Область навыков: {mode}</text>
+    <text key="menu.edit.skills_mode.current">Область плагинов: {mode}</text>
     <text key="menu.edit.skills_mode.tooltip">Переключаться между свободным и компактным режимами (выбор сохраняется)</text>
     <text key="menu.edit.language">Язык</text>
     <text key="menu.edit.github_keys">Управление ключами GitHub…</text>

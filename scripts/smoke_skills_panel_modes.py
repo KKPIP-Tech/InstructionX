@@ -271,7 +271,7 @@ def check_default_compact() -> None:
     panel.close()
     window = _create_menu_window()
     assert window._skills_panel_mode == "compact", "主窗口未默认紧凑"
-    assert window._action_skills_mode.isChecked() is True
+    assert not window._action_skills_mode.isCheckable()
     window.deleteLater()
 
 
@@ -367,17 +367,15 @@ def check_menu() -> None:
     assert actions[mode_index - 1] is window._menu_theme_action
     assert actions[mode_index + 1] is window._action_language
     assert action not in window.menuBar().actions()
+    assert not action.isCheckable()
     assert window._skills_panel_mode == "compact"
-    assert action.isChecked() is True
     with patch.object(window, "_save_skills_panel_mode") as save:
         action.trigger()
         window.skills_panel.set_display_mode.assert_called_once_with("relaxed")
         assert window._skills_panel_mode == "relaxed"
-        assert action.isChecked() is False
         action.trigger()
         window.skills_panel.set_display_mode.assert_called_with("compact")
         assert window._skills_panel_mode == "compact"
-        assert action.isChecked() is True
         assert save.call_count == 2
     window.deleteLater()
     _check_mode_persistence()
@@ -499,7 +497,7 @@ def check_integrated_window() -> None:
         restored.show()
         QApplication.processEvents()
         assert restored.skills_panel.display_mode == "compact"
-        assert restored._action_skills_mode.isChecked() is True
+        assert not restored._action_skills_mode.isCheckable()
         restored.hide()
         restored.deleteLater()
         QApplication.processEvents()
