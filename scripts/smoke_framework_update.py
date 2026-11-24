@@ -48,7 +48,7 @@ def check_release_timeline() -> None:
     """验证全部 Release 保留、时间排序和当前版本定位。"""
     api = MagicMock()
     api.list_all_releases.return_value = [
-        _api_release(1, "alpha-v1.1.2", "2026-02-01T00:00:00Z"),
+        _api_release(1, "alpha-v1.1.4", "2026-02-01T00:00:00Z"),
         _api_release(2, "alpha-v1.2.0", "2026-03-01T00:00:00Z"),
         _api_release(3, "nightly", "2026-04-01T00:00:00Z"),
     ]
