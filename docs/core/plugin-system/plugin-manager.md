@@ -639,14 +639,14 @@ def _create_plugin_services(self, plugin_id: str) -> PluginServices:
     供插件在构造器和 on_plugin_loaded 回调中使用。
 
     Args:
-        plugin_id: 插件 UUID（用于绑定多语言取词门面 `PluginI18nFacade`）
+        plugin_id: 插件 UUID（用于绑定多语言与可观测性门面）
 
     Returns:
         PluginServices: 服务容器实例
     """
 ```
 
-**服务容器内容**（`core/interfaces/plugin_services.py`，8 字段）：
+**服务容器内容**（`core/interfaces/plugin_services.py`，9 字段）：
 
 | 服务 | 类型 | 说明 |
 |------|------|------|
@@ -658,6 +658,7 @@ def _create_plugin_services(self, plugin_id: str) -> PluginServices:
 | `mcp_client` | `MCPClientManager` | MCP 外部连接管理器（失败时为 `None`） |
 | `font_manager` | `FontManager` | 字体管理器（`core/font`，无降级保护、始终注入） |
 | `localization` | `ILocalizationFacade` | 多语言取词门面（绑定本插件 UUID，无降级保护、始终注入；实现为 `PluginI18nFacade`） |
+| `observability` | `PluginObservability` | 绑定本插件 UUID 的健康、指标与关联上下文门面，始终注入 |
 
 **使用流程**（见 `manager.py` 的 `_load_plugin_from_directory()` 方法）：
 
@@ -678,7 +679,7 @@ plugin._services = services  # 框架内部赋值（强制注入，与构造器�
 plugin.on_plugin_loaded()
 ```
 
-**注入时机说明**: `_create_plugin_services()` 在 `_load_plugin_from_directory()` 遍历每个插件时调用，因此**每个插件都会获得一个独立的 `PluginServices` 实例**。容器内部的各个核心服务（如 `llm_facade`、`data_provider`、`task_manager`、`mcp_manager`、`mcp_client`）本身是单例或由全局管理器提供，因此插件之间共享的是这些核心服务实例，而不是共享同一个 `PluginServices` 容器对象。这种设计让每个插件拥有独立的服务容器引用，同时保证核心服务状态全局一致。
+**注入时机说明**: `_create_plugin_services()` 在 `_load_plugin_from_directory()` 遍历每个插件时调用，因此**每个插件都会获得一个独立的 `PluginServices` 实例**。容器内部的各个核心服务（如 `llm_facade`、`data_provider`、`task_manager`、`mcp_manager`、`mcp_client`）本身是单例或由全局管理器提供，因此插件之间共享的是这些核心服务实例，而不是共享同一个 `PluginServices` 容器对象。`localization` 与 `observability` 则按插件 UUID 绑定各自身份，不共享插件身份。这种设计让每个插件拥有独立的服务容器引用，同时保证共享核心服务的状态全局一致。
 
 > **注意**：无论插件的 `__init__` 是否接收 `services` 参数，`PluginManager` 都会在实例化后通过
 > `plugin_instance._services = services` 强制注入服务容器。因此插件始终可以通过 `self._services`
@@ -844,6 +845,7 @@ tools = manager.get_all_function_tools()
 - [后台任务概述](../background-task/overview.md)（同步/异步/定时/长期任务）
 - [LLM Provider 概述](../llm-provider/overview.md)（`LLMPluginService` 门面）
 - [MCP 协议模块概述](../mcp/overview.md)（API 注册 → MCP 工具同步）
+- [可观测性与框架事件](../observability/overview.md)（`PluginServices.observability` 健康、指标与关联上下文）
 
 **架构分析**：
-- [instructionx-architecture.md §3.1 插件系统](../../architecture/instructionx-architecture.md#31-插件系统-coreplugin)（含 `PluginManager` 单例架构图与插件加载完整链路时序图）
+- [模块依赖关系](../../architecture/module-dependencies.md)（当前模块边界与依赖方向）

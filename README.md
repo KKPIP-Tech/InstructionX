@@ -6,7 +6,7 @@
 
 [![CI](https://github.com/KKPIP-Tech/InstructionX/actions/workflows/test.yml/badge.svg)](https://github.com/KKPIP-Tech/InstructionX/actions/workflows/test.yml)
 [![Python](https://img.shields.io/badge/Python-3.14+-blue.svg)](https://www.python.org/)
-[![PySide6](https://img.shields.io/badge/PySide6-6.11.1+-green.svg)](https://doc.qt.io/qtforpython/)
+[![PySide6](https://img.shields.io/badge/PySide6-6.12.0+-green.svg)](https://doc.qt.io/qtforpython/)
 [![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS-lightgrey.svg)](#)
 [![Version](https://img.shields.io/badge/Alpha-1.1.4%20CE-red.svg)](#)
 [![License](https://img.shields.io/badge/License-AGPL--3.0%2B%20%2B%20%C2%A77%20Terms-blue.svg)](LICENSE)
@@ -197,7 +197,7 @@ CI 使用 Windows + Python 3.14，在任意分支 push、所有 PR、手动触�
 | 项目 | 版本 |
 |---|---|
 | Python | >= 3.14 |
-| PySide6 | >= 6.11.1 |
+| PySide6 | >= 6.12.0 |
 | mcp | >= 1.30.0, < 2 |
 | requests / aiohttp | >= 2.32 / >= 3.14.5 |
 | orjson | >= 3.11.0, < 4 |

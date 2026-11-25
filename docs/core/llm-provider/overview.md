@@ -872,10 +872,10 @@ graph LR
 
 **接口与 API 索引**：
 - [接口层概述](../interfaces/overview.md)（`ILLMService` 22 个抽象方法）
-- [完整 API 参考 §5 LLM Provider API](../../api/full-reference.md#5-llm-provider-api)（含 §5.1-§5.11）
+- [完整 API 参考 §5 LLM Provider API](../../api/full-reference.md#5-llm-provider-api)（含 §5.1-§5.12）
 
 **架构与上下游**：
 - [系统架构概述](../../architecture/overview.md)
-- [instructionx-architecture.md §3.2 LLM 层](../../architecture/instructionx-architecture.md#32-llm-层-corellm)（`LLMPluginService` / `LLMProvider` / `ConversationManager` / `ToolCallExecutor` 模块依赖图）
+- [模块依赖关系](../../architecture/module-dependencies.md)（当前模块边界与依赖方向）
 - [MCP 协议模块概述](../mcp/overview.md)（`MCPClientManager` 将外部 MCP 工具注入 `ToolRegistry`）
 - [DataProvider 概述](../data-provider/overview.md)（用量持久化 `data/llm_usage.db`）

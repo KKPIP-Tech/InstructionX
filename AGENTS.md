@@ -28,7 +28,7 @@
 
 | 依赖 | 用途 |
 |------|------|
-| PySide6 >= 6.11.1 | Qt GUI 框架与 Qt Canvas Painter（直接 Canvas / QRhi） |
+| PySide6 >= 6.12.0 | Qt GUI 框架与 Qt Canvas Painter（直接 Canvas / QRhi） |
 | requests >= 2.32 / aiohttp >= 3.14.5 | HTTP / 异步 HTTP（aiohttp 设安全最低版本） |
 | mcp >= 1.30.0, < 2 | MCP 协议（FastMCP） |
 | orjson | JSON 序列化（SQLite 后端） |
@@ -76,7 +76,7 @@ python -m pytest test/ -q --tb=short -p no:cacheprovider
 
 - 约定：`testpaths = ["test"]`，文件 `test_*.py`、类 `Test*`、函数 `test_*`。
 - 已声明 marker：`slow`、`integration`、`ui`（`--strict-markers` 开启，自定义 marker 必须先注册）。
-- **注意**：`test/` 下当前仅保留 `test/core/data/test_data_provider.py` 一个有效测试文件（其余旧测试已在重构中删除，残留的 `__pycache__` 是过期产物，不要参考）。现有测试约定：中文 docstring、`tmp_path` fixture、测试单例类时需重置 `XxxManager._instance = None`。
+- **分支中的测试数量**：`dev` 分支的 `test/` 仅保留 `test/core/data/test_data_provider.py` 作为 CI 冒烟基线；完整 pytest 套件在 `test` 分支维护，合入后不得仍按 dev 的单文件数量判断测试覆盖。现有测试约定：中文 docstring、`tmp_path` fixture、测试单例类时需重置 `XxxManager._instance = None`。
 - UI 测试不配置 offscreen 平台，CI 跑在 `windows-latest` 上使用真实 GUI。
 - 项目还有一类**独立验证脚本**（非 pytest，放在 `scripts/`，用 `.venv\Scripts\python.exe scripts\<name>.py` 直接运行）：
   - `smoke_*.py`：核心链路无网冒烟测试（LLM、task、utils、i18n、字体管理、插件管理：安装/升级/降级/卸载/分组、本地插件包自动识别与插件集一次安装、包外文件兜底备份）；`smoke_setup_wizard.py` 针对原生 Setup（随包二进制、薄启动器与项目外工作目录、独立操作项、Activity/CLI 进度与持久日志、原生 CLI、兼容参数与 dry-run 安全）；`smoke_framework_update.py` 针对框架 Release 时间线、当前版本定位与指定 Tag 更新命令；`smoke_uikit_sync.py` 校验 UIKit 版本/模块/图标，`smoke_uikit_canvas.py` 以真实窗口和 Win32 客户区抓图验证 Canvas/RHI/raster 后端、趋势图 Tooltip 与最终帧
@@ -493,7 +493,7 @@ config/ data/ logs/         # 运行时生成：配置、数据、日志
 | `data/data.db` | 插件数据（SQLite + WAL；另有 `-wal`/`-shm` 伴生文件） |
 | `data/tasks.json` | 后台任务状态 |
 | `data/llm_usage.db` | LLM 用量记录（SQLite WAL 增量写入；旧 `llm_usage.json` 仅作迁移来源与旧自定义路径兼容） |
-| `data/conversations.db` | LLM 会话持久化（SQLite WAL 按轮次增量提交；旧 `conversations.json` 仅作迁移来源与应急导出） |
+| `data/conversations.db` | LLM 会话持久化（SQLite WAL 按轮次增量提交；旧 `conversations.json` 仅作数据库不存在时的迁移来源） |
 | `data/fonts/` | 框架安装字体的存储目录（字体文件 + `fonts.json` 注册表，schema v1：顶层 `version` + `fonts` 数组） |
 | `{插件目录}/.plugin_info.json` 或 `data/plugin_identity/{插件目录名}.json` | 插件 UUID（优先前者，插件目录不可写时回退后者） |
 | `logs/application.log` | 应用日志 |

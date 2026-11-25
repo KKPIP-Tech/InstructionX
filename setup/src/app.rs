@@ -664,8 +664,11 @@ impl App {
 
     pub fn render_text(&self, width: u16, height: u16) -> io::Result<String> {
         let backend = TestBackend::new(width, height);
-        let mut terminal = Terminal::new(backend)?;
-        terminal.draw(|frame| self.render(frame))?;
+        let mut terminal =
+            Terminal::new(backend).map_err(|_| io::Error::other("初始化 Ratatui 测试终端失败"))?;
+        terminal
+            .draw(|frame| self.render(frame))
+            .map_err(|_| io::Error::other("渲染 Ratatui 测试终端失败"))?;
         Ok(buffer_text(terminal.backend().buffer()))
     }
 }

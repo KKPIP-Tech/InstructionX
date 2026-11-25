@@ -63,7 +63,8 @@ from .types import (
 
 logger = logging.getLogger(__name__)
 
-# 会话持久化默认路径：项目根目录/data/conversations.json
+# 旧会话 JSON 默认路径：ConversationManager 派生同名 .db 作为实际存储，
+# 该 JSON 仅在数据库不存在时作为迁移来源
 _DEFAULT_CONVERSATION_STORAGE = (
     Path(__file__).resolve().parent.parent.parent / "data" / "conversations.json"
 )

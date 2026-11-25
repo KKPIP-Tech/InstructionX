@@ -325,4 +325,4 @@ config.add_provider("custom-a1b2c3d4", new_provider)  # 写入内存并立即落
 - §3.2 变更订阅回调**运行在 `add_provider` / `remove_provider` / `save_config` 的调用线程**——详见 [插件开发指南 §5.4 线程模型](../plugin-system/plugin-development.md#54-线程模型订阅回调与-ui-封送)
 
 **架构分析**：
-- [instructionx-architecture.md §3.2 LLM 层](../../architecture/instructionx-architecture.md#32-llm-层-corellm)
+- [模块依赖关系](../../architecture/module-dependencies.md)（当前模块边界与依赖方向）

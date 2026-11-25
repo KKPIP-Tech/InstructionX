@@ -6,6 +6,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Signal, Qt, QTimer
 
 from PySide6.QtGui import QIcon
+import shiboken6
 
 from core.i18n import tr, get_language_manager
 from utils.logging_tools import LoggerManager, get_name
@@ -218,6 +219,8 @@ class SkillsPanel(QWidget):
 
     def _compact_row_height(self) -> int:
         """读取切换按钮行高；未显示时使用 sizeHint，显示后使用实际高度。"""
+        if not shiboken6.isValid(self):
+            return 0
         if self.isVisible():
             return max(self.official_btn.height(), self.thirdparty_btn.height())
         return max(
@@ -285,7 +288,7 @@ class SkillsPanel(QWidget):
 
     def _sync_compact_metrics(self) -> None:
         """在显示、语言和主题变化后同步紧凑行高。"""
-        if self._display_mode != SKILLS_PANEL_COMPACT:
+        if not shiboken6.isValid(self) or self._display_mode != SKILLS_PANEL_COMPACT:
             return
         row_height = self._compact_row_height()
         self._apply_button_mode(True, row_height)

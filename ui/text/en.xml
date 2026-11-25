@@ -522,7 +522,7 @@ Interfaces using this font will fall back to a system font after uninstallation.
       <text key="menu.edit.toggle_theme">Toggle Theme</text>
       <text key="menu.edit.toggle_theme.tooltip">Light → Dark → Follow System</text>
       <text key="menu.edit.toggle_theme.current">Toggle Theme ({label})</text>
-      <text key="menu.edit.skills_mode.current">Skills Area: {mode}</text>
+      <text key="menu.edit.skills_mode.current">Plugins: {mode}</text>
       <text key="menu.edit.skills_mode.tooltip">Switch between relaxed and compact modes (remembered across restarts)</text>
       <text key="menu.edit.language">Language</text>
       <text key="menu.edit.github_keys">GitHub Key Management...</text>

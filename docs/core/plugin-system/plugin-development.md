@@ -837,5 +837,6 @@ print("结果:", result)
 - [后台任务概述](../background-task/overview.md)
 - [后台任务 API 参考](../background-task/api-reference.md)
 - [MCP 协议模块概述](../mcp/overview.md)
+- [可观测性与框架事件](../observability/overview.md)（`PluginServices.observability` 健康、指标与关联上下文）
 - [UIKit 主题系统](../../utils/uikit-theme.md)
 - [LLM 集成指南](../../plugins/llm-integration-guide.md)

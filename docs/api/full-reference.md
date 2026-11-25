@@ -506,7 +506,7 @@ from core.interfaces import ILocalizationFacade
 | `get_bridge()` | 获取 MCPBridge 实例 |
 | `shutdown()` | 关闭所有资源 |
 
-### 5.7 MCPClientManager
+### 5.8 MCPClientManager
 
 **文件**: `core/mcp/client.py`
 
@@ -519,7 +519,7 @@ from core.interfaces import ILocalizationFacade
 | `get_connection(server_id)` | 获取指定连接的信息 |
 | `shutdown()` | 关闭所有连接 |
 
-### 5.8 MCPBridge
+### 5.9 MCPBridge
 
 **文件**: `core/mcp/bridge.py`
 
@@ -530,7 +530,7 @@ from core.interfaces import ILocalizationFacade
 | `remove_plugin_tool(plugin_id, method_name)` | 从 MCP Server 注销一个插件工具 |
 | `get_synced_tool_count()` | 返回已同步的工具数量 |
 
-### 5.9 MCPHostServer
+### 5.10 MCPHostServer
 
 **文件**: `core/mcp/server.py`（基于 FastMCP，封装 `mcp` Python SDK）
 
@@ -546,7 +546,7 @@ from core.interfaces import ILocalizationFacade
 
 默认监听 `127.0.0.1:8765`；对外暴露时务必启用 Bearer token 鉴权（`MCPHostServer` 内置中间件）。
 
-### 5.10 IMCPTool
+### 5.11 IMCPTool
 
 **文件**: `core/mcp/plugin_interface.py`（插件开发者接口）
 
@@ -559,7 +559,7 @@ from core.interfaces import ILocalizationFacade
 
 > **⚠️ 当前未自动注册**：当前版本 `PluginManager` / `MCPBridge` 尚未实现对 `IMCPTool` 子类的自动扫描与注册。继承 `IMCPTool` 不会自动将工具暴露到 MCP Server；详见 `docs/core/mcp/overview.md §7.2` 与 `docs/core/plugin-system/plugin-development.md §2.3.5`。
 
-### 5.11 IMCPClient
+### 5.12 IMCPClient
 
 **文件**: `core/mcp/plugin_interface.py`（预留接口）
 
@@ -885,6 +885,7 @@ task_id = task_manager.register_scheduled_task(
 | `mcp_client` | `MCPClientManager` | MCP 客户端管理器实例（可能为 `None`） |
 | `font_manager` | `FontManager` | 字体管理器实例（`core/font`，始终注入） |
 | `localization` | `ILocalizationFacade` | 多语言取词门面（`core/i18n` 的 `PluginI18nFacade`，绑定插件 UUID，始终注入） |
+| `observability` | `PluginObservability` | 绑定插件身份的健康、指标与关联上下文门面，始终注入；见[可观测性文档](../core/observability/overview.md) |
 
 ### 8.8 ILocalizationFacade（插件多语言取词接口）
 

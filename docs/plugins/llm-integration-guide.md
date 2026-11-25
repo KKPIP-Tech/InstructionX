@@ -519,7 +519,7 @@ if not ok:
 - [LLM Provider 概述](../core/llm-provider/overview.md) — Provider 底层架构、单例与并发、工具调用
 - [LLM Provider API 参考](../core/llm-provider/api-reference.md) — `LLMPluginService` / `ConversationManager` / `ToolCallExecutor` 完整 API 清单
 - [LLM Provider 配置](../core/llm-provider/provider-config.md) — `ProviderConfig` / `LLMConfig` / schema v2
-- [完整 API 参考 §5 LLM Provider API](../../api/full-reference.md#5-llm-provider-api) — 方法索引
+- [完整 API 参考 §5 LLM Provider API](../api/full-reference.md#5-llm-provider-api) — 方法索引
 
 **插件系统上下文**：
 - [插件开发指南](../core/plugin-system/plugin-development.md) — 插件结构与生命周期
@@ -533,8 +533,8 @@ if not ok:
 
 **相关子系统**：
 - [MCP 协议模块概述](../core/mcp/overview.md) — MCP Server 和 MCP Client 完整指南；外部 MCP 工具可注册到 `ToolRegistry` 由 LLM 调用
-- [DataProvider 概述](../core/data-provider/overview.md) — `UsageRecordStore` 用量持久化
+- [DataProvider 概述](../core/data-provider/overview.md) — 插件数据持久化；LLM 用量持久化见上方 LLM Provider 文档
 
 **架构分析**：
-- [instructionx-architecture.md §3.2 LLM 层](../../architecture/instructionx-architecture.md#32-llm-层-corellm) — LLM 模块依赖图
-- [系统架构概述](../../architecture/overview.md)
+- [模块依赖关系](../architecture/module-dependencies.md) — 当前模块边界与依赖方向
+- [系统架构概述](../architecture/overview.md)

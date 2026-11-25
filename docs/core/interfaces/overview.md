@@ -523,7 +523,7 @@ class MyPlugin(IPlugin):
 
 **作用**: 将插件所需的核心服务聚合到一个对象中，通过依赖注入传递给插件
 
-**属性（共 8 字段）**:
+**属性（共 9 字段）**:
 - `data_provider`: `DataProvider` - 数据提供者实例（失败时降级为 `None`）
 - `task_manager`: `BackgroundTaskManager` - 后台任务管理器实例（失败时降级为 `None`）
 - `llm_facade`: `ILLMService` - LLM 插件服务（实际为 `LLMPluginService` 单例，显式继承 `ILLMService`；无降级保护、始终注入）
@@ -532,6 +532,7 @@ class MyPlugin(IPlugin):
 - `mcp_client`: `MCPClientManager` - 外部 MCP Client 管理器实例（可为空，用于连接外部 MCP Server）
 - `font_manager`: `FontManager` - 字体管理器实例（`core/font`，安装/卸载/系统回退解析；无降级保护、始终注入，同 `logger`）
 - `localization`: `ILocalizationFacade` - 多语言取词门面（绑定本插件 UUID；实现为 `PluginI18nFacade`；无降级保护、始终注入；插件无语言包时优雅降级返回键名本身）
+- `observability`: `PluginObservability` - 绑定插件身份的健康、指标与关联上下文门面；始终注入，用法见[可观测性与框架事件](../observability/overview.md)
 
 **设计模式**: 依赖注入（Dependency Injection）
 

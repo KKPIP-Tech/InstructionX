@@ -403,6 +403,12 @@ InstructionX/
 ├── main.py                    # 应用入口
 │
 ├── core/                      # 核心模块
+│   ├── application_lifecycle.py # 应用关闭协调器
+│   ├── external_watchdog.py  # 可选外部 watchdog
+│   ├── process_control.py    # 跨平台进程存活与终止原语
+│   ├── framework_update/     # Release 检查与指定 Tag 更新启动
+│   ├── plugin_host/          # 可选插件进程隔离（protocol/runtime/supervisor/proxy）
+│   ├── observability/        # 关联上下文、指标、健康快照与框架事件
 │   ├── interfaces/           # 抽象接口定义
 │   │   ├── __init__.py      # 导出所有接口（含 ILogger 重导出）
 │   │   ├── i_plugin.py       # IPlugin 抽象基类
@@ -410,8 +416,10 @@ InstructionX/
 │   │   ├── i_data_provider.py    # IDataProvider 抽象接口
 │   │   ├── i_task_manager.py      # ITaskManager 抽象接口
 │   │   ├── i_llm_service.py      # ILLMService 抽象接口（LLM 插件服务契约）
+│   │   ├── i_localization.py     # ILocalizationFacade 插件取词契约
+│   │   ├── health.py            # 核心服务健康状态与快照契约
 │   │   ├── i_logger.py           # ILogger 接口重导出（向后兼容）
-│   │   └── plugin_services.py    # PluginServices 服务封装
+│   │   └── plugin_services.py    # PluginServices 服务封装（9 字段）
 │   ├── plugin/               # 插件系统实现
 │   │   ├── manager.py       # PluginManager
 │   │   ├── plugin_interface.py  # IPlugin（向后兼容导入路径）
@@ -439,17 +447,26 @@ InstructionX/
 │   ├── data/                 # 数据层实现
 │   │   ├── data_provider.py # DataProvider（核心）
 │   │   ├── sqlite_backend.py # SQLite 后端（连接、DDL、事务、CRUD）
+│   │   ├── plugin_data_operations.py # 批量事务、分页与聚合
+│   │   ├── event_dispatcher.py # 独立有界邮箱与异步事件分发
+│   │   ├── recovery.py      # 启动备份、损坏隔离与恢复
 │   │   ├── sql_map.py       # SQL 语句映射
 │   │   ├── schema_migrations.py # Schema 版本与迁移脚本
+│   │   ├── errors.py        # DataProviderError 共享异常
 │   │   └── __init__.py
 │   ├── task/                 # 后台任务实现
 │   │   ├── background_task.py
+│   │   ├── executor_pools.py # 长期 / 普通 / 高优独立有界执行池
+│   │   ├── cancellation.py  # 协作取消、优先级与重入策略
+│   │   ├── supervisor.py    # 提交、拒绝与调度指标
 │   │   ├── task_model.py
 │   │   ├── task_storage.py
 │   │   └── scheduler.py
 │   ├── mcp/                  # MCP 协议模块
 │   │   ├── __init__.py
 │   │   ├── client.py         # MCPClientManager（MCP 客户端）
+│   │   ├── connection_actor.py # 单连接 coroutine owner 与超时关闭
+│   │   ├── async_cleanup.py # 自有事件循环遗留任务清理
 │   │   ├── server.py         # MCPHostServer（MCP 主机）
 │   │   ├── manager.py        # MCPManager（单例协调器）
 │   │   ├── bridge.py         # MCPBridge（桥接器）
@@ -471,11 +488,13 @@ InstructionX/
 │   │   └── language_manager.py # LanguageManager 单例（QObject）：tr() / set_language / language_changed
 │   └── llm/                  # LLM 提供者实现
 │       ├── llm_provider.py  # LLMProvider 核心层（adapter 分发、check_*、惰性刷新）
+│       ├── provider_supervisor.py # 单 worker 模型刷新、熔断与半开恢复
 │       ├── provider_interface.py  # ILLM + Message/ChatResponse/ToolCall/ModelInfo/ModelCheckResult
 │       ├── model_schema.py  # 统一模型 schema（capabilities 闭集/normalize/三路合并）
 │       ├── catalog/         # 提供商预设目录（ProviderPreset/PROVIDER_PRESETS/PRESET_MODELS/logos）
 │       ├── plugin_service.py # LLMPluginService 插件服务层（ILLMService 实现）
 │       ├── conversation_manager.py  # 对话管理
+│       ├── conversation_sqlite_store.py # 会话 SQLite 按轮次事务与旧 JSON 迁移
 │       ├── tool_call_executor.py   # 工具调用自动化（ToolChatResult / register_typed）
 │       ├── types.py        # 数据类型（DEFAULT_PROVIDER/ProviderInfo/ToolChatResult 等）
 │       ├── types_cache.py  # 类型缓存
@@ -483,7 +502,8 @@ InstructionX/
 │       ├── pricing.py      # 定价表
 │       ├── config.py       # ProviderConfig / LLMConfig 单例（schema v2 + 迁移 + 订阅）
 │       ├── secure_keys.py  # API Key 混淆存储
-│       ├── usage_record_store.py # 用量记录存储
+│       ├── usage_record_store.py # 用量持久化门面与旧 JSON 兼容
+│       ├── usage_sqlite_store.py # 用量 SQLite 增量事务与迁移
 │       ├── exceptions.py
 │       └── providers/       # 适配器注册表 + 各 Provider 实现
 │           ├── __init__.py  # PROVIDER_REGISTRY（adapter→类）+ register_adapter 等
@@ -541,8 +561,9 @@ InstructionX/
 │   ├── data.db-shm           # WAL 共享内存索引（运行时自动生成）
 │   ├── tasks.json
 │   ├── llm_usage.db          # LLM 用量 SQLite 增量存储（旧 llm_usage.json 仅迁移/兼容）
-│   ├── conversations.db      # LLM 会话 SQLite 按轮次存储（旧 conversations.json 仅迁移/导出）
+│   ├── conversations.db      # LLM 会话 SQLite 按轮次存储（旧 conversations.json 仅作迁移来源）
 │   ├── fonts/                # 框架安装字体目录（fonts.json 注册表，schema v1）
+│   ├── plugin_backup/        # 插件包外文件的升级前兜底快照
 │   ├── plugin_identity/      # 插件 UUID 回退存储（{插件目录名}.json）
 │   └── assets/
 │       └── plugins/          # 插件资源文件
@@ -551,6 +572,7 @@ InstructionX/
 │   ├── plugin_order.json
 │   ├── plugin_groups.json    # 用户自定义插件分组
 │   ├── plugin_registry.json  # 已安装插件注册表（版本/来源/安装时间）
+│   ├── github_keys.json     # GitHub PAT 元数据与 DPAPI 密文或 Keychain 引用
 │   ├── llm_providers.json
 │   ├── llm_models_cache.json
 │   ├── mcp_config.json      # MCP 协议配置
@@ -562,6 +584,7 @@ InstructionX/
 │   ├── i_logger.py         # ILogger 接口
 │   ├── image_utils.py      # 图片工具（load_image_as_base64）
 │   ├── thread_utils.py     # 工作线程 → UI 线程封送
+│   ├── gc_main_thread.py   # 主线程 GC 分代调度守卫
 │   └── macos_dock_icon.py  # macOS Dock 栏应用图标设置（非 macOS 空操作）
 │
 ├── scripts/                  # 独立验证脚本（冒烟/截图/演示/校验，运行方式：.venv\Scripts\python.exe scripts\<name>.py）
@@ -577,25 +600,28 @@ InstructionX/
 
 ```mermaid
 flowchart TD
-    A[main] --> B[QApplication 创建]
-    B --> B1[RHI 由 Qt 按平台自动选择<br/>不再强制 OpenGL]
-    B1 --> B2[uikit_bootstrap 扩展 sys.path<br/>使 InstructionX_UIKit 以顶层包可导入]
-    B2 --> C[apply_uikit_theme<br/>UIKit 全局主题，auto 自动检测系统主题]
-    C --> D[LoggerManager 初始化]
-    D --> D2[sys.excepthook 兜底异常记录]
-    D2 --> D3[get_language_manager 初始化 i18n<br/>主窗口构造前完成]
-    D3 --> E[InstructionXMainWindow 创建]
-    E --> F[创建自定义标题栏 + 菜单栏]
+    A[main.py 导入] --> B0[uikit_bootstrap 扩展 sys.path<br/>使 InstructionX_UIKit 以顶层包可导入]
+    B0 --> B[QApplication 创建<br/>RHI 由 Qt 按平台自动选择]
+    B --> B1[setQuitOnLastWindowClosed False]
+    B1 --> C[apply_uikit_theme<br/>UIKit 全局主题，auto 自动检测系统主题]
+    C --> D[get_language_manager 初始化 i18n]
+    D --> D1[LoggerManager 初始化]
+    D1 --> D2[sys.excepthook 兜底异常记录]
+    D2 --> E[InstructionXMainWindow 创建]
+    E --> E0[确定窗口标志]
+    E0 --> E1[prepare_native_window_frame<br/>Windows 非分层宿主与 DWM 外层圆角]
+    E1 --> E2[prepare_rhi_surface<br/>show 前匹配顶层 RHI Surface]
+    E2 --> F[创建自定义标题栏 + 菜单栏]
     F --> G[_create_main_layout]
-    G --> G0[prepare_rhi_surface<br/>窗口标志确定后、show 前匹配顶层 RHI Surface]
-    G0 --> G1[初始化 PluginManager]
+    G --> G1[初始化 PluginManager]
     G1 --> G2[load_plugins<br/>加载官方 + 第三方插件<br/>注册插件语言包]
     G2 --> G3[apply_custom_order<br/>应用自定义排序]
     G3 --> H[创建 SkillsPanel]
     H --> I[从 PluginManager 加载技能按钮]
     I --> J[创建 WorkArea]
     J --> K[show 主窗口]
-    K --> L[等待用户交互]
+    K --> K1[MainThreadGcGuard.install<br/>show 后、exec 前启用 GC 分代调度]
+    K1 --> L[application.exec<br/>等待用户交互]
 ```
 
 > **托盘与退出**：`main.py` 通过 `setQuitOnLastWindowClosed(False)` 切断「最后一个窗口关闭即退出」的隐式链路，退出时机完全由代码显式控制。主窗口 `closeEvent` 拦截全部关闭路径（自绘叉号 / Alt+F4 / 任务栏关闭），每次弹出 `CloseConfirmDialog` 询问「退出程序 / 最小化到托盘 / 取消」；托盘菜单「退出」与 Windows 注销/关机（`commitDataRequest` 守卫置 `_force_quit`）静默直退。`application.exec()` 返回后由 `ApplicationLifecycle` 统一执行停止外部调用、停止新任务、取消插件任务、关闭 MCP、卸载插件、关闭任务管理器与 LLM、冲刷用量、关闭 DataProvider，最后释放 UI；每一步记录耗时、异常和全局截止期结果。详见 [系统托盘](../ui/system-tray.md)。
@@ -606,7 +632,7 @@ flowchart TD
 
 ### 7.1 单例模式
 
-核心组件采用单例模式，实现方式分为两类：
+核心组件采用单例模式，实现方式分为三类：
 
 **类型 A：`__new__` + `_initialized` 标志（PluginManager）**
 
@@ -627,7 +653,7 @@ class PluginManager:
         PluginManager._initialized = True
 ```
 
-**类型 B：`__new__` + `threading.Lock` 双重检查锁定（DataProvider、BackgroundTaskManager、LLMProvider、LLMConfig、UsageRecordStore、TaskStorage、LoggerManager）**
+**类型 B：`__new__` + `threading.Lock` 双重检查锁定（DataProvider、BackgroundTaskManager、LLMProvider、LLMConfig、UsageRecordStore、TaskStorage、FontManager、LanguageManager、LoggerManager）**
 
 ```python
 class DataProvider:
@@ -676,7 +702,9 @@ def get_mcp_manager() -> "MCPManager":
 ## 相关文档
 
 - [模块依赖关系](module-dependencies.md)
-- [完整架构分析](full-analysis.md)
+- [可观测性与框架事件](../core/observability/overview.md)
+- [原生 Setup / TUI](../tui-setup.md)
+- [主线程 GC 守卫](../utils/gc-main-thread.md)
 - [插件系统概述](../core/plugin-system/overview.md)
 - [DataProvider 概述](../core/data-provider/overview.md)
 - [后台任务概述](../core/background-task/overview.md)

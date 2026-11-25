@@ -290,7 +290,7 @@ classDiagram
 
 ```mermaid
 graph LR
-    subgraph PluginServices [PluginServices 容器 8 字段]
+    subgraph PluginServices [PluginServices 容器 9 字段]
         LLM[llm_facade<br/>LLMPluginService]
         DP[data_provider<br/>DataProvider]
         TM[task_manager<br/>BackgroundTaskManager]
@@ -299,6 +299,7 @@ graph LR
         MCC[mcp_client<br/>MCPClientManager]
         FTM[font_manager<br/>FontManager]
         LOC[localization<br/>PluginI18nFacade<br/>绑定插件 UUID]
+        OBS[observability<br/>PluginObservability<br/>健康 / 指标 / 关联上下文]
     end
 
     PluginServices --> LLM
@@ -309,6 +310,7 @@ graph LR
     PluginServices --> MCC
     PluginServices --> FTM
     PluginServices --> LOC
+    PluginServices --> OBS
 ```
 
 | 服务字段 | 类型 | 说明 |
@@ -321,6 +323,7 @@ graph LR
 | `mcp_client` | `MCPClientManager` | MCP 外部连接管理器（失败时降级为 `None`） |
 | `font_manager` | `FontManager` | 字体管理器（安装/卸载/系统回退解析，`core/font`，无降级保护、始终注入） |
 | `localization` | `ILocalizationFacade` | 多语言取词门面（绑定本插件 UUID，无降级保护、始终注入；实现为 `PluginI18nFacade`） |
+| `observability` | `PluginObservability` | 绑定插件身份的健康、指标与关联上下文门面，始终注入；见[可观测性文档](../observability/overview.md) |
 
 ---
 

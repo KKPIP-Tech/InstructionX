@@ -421,7 +421,6 @@ class InstructionXMainWindow(QMainWindow):
         self._menu_theme_action.triggered.connect(self._cycle_theme)
         self._menu_edit.addAction(self._menu_theme_action)
         self._action_skills_mode = QAction(self)
-        self._action_skills_mode.setCheckable(True)
         self._action_skills_mode.triggered.connect(self._toggle_skills_panel_mode)
         self._menu_edit.addAction(self._action_skills_mode)
         self._action_language = QAction(self)
@@ -705,8 +704,12 @@ class InstructionXMainWindow(QMainWindow):
             self._logger.warning(get_name(), f"保存技能区模式失败: {exc}")
 
     def _toggle_skills_panel_mode(self, checked: bool) -> None:
-        """根据编辑菜单勾选状态切换 Skills Area 模式。"""
-        mode = SKILLS_PANEL_COMPACT if checked else SKILLS_PANEL_RELAXED
+        """根据菜单触发在当前模式之间切换，不使用勾选状态。"""
+        mode = (
+            SKILLS_PANEL_RELAXED
+            if self._skills_panel_mode == SKILLS_PANEL_COMPACT
+            else SKILLS_PANEL_COMPACT
+        )
         self._set_skills_panel_mode(mode)
 
     def _set_skills_panel_mode(self, mode: str) -> None:
@@ -721,7 +724,7 @@ class InstructionXMainWindow(QMainWindow):
         self._save_skills_panel_mode()
 
     def _update_skills_mode_action(self) -> None:
-        """同步编辑菜单动作的模式文案、提示和勾选状态。"""
+        """同步编辑菜单动作的模式文案和提示。"""
         action = getattr(self, "_action_skills_mode", None)
         if action is None:
             return
@@ -732,7 +735,6 @@ class InstructionXMainWindow(QMainWindow):
         tooltip = tr("main_window", "menu.edit.skills_mode.tooltip")
         action.setToolTip(tooltip)
         action.setStatusTip(tooltip)
-        action.setChecked(self._skills_panel_mode == SKILLS_PANEL_COMPACT)
 
     def _update_theme_action_text(self):
         """更新主题菜单项文字，显示当前主题"""
