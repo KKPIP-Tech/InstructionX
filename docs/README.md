@@ -14,80 +14,58 @@
 
 ```
 docs/
-├── README.md                         # 本文档 - 文档索引和导航
+├── README.md                              # 文档索引与导航
+├── tui-setup.md                           # 原生 Setup 安装、维护与验证
 │
-├── architecture/                     # 架构文档
-│   ├── overview.md                       # 系统架构概述
-│   ├── module-dependencies.md            # 模块依赖关系
-│   ├── full-analysis.md                  # 完整架构分析
-│   └── instructionx-architecture.md      # 框架 dev-branch 架构分析（含自检清单）
+├── architecture/                          # 当前架构与可靠性文档
+│   ├── overview.md                        # 系统架构概述（当前架构入口）
+│   ├── module-dependencies.md             # 模块依赖与职责边界
+│   ├── plugin-isolation.md                # 可选进程隔离与 watchdog
+│   ├── foundation-slo.md                  # 可靠性目标
+│   ├── foundation-performance.md          # 性能证据
+│   ├── foundation-validation.md           # 故障、兼容与长稳验证
+│   ├── foundation-verification-report.md  # 验证结果与边界
+│   ├── foundation-deployment-guide.md     # 部署、灰度与回滚
+│   ├── full-analysis.md                   # 历史档案，停止维护
+│   └── instructionx-architecture.md       # 历史档案，停止维护
 │
-├── core/                            # 核心模块文档
-│   ├── interfaces/                  # 抽象接口层
-│   │   ├── overview.md              # 接口层概述（含各接口详细说明）
-│   │   └── ilogger.md              # ILogger 接口文档
-│   │   # 注：IPlugin/IPluginInfo 详见 plugin-system/iplugin.md
-│   │   # 注：IDataProvider/ITaskManager/ILLMService 在 overview.md 中详解
-│   │
-│   ├── security/                    # 安全与供应链
-│   │   └── dependency-management.md # Python 依赖漏洞、升级与审计策略
-│   │
-│   ├── plugin-system/               # 插件系统
-│   │   ├── overview.md              # 插件系统概述
-│   │   ├── iplugin.md               # IPlugin 接口
-│   │   ├── plugin-manager.md        # PluginManager
-│   │   ├── plugin-development.md    # 插件开发指南
-│   │   ├── plugin-version.md        # PluginVersion 版本管理
-│   │   ├── plugin-icon.md          # PluginIcon 图标管理
-│   │   ├── plugin-identity.md       # PluginIdentity 身份标识
-│   │   ├── plugin-config-manager.md # PluginConfigManager 配置管理
-│   │   ├── plugin-dependency-manager.md # PluginDependencyManager 依赖管理
-│   │   └── plugin-installer.md      # PluginInstaller 安装器
-│   │
-│   ├── data-provider/               # 数据层
-│   │   ├── overview.md              # DataProvider 概述
-│   │   ├── api-reference.md         # DataProvider API 参考
-│   │   └── sqlite-migration-plan.md # SQLite 迁移实施文档（含 schema 演进 + 运维手册）
-│   │
-│   ├── background-task/             # 后台任务
-│   │   ├── overview.md             # 后台任务概述
-│   │   ├── api-reference.md         # 后台任务 API 参考
-│   │   └── task-storage.md         # TaskStorage 持久化存储
-│   │
-│   ├── font-manager/               # 字体子系统
-│   │   └── overview.md             # FontManager 概述（安装/卸载/预览/系统回退）
-│   │
-│   ├── i18n/                      # 多语言子系统
-│   │   └── overview.md             # LanguageManager 概述（语言文件约定/回退链/插件集成）
-│   │
-│   ├── llm-provider/                # LLM 提供者
-│   │   ├── overview.md              # LLM Provider 概述
-│   │   ├── api-reference.md         # LLM Provider API 参考
-│   │   └── provider-config.md       # ProviderConfig/LLMConfig 配置
-│   │
-│   └── mcp/                         # MCP 协议支持
-        └── overview.md              # MCP 模块概述
-
-├── api/                             # API 参考文档
-│   └── full-reference.md            # 完整 API 参考
-
-├── ui/                              # UI 组件文档
-│   ├── main-window.md               # 主窗口
-│   ├── skills-panel.md              # 技能面板
-│   ├── skill-button.md              # SkillButton 技能按钮
-│   ├── work-area.md                 # 工作区
-│   ├── system-tray.md               # 系统托盘与关闭行为
-│   └── dialogs.md                   # 对话框组件
-│       # 注：UsagePanel（用量查询面板）源码位于 ui/usage_panel/ 包
-
-├── utils/                           # 工具模块文档
-│   ├── logging-tools.md             # 日志工具
-│   └── uikit-theme.md               # UIKit 主题系统（InstructionX_UIKit 组件库 + 全局主题入口）
-
-└── plugins/                         # 插件文档
-    ├── index.md                     # 插件索引
-    ├── thirdparty-plugins.md        # 第三方插件文档
-    └── llm-integration-guide.md     # LLM 集成开发指南
+├── core/                                  # 核心模块专项文档
+│   ├── interfaces/                        # 抽象接口层与 ILogger
+│   ├── plugin-system/                     # 插件生命周期、开发、安装与配置
+│   ├── data-provider/                     # DataProvider、API 与 SQLite 迁移
+│   ├── background-task/                   # 任务系统、API 与 TaskStorage
+│   ├── font-manager/                      # 字体子系统
+│   ├── i18n/                              # 多语言子系统
+│   ├── llm-provider/                      # LLM 架构、API 与配置
+│   ├── mcp/                               # MCP Server / Client
+│   └── observability/                     # 可观测性与框架事件
+│
+├── api/
+│   └── full-reference.md                  # 核心 API 索引
+│
+├── ui/                                    # UI 组件与迁移文档
+│   ├── main-window.md
+│   ├── skills-panel.md
+│   ├── skill-button.md
+│   ├── work-area.md
+│   ├── system-tray.md
+│   ├── dialogs.md
+│   └── uikit-migration-alpha-v104.md
+│
+├── utils/
+│   ├── logging-tools.md
+│   ├── uikit-theme.md
+│   └── gc-main-thread.md                  # 主线程 GC 分代调度与边界
+│
+├── plugins/                               # 插件开发与集成指南
+│   ├── index.md
+│   ├── thirdparty-plugins.md
+│   └── llm-integration-guide.md
+│
+├── security/
+│   └── dependency-management.md           # Python 与 Rust 依赖安全流程
+│
+└── superpowers/plans/                     # 历史实施计划，非当前行为依据
 ```
 
 > 另：仓库根目录的 [`插件开发流程.md`](../插件开发流程.md) 为**插件开发快速入门指南**（环境初始化 / 插件仓库配置 / AI 辅助提示词模板），面向插件开发者。
@@ -120,13 +98,16 @@ docs/
 14. **[MCP 协议模块](core/mcp/overview.md)** - MCP 协议支持（Server + Client）
 15. **[LLM 集成指南](plugins/llm-integration-guide.md)** - 在插件中使用 LLM 服务
 16. **[多语言子系统概述](core/i18n/overview.md)** - i18n 取词、语言切换与插件语言包
-17. **[主窗口](ui/main-window.md)** - 界面组件详解
-18. **[API 完整参考](api/full-reference.md)** - 所有 API 索引
+17. **[可观测性与框架事件](core/observability/overview.md)** - 健康、指标与关联上下文
+18. **[主窗口](ui/main-window.md)** - 界面组件详解
+19. **[原生 Setup / TUI](tui-setup.md)** - 安装、维护与发布验证
+20. **[可靠性部署与回滚](architecture/foundation-deployment-guide.md)** - 部署灰度与验收边界
+21. **[API 完整参考](api/full-reference.md)** - 所有 API 索引
 
 ### 插件参考
 
-19. **[插件文档](plugins/index.md)** - 所有插件总览
-20. **[第三方插件](plugins/thirdparty-plugins.md)** - 第三方插件说明
+22. **[插件文档](plugins/index.md)** - 所有插件总览
+23. **[第三方插件](plugins/thirdparty-plugins.md)** - 第三方插件说明
 
 ---
 

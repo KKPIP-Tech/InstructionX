@@ -118,7 +118,8 @@ class ConversationManager:
             max_context_tokens: 最大上下文 token 估算阈值，默认 120000；
                 发送前超出阈值时从最早的用户/助手消息开始丢弃
                 （system prompt 与最近几条消息保留）
-            storage_path: 会话持久化文件路径（如 data/conversations.json）；
+            storage_path: 旧会话 JSON 路径（如 data/conversations.json），实际数据库
+                使用同目录同名 .db 文件；仅数据库不存在且该 JSON 存在时执行迁移。
                 为 None 时不持久化（纯内存模式）
             **kwargs: 兼容旧参数（如 max_context），已废弃但会被吸收
         """

@@ -219,7 +219,7 @@ record.to_dict()         # 转换为字典（用于持久化）
 UsageRecord.from_dict(d) # 从字典创建
 ```
 
-存储位置: `data/llm_usage.json`，由 `UsageRecordStore` 管理。
+默认存储位置为 `data/llm_usage.db`，由 `UsageRecordStore` 经 `UsageSQLiteStore` 管理。旧 `data/llm_usage.json` 仅作为首次启动时的迁移来源；调用方显式替换 JSON 路径时，才保留旧异步 JSON 兼容行为。
 
 ---
 
@@ -303,7 +303,7 @@ adapter.prepare_cache_params(config: Dict) -> Dict
 ### 2.10 UsageRecordStore
 
 ```python
-from core.llm.usage_record_store import UsageRecordStore, get_usage_record_store
+from core.llm.usage_record_store import FlushReport, UsageRecordStore, get_usage_record_store
 
 store = get_usage_record_store()  # 单例
 
@@ -337,9 +337,13 @@ store.get_total_stats(
 
 # 清理旧记录
 store.prune(before: datetime) -> int  # 返回删除的记录数
+
+# 冲刷与结果回执
+store.flush(timeout: float = 2.0) -> None
+store.flush_detailed(timeout: float = 2.0) -> FlushReport
 ```
 
-存储文件: `data/llm_usage.json`。采用原子写入（临时文件 + `os.replace`），线程安全，后台异步保存。
+默认写入 `data/llm_usage.db`，使用 SQLite WAL 和逐条显式事务，不再在每次变更后全量重写 JSON。`flush()` 默认执行 SQLite 存储层冲刷；旧自定义 JSON 路径仍使用临时文件、`os.replace` 和后台异步保存，`timeout` 仅用于该兼容路径。需要明确成功、未落盘数量和错误信息时使用 `flush_detailed()`。
 
 ---
 
@@ -1837,9 +1841,9 @@ def validate_provider(provider: str) -> Tuple[bool, str]
 
 ### 6.1 会话持久化
 
-- **持久化文件**: `data/conversations.json`，存储全部 `Conversation` 对象（含消息历史、用量累计、provider/model 元数据）
-- **写入策略**: 任一 `create_conversation()` / `send_message()` / `stream_send_message()` / `delete_conversation()` 调用后**原子全量写**（临时文件 + `os.replace`），不依赖增量 patch；保证断电/崩溃时不会留下半写状态
-- **启动恢复**: `LLMPluginService.__init__()`（或首次访问单例时）自动调用 `ConversationManager._load_conversations()` 读回 `data/conversations.json`，重建内存中的 `_conversations` 字典；**损坏文件不备份**，仅记 WARNING 日志后按空会话处理（不阻断启动；与 `TaskStorage` 的 `.corrupt.bak` 备份行为不同——会话持久化数据若损坏直接放弃，恢复后从空开始）。
+- **持久化文件**: 默认使用 `data/conversations.db`。`ConversationStore` 分别保存会话元数据和有序消息；旧 `data/conversations.json` 仅作为数据库不存在时的迁移来源。
+- **写入策略**: 创建会话时写入或更新元数据；同步、流式发送仅提交尚未持久化的完整轮次消息；删除会话时级联删除消息。每个轮次在单个显式事务中更新统计并追加消息，写库失败显式抛出，不再全量重写 JSON。
+- **启动恢复**: `ConversationManager` 从 SQLite 恢复会话。仅当数据库不存在且旧 JSON 存在时执行单事务迁移；成功后生成 `conversations.migrated-*.bak`，失败则清理本次新建数据库、保留原 JSON，并为损坏文件生成 `conversations.corrupt-*.bak` 隔离副本后抛出 `ConversationStorageError`，禁止按空会话继续。
 - **定价热更新**: `ConversationManager.update_pricing(new_pricing: Dict)`（**`ConversationManager` 内部方法，不属于 `ILLMService` 抽象契约**；由 `LLMPluginService` 在 `LLMConfig` 变更时经 `_build_effective_pricing()` 调用）允许运行时替换 `DEFAULT_PRICING` 引用——配置变更时已存在的对话后续费用计算使用新表
 
 **Conversation 状态机**：
@@ -1919,9 +1923,9 @@ Provider 实现类的细节（如请求格式差异、响应解析逻辑等）�
 
 | 属性 | 类型 | 位置 | 说明 |
 |------|------|------|------|
-| `LLMProvider.last_errors` | `Dict[str, str]`（provider name → 最近错误信息）| `core/llm/llm_provider.py:741` | 合并各 provider 实例的 `last_error` 与健康跟踪中的错误，仅包含有错误的条目；供 UI 健康状态显示 |
-| `LLMPluginService.last_stream_response` | `Optional[ChatResponse]`（`ILLMService` 契约成员）| `core/llm/plugin_service.py:660-667` | 最近一次流式调用的聚合响应（`content` + `tool_calls` + `usage`）；`chat_with_tools_stream()` 通过此属性提取 `tool_calls` 驱动多轮循环 |
-| `UsageRecordStore.flush()` | `None` | `core/llm/usage_record_store.py` | 将内存中累计的待写用量记录冲刷到 `data/llm_usage.json`；`main.py` 退出时调用保证进程终止前数据落盘 |
+| `LLMProvider.last_errors` | `Dict[str, str]`（provider name → 最近错误信息）| `core/llm/llm_provider.py` | 合并各 provider 实例的 `last_error` 与健康跟踪中的错误，仅包含有错误的条目；供 UI 健康状态显示 |
+| `LLMPluginService.last_stream_response` | `Optional[ChatResponse]`（`ILLMService` 契约成员）| `core/llm/plugin_service.py` | 最近一次流式调用的聚合响应（`content` + `tool_calls` + `usage`）；`chat_with_tools_stream()` 通过此属性提取 `tool_calls` 驱动多轮循环 |
+| `UsageRecordStore.flush()` | `None` | `core/llm/usage_record_store.py` | 默认执行 SQLite WAL 检查与完整性检查；旧自定义 JSON 路径等待后台队列落盘。应用退出由 `ApplicationLifecycle` 调用，需明确回执时使用 `flush_detailed()` |
 
 ---
 
@@ -2122,4 +2126,4 @@ if response.tool_calls:
 - [DataProvider 概述](../data-provider/overview.md)（`UsageRecordStore` 用量持久化）
 
 **架构分析**：
-- [instructionx-architecture.md §3.2 LLM 层](../../architecture/instructionx-architecture.md#32-llm-层-corellm)（`LLMPluginService` → `LLMProvider` → 各 Provider 实现类的依赖关系）
+- [模块依赖关系](../../architecture/module-dependencies.md)（当前模块边界与依赖方向）

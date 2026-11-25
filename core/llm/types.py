@@ -338,7 +338,7 @@ class StreamChunk:
 class UsageRecord:
     """单次 LLM API 请求的用量记录（带时间戳）。
 
-    通过 UsageRecordStore 持久化到 data/llm_usage.json。
+    默认通过 UsageRecordStore 持久化到 data/llm_usage.db；旧 JSON 仅用于迁移或兼容。
 
     Attributes:
         id: 记录唯一 ID（UUID4 hex 字符串）

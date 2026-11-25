@@ -454,7 +454,8 @@ graph TD
 ## 相关文档
 
 - [系统架构概述](overview.md)
-- [完整架构分析](full-analysis.md)
+- [可观测性与框架事件](../core/observability/overview.md)
+- [原生 Setup / TUI](../tui-setup.md)
 - [插件系统概述](../core/plugin-system/overview.md)
 - [GitHub 插件安装器](../core/plugin-system/plugin-installer.md)
 - [DataProvider 概述](../core/data-provider/overview.md)

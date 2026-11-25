@@ -1,4 +1,4 @@
-# Python 依赖安全管理
+# 依赖安全管理
 
 > 依赖漏洞发现、升级、验证与自动化策略
 
@@ -36,7 +36,20 @@
 分组创建 PR，避免同一漏洞族生成大量独立 PR；是否合并仍以完整测试和安全
 扫描结果为准。
 
-## 5. 例外处理
+## 5. Rust / Setup 依赖
+
+原生 Setup 的 Rust 依赖目前采用人工审查与定向升级，不宣称 `.github/dependabot.yml` 已配置 Cargo 自动更新 PR。GitHub 安全告警仍需逐项核对 `setup/Cargo.lock` 中的实际版本与上游公告范围。
+
+升级流程：
+
+1. 以 `setup/Cargo.toml` 声明直接依赖，以 `setup/Cargo.lock` 核对直接与传递依赖；不得只改清单而忽略锁文件。
+2. 在 `setup/` 目录使用 `cargo update -p <crate>` 定向升级；若需解除旧传递依赖，可同时升级其上层依赖并记录原因。
+3. 运行 `cargo fmt --check`、`cargo clippy --locked --all-targets -- -D warnings`、`cargo test --locked`，并在 `test` 分支运行全部 Rust 集成测试。
+4. 运行 `scripts/smoke_setup_wizard.py`，覆盖随包二进制、薄启动器、CLI、Activity 与 dry-run 安全。
+5. 使用 `setup/build_windows.ps1` 重建 Windows x64 / ARM64 资产，验证 PE 架构并更新 `tools/setup/SHA256SUMS`；不得用旧二进制冒充新依赖已生效。
+6. 合并默认分支后等待 GitHub 重新扫描。未实际完成 `cargo audit` 等自动扫描时，只能声明依据公告、依赖树和测试结果完成修复，不得写成“全部漏洞已自动审计通过”。
+
+## 6. 例外处理
 
 不得仅为了制造“0 告警”而设置忽略列表。确需临时例外时，必须在 PR 中记录：
 

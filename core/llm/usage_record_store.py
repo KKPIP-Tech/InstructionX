@@ -47,10 +47,10 @@ def _normalize_dt(value: Any) -> datetime:
 
 
 class UsageRecordStore:
-    """LLM 用量记录存储单例
+    """LLM 用量记录存储单例，默认使用 SQLite 增量事务持久化。
 
-    线程安全的 JSON 持久化存储，采用原子写入保证数据一致性。
-    使用单后台写线程 + 防抖合并异步写入，避免阻塞主线程和频繁全量重写。
+    旧 JSON 仅用于首次启动迁移；调用方显式替换 JSON 路径时，保留单后台
+    写线程与防抖合并的兼容行为。默认 SQLite 路径不经过该 JSON 写线程。
 
     Example:
         >>> store = get_usage_record_store()
@@ -207,15 +207,14 @@ class UsageRecordStore:
     # ==================== 公开 API ====================
 
     def flush(self, timeout: float = 2.0) -> None:
-        """冲刷防抖窗口内的待写记录，等待后台写线程完成落盘
+        """冲刷当前后端；需要结构化成功回执时调用 ``flush_detailed()``。
 
-        供应用退出等需要确保数据不丢失的场景调用。唤醒后台写线程并
-        轮询等待，直到内存缓存中的脏数据全部写入磁盘。方法幂等，可
-        重复调用；无待写数据时立即返回。
+        默认 SQLite 路径执行存储层 WAL 检查与完整性检查，失败直接抛出。
+        旧自定义 JSON 路径唤醒后台写线程并等待脏缓存落盘；超时仅记录
+        警告并返回，未落盘数据仍由 daemon 写线程继续尝试。
 
         Args:
-            timeout: 最长等待时间（秒），超时后记录警告日志并返回，
-                未落盘的数据仍由 daemon 写线程在后台继续尝试
+            timeout: 旧 JSON 兼容路径的最长等待秒数；SQLite 路径不使用
 
         Returns:
             None
